@@ -2,11 +2,35 @@
 
 *Trade smarter. Faster.*
 
-A personal US market-intelligence application: live Interactive Brokers market
-data, earnings scoring, options analytics, scanning and a trade journal.
+A personal US-equity research application: a directional model scored
+parameter by parameter, live options flow, and the filings behind a company --
+with every number traceable to the provider that published it.
 
-Single-operator tool. **It never places orders** — the IBKR connection is
+Single-operator tool. **It never places orders** -- the IBKR connection is
 opened `readonly=True` and no order-placement call exists in the codebase.
+
+## Where the data comes from
+
+| Source | What it powers |
+|---|---|
+| **Unusual Whales** | The options tape and its unusual filter, market / stock / chain flow, dark-pool prints, bars and quotes, earnings and the expected move priced into each report, dividends, analyst actions, news, insider transactions, the screener, fundamentals and short interest |
+| **SEC EDGAR** | 8-K item codes -- the company's own classification of what happened -- and the 13F census of every filer |
+| **Interactive Brokers** | Live quotes and intraday bars, where TWS is running. Optional: everything falls back to Unusual Whales without it |
+| **Claude** | The plain-English explanations. It is given the app's own figures and is never allowed to supply one |
+
+Free providers (Finviz, Benzinga, Nasdaq, Twelve Data, Alpha Vantage,
+Marketaux, Yahoo) remain configured behind Unusual Whales as fallbacks, so a
+lapsed key degrades the app rather than blanking it.
+
+## Running it on a server
+
+`deploy/` has what you need:
+
+* `deploy/windows/` -- Windows VPS: NSSM service, Caddy for HTTPS, update script
+* `deploy/README.md` -- Linux VPS: systemd unit, nginx config, update script
+
+Both bind the app to localhost and put a reverse proxy in front. Neither
+should be run without `ACCESS_PASSWORD` set.
 
 ---
 

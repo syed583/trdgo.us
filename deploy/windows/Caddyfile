@@ -1,0 +1,28 @@
+# Caddy in front of US-Stock Reader on Windows.
+#
+# Replace stocks.example.com with your domain and point its A record at this
+# server first -- Caddy fetches the certificate itself and needs the name to
+# resolve. There is no certificate step beyond that.
+
+stocks.example.com {
+	encode gzip
+
+	# The analysis screen streams its progress as server-sent events. A
+	# buffering proxy holds every event until the run finishes, so the page
+	# sits at "5 of 12" and then jumps to done -- which reads as a hang.
+	@stream path /api/analyze/*
+	reverse_proxy @stream 127.0.0.1:8000 {
+		flush_interval -1
+		transport http {
+			response_header_timeout 10m
+		}
+	}
+
+	reverse_proxy 127.0.0.1:8000 {
+		# A first analysis of a cold symbol takes a while; the default would
+		# cut it off mid-answer.
+		transport http {
+			response_header_timeout 5m
+		}
+	}
+}
