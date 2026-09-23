@@ -1154,12 +1154,22 @@ def auth_status() -> dict:
 
 @app.post("/auth/login")
 async def auth_login(request: Request):
+    # The login page posts JSON. A form post is accepted too, but only if
+    # the multipart parser is installed -- and when it is not, an unparseable
+    # body used to raise inside the fallback and surface as a 500. A wrong or
+    # malformed password is a 401 and a 400; neither is a server fault, and a
+    # stack trace on the login screen tells nobody which of twelve settings
+    # is at fault.
     body = {}
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001 - form posts and empty bodies land here
-        form = await request.form()
-        body = dict(form)
+        try:
+            body = dict(await request.form())
+        except Exception:  # noqa: BLE001
+            return JSONResponse(
+                {"detail": "Send the password as JSON: {\"password\": \"...\"}"},
+                status_code=400)
 
     if not auth.check_password(str(body.get("password") or "")):
         return JSONResponse({"detail": "Incorrect password"}, status_code=401)
