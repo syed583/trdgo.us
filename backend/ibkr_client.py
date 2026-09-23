@@ -40,6 +40,21 @@ IBKR_MARKET_DATA_TYPE = int(os.getenv("IBKR_MARKET_DATA_TYPE", "2"))
 
 DEFAULT_TIMEOUT = float(os.getenv("IBKR_TIMEOUT", "45"))
 
+
+def enabled() -> bool:
+    """
+    Whether to attempt TWS at all.
+
+    A server deployment has no TWS and never will: the connection is refused
+    on every attempt, ib_insync logs two lines about opening the API port,
+    and the retry window means it happens again a minute later, forever. Set
+    IBKR_ENABLED=0 there and the app stops asking -- every parameter already
+    falls back to the options provider, and the Settings screen reports IBKR
+    as switched off rather than broken, which are different facts.
+    """
+    return (os.getenv("IBKR_ENABLED", "1").strip().lower()
+            not in ("0", "false", "no", "off"))
+
 # How long to stop attempting after a failed connect.
 #
 # A refused connect is not free: on Windows it costs ~2s per attempt. With the
@@ -244,6 +259,10 @@ class _IBKRWorker:
         timeout: float = DEFAULT_TIMEOUT,
     ) -> Any:
         """Execute ``job(ib)`` on the IBKR event loop and return its result."""
+        if not enabled():
+            raise IBKRUnavailable(
+                "IBKR is switched off for this install (IBKR_ENABLED=0).")
+
         # Refuse before touching the worker thread: inside the retry window we
         # already know the answer, so there is no reason to pay the dispatch.
         if self.is_offline():
@@ -314,6 +333,9 @@ class _IBKRWorker:
         connected = socket_up and self._farm_ok
         return {
             "connected": connected,
+            # Switched off and unreachable are different facts, and the
+            # screen should not report a deliberate choice as a fault.
+            "enabled": enabled(),
             "socket_connected": socket_up,
             "data_farm_ok": self._farm_ok,
             "host": IBKR_HOST,
@@ -322,8 +344,14 @@ class _IBKRWorker:
             "market_data_type": IBKR_MARKET_DATA_TYPE,
             "degraded_note": self._degraded_note,
             "last_error": (
-                self._farm_note if socket_up and not self._farm_ok
+                None if not enabled()
+                else self._farm_note if socket_up and not self._farm_ok
                 else None if connected else self._last_failure
+            ),
+            "detail": (
+                "Switched off for this install (IBKR_ENABLED=0). Quotes and "
+                "intraday bars come from the options provider."
+                if not enabled() else None
             ),
         }
 

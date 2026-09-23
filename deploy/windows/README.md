@@ -54,6 +54,7 @@ Fill in at minimum:
 | `SESSION_SECRET` | `python -c "import secrets; print(secrets.token_hex(32))"` |
 | `DATABASE_URL` | `postgresql+psycopg://usstocks:yourpassword@localhost:5432/usstocks` |
 | `UNUSUAL_WHALES_API_KEY` | your token |
+| `IBKR_ENABLED` | **`0`** on a server -- there is no TWS here, and left on it retries and logs forever |
 | `ANTHROPIC_API_KEY` | optional — only for the written explanations |
 
 Then build the frontend:

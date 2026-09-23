@@ -354,22 +354,26 @@ def get_calendar(
         if rows:
             source = {**source, "status": "OK", "provider": "BENZINGA"}
 
-    db = SessionLocal()
+    # The seed table is only consulted when no provider answered. Reaching
+    # for it anyway is how a calendar that already had its rows came back
+    # empty on a server whose database was unreachable: the provider had
+    # answered, and then a query nobody needed threw the answer away.
+    db = SessionLocal() if not rows else None
     try:
-        q = (
+        q = None if db is None else (
             db.query(EarningsEvent, Company)
             .join(Company, Company.id == EarningsEvent.company_id)
             .filter(EarningsEvent.status == "scheduled")
         )
-        if start:
+        if q is not None and start:
             q = q.filter(EarningsEvent.earnings_date >= start)
-        if end:
+        if q is not None and end:
             q = q.filter(EarningsEvent.earnings_date <= end)
-        if query:
+        if q is not None and query:
             like = f"%{query.upper()}%"
             q = q.filter(Company.symbol.like(like))
 
-        pairs = [] if rows else (
+        pairs = [] if q is None else (
             q.order_by(EarningsEvent.earnings_date.asc()).limit(limit).all())
 
         for event, company in pairs:
@@ -401,12 +405,20 @@ def get_calendar(
                 "score": None, "confidence": None, "expected_move": None,
                 "data_status": "OK",
             })
+    except Exception:  # noqa: BLE001
+        # A database that cannot answer must not cost us rows a provider
+        # already supplied.
+        pairs = []
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
     # Attach live quotes in one batched pass for the rows actually returned.
     if with_quotes and rows:
-        batch = market.get_batch([r["symbol"] for r in rows][:25])
+        try:
+            batch = market.get_batch([r["symbol"] for r in rows][:25])
+        except Exception:  # noqa: BLE001
+            batch = {}
         quotes = batch.get("symbols", {})
         for r in rows:
             hit = quotes.get(r["symbol"])
@@ -422,9 +434,24 @@ def get_calendar(
     # is what makes the estimate on this row mean anything.
     if rows:
         symbols = [r["symbol"] for r in rows]
-        sectors = _sector_map(symbols)
-        priors = _prior_eps(symbols, start or datetime.now(market.EASTERN).date())
-        profiles = _profiles_for(symbols)
+        # Sector, prior EPS and the share count are decoration on top of a
+        # row that is already complete. Each reads a local table, and on a
+        # server whose database is not up yet that turned a working calendar
+        # into "Data unavailable" -- losing the provider's answer to enrich
+        # it with something optional.
+        try:
+            sectors = _sector_map(symbols)
+        except Exception:  # noqa: BLE001
+            sectors = {}
+        try:
+            priors = _prior_eps(symbols,
+                                start or datetime.now(market.EASTERN).date())
+        except Exception:  # noqa: BLE001
+            priors = {}
+        try:
+            profiles = _profiles_for(symbols)
+        except Exception:  # noqa: BLE001
+            profiles = {}
 
         for r in rows:
             profile = profiles.get(r["symbol"]) or {}
