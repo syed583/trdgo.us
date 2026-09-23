@@ -1,0 +1,504 @@
+/* ====================================================== earnings calendar ===
+   The screen is a week of scheduled reports, a table, and the context that
+   makes a row mean something: what the company last earned, and how this
+   provider's estimates have actually landed.
+
+   Panels here are driven entirely by rows on record. Where a figure is not
+   sourced -- sector, market cap, expected move -- there is no column for it
+   rather than a column of dashes.
+   ========================================================================= */
+
+/* --- header statistics --------------------------------------------------- */
+
+.ec-stats { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.ec-stat {
+  min-width: 132px;
+  padding: 9px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.ec-stat b {
+  display: block;
+  font-size: 24px; font-weight: 800; letter-spacing: -.8px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  color: var(--blue);
+}
+.ec-stat.month b { color: var(--text); }
+.ec-stat.today b { color: var(--amber); }
+.ec-stat span {
+  display: block;
+  font-size: 11px; letter-spacing: .45px; text-transform: uppercase;
+  color: var(--text-mute); margin-top: 3px;
+}
+.ec-delta {
+  display: block; margin-top: 4px;
+  font-size: 12px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.ec-delta.pos { color: var(--green); }
+.ec-delta.neg { color: var(--red); }
+.ec-delta.flat { color: var(--text-mute); font-weight: 500; }
+
+/* --- range pills --------------------------------------------------------- */
+
+.ec-controls {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg-2);
+  margin-bottom: 8px;
+}
+.ec-pill {
+  padding: 6px 14px;
+  border: 1px solid transparent; border-radius: 8px;
+  background: none; color: var(--text-dim);
+  font-size: 13px; font-weight: 650; cursor: pointer;
+  white-space: nowrap;
+}
+.ec-pill:hover { color: var(--text); border-color: var(--border-2); }
+.ec-pill.active {
+  background: var(--blue-2, #2563eb); color: #fff; border-color: transparent;
+}
+.ec-week-label {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel);
+  font-size: 13px; color: var(--text-dim); white-space: nowrap;
+}
+.ec-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.ec-search {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel);
+}
+.ec-search input {
+  background: none; border: 0; outline: none;
+  font: inherit; font-size: 13px; color: var(--text);
+  width: 132px;
+}
+
+/* --- week strip ---------------------------------------------------------- */
+
+.ec-week {
+  display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px; margin-bottom: 10px;
+}
+.ec-day {
+  padding: 10px 6px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel);
+  text-align: center; cursor: pointer;
+  color: var(--text-dim);
+  transition: border-color .15s ease, background .15s ease;
+}
+.ec-day:hover { border-color: var(--border-2); }
+.ec-day.today { border-color: rgba(59, 130, 246, .45); }
+.ec-day.active {
+  border-color: var(--blue); background: var(--blue-bg); color: var(--blue);
+}
+.ec-day b {
+  display: block; font-size: 14px; font-weight: 750; color: inherit;
+}
+.ec-day i {
+  display: block; font-style: normal;
+  font-size: 12px; color: var(--text-mute); margin-top: 1px;
+}
+.ec-day.active i { color: var(--blue); opacity: .85; }
+.ec-day u {
+  display: block; text-decoration: none;
+  font-size: 11px; font-weight: 650; margin-top: 5px;
+  color: var(--green);
+}
+.ec-day u.none { color: var(--text-mute); font-weight: 500; }
+.ec-day.active u { color: var(--blue); }
+
+/* --- table + detail split ------------------------------------------------ */
+
+.ec-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 8px; align-items: stretch;
+}
+
+tr.ec-row.selected { background: var(--blue-bg); }
+tr.ec-row.selected td:first-child { box-shadow: inset 2px 0 0 var(--blue); }
+
+/* The timing badge doubles as the row's clock, so it reads as one cell. */
+.ec-time { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.ec-time .badge { font-size: 10px; padding: 1px 5px; }
+
+.ec-sym { display: flex; align-items: center; gap: 8px; }
+.ec-avatar {
+  width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0;
+  display: grid; place-items: center;
+  font-size: 11px; font-weight: 800; letter-spacing: -.3px;
+  background: var(--panel-2); color: var(--text-dim);
+}
+
+/* --- detail panel -------------------------------------------------------- */
+
+/* Matches the table beside it rather than shrinking to its contents: a short
+   panel next to a tall table left a column of empty page, and the panel's
+   height jumping between the list and a selected company was worse still.
+   The list and the surprise section scroll inside it instead. */
+.ec-detail { display: flex; flex-direction: column; min-height: 0; }
+.ec-detail > .ec-detail-head,
+.ec-detail > .ec-kv,
+.ec-detail > .ec-detail-cta,
+.ec-detail > .hint { flex: 0 0 auto; }
+.ec-detail > .ec-next { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.ec-detail > .ec-detail-sec { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.ec-detail > .ec-detail-cta { margin-top: auto; }
+.ec-detail > .ec-empty-detail { flex: 1 1 auto; display: grid; place-items: center; }
+.ec-detail-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px; border-bottom: 1px solid var(--border);
+}
+.ec-detail-head .ec-avatar { width: 34px; height: 34px; font-size: 14px; border-radius: 8px; }
+.ec-detail-head b { display: block; font-size: 15px; font-weight: 750; color: var(--text); }
+.ec-detail-head i {
+  display: block; font-style: normal; font-size: 12px; color: var(--text-mute);
+  margin-top: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ec-detail-close {
+  margin-left: auto; background: none; border: 0; cursor: pointer;
+  color: var(--text-mute); display: grid; place-items: center;
+}
+.ec-detail-close:hover { color: var(--text); }
+
+.ec-kv {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px; background: var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.ec-kv div { padding: 9px 12px; background: var(--panel); }
+.ec-kv span {
+  display: block; font-size: 11px; letter-spacing: .4px;
+  text-transform: uppercase; color: var(--text-mute);
+}
+.ec-kv b {
+  display: block; font-size: 15px; font-weight: 700; color: var(--text);
+  margin-top: 3px; font-variant-numeric: tabular-nums;
+}
+.ec-kv b.pos { color: var(--green); }
+.ec-kv b.neg { color: var(--red); }
+.ec-kv b small {
+  font-size: 12px; font-weight: 600; color: var(--text-mute); margin-left: 5px;
+}
+
+.ec-detail-sec { padding: 11px 12px; border-bottom: 1px solid var(--border); }
+.ec-detail-sec:last-child { border-bottom: 0; }
+.ec-detail-sec h4 {
+  margin: 0 0 8px; font-size: 11px; letter-spacing: .5px;
+  text-transform: uppercase; color: var(--text-mute); font-weight: 700;
+}
+
+.ec-hist { display: flex; flex-direction: column; gap: 5px; }
+.ec-hist-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.ec-hist-row span { color: var(--text-mute); width: 46px; flex-shrink: 0; }
+.ec-hist-bar { flex: 1; height: 5px; border-radius: 4px; background: var(--panel-2); position: relative; }
+.ec-hist-bar i {
+  position: absolute; top: 0; bottom: 0; border-radius: 4px;
+  left: 50%; background: var(--green);
+}
+.ec-hist-bar i.neg { background: var(--red); }
+.ec-hist-row b { width: 52px; text-align: right; font-weight: 700; flex-shrink: 0; }
+
+.ec-detail-cta { padding: 11px 12px; display: flex; gap: 6px; }
+.ec-detail-cta button { flex: 1; }
+
+.ec-empty-detail {
+  padding: 34px 18px; text-align: center;
+  font-size: 13px; color: var(--text-mute); line-height: 1.6;
+}
+
+/* --- bottom panels ------------------------------------------------------- */
+
+.ec-bottom {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px; margin-top: 8px;
+}
+
+.ec-donut { display: flex; align-items: center; gap: 18px; padding: 6px 4px; }
+.ec-donut-legend { flex: 1; display: flex; flex-direction: column; gap: 7px; }
+.ec-legend-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--text-dim);
+}
+.ec-legend-row em {
+  width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; font-style: normal;
+}
+.ec-legend-row b {
+  margin-left: auto; font-weight: 700; color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.ec-spark { display: flex; align-items: flex-end; gap: 2px; height: 96px; padding-top: 6px; }
+.ec-spark-col { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; height: 100%; }
+.ec-spark-col .up, .ec-spark-col .dn { border-radius: 2px; }
+.ec-spark-col .up { background: var(--green); margin-top: auto; }
+.ec-spark-col .dn { background: var(--red); margin-bottom: auto; }
+.ec-spark-axis {
+  display: flex; justify-content: space-between;
+  margin-top: 6px; font-size: 11px; color: var(--text-mute);
+}
+
+@media (max-width: 1180px) {
+  .ec-split { grid-template-columns: minmax(0, 1fr); }
+  /* Stacked, there is no neighbour to match, so it sizes to its contents
+     again and nothing needs its own scrollbar. */
+  .ec-detail > .ec-next,
+  .ec-detail > .ec-detail-sec { overflow-y: visible; }
+  .ec-bottom { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 700px) {
+  .ec-week { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* --- "next to report" list, shown until a row is selected ---------------- */
+
+.ec-next { display: flex; flex-direction: column; }
+
+.ec-next-row {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; padding: 9px 12px;
+  border: 0; border-bottom: 1px solid var(--border);
+  background: none; cursor: pointer; text-align: left;
+  font: inherit;
+}
+.ec-next-row:last-child { border-bottom: 0; }
+.ec-next-row:hover { background: var(--panel-2); }
+
+.ec-next-body { flex: 1; min-width: 0; }
+.ec-next-body b {
+  display: block; font-size: 14px; font-weight: 750; color: var(--text);
+}
+.ec-next-body i {
+  display: block; font-style: normal; font-size: 12px; color: var(--text-mute);
+  margin-top: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.ec-next-when { text-align: right; flex-shrink: 0; }
+.ec-next-when b {
+  display: block; font-size: 12px; font-weight: 650; color: var(--text-dim);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.ec-next-when i {
+  display: block; font-style: normal; font-size: 11px; color: var(--text-mute);
+  margin-top: 1px;
+}
+
+/* --- detail tabs --------------------------------------------------------- */
+
+.ec-tabs {
+  display: flex; gap: 2px; padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.ec-tab {
+  flex: 1; padding: 5px 6px;
+  border: 0; border-radius: 6px; background: none;
+  color: var(--text-mute); font: inherit; font-size: 13px; font-weight: 650;
+  cursor: pointer; white-space: nowrap;
+}
+.ec-tab:hover { color: var(--text); background: var(--panel-2); }
+.ec-tab.active { background: var(--blue-bg); color: var(--blue); }
+
+/* One scrolling pane per tab, so switching tabs never changes the panel's
+   height -- the whole point of matching the table beside it. */
+.ec-detail > .ec-pane { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.ec-pane > .ec-detail-sec:last-child { border-bottom: 0; }
+
+.ec-note {
+  padding: 2px 0; font-size: 12px; color: var(--text-mute); line-height: 1.6;
+}
+.ec-mute { color: var(--text-mute); }
+
+/* --- analyst forecast ---------------------------------------------------- */
+
+.ec-forecast { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.ec-forecast-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.ec-forecast-row > span:first-child { width: 34px; color: var(--text-dim); flex-shrink: 0; }
+.ec-forecast-bar {
+  flex: 1; height: 7px; border-radius: 4px;
+  background: var(--panel-2); overflow: hidden;
+}
+.ec-forecast-bar i { display: block; height: 100%; border-radius: 4px; }
+.ec-forecast-row > b { width: 42px; text-align: right; flex-shrink: 0; color: var(--text); }
+
+/* A two-value "before → after" cell needs the room the bar column used. */
+.ec-hist-row b.wide {
+  flex: 1; width: auto; text-align: left;
+  font-weight: 600; color: var(--text-dim);
+}
+
+/* --- news ---------------------------------------------------------------- */
+
+.ec-news { display: flex; flex-direction: column; }
+.ec-news-row { padding: 9px 12px; border-bottom: 1px solid var(--border); }
+.ec-news-row:last-child { border-bottom: 0; }
+.ec-news-row b {
+  display: block; font-size: 13px; font-weight: 600;
+  color: var(--text); line-height: 1.45;
+}
+.ec-news-row i {
+  display: block; font-style: normal; font-size: 11px;
+  color: var(--text-mute); margin-top: 3px;
+}
+
+/* An unconfirmed date is the provider's guess at when a company will report.
+   Marked rather than hidden: the row is real, the date is not settled. */
+.ec-est {
+  display: inline-block; margin-left: 5px;
+  padding: 0 4px; border-radius: 4px;
+  font-style: normal; font-size: 10px; font-weight: 700;
+  letter-spacing: .3px; text-transform: uppercase;
+  background: var(--panel-2); color: var(--text-mute);
+}
+.ec-est-note {
+  display: block; margin-top: 3px;
+  font-style: normal; font-size: 11px; font-weight: 500;
+  color: var(--amber); line-height: 1.4;
+}
+
+/* Sector is the SIC division; the specific industry is on the title. Kept
+   quiet so it does not compete with the ticker for attention. */
+.ec-sector {
+  display: inline-block; max-width: 140px;
+  font-size: 12px; color: var(--text-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+/* Provenance under a figure: which quarter a share count came from, which
+   industry a sector was grouped from. */
+.ec-sub-note {
+  display: block; margin-top: 2px;
+  font-style: normal; font-size: 11px; font-weight: 500;
+  color: var(--text-mute); line-height: 1.35;
+}
+
+/* Four panels, so two rows of two rather than three across with one orphan
+   stranded at a third of the width on a row of its own. */
+.ec-bottom { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* --- sector heatmap ------------------------------------------------------ */
+
+/* A fixed ramp rather than a colour per sector name: sectors come from SIC and
+   the set varies by range, so any name-keyed palette would leave gaps. */
+:root {
+  --heat-0: #1e7f5c; --heat-1: #2563a8; --heat-2: #8a6d1f;
+  --heat-3: #7a3f8f; --heat-4: #1f6f7a; --heat-5: #9c4a2f;
+  --heat-6: #4a5568;
+}
+
+.ec-heat {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  align-content: flex-start;
+}
+.ec-heat-tile {
+  flex: 1 1 96px; min-width: 96px;
+  padding: 10px 11px; border-radius: 8px;
+  color: #fff; overflow: hidden;
+}
+.ec-heat-tile b {
+  display: block; font-size: 12px; font-weight: 650;
+  line-height: 1.3; opacity: .92;
+}
+.ec-heat-tile u {
+  display: block; text-decoration: none;
+  font-size: 21px; font-weight: 800; letter-spacing: -.6px;
+  line-height: 1.15; margin-top: 3px;
+}
+.ec-heat-tile i {
+  display: block; font-style: normal; font-size: 12px; opacity: .8;
+}
+
+/* --- headline figure rows ------------------------------------------------ */
+
+.ec-figures { display: flex; gap: 8px; margin-bottom: 12px; }
+.ec-figures > div {
+  flex: 1; min-width: 0; padding: 9px 10px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--panel);
+}
+.ec-figures b {
+  display: block; font-size: 21px; font-weight: 800; letter-spacing: -.6px;
+  color: var(--green); font-variant-numeric: tabular-nums; line-height: 1.15;
+}
+.ec-figures b.blue { color: var(--blue); }
+.ec-figures b.amber { color: var(--amber); }
+.ec-figures b.green { color: var(--green); }
+.ec-figures b.red { color: var(--red); }
+.ec-figures b.mute { color: var(--text-mute); }
+.ec-figures.wide b { font-size: 18px; }
+.ec-figures span {
+  display: block; margin-top: 3px;
+  font-size: 11px; letter-spacing: .4px; text-transform: uppercase;
+  color: var(--text-mute); line-height: 1.3;
+}
+
+.ec-impact-chart {
+  display: flex; align-items: center; gap: 2px; height: 100px;
+}
+.ec-impact-chart .ec-spark-col { justify-content: center; }
+
+@media (max-width: 1180px) {
+  .ec-bottom { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* --- three panels across the bottom, as the reference has them ----------- */
+
+.ec-bottom { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1400px) {
+  .ec-bottom { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 1100px) {
+  .ec-bottom { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* --- price cell carries its own change ---------------------------------- */
+
+.ec-chg {
+  display: block; font-style: normal; font-size: 11px; font-weight: 650;
+  margin-top: 1px;
+}
+
+/* --- analyst score ring -------------------------------------------------- */
+
+.ec-forecast-row-wrap { display: flex; align-items: center; gap: 14px; }
+.ec-score { text-align: center; flex-shrink: 0; }
+.ec-score-value {
+  font-size: 18px; font-weight: 800; fill: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.ec-score span {
+  display: block; font-size: 10px; letter-spacing: .4px;
+  text-transform: uppercase; color: var(--text-mute); margin-top: 2px;
+}
+.ec-score b { display: block; font-size: 13px; font-weight: 750; }
+.ec-score i {
+  display: block; font-style: normal; font-size: 11px; color: var(--text-mute);
+}
+
+/* --- "view all" beside a section heading --------------------------------- */
+
+.ec-detail-sec h4 { display: flex; align-items: baseline; justify-content: space-between; }
+.ec-viewall {
+  border: 0; background: none; cursor: pointer; padding: 0;
+  font: inherit; font-size: 11px; font-weight: 700; letter-spacing: .3px;
+  text-transform: uppercase; color: var(--blue);
+}
+.ec-viewall:hover { text-decoration: underline; }

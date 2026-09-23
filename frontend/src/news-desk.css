@@ -1,0 +1,280 @@
+/* ====================================================== news & sentiment ===
+   A merged feed and the tallies drawn from it. Every panel counts the same
+   articles the list shows, so none of them can disagree with the feed.
+   ========================================================================= */
+
+.nd-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; padding: 14px 0 12px; flex-wrap: wrap;
+}
+.nd-head h1 {
+  margin: 0; font-size: 27px; font-weight: 800; letter-spacing: -.8px;
+  color: var(--text);
+}
+.nd-head p {
+  margin: 4px 0 0; font-size: 14px; color: var(--text-mute);
+  max-width: 600px; line-height: 1.5;
+}
+.nd-head-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.nd-live {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 650; color: var(--green);
+}
+.nd-live i {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--green);
+  box-shadow: 0 0 0 3px rgba(33, 208, 122, .18);
+}
+
+/* --- summary cards ------------------------------------------------------- */
+
+.nd-cards {
+  display: grid; grid-template-columns: 1.6fr 1fr 1.2fr 1fr;
+  gap: 8px; margin-bottom: 8px;
+}
+.nd-card {
+  padding: 11px 13px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel); min-width: 0;
+}
+.nd-card-label {
+  display: block; font-size: 11px; letter-spacing: .45px;
+  text-transform: uppercase; color: var(--text-mute);
+}
+.nd-card-value {
+  display: block; margin-top: 6px;
+  font-size: 27px; font-weight: 800; letter-spacing: -.9px;
+  color: var(--text); font-variant-numeric: tabular-nums; line-height: 1.1;
+}
+.nd-card-sub {
+  display: block; margin-top: 4px; font-size: 11px;
+  color: var(--text-mute); line-height: 1.4;
+}
+
+.nd-card-dial { display: flex; align-items: center; gap: 12px; margin-top: 2px; }
+.nd-dial { text-align: center; flex-shrink: 0; }
+.nd-dial b {
+  display: block; font-size: 21px; font-weight: 800; letter-spacing: -.7px;
+  margin-top: -8px;
+}
+.nd-dial i {
+  display: block; font-style: normal; font-size: 12px; color: var(--text-dim);
+}
+.nd-split { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.nd-split div {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 13px; color: var(--text-dim);
+}
+.nd-split em { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+.nd-split b {
+  margin-left: auto; color: var(--text); font-variant-numeric: tabular-nums;
+}
+.nd-split em.pos, .nd-legend i.pos, .nd-trend-stack i.pos { background: var(--green); }
+.nd-split em.neu, .nd-legend i.neu, .nd-trend-stack i.neu { background: var(--text-mute); }
+.nd-split em.neg, .nd-legend i.neg, .nd-trend-stack i.neg { background: var(--red); }
+
+.nd-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
+.nd-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 8px; border: 1px solid var(--border-2); border-radius: 6px;
+  background: var(--panel-2); color: var(--blue);
+  font: inherit; font-size: 12px; font-weight: 750; cursor: pointer;
+}
+.nd-chip:hover { border-color: var(--blue); }
+.nd-chip em {
+  font-style: normal; font-size: 11px; font-weight: 600; color: var(--text-mute);
+}
+
+.nd-rows { display: flex; flex-direction: column; gap: 4px; margin-top: 7px; }
+.nd-row {
+  display: flex; align-items: baseline; gap: 8px; font-size: 12px;
+}
+.nd-row span {
+  flex: 1; min-width: 0; color: var(--text-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.nd-row b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+/* --- controls ------------------------------------------------------------ */
+
+.nd-controls {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 8px 10px; margin-bottom: 8px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--bg-2);
+}
+.nd-search {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel);
+}
+.nd-search input {
+  width: 200px; background: none; border: 0; outline: none;
+  font: inherit; font-size: 13px; color: var(--text);
+}
+.nd-pill {
+  padding: 5px 13px; border: 1px solid transparent; border-radius: 8px;
+  background: none; color: var(--text-dim);
+  font: inherit; font-size: 13px; font-weight: 650; cursor: pointer;
+}
+.nd-pill:hover { color: var(--text); border-color: var(--border-2); }
+.nd-pill.active { background: var(--blue-2, #2563eb); color: #fff; }
+.nd-count { margin-left: auto; font-size: 12px; color: var(--text-mute); }
+
+/* --- feed ---------------------------------------------------------------- */
+
+.nd-split-main {
+  display: grid; grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 8px; align-items: start;
+}
+.nd-side { display: flex; flex-direction: column; gap: 8px; }
+
+.nd-feed { display: flex; flex-direction: column; }
+.nd-article {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 11px 12px; border-bottom: 1px solid var(--border);
+  text-decoration: none; color: inherit;
+}
+.nd-article:last-child { border-bottom: 0; }
+.nd-article:hover { background: var(--panel-2); }
+.nd-article-body { flex: 1; min-width: 0; }
+.nd-article-body b {
+  display: block; font-size: 14px; font-weight: 650; color: var(--text);
+  line-height: 1.45;
+}
+.nd-article-body p {
+  margin: 4px 0 0; font-size: 12px; color: var(--text-mute);
+  line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.nd-meta {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 5px;
+}
+.nd-meta em {
+  font-style: normal; font-size: 11px; color: var(--text-mute);
+}
+.nd-meta i {
+  font-style: normal; font-size: 11px; font-weight: 750; color: var(--blue);
+  padding: 1px 5px; border-radius: 4px; background: var(--blue-bg);
+}
+
+.nd-badge {
+  flex-shrink: 0; padding: 3px 9px; border-radius: 6px;
+  font-size: 11px; font-weight: 750; text-transform: capitalize;
+}
+.nd-badge.positive { background: rgba(33, 208, 122, .14); color: var(--green); }
+.nd-badge.negative { background: rgba(239, 83, 80, .14); color: var(--red); }
+.nd-badge.neutral { background: var(--panel-2); color: var(--text-mute); }
+.nd-badge.unscored { background: var(--panel-2); color: var(--text-mute); }
+
+.nd-featured { display: block; text-decoration: none; color: inherit; }
+.nd-featured b {
+  display: block; margin-top: 7px; font-size: 15px; font-weight: 700;
+  color: var(--text); line-height: 1.4;
+}
+.nd-featured p {
+  margin: 6px 0 0; font-size: 13px; color: var(--text-mute); line-height: 1.5;
+}
+.nd-featured i {
+  display: block; margin-top: 7px; font-style: normal; font-size: 11px;
+  color: var(--text-mute);
+}
+
+/* --- sector sentiment ---------------------------------------------------- */
+
+.nd-sectors { display: flex; flex-direction: column; gap: 6px; }
+.nd-sector {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.nd-sector > span:first-child {
+  width: 118px; flex-shrink: 0; color: var(--text-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.nd-sector-track {
+  flex: 1; min-width: 0; height: 8px; border-radius: 4px;
+  background: var(--panel-2); overflow: hidden;
+}
+.nd-sector-track i { display: block; height: 100%; border-radius: 4px; }
+.nd-sector-track i.pos { background: var(--green); }
+.nd-sector-track i.neg { background: var(--red); }
+.nd-sector > b { width: 44px; text-align: right; flex-shrink: 0; }
+
+/* --- keyword cloud ------------------------------------------------------- */
+
+.nd-cloud {
+  display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline;
+}
+.nd-word {
+  border: 0; background: none; cursor: pointer; padding: 0;
+  font: inherit; font-weight: 750; color: var(--text); line-height: 1.2;
+}
+.nd-word:hover { color: var(--blue); }
+
+/* --- trend --------------------------------------------------------------- */
+
+.nd-trend { display: flex; align-items: flex-end; gap: 4px; height: 96px; }
+.nd-trend-col {
+  flex: 1; min-width: 0; display: flex; flex-direction: column;
+  align-items: center; gap: 4px; height: 100%;
+}
+.nd-trend-stack {
+  flex: 1; width: 70%; display: flex; flex-direction: column;
+  justify-content: flex-end; border-radius: 4px; overflow: hidden;
+}
+.nd-trend-stack i { display: block; width: 100%; }
+.nd-trend-col em {
+  font-style: normal; font-size: 11px; color: var(--text-mute);
+}
+.nd-legend {
+  display: flex; gap: 12px; margin-top: 8px;
+  font-size: 12px; color: var(--text-mute);
+}
+.nd-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.nd-legend i { width: 9px; height: 9px; border-radius: 2px; }
+
+.nd-note, .nd-empty {
+  font-size: 13px; color: var(--text-mute); line-height: 1.6;
+}
+.nd-empty { padding: 28px 18px; text-align: center; }
+
+@media (max-width: 1400px) {
+  .nd-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 1180px) {
+  .nd-split-main { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 700px) {
+  .nd-cards { grid-template-columns: minmax(0, 1fr); }
+  .nd-search input { width: 130px; }
+}
+
+/* --- impacted symbols ---------------------------------------------------- */
+
+/* One article can be good news for one ticker and bad for another, so each
+   symbol carries its own score rather than inheriting the headline's. */
+.nd-impacts {
+  display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+  margin-top: 6px;
+}
+.nd-impacts > em {
+  font-style: normal; font-size: 10px; letter-spacing: .4px;
+  text-transform: uppercase; color: var(--text-mute);
+}
+.nd-impacts i {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 6px; border-radius: 4px;
+  font-style: normal; font-size: 11px; font-weight: 750;
+  border: 1px solid transparent;
+}
+.nd-impacts i b { font-weight: 650; font-variant-numeric: tabular-nums; }
+.nd-impacts i.positive {
+  background: rgba(33, 208, 122, .12); color: var(--green);
+  border-color: rgba(33, 208, 122, .3);
+}
+.nd-impacts i.negative {
+  background: rgba(239, 83, 80, .12); color: var(--red);
+  border-color: rgba(239, 83, 80, .3);
+}
+.nd-impacts i.neutral, .nd-impacts i.unscored {
+  background: var(--panel-2); color: var(--text-mute);
+  border-color: var(--border);
+}

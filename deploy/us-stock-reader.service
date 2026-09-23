@@ -1,0 +1,42 @@
+# systemd unit for US-Stock Reader.
+#
+# Install:  sudo cp deploy/us-stock-reader.service /etc/systemd/system/
+#           sudo systemctl daemon-reload && sudo systemctl enable --now us-stock-reader
+
+[Unit]
+Description=US-Stock Reader
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/us-stock-reader/backend
+EnvironmentFile=/opt/us-stock-reader/backend/.env
+
+# One worker on purpose. The app keeps its caches, its provider budget and
+# its request pacing in process memory; a second worker would keep a second
+# copy of all three and spend the subscription twice as fast for no gain on
+# a single-user app.
+ExecStart=/opt/us-stock-reader/backend/.venv/bin/python -m uvicorn main:app \
+    --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers \
+    --forwarded-allow-ips='127.0.0.1'
+
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+# The process needs to read its own directory and write its cache; nothing else.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/us-stock-reader/backend
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=us-stock-reader
+
+[Install]
+WantedBy=multi-user.target

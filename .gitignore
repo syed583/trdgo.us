@@ -1,0 +1,43 @@
+# Secrets. The one file that must never leave this machine: it holds the
+# Unusual Whales token, the Anthropic key, the database URL and the app
+# password. backend/.env.example documents what belongs in it.
+.env
+.env.*
+!.env.example
+
+# Dependencies and build output -- rebuilt from the lockfiles on the server.
+.venv/
+venv/
+node_modules/
+dist/
+build/
+*.egg-info/
+
+# Caches and bytecode.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.vite/
+
+# Downloaded provider datasets and derived state. These are large, they are
+# regenerated on demand, and several of them are provider data this app is
+# not licensed to redistribute.
+backend/.cache/
+backend/*.db
+backend/*.sqlite
+backend/*.sqlite3
+backend/od_full.txt
+backend/od_spec.json
+
+# Local tooling and logs.
+tools/
+*.log
+*.pid
+
+# Editors and operating systems.
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

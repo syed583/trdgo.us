@@ -1,0 +1,277 @@
+/* ===================================== sources orbiting the globe ========
+   Twelve data sources on a ring, each wired to the core. The wire streams
+   while its provider is outstanding and settles once it answers, so the
+   picture describes the actual run rather than playing a fixed animation
+   over the top of it.
+   ======================================================================== */
+
+.an-orbit {
+  position: relative;
+  /* Square, and bounded by whichever of the two axes runs out first. Sized
+     off height alone, a short wide window produced a ring taller than the
+     screen and a narrow one a ring wider than the column. */
+  width: min(78vh, 72vw, 820px);
+  height: min(78vh, 72vw, 820px);
+  margin: 8px auto 0;
+}
+
+.an-orbit-lines {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  overflow: visible;
+}
+
+/* Dashes travelling toward the centre read as data arriving. Drawn thin, so
+   twelve of them do not turn the middle of the screen into a starburst. */
+.an-wire {
+  stroke-width: 0.22;
+  stroke-linecap: round;
+  stroke: rgba(120, 150, 190, .22);
+}
+.an-wire.scanning {
+  stroke: rgba(59, 130, 246, .85);
+  stroke-dasharray: 2 3;
+  animation: an-flow 1.1s linear infinite;
+}
+.an-wire.complete { stroke: rgba(33, 208, 122, .5); }
+.an-wire.unavailable {
+  stroke: rgba(240, 169, 43, .45);
+  stroke-dasharray: 1 2;
+}
+@keyframes an-flow {
+  /* Negative offset pulls the dashes inward, toward the core. */
+  to { stroke-dashoffset: -5; }
+}
+
+/* The pips themselves. Bright enough to follow against the wire, small
+   enough that twelve wires do not read as noise. */
+.an-pip { filter: drop-shadow(0 0 1.4px currentColor); }
+
+/* A queued source: dimmer than a working one, so the eye still separates
+   "reaching out" from "answering". */
+
+
+/* The dot a pending node shows instead of the word. */
+.an-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--text-mute); display: inline-block;
+}
+
+/* Any wire on a live run carries a faint current, so the picture reads as an
+   agent working rather than a diagram sitting still. */
+.an-wire.live { stroke: rgba(120, 150, 190, .34); }
+.an-wire.pending.live {
+  stroke-dasharray: 1 3;
+  animation: an-flow 2.8s linear infinite;
+}
+
+.an-orbit-core {
+  position: absolute; left: 50%; top: 50%;
+  /* translateZ promotes the globe to its own layer so the twelve animating
+     wires behind it do not force it to repaint. It belongs here rather than
+     in a later rule of its own: declared afterwards it also won against the
+     stacked layout's `transform: none`, which re-centred the globe on a
+     corner of the page and put it through the sidebar. */
+  transform: translate(-50%, -50%) translateZ(0);
+  display: grid; place-items: center;
+}
+
+/* Short labels mean a small node: twelve of these sit on one ring, and at the
+   old 186px the top and bottom pairs overlapped each other outright. */
+.an-node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex; align-items: center; gap: 7px;
+  width: auto; min-width: 96px; max-width: 124px; padding: 5px 8px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel);
+  transition: border-color .25s ease, box-shadow .25s ease;
+}
+.an-node .as-body b { font-size: 13px; font-weight: 700; }
+.an-node.scanning {
+  border-color: rgba(59, 130, 246, .55);
+  box-shadow: 0 0 18px rgba(59, 130, 246, .22);
+}
+.an-node.complete {
+  border-color: rgba(33, 208, 122, .5);
+  box-shadow: 0 0 16px rgba(33, 208, 122, .14);
+}
+.an-node.unavailable { border-color: rgba(240, 169, 43, .45); }
+
+.an-node .as-icon { width: 26px; height: 26px; }
+.an-node .as-body i { display: none; }
+.an-node.complete .as-icon { color: var(--green); }
+.an-node.unavailable .as-icon { color: var(--amber); }
+.an-node.scanning .as-icon { color: var(--blue); }
+
+.an-node-state {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 11px; font-weight: 700; color: var(--text-mute);
+  white-space: nowrap; flex-shrink: 0;
+}
+.an-node.complete .an-node-state { color: var(--green); }
+.an-node.unavailable .an-node-state { color: var(--amber); }
+.an-node.scanning .an-node-state { color: var(--blue); }
+
+/* Below this the ring cannot hold twelve nodes without them overlapping, so
+   the same states stack as a list. A broken ring is worse than no ring. */
+@media (max-width: 720px), (max-height: 520px) {
+  .an-orbit {
+    width: 100%; height: auto;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 6px;
+  }
+  .an-orbit-lines { display: none; }
+  .an-orbit-core {
+    position: static; transform: none;
+    grid-column: 1 / -1;
+    padding: 6px 0 14px;
+    justify-self: center;
+  }
+  .an-node {
+    position: static; transform: none; width: auto; max-width: none;
+  }
+}
+
+/* --- per-source colour --------------------------------------------------- */
+
+/* Each node carries its own hue on --src. The icon wears it always; the
+   border picks it up once that source is doing something, so a ring of
+   pending cards stays calm and the active ones stand out. */
+.an-node .as-icon { background: var(--src-soft, var(--panel-2)); color: var(--src, var(--text-mute)); }
+.an-node.scanning { border-color: var(--src); box-shadow: 0 0 18px var(--src-soft); }
+.an-node.complete { border-color: var(--src); box-shadow: 0 0 14px var(--src-soft); }
+.an-node.scanning .as-icon,
+.an-node.complete .as-icon { color: var(--src); }
+
+/* The pip's fill is set per source inline, so the shared rules must not
+   override it. */
+/* The per-source colour is set inline, as a style rather than an attribute:
+   a stylesheet `fill` outranks a presentation attribute, which is what turned
+   every travelling dot black once these rules existed. Nothing here sets fill. */
+.an-pip.queued { opacity: .8; }
+
+/* --- globe --------------------------------------------------------------- */
+
+.wg { position: relative; display: grid; place-items: center; }
+/* A soft highlight drifting across the sphere, on top of the land's own
+   rotation -- it reads as sun on water rather than as the spin itself. */
+.wg-sweep {
+  position: absolute; inset: 0; border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle at 30% 26%,
+              rgba(255, 255, 255, .28) 0%,
+              rgba(255, 255, 255, .06) 26%,
+              rgba(255, 255, 255, 0) 52%);
+  animation: wg-breathe 6.5s ease-in-out infinite;
+}
+@keyframes wg-breathe {
+  0%, 100% { opacity: .75; }
+  50% { opacity: 1; }
+}
+
+/* =========================================================== depth pass ====
+   The ring was flat: plain cards, hairline wires and a sphere with no light
+   on it. Everything below adds depth without adding motion -- on a screen
+   that is already animating twelve wires, more movement would be noise.
+   ========================================================================= */
+
+/* --- the stage ----------------------------------------------------------- */
+
+.an-orbit {
+  perspective: 1100px;
+  perspective-origin: 50% 46%;
+}
+
+/* A faint horizon behind the whole ring, so the cards read as sitting in a
+   space rather than floating on the page background. */
+.an-orbit::before {
+  content: '';
+  position: absolute; inset: -6% -4%;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 50% 48%,
+      rgba(70, 130, 220, .16) 0%,
+      rgba(70, 130, 220, .06) 38%,
+      transparent 68%);
+  pointer-events: none;
+}
+
+/* --- cards --------------------------------------------------------------- */
+
+.an-node {
+  background:
+    linear-gradient(160deg,
+      color-mix(in srgb, var(--panel) 92%, white 8%) 0%,
+      var(--panel) 62%);
+  border-color: color-mix(in srgb, var(--border) 70%, transparent);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, .5) inset,
+    0 10px 22px -12px rgba(12, 24, 48, .45),
+    0 2px 6px -3px rgba(12, 24, 48, .3);
+  backdrop-filter: blur(6px);
+}
+
+/* The depth lift belongs to the ring and only to the ring.
+   Declared unconditionally it also re-applied the centring translate that the
+   stacked layout cancels, so every card in the first column was dragged half
+   its own width off the left edge of the screen. Same defect as the globe,
+   three rules further down: a later declaration quietly winning against a
+   media query it was never meant to touch. */
+@media (min-width: 721px) and (min-height: 521px) {
+  /* Lifted slightly off the plane; the ring's perspective does the rest. */
+  .an-node { transform: translate(-50%, -50%) translateZ(26px); }
+  .an-node:hover { transform: translate(-50%, -50%) translateZ(44px); }
+  .an-node.scanning { transform: translate(-50%, -50%) translateZ(52px); }
+}
+
+/* A source that is working earns a ring in its own colour and sits forward
+   of the ones still queued. */
+.an-node.scanning {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, .55) inset,
+    0 0 0 1px var(--src),
+    0 0 26px -4px var(--src),
+    0 14px 26px -14px rgba(12, 24, 48, .5);
+}
+.an-node.complete {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, .5) inset,
+    0 0 0 1px color-mix(in srgb, var(--src) 55%, transparent),
+    0 10px 22px -12px rgba(12, 24, 48, .45);
+}
+
+.an-node .as-icon {
+  border-radius: 8px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .45) inset;
+}
+
+/* --- wires --------------------------------------------------------------- */
+
+/* Thicker and softly shadowed, so a line reads as a cable carrying something
+   rather than as a 1px rule on a diagram. */
+.an-wire { stroke-width: 0.3; }
+.an-wire.scanning { stroke-width: 0.42; }
+
+/* --- globe --------------------------------------------------------------- */
+
+.wg::after {
+  /* Contact shadow under the sphere. Nothing else on the screen sits on a
+     surface, so this is what makes the globe read as an object. */
+  content: '';
+  position: absolute; left: 50%; bottom: -7%;
+  width: 62%; height: 12%;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse,
+    rgba(18, 40, 80, .38) 0%, rgba(18, 40, 80, 0) 70%);
+  pointer-events: none;
+}
+
+/* A halo that breathes with the run, sized off the sphere rather than the
+   card, so it never clips. */
+.wg-sweep {
+  box-shadow:
+    0 0 42px 6px rgba(70, 150, 255, .22),
+    0 0 90px 20px rgba(70, 150, 255, .10);
+}

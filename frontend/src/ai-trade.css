@@ -1,0 +1,272 @@
+/* ============================================================= ai trade ====
+   The directional model over a universe, sorted. Two columns carry the whole
+   answer; everything around them says how much of the market was actually
+   read, so a short column is never mistaken for a quiet market.
+   ========================================================================= */
+
+.at-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; padding: 12px 0 10px; flex-wrap: wrap;
+}
+.at-head h1 {
+  margin: 0; font-size: 27px; font-weight: 800; letter-spacing: -.8px;
+  color: var(--text);
+}
+.at-head p {
+  margin: 4px 0 0; font-size: 14px; color: var(--text-mute);
+  max-width: 640px; line-height: 1.5;
+}
+.at-head-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.at-cover { font-size: 13px; font-weight: 650; color: var(--text-mute); }
+
+.at-wait {
+  display: flex; align-items: center; gap: 12px;
+  padding: 18px; margin-bottom: 8px;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--panel);
+}
+.at-wait b { display: block; font-size: 14px; color: var(--text); }
+.at-wait span {
+  display: block; margin-top: 3px; font-size: 12px;
+  color: var(--text-mute); line-height: 1.5; max-width: 620px;
+}
+
+/* --- counts -------------------------------------------------------------- */
+
+.at-stats {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px; margin-bottom: 8px;
+}
+.at-stat {
+  padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel); min-width: 0; border-top-width: 2px;
+}
+.at-stat.buy { border-top-color: var(--green); }
+.at-stat.sell { border-top-color: var(--red); }
+.at-stat.wait { border-top-color: var(--border-2); }
+.at-stat.held { border-top-color: var(--amber, #d9a441); }
+.at-stat-label {
+  display: block; font-size: 11px; letter-spacing: .45px;
+  text-transform: uppercase; color: var(--text-mute);
+}
+.at-stat b {
+  display: block; margin-top: 3px;
+  font-size: 21px; font-weight: 800; letter-spacing: -.7px;
+  color: var(--text); font-variant-numeric: tabular-nums; line-height: 1.1;
+}
+.at-stat.buy b { color: var(--green); }
+.at-stat.sell b { color: var(--red); }
+.at-stat-sub {
+  display: block; margin-top: 3px; font-size: 11px;
+  color: var(--text-mute); line-height: 1.4;
+}
+
+/* --- columns ------------------------------------------------------------- */
+
+.at-cols {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px; margin-bottom: 8px; align-items: start;
+}
+.at-col-title { display: inline-flex; align-items: center; gap: 7px; }
+.at-col-title.buy { color: var(--green); }
+.at-col-title.sell { color: var(--red); }
+.at-chip {
+  padding: 1px 7px; border-radius: 5px; background: var(--panel-2);
+  font-size: 11px; font-weight: 750; color: var(--text-mute);
+}
+
+.at-rows { display: flex; flex-direction: column; }
+/* The bar is the only elastic column, and it is minmax(0, 1fr) rather than
+   minmax(60px, 1fr) on purpose: a floor there cannot be given up when the
+   panel is narrow, so the whole row overflowed and the arrow at the end was
+   clipped outside the panel. Everything else is a fixed width, which is what
+   keeps the figures in a straight line down the column -- each row is its own
+   grid, so any `auto` track would size to that row's own content and the
+   column would wander. */
+.at-row {
+  display: grid; align-items: center; gap: 8px;
+  grid-template-columns:
+    16px                /* rank */
+    50px                /* ticker */
+    88px                /* decision */
+    minmax(0, 1fr)      /* conviction bar */
+    38px                /* direction score */
+    144px               /* conf / agree / age */
+    14px;               /* chevron */
+  width: 100%; padding: 7px 12px; text-align: left;
+  box-sizing: border-box; min-width: 0;
+  border: 0; border-bottom: 1px solid var(--border);
+  background: none; font: inherit; cursor: pointer;
+}
+.at-row > * { min-width: 0; }
+.at-row:last-child { border-bottom: 0; }
+.at-row:hover { background: var(--panel-2); }
+.at-rank {
+  font-size: 11px; font-weight: 700; color: var(--text-mute);
+  font-variant-numeric: tabular-nums;
+}
+.at-sym {
+  font-size: 14px; font-weight: 800; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis;
+}
+/* Wide enough for STRONG BUY at this size. The verdict is the one thing on
+   the row that must never be abbreviated -- "STRONG ..." could be either
+   direction -- so the column is sized to the longest label rather than
+   trusted to ellipsis. */
+.at-decision {
+  justify-self: start; padding: 2px 6px; border-radius: 5px;
+  font-size: 10px; font-weight: 800; letter-spacing: .2px; white-space: nowrap;
+}
+.at-row.buy .at-decision { background: rgba(33, 208, 122, .14); color: var(--green); }
+.at-row.sell .at-decision { background: rgba(239, 83, 80, .14); color: var(--red); }
+
+.at-bar {
+  height: 7px; border-radius: 4px; background: var(--panel-2); overflow: hidden;
+}
+.at-bar i { display: block; height: 100%; border-radius: 4px; }
+.at-row.buy .at-bar i { background: var(--green); }
+.at-row.sell .at-bar i { background: var(--red); }
+/* The direction score, 0-100, exactly as the analysis screen's ring shows it.
+   Coloured by side so the row still reads at a glance without a sign. */
+.at-score {
+  text-align: right; font-size: 14px; font-weight: 800;
+  font-variant-numeric: tabular-nums; letter-spacing: -.3px;
+}
+.at-row.buy .at-score { color: var(--green); }
+.at-row.sell .at-score { color: var(--red); }
+
+/* Three equal cells rather than a flex row: "Conf 100%" is wider than
+   "Conf 67%", and in a flex row that difference shifts the two figures beside
+   it, so the three columns never line up between rows. */
+.at-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; }
+.at-meta em {
+  font-style: normal; font-size: 10px; color: var(--text-mute);
+  white-space: nowrap; text-align: right; overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+.at-go { color: var(--text-mute); justify-self: end; }
+.at-row:hover .at-go { color: var(--blue); }
+
+/* --- secondary lists ----------------------------------------------------- */
+
+.at-mini { display: flex; flex-direction: column; }
+.at-mini-row {
+  display: grid; align-items: baseline; gap: 8px;
+  grid-template-columns: 52px minmax(0, 1fr) 46px;
+  width: 100%; padding: 6px 0; text-align: left;
+  border: 0; border-bottom: 1px solid var(--border);
+  background: none; font: inherit; cursor: pointer;
+}
+.at-mini-row:last-child { border-bottom: 0; }
+.at-mini-row:hover b { color: var(--blue); }
+.at-mini-row b { font-size: 13px; font-weight: 750; color: var(--text); }
+.at-mini-call {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; color: var(--text-mute);
+}
+.at-mini-row em {
+  justify-self: end; font-style: normal; font-size: 12px; font-weight: 700;
+  color: var(--text-dim); font-variant-numeric: tabular-nums;
+}
+/* The reason spans the row rather than sitting in a column: these are
+   sentences, and truncating the explanation of a withheld call defeats it. */
+.at-mini-row i {
+  grid-column: 1 / -1; font-style: normal; font-size: 11px;
+  color: var(--text-mute); line-height: 1.45; margin-top: 2px;
+}
+
+.at-note {
+  display: flex; align-items: flex-start; gap: 6px; margin: 0 0 8px;
+  font-size: 12px; color: var(--text-mute); line-height: 1.55;
+}
+.at-note.at-empty { padding: 24px 14px; justify-content: center; text-align: center; }
+.at-foot {
+  margin: 0; padding: 4px 2px 16px;
+  font-size: 11px; color: var(--text-mute); line-height: 1.6;
+}
+
+@media (max-width: 1180px) {
+  .at-cols { grid-template-columns: minmax(0, 1fr); }
+  .at-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* Below this the three figures cannot fit without squeezing the bar to
+   nothing. The decision and the lean are what the row is for, so they stay. */
+/* Bounded below at 1181px on purpose: under that the two columns stack and
+   each panel gets the full width back, so the three figures fit again. */
+@media (max-width: 1240px) and (min-width: 1181px) {
+  .at-row { grid-template-columns: 16px 50px 88px minmax(0, 1fr) 38px 14px; }
+  .at-row .at-meta { display: none; }
+}
+/* A phone row is rank, ticker, bar, score, chevron -- five cells for five
+   children. The meta group has to go with the decision chip here: leaving it
+   in a five-column grid pushed it onto a second row and dragged the chevron
+   down with it, which is what made these rows look broken on a phone. */
+@media (max-width: 760px) {
+  .at-row {
+    grid-template-columns: 16px 46px minmax(0, 1fr) 34px 14px;
+    gap: 7px; padding: 9px 10px;
+  }
+  .at-row .at-decision, .at-row .at-meta { display: none; }
+  .at-sym { font-size: 13px; }
+}
+
+@media (max-width: 560px) {
+  .at-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .at-cols { grid-template-columns: minmax(0, 1fr); }
+  .at-foot { font-size: 10px; }
+  /* The chevron earns no room on a phone: the whole row is the tap target. */
+  .at-row { grid-template-columns: 16px 46px minmax(0, 1fr) 34px; }
+  .at-row .at-go { display: none; }
+  .at-mini-row { grid-template-columns: 46px minmax(0, 1fr) 40px; }
+}
+
+/* The stored "why" opens under its row. */
+.at-row.at-open { background: var(--panel-2); }
+.at-go-open { transform: rotate(90deg); color: var(--blue); }
+.at-go { transition: transform .15s ease; }
+.at-why {
+  padding: 10px 12px 12px; border-bottom: 1px solid var(--border);
+  background: var(--bg-2, var(--panel));
+}
+.at-why-open {
+  display: inline-flex; align-items: center; gap: 5px; margin-top: 8px;
+  padding: 5px 10px; border-radius: 7px; border: 1px solid var(--border);
+  background: var(--panel); color: var(--blue); cursor: pointer;
+  font: inherit; font-size: 12px; font-weight: 700;
+}
+.at-why-open:hover { border-color: var(--blue); }
+
+/* Which outlook the board is showing, and what it is built from. */
+.at-basis { max-width: 720px; }
+.at-basis b { color: var(--text); font-weight: 750; }
+
+/* --- scorecard ------------------------------------------------------------ */
+.sc-title { display: inline-flex; align-items: center; gap: 6px; }
+.sc-warn {
+  margin: 0 0 10px; padding: 8px 10px; border-radius: 7px;
+  background: rgba(245, 165, 36, .1); color: var(--amber, #d9a441);
+  font-size: 12px; line-height: 1.5;
+}
+.sc-grid {
+  display: grid; grid-template-columns: 170px minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px; align-items: start;
+}
+.sc-big { display: flex; flex-direction: column; gap: 2px; }
+.sc-big span {
+  font-size: 10px; letter-spacing: .4px; text-transform: uppercase; color: var(--text-mute);
+}
+.sc-big b { font-size: 30px; font-weight: 800; letter-spacing: -1px; color: var(--text); }
+.sc-big em { font-style: normal; font-size: 11px; color: var(--text-mute); }
+.sc-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.sc-tbl th {
+  text-align: left; font-size: 10px; letter-spacing: .3px; text-transform: uppercase;
+  color: var(--text-mute); font-weight: 700; padding: 3px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.sc-tbl td {
+  padding: 4px; border-bottom: 1px solid var(--border);
+  color: var(--text); font-variant-numeric: tabular-nums;
+}
+.sc-tbl .r { text-align: right; }
+@media (max-width: 900px) {
+  .sc-grid { grid-template-columns: minmax(0, 1fr); }
+}

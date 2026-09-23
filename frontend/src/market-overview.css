@@ -1,0 +1,202 @@
+/* ===================================================== market overview =====
+   Indices, sectors, breadth, movers and macro, all measured from quotes this
+   app fetched. Where a row is an ETF standing in for an index it is marked,
+   because that is a different instrument with its own hours and drift.
+   ========================================================================= */
+
+.mo-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; padding: 14px 0 12px;
+}
+.mo-head h1 {
+  margin: 0; font-size: 27px; font-weight: 800; letter-spacing: -.8px;
+  color: var(--text);
+}
+.mo-head p {
+  margin: 4px 0 0; font-size: 14px; color: var(--text-mute);
+  max-width: 600px; line-height: 1.5;
+}
+.mo-head-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.mo-live {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 650; color: var(--text-mute);
+}
+.mo-live i { width: 7px; height: 7px; border-radius: 50%; background: var(--text-mute); }
+.mo-live.on { color: var(--green); }
+.mo-live.on i {
+  background: var(--green); box-shadow: 0 0 0 3px rgba(33, 208, 122, .18);
+}
+
+/* --- index cards --------------------------------------------------------- */
+
+.mo-indices {
+  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px; margin-bottom: 10px;
+}
+.mo-index {
+  padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--panel); min-width: 0;
+}
+.mo-index-label {
+  display: flex; align-items: baseline; gap: 6px;
+  font-size: 13px; font-weight: 650; color: var(--text-dim);
+}
+/* The tracking ETF's own ticker, shown on any row that is a stand-in. */
+.mo-index-label em {
+  font-style: normal; font-size: 10px; letter-spacing: .3px;
+  padding: 1px 4px; border-radius: 4px;
+  background: var(--panel-2); color: var(--text-mute);
+}
+.mo-index-value {
+  display: block; margin-top: 6px;
+  font-size: 24px; font-weight: 800; letter-spacing: -.9px;
+  color: var(--text); font-variant-numeric: tabular-nums; line-height: 1.1;
+}
+.mo-index-value.mute { color: var(--text-mute); }
+.mo-index-change {
+  display: block; margin-top: 4px;
+  font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+
+/* --- layout -------------------------------------------------------------- */
+
+.mo-grid {
+  display: grid; grid-template-columns: 300px minmax(0, 1fr) 320px;
+  gap: 8px; align-items: start;
+}
+.mo-side { display: flex; flex-direction: column; gap: 8px; }
+.mo-grid-3 {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px; margin-top: 8px;
+}
+.mo-grid-2 {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px; margin-top: 8px;
+}
+
+/* --- sector bars --------------------------------------------------------- */
+
+.mo-sectors { display: flex; flex-direction: column; gap: 6px; }
+.mo-sector {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.mo-sector-name {
+  width: 108px; flex-shrink: 0; color: var(--text-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* Bars grow from the centre so a negative sector reads as negative at a
+   glance rather than as a short positive one. */
+.mo-sector-track {
+  flex: 1; min-width: 0; height: 8px; border-radius: 4px;
+  background: var(--panel-2); position: relative;
+}
+.mo-sector-track i {
+  position: absolute; top: 0; bottom: 0; border-radius: 4px;
+}
+.mo-sector-track i.pos { background: var(--green); }
+.mo-sector-track i.neg { background: var(--red); }
+.mo-sector > b { width: 52px; text-align: right; flex-shrink: 0; }
+
+/* --- heatmap ------------------------------------------------------------- */
+
+.mo-heat { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; }
+.mo-heat-group { min-width: 0; }
+.mo-heat-title {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 11px; letter-spacing: .5px; text-transform: uppercase;
+  color: var(--text-mute); margin-bottom: 4px;
+}
+.mo-heat-title em { font-style: normal; font-weight: 750; font-size: 12px; }
+.mo-heat-tiles {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 3px;
+}
+.mo-heat-tile {
+  border: 0; border-radius: 6px; padding: 8px 6px; cursor: pointer;
+  color: #fff; text-align: center; font: inherit;
+}
+.mo-heat-tile:hover { outline: 1px solid rgba(255, 255, 255, .45); }
+.mo-heat-tile b { display: block; font-size: 13px; font-weight: 750; }
+.mo-heat-tile i {
+  display: block; font-style: normal; font-size: 11px; opacity: .9;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- breadth ------------------------------------------------------------- */
+
+.mo-breadth-bar {
+  display: flex; height: 10px; border-radius: 6px; overflow: hidden;
+  background: var(--panel-2);
+}
+.mo-breadth-bar i.pos { background: var(--green); }
+.mo-breadth-bar i.neg { background: var(--red); }
+.mo-breadth-legend {
+  display: flex; justify-content: space-between; margin-top: 6px;
+  font-size: 12px; font-weight: 650;
+}
+
+/* --- label / value / change rows ----------------------------------------- */
+
+.mo-rows { display: flex; flex-direction: column; gap: 5px; }
+.mo-row {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.mo-row > span { flex: 1; min-width: 0; color: var(--text-dim); }
+.mo-row > span em {
+  font-style: normal; font-size: 10px; color: var(--text-mute);
+  margin-left: 5px; padding: 1px 4px; border-radius: 4px;
+  background: var(--panel-2);
+}
+.mo-row > b { color: var(--text); font-weight: 700; }
+.mo-row > u {
+  width: 54px; text-align: right; text-decoration: none;
+  font-weight: 700; flex-shrink: 0;
+}
+
+.mo-sym { color: var(--blue); font-weight: 750; }
+
+/* --- sentiment ----------------------------------------------------------- */
+
+.mo-sentiment { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.mo-dial { text-align: center; flex-shrink: 0; }
+.mo-dial b {
+  display: block; font-size: 24px; font-weight: 800; letter-spacing: -.7px;
+  margin-top: -6px;
+}
+.mo-dial b small { font-size: 12px; font-weight: 600; color: var(--text-mute); }
+.mo-dial i {
+  display: block; font-style: normal; font-size: 13px; color: var(--text-dim);
+}
+.mo-sent-parts {
+  flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 7px;
+}
+.mo-sent-part { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; }
+.mo-sent-part span { font-size: 13px; color: var(--text-dim); }
+.mo-sent-part b {
+  font-size: 14px; font-weight: 750; color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.mo-sent-part i {
+  grid-column: 1 / -1; font-style: normal; font-size: 11px;
+  color: var(--text-mute); line-height: 1.4;
+}
+
+.mo-pc { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.mo-pc b {
+  font-size: 30px; font-weight: 800; letter-spacing: -1px;
+  font-variant-numeric: tabular-nums;
+}
+.mo-pc span { font-size: 14px; font-weight: 700; color: var(--text-dim); }
+
+@media (max-width: 1500px) {
+  .mo-indices { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .mo-grid { grid-template-columns: minmax(0, 1fr) 320px; }
+  .mo-grid > .panel:nth-child(2) { grid-column: 1 / -1; }
+}
+@media (max-width: 1100px) {
+  .mo-indices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mo-grid, .mo-grid-3, .mo-grid-2 { grid-template-columns: minmax(0, 1fr); }
+  .mo-grid > .panel:nth-child(2) { grid-column: auto; }
+}

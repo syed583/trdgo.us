@@ -1,0 +1,30 @@
+{
+  "name": "us-stock-reader",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "tsc -p tsconfig.app.json --noEmit && vite build",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit",
+    "preview": "vite --host 0.0.0.0 --port 4173"
+  },
+  "dependencies": {
+    "lucide-react": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-router-dom": "^7.18.3",
+    "recharts": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "@vitejs/plugin-react": "latest",
+    "autoprefixer": "latest",
+    "postcss": "latest",
+    "tailwindcss": "3.4.19",
+    "typescript": "latest",
+    "vite": "latest"
+  }
+}

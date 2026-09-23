@@ -1,0 +1,675 @@
+/* ================================================= market-wide options flow ==
+   The tape across every watched ticker, the six figures that summarise it,
+   and the ticker detail that opens in place when a print is selected.
+   ========================================================================= */
+
+/* --- mode toggle in the tab bar ------------------------------------------ */
+
+.mf-mode {
+  display: flex; gap: 2px; padding: 3px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel); margin-right: 10px; flex-shrink: 0;
+}
+.mf-mode-btn {
+  padding: 5px 14px; border: 0; border-radius: 6px;
+  background: none; color: var(--text-mute);
+  font: inherit; font-size: 13px; font-weight: 650; cursor: pointer;
+  white-space: nowrap;
+}
+.mf-mode-btn:hover { color: var(--text); }
+.mf-mode-btn.active { background: var(--blue-bg); color: var(--blue); }
+
+/* --- summary tiles ------------------------------------------------------- */
+
+.mf-tiles {
+  display: grid; gap: 8px; margin-bottom: 8px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+.mf-tile {
+  padding: 11px 13px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel); min-width: 0;
+}
+.mf-tile-label {
+  display: block; font-size: 11px; letter-spacing: .45px;
+  text-transform: uppercase; color: var(--text-mute);
+}
+.mf-tile-value {
+  display: block; margin-top: 5px;
+  font-size: 21px; font-weight: 800; letter-spacing: -.7px;
+  font-variant-numeric: tabular-nums; line-height: 1.15;
+  color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mf-tile-value.green { color: var(--green); }
+.mf-tile-value.red { color: var(--red); }
+.mf-tile-value.amber { color: var(--amber); }
+.mf-tile-sub {
+  display: block; margin-top: 4px;
+  font-size: 12px; color: var(--text-mute); line-height: 1.35;
+}
+
+.mf-session {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 8px;
+  font-size: 12px; color: var(--text-mute);
+}
+
+/* --- tape + detail split ------------------------------------------------- */
+
+/* Not stretched. The detail column is far taller than the tape once a ticker
+   is open -- score, levels, gamma, signals and Greeks -- and stretching the
+   row to match left the tape panel as several hundred pixels of empty white
+   below its last row. Each column keeps its own height; the detail is capped
+   near the tape's and scrolls inside, so the two still end on roughly the
+   same line. */
+.mf-split {
+  display: grid; grid-template-columns: minmax(0, 1fr) 330px;
+  gap: 8px; align-items: start;
+}
+
+/* Matches the tape: its scroll area is 520px plus panel chrome. */
+.mf-detail { max-height: 604px; }
+
+.mf-bottom {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px; margin-top: 8px;
+}
+
+/* --- tape table ---------------------------------------------------------- */
+
+.mf-tape-controls { display: flex; align-items: center; gap: 10px; }
+.mf-check {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; color: var(--text-dim); cursor: pointer;
+  white-space: nowrap;
+}
+.mf-search {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--panel-2);
+}
+.mf-search input {
+  width: 68px; background: none; border: 0; outline: none;
+  font: inherit; font-size: 12px; color: var(--text);
+}
+
+.mf-tape td { white-space: nowrap; }
+.mf-ticker { color: var(--blue); font-weight: 750; }
+.mf-dim { color: var(--text-mute); }
+/* Volume well above open interest is the whole point of the row. */
+.mf-hot { color: var(--amber); font-weight: 750; }
+tr.mf-picked { background: var(--blue-bg); }
+tr.mf-picked td:first-child { box-shadow: inset 2px 0 0 var(--blue); }
+
+/* --- sector bars --------------------------------------------------------- */
+
+.mf-sectors { display: flex; flex-direction: column; gap: 7px; }
+.mf-sector {
+  display: flex; align-items: center; gap: 9px;
+  font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.mf-sector-name {
+  width: 132px; flex-shrink: 0; color: var(--text-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mf-sector-bar {
+  flex: 1; min-width: 0; height: 9px; border-radius: 6px;
+  background: var(--panel-2); overflow: hidden;
+}
+.mf-sector-bar i { display: block; height: 100%; border-radius: 6px; }
+.mf-sector-bar i.up { background: var(--green); }
+.mf-sector-bar i.dn { background: var(--red); }
+.mf-sector > b { width: 66px; text-align: right; flex-shrink: 0; color: var(--text); }
+.mf-sector > em {
+  width: 74px; text-align: right; flex-shrink: 0;
+  font-style: normal; font-weight: 700;
+}
+
+/* --- ticker detail ------------------------------------------------------- */
+
+/* Matches the tape's height rather than shrinking to its contents, so the
+   column beside a long table is not mostly empty page. */
+.mf-detail { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
+.mf-detail > .mf-detail-cta { margin-top: auto; }
+
+.mf-detail-head {
+  display: flex; align-items: center; gap: 9px;
+  padding: 11px 12px; border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.mf-avatar {
+  width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+  display: grid; place-items: center;
+  font-size: 13px; font-weight: 800; letter-spacing: -.3px;
+  background: var(--panel-2); color: var(--text-dim);
+}
+.mf-detail-head b { display: block; font-size: 15px; font-weight: 750; color: var(--text); }
+.mf-detail-head i {
+  display: block; font-style: normal; font-size: 12px;
+  color: var(--text-mute); margin-top: 1px;
+}
+.mf-close {
+  margin-left: auto; background: none; border: 0; cursor: pointer;
+  color: var(--text-mute); display: grid; place-items: center;
+}
+.mf-close:hover { color: var(--text); }
+
+.mf-kv {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px; background: var(--border);
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.mf-kv div { padding: 8px 12px; background: var(--panel); }
+.mf-kv span {
+  display: block; font-size: 10px; letter-spacing: .4px;
+  text-transform: uppercase; color: var(--text-mute);
+}
+.mf-kv b {
+  display: block; margin-top: 3px;
+  font-size: 15px; font-weight: 750; color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.mf-detail-sec {
+  padding: 10px 12px; border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.mf-detail-sec h4 {
+  margin: 0 0 7px; font-size: 11px; letter-spacing: .5px;
+  text-transform: uppercase; color: var(--text-mute); font-weight: 700;
+}
+
+.mf-ratio { display: flex; align-items: baseline; gap: 9px; }
+.mf-ratio b {
+  font-size: 21px; font-weight: 800; letter-spacing: -.6px;
+  color: var(--text); font-variant-numeric: tabular-nums;
+}
+.mf-ratio span { font-size: 12px; color: var(--text-mute); line-height: 1.4; }
+
+.mf-prints { display: flex; flex-direction: column; gap: 6px; }
+.mf-print { display: flex; align-items: center; gap: 8px; }
+.mf-print-body { flex: 1; min-width: 0; }
+.mf-print-body b {
+  display: block; font-size: 13px; font-weight: 650; color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.mf-print-body i {
+  display: block; font-style: normal; font-size: 11px;
+  color: var(--text-mute); margin-top: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mf-print-premium { font-size: 13px; font-weight: 750; flex-shrink: 0; }
+
+.mf-detail-cta { padding: 10px 12px; display: flex; gap: 6px; flex-shrink: 0; }
+.mf-detail-cta button { flex: 1; }
+
+.mf-empty {
+  flex: 1 1 auto; display: grid; place-items: center;
+  padding: 30px 18px; text-align: center;
+  font-size: 13px; color: var(--text-mute); line-height: 1.6;
+}
+
+.mf-note {
+  font-size: 12px; color: var(--text-mute); line-height: 1.6;
+  padding: 2px 0;
+}
+
+@media (max-width: 1400px) {
+  .mf-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 1180px) {
+  .mf-split { grid-template-columns: minmax(0, 1fr); }
+  .mf-bottom { grid-template-columns: minmax(0, 1fr); }
+  .mf-detail { overflow-y: visible; }
+}
+@media (max-width: 700px) {
+  .mf-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* --- chain structure sections in the ticker panel ------------------------ */
+
+/* The panel scrolls as one column. With nine sections in it, pinning one
+   strip as the only scrollable region hid most of what the others say. */
+
+.mf-row {
+  display: flex; align-items: baseline; gap: 7px;
+  font-size: 13px; padding: 3px 0;
+  font-variant-numeric: tabular-nums;
+}
+.mf-row > span { color: var(--text-mute); flex: 1; min-width: 0; }
+.mf-row > b { color: var(--text); font-weight: 700; white-space: nowrap; }
+.mf-row > em {
+  font-style: normal; font-size: 11px; color: var(--text-mute);
+  white-space: nowrap;
+}
+
+/* --- score + confidence -------------------------------------------------- */
+
+.mf-score { display: flex; align-items: center; gap: 12px; }
+.mf-score-value { display: flex; align-items: baseline; gap: 3px; }
+.mf-score-value b {
+  font-size: 30px; font-weight: 800; letter-spacing: -1.2px;
+  color: var(--text); line-height: 1;
+}
+.mf-score-value span { font-size: 12px; color: var(--text-mute); }
+.mf-score-body b { display: block; font-size: 14px; font-weight: 750; }
+.mf-score-body i {
+  display: block; font-style: normal; font-size: 12px;
+  color: var(--text-mute); margin-top: 2px;
+}
+
+/* --- key levels ---------------------------------------------------------- */
+
+.mf-levels { display: flex; flex-direction: column; gap: 4px; }
+.mf-level {
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: 13px; font-variant-numeric: tabular-nums;
+}
+.mf-level > span { flex: 1; color: var(--text-mute); }
+.mf-level > b { color: var(--text); font-weight: 700; }
+.mf-level > em {
+  width: 54px; text-align: right; font-style: normal;
+  font-weight: 700; font-size: 12px;
+}
+
+/* --- greeks -------------------------------------------------------------- */
+
+.mf-greeks {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px; background: var(--border); border-radius: 8px; overflow: hidden;
+}
+.mf-greeks div { padding: 7px 8px; background: var(--panel); text-align: center; }
+.mf-greeks span {
+  display: block; font-size: 10px; letter-spacing: .4px;
+  text-transform: uppercase; color: var(--text-mute);
+}
+.mf-greeks b {
+  display: block; margin-top: 2px; font-size: 13px; font-weight: 700;
+  color: var(--text); font-variant-numeric: tabular-nums;
+}
+
+/* --- flow by expiration -------------------------------------------------- */
+
+.mf-expiries { display: flex; flex-direction: column; gap: 5px; }
+.mf-expiry {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12px; font-variant-numeric: tabular-nums;
+}
+.mf-expiry > span:first-child { width: 52px; color: var(--text-dim); flex-shrink: 0; }
+.mf-expiry-bar {
+  flex: 1; min-width: 0; height: 8px; display: flex; gap: 1px;
+  background: var(--panel-2); border-radius: 4px; overflow: hidden;
+}
+.mf-expiry-bar i { display: block; height: 100%; }
+.mf-expiry-bar i.up { background: var(--green); }
+.mf-expiry-bar i.dn { background: var(--red); }
+.mf-expiry > em {
+  width: 34px; text-align: right; font-style: normal; color: var(--text-mute);
+  flex-shrink: 0;
+}
+
+/* --- filter bar ---------------------------------------------------------- */
+
+.mf-filters {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 10px; margin-bottom: 8px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg-2);
+}
+.mf-filter-search {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel);
+}
+.mf-filter-search input {
+  width: 116px; background: none; border: 0; outline: none;
+  font: inherit; font-size: 13px; color: var(--text);
+}
+.mf-filter {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; letter-spacing: .3px; text-transform: uppercase;
+  color: var(--text-mute);
+}
+.mf-filter select {
+  padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel); color: var(--text);
+  font: inherit; font-size: 13px; text-transform: none; letter-spacing: 0;
+}
+.mf-reset { margin-left: auto; }
+.mf-reset:disabled { opacity: .4; cursor: default; }
+
+.mf-tape-count { font-size: 12px; color: var(--text-mute); }
+
+/* --- tile change chip ---------------------------------------------------- */
+
+.mf-tile-foot {
+  display: flex; align-items: baseline; gap: 6px; margin-top: 4px;
+  flex-wrap: wrap;
+}
+.mf-tile-foot em {
+  font-style: normal; font-size: 12px; font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+.mf-tile-foot .mf-tile-sub { margin-top: 0; }
+
+/* --- ticker panel tabs --------------------------------------------------- */
+
+.mf-detail-tabs {
+  display: flex; gap: 2px; padding: 6px 8px;
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.mf-detail-tab {
+  flex: 1; padding: 5px 4px;
+  border: 0; border-radius: 6px; background: none;
+  color: var(--text-mute); font: inherit; font-size: 12px; font-weight: 650;
+  cursor: pointer; white-space: nowrap;
+}
+.mf-detail-tab:hover { color: var(--text); background: var(--panel-2); }
+.mf-detail-tab.active { background: var(--blue-bg); color: var(--blue); }
+
+/* --- expiry chart -------------------------------------------------------- */
+
+.mf-legend {
+  display: flex; gap: 14px; margin-bottom: 8px;
+  font-size: 12px; color: var(--text-mute);
+}
+.mf-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.mf-legend i { width: 9px; height: 9px; border-radius: 2px; }
+.mf-legend i.up { background: var(--green); }
+.mf-legend i.dn { background: var(--red); }
+
+.mf-expchart {
+  display: flex; align-items: flex-end; gap: 6px; height: 132px;
+}
+.mf-expcol {
+  flex: 1; min-width: 0; display: flex; flex-direction: column;
+  align-items: center; gap: 4px; height: 100%;
+}
+.mf-expbars {
+  flex: 1; width: 100%; display: flex; align-items: flex-end;
+  justify-content: center; gap: 2px;
+}
+.mf-expbars i { width: 42%; border-radius: 2px 2px 0 0; min-height: 1px; }
+.mf-expbars i.up { background: var(--green); }
+.mf-expbars i.dn { background: var(--red); }
+.mf-expcol em {
+  font-style: normal; font-size: 11px; color: var(--text-mute);
+  white-space: nowrap;
+}
+
+/* Three panels across, as the reference layout has them. */
+.mf-bottom { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1400px) {
+  .mf-bottom { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 1180px) {
+  .mf-bottom { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* --- tile sparkline ------------------------------------------------------ */
+
+.mf-tile-main {
+  display: flex; align-items: center; gap: 8px; margin-top: 5px;
+}
+.mf-tile-main .mf-tile-value { margin-top: 0; flex: 1; min-width: 0; }
+.mf-spark {
+  width: 62px; height: 26px; flex-shrink: 0;
+  opacity: .85;
+}
+
+/* --- add to watchlist ---------------------------------------------------- */
+
+.mf-watch {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-left: auto; padding: 4px 8px;
+  border: 1px solid var(--border-2); border-radius: 6px;
+  background: var(--panel-2); color: var(--text-dim);
+  font: inherit; font-size: 12px; font-weight: 650; cursor: pointer;
+  white-space: nowrap;
+}
+.mf-watch:hover:not(:disabled) { color: var(--text); border-color: var(--blue); }
+.mf-watch:disabled { cursor: default; }
+.mf-watch.saved { color: var(--green); border-color: rgba(33, 208, 122, .45); }
+.mf-detail-head .mf-close { margin-left: 6px; }
+
+/* --- overview cards ------------------------------------------------------ */
+
+.mf-cards {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px; padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.mf-card {
+  padding: 9px 10px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel-2); min-width: 0;
+}
+/* The ring needs the full width; the two scalar cards share the row below. */
+.mf-card:first-child { grid-column: 1 / -1; }
+.mf-card-label {
+  display: block; font-size: 10px; letter-spacing: .4px;
+  text-transform: uppercase; color: var(--text-mute);
+}
+.mf-card-value {
+  display: block; margin-top: 4px;
+  font-size: 18px; font-weight: 800; letter-spacing: -.6px;
+  color: var(--text); font-variant-numeric: tabular-nums; line-height: 1.1;
+}
+.mf-card-sub {
+  display: block; margin-top: 3px; font-size: 11px;
+  color: var(--text-mute); line-height: 1.4;
+}
+.mf-card-sub em { font-style: normal; font-weight: 700; }
+
+.mf-card-ring { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
+.mf-card-ring > div { min-width: 0; }
+.mf-card-ring b {
+  display: block; font-size: 14px; font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+.mf-card-ring i {
+  display: block; font-style: normal; font-size: 11px;
+  color: var(--text-mute); margin-bottom: 4px;
+}
+.mf-ring { flex-shrink: 0; }
+
+/* --- score gauge + key levels -------------------------------------------- */
+
+.mf-score-row { display: flex; align-items: flex-start; gap: 12px; }
+.mf-gauge { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
+.mf-gauge-value {
+  font-size: 24px; font-weight: 800; fill: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.mf-gauge-unit { font-size: 10px; fill: var(--text-mute); }
+.mf-gauge-body b { display: block; font-size: 14px; font-weight: 750; }
+.mf-gauge-body i {
+  display: block; font-style: normal; font-size: 11px;
+  color: var(--text-mute); margin-top: 2px;
+}
+.mf-levels-card {
+  flex: 1; min-width: 0;
+  padding: 7px 9px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel-2); gap: 3px;
+}
+
+/* --- flow signals -------------------------------------------------------- */
+
+.mf-signals { display: flex; flex-direction: column; gap: 5px; }
+.mf-signal {
+  padding: 7px 9px; border-radius: 8px;
+  background: var(--panel-2);
+  border-left: 2px solid var(--text-mute);
+}
+.mf-signal.bull { border-left-color: var(--green); }
+.mf-signal.bear { border-left-color: var(--red); }
+.mf-signal.warn { border-left-color: var(--amber); }
+.mf-signal.quiet { border-left-color: var(--blue); }
+.mf-signal b {
+  display: block; font-size: 12px; font-weight: 750; color: var(--text);
+}
+.mf-signal i {
+  display: block; font-style: normal; font-size: 11px;
+  color: var(--text-mute); margin-top: 2px; line-height: 1.45;
+}
+
+/* --- ticker mark and live price ------------------------------------------ */
+
+.mf-mark {
+  display: grid; place-items: center; flex-shrink: 0;
+  border-radius: 10px; color: #fff;
+  font-weight: 800; letter-spacing: -.4px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18);
+}
+
+.mf-detail-head i {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 150px;
+}
+
+.mf-price {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  padding: 8px 12px; border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.mf-price b {
+  font-size: 21px; font-weight: 800; letter-spacing: -.6px;
+  color: var(--text); font-variant-numeric: tabular-nums; line-height: 1;
+}
+.mf-price em {
+  font-style: normal; font-size: 13px; font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+.mf-price-session {
+  margin-left: auto; font-size: 11px; letter-spacing: .4px;
+  text-transform: uppercase; color: var(--text-mute);
+}
+.mf-price-wait { font-size: 12px; color: var(--text-mute); }
+
+/* --- page header --------------------------------------------------------- */
+
+.mf-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; padding: 14px 0 12px;
+}
+.mf-head h1 {
+  margin: 0; font-size: 27px; font-weight: 800; letter-spacing: -.8px;
+  color: var(--text);
+}
+.mf-head p {
+  margin: 4px 0 0; font-size: 14px; color: var(--text-mute);
+  max-width: 560px; line-height: 1.5;
+}
+.mf-head-right {
+  display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+}
+.mf-live {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 650; color: var(--text-mute);
+}
+.mf-live i {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--text-mute);
+}
+.mf-live.on { color: var(--green); }
+.mf-live.on i {
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgba(33, 208, 122, .18);
+}
+.mf-head-stamp { font-size: 13px; color: var(--text-mute); }
+
+/* --- sentiment dial ------------------------------------------------------ */
+
+.mf-dial {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  margin-top: 2px;
+}
+.mf-dial b {
+  font-size: 16px; font-weight: 800; letter-spacing: -.4px; line-height: 1;
+}
+
+/* --- ticker identity ----------------------------------------------------- */
+
+.mf-ident { min-width: 0; flex: 1; }
+.mf-ident b {
+  display: block; font-size: 15px; font-weight: 750; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mf-ident i {
+  display: block; font-style: normal; font-size: 12px;
+  color: var(--text-mute); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.mf-price { display: block; }
+.mf-price-main {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+}
+.mf-price-actions { display: flex; gap: 6px; margin-top: 8px; }
+.mf-price-actions .mf-watch { margin-left: 0; flex: 1; justify-content: center; }
+.mf-analyse {
+  flex: 0 0 auto; padding: 4px 14px;
+  border: 0; border-radius: 6px;
+  background: var(--blue-2, #2563eb); color: #fff;
+  font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.mf-analyse:hover { filter: brightness(1.08); }
+
+/* Three overview cards across, as the reference has them. */
+.mf-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.mf-card:first-child { grid-column: auto; }
+.mf-card-ring { flex-direction: column; gap: 6px; align-items: flex-start; }
+
+/* Signals two across. */
+.mf-signals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+@media (max-width: 1500px) {
+  .mf-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mf-card:first-child { grid-column: 1 / -1; }
+  .mf-card-ring { flex-direction: row; align-items: center; gap: 12px; }
+  .mf-signals { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* --- tile icon ----------------------------------------------------------- */
+
+.mf-tile-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 8px;
+}
+.mf-tile-icon {
+  display: grid; place-items: center;
+  width: 24px; height: 24px; border-radius: 8px; flex-shrink: 0;
+  background: var(--panel-2); color: var(--text-mute);
+}
+.mf-tile-icon.green { color: var(--green); background: rgba(33, 208, 122, .12); }
+.mf-tile-icon.red { color: var(--red); background: rgba(239, 83, 80, .12); }
+.mf-tile-icon.amber { color: var(--amber); background: rgba(245, 165, 36, .12); }
+
+/* --- header chips (Filters / Export) ------------------------------------- */
+
+.mf-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 9px;
+  border: 1px solid var(--border-2); border-radius: 6px;
+  background: var(--panel); color: var(--text-dim);
+  font: inherit; font-size: 12px; font-weight: 650; cursor: pointer;
+  white-space: nowrap;
+}
+.mf-chip:hover:not(:disabled) { color: var(--text); border-color: var(--blue); }
+.mf-chip.on { background: var(--blue-bg); color: var(--blue); border-color: transparent; }
+.mf-chip:disabled { opacity: .45; cursor: default; }
+
+/* --- signal card head ---------------------------------------------------- */
+
+.mf-signal-head {
+  display: flex; align-items: center; gap: 5px;
+}
+.mf-signal-head b { flex: 1; min-width: 0; }
+.mf-signal-head em {
+  font-style: normal; font-size: 11px; color: var(--text-mute);
+  font-variant-numeric: tabular-nums; flex-shrink: 0;
+}
+.mf-signal.bull .mf-signal-head > svg { color: var(--green); }
+.mf-signal.bear .mf-signal-head > svg { color: var(--red); }
+.mf-signal.warn .mf-signal-head > svg { color: var(--amber); }
+.mf-signal.quiet .mf-signal-head > svg { color: var(--blue); }

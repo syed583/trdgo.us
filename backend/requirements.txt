@@ -1,0 +1,30 @@
+# TRAGO.US backend dependencies
+# Generated from the imports in this package, pinned to the versions this
+# project is verified against (Python 3.14).
+
+# web layer
+fastapi==0.136.0
+uvicorn==0.44.0
+pydantic==2.13.1
+
+# database — DATABASE_URL uses the postgresql+psycopg (v3) driver,
+# not psycopg2. psycopg-binary ships the compiled build.
+SQLAlchemy==2.0.52
+psycopg==3.3.5
+psycopg-binary==3.3.5
+
+# IBKR TWS API. eventkit is ib_insync's event library and is pulled in
+# transitively, but it is pinned here because ib_bootstrap.py depends on
+# how it acquires the asyncio event loop under Python 3.14.
+ib_insync==0.9.86
+eventkit==1.0.3
+nest-asyncio==1.6.0
+
+# configuration
+python-dotenv==1.2.2
+
+# tests
+# httpx backs starlette.testclient.TestClient, which tests/test_api_routes.py
+# uses; collection fails outright without it.
+pytest==9.1.1
+httpx==0.28.1
