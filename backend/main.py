@@ -101,6 +101,40 @@ app.add_middleware(_GzipExceptStreams, minimum_size=1024)
 
 
 @app.on_event("startup")
+def _create_schema() -> None:
+    """
+    Create any table this app expects and the database does not have.
+
+    Each service used to create its own tables the first time it ran, which
+    works on a machine that has been running for months and fails on a fresh
+    one: a screen reaching for a table nobody had created yet came back as
+    Internal Server Error -- "relation earnings_calendar does not exist" on a
+    server whose database was two minutes old.
+
+    Creating them all at startup is cheap (it is a no-op once they exist) and
+    it means a new deployment is one command rather than a list of services
+    to warm in the right order. A database that cannot be reached is logged
+    and left alone: the app still serves every screen that does not need it.
+    """
+    from database import Base, engine
+
+    modules = ("models", "models_calls", "models_earnings", "models_etf",
+               "models_institutional", "models_nport", "models_profiles",
+               "models_snapshots", "models_user")
+    for name in modules:
+        try:
+            __import__(name)
+        except Exception as exc:  # noqa: BLE001
+            print(f"schema: could not import {name}: {exc}")
+
+    try:
+        Base.metadata.create_all(engine)
+        print(f"schema: {len(Base.metadata.tables)} tables present")
+    except Exception as exc:  # noqa: BLE001
+        print(f"schema: database unavailable, tables not created ({exc})")
+
+
+@app.on_event("startup")
 def _start_edgar_watcher() -> None:
     """Watch EDGAR's live feed for filings by the companies on the board."""
     import edgar_live_service as live
