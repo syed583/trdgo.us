@@ -95,21 +95,21 @@ export default function DirectionalScorePanel({ symbol, horizon }: {
 
   if (state.loading && !d) {
     return (
-      <Panel title="US-Stock Reader Directional Score" icon={<Info size={12} />} noBody>
+      <Panel title="Tradgo.US Directional Score" icon={<Info size={12} />} noBody>
         <StateBlock loading />
       </Panel>
     );
   }
   if (state.error || !d) {
     return (
-      <Panel title="US-Stock Reader Directional Score" icon={<Info size={12} />} noBody>
+      <Panel title="Tradgo.US Directional Score" icon={<Info size={12} />} noBody>
         <StateBlock error={state.error || 'Unavailable'} />
       </Panel>
     );
   }
   if (d.status !== 'OK' || d.direction_score === null) {
     return (
-      <Panel title="US-Stock Reader Directional Score" icon={<Info size={12} />} noBody>
+      <Panel title="Tradgo.US Directional Score" icon={<Info size={12} />} noBody>
         <StateBlock status={d.status} />
       </Panel>
     );
@@ -147,7 +147,7 @@ export default function DirectionalScorePanel({ symbol, horizon }: {
   return (
     <>
       <Panel
-        title="US-Stock Reader Directional Score"
+        title="Tradgo.US Directional Score"
         icon={<Info size={12} />}
         noBody
         right={(

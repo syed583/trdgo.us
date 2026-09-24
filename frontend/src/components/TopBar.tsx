@@ -96,7 +96,7 @@ export default function TopBar({
       <NavLink to={`/settings${search}`} className="plan" title="Account & providers">
         <div className="avatar">U</div>
         <div className="plan-text">
-          <b>US-Stock Reader</b>
+          <b>Tradgo.US</b>
           <span>Personal</span>
         </div>
         <ChevronDown size={13} color="var(--text-mute)" />

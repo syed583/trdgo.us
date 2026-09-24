@@ -1,12 +1,20 @@
 import React from 'react';
 
 /**
- * US-Stock Reader mark.
+ * Tradgo.US mark: the tape -- four columns, one of them unusual.
  *
- * A rising three-bar column chart whose tallest bar continues into an upward
- * tick — market structure rather than an illustration. Drawn as vector so it
- * stays crisp at the 26px the sidebar uses, with flat fills (no gradient
- * banding on a dark ground) and a single accent so it reads at a glance.
+ * What this app actually does, in four shapes: a field of ordinary volume
+ * and one print that is not. The green column is the reading; the rest are
+ * the context that makes it one.
+ *
+ * No plate behind it and no border, so it sits on whatever surface it is
+ * given. That costs the contrast a dark plate used to guarantee, so the
+ * quiet columns are drawn in a mid slate that holds against both the white
+ * sidebar and the dark one -- a colour chosen to survive both themes rather
+ * than to look best in either.
+ *
+ * Filled rectangles rather than strokes: at 16px a stroke thins to grey,
+ * while a filled bar keeps its weight.
  */
 export function BrandMark({ size = 26 }: { size?: number }) {
   return (
@@ -16,20 +24,15 @@ export function BrandMark({ size = 26 }: { size?: number }) {
       viewBox="0 0 32 32"
       fill="none"
       role="img"
-      aria-label="US-Stock Reader"
+      aria-label="Tradgo.US"
       style={{ display: 'block', flexShrink: 0 }}
     >
-      <rect x="0.5" y="0.5" width="31" height="31" rx="7.5"
-        fill="#0E1626" stroke="#26344F" />
-      {/* Ascending columns */}
-      <rect x="6.5" y="19" width="4" height="7" rx="1.2" fill="#3B82F6" opacity="0.85" />
-      <rect x="13" y="14" width="4" height="12" rx="1.2" fill="#3B82F6" />
-      <rect x="19.5" y="9" width="4" height="17" rx="1.2" fill="#21D07A" />
-      {/* Breakout tick off the tallest column */}
-      <path d="M8 13.5 L14.5 9.5 L18.5 11.5 L25 5.5"
-        stroke="#21D07A" strokeWidth="1.9"
-        strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="25" cy="5.5" r="2.1" fill="#21D07A" />
+      {/* Ordinary volume. */}
+      <rect x="1" y="17" width="5.4" height="14" rx="1.8" fill="#64748B" />
+      <rect x="9" y="11" width="5.4" height="20" rx="1.8" fill="#3B82F6" />
+      <rect x="17" y="14.5" width="5.4" height="16.5" rx="1.8" fill="#64748B" />
+      {/* The print that is not. */}
+      <rect x="25" y="1" width="5.4" height="30" rx="1.8" fill="#21D07A" />
     </svg>
   );
 }
@@ -41,7 +44,7 @@ export function BrandLockup() {
       <div className="brand">
         <BrandMark size={26} />
         <div className="brand-name">
-          US-Stock<span className="brand-tld"> Reader</span>
+          Tradgo<span className="brand-tld">.US</span>
         </div>
       </div>
       <div className="brand-tag">TRADE SMARTER. FASTER.</div>
@@ -49,7 +52,7 @@ export function BrandLockup() {
   );
 }
 
-export const BRAND_NAME = 'US-Stock Reader';
+export const BRAND_NAME = 'Tradgo.US';
 export const BRAND_TAGLINE = 'TRADE SMARTER. FASTER.';
 export const BRAND_QUOTE_EARNINGS = '“Data. Discipline. Edge.”';
 export const BRAND_QUOTE_OPTIONS = '“Options flow turns data into opportunity.”';

@@ -164,7 +164,7 @@ export default function Sidebar({
         {!collapsed && (
           <div className="sidebar-quote">
             {BRAND_QUOTE_EARNINGS}
-            <b>— US-Stock Reader</b>
+            <b>— Tradgo.US</b>
           </div>
         )}
       </div>

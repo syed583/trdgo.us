@@ -1,5 +1,5 @@
 /* ==========================================================================
-   US-Stock Reader dashboard - dark terminal design system
+   Tradgo.US dashboard - dark terminal design system
    ========================================================================== */
 
 :root {
@@ -101,12 +101,6 @@
 :root[data-theme="light"] ::-webkit-scrollbar-thumb { background: #c8d1e0; }
 :root[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #aab5c8; }
 
-/* The brand mark is drawn on a dark plate; give it a light one to sit on. */
-:root[data-theme="light"] .brand svg rect:first-of-type {
-  fill: #f4f6fa;
-  stroke: #dde3ed;
-}
-
 :root { color-scheme: dark; }
 
 * { box-sizing: border-box; }
@@ -123,6 +117,7 @@ body {
 }
 
 button { font-family: inherit; cursor: pointer; }
+a { text-decoration: none; color: inherit; }
 table { border-collapse: collapse; width: 100%; }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
