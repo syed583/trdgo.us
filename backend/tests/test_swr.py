@@ -34,7 +34,10 @@ def test_a_stale_answer_is_returned_now_and_refreshed_behind():
     started = time.monotonic()
     assert swr.serve("k", build, fresh_for=0) == 1  # the held answer, at once
     assert time.monotonic() - started < 0.5
-    deadline = time.monotonic() + 2
+    # The refresh runs on a background daemon thread; on a loaded box (a
+    # deploy running the build and the service at once) it can take a moment
+    # to be scheduled, so this waits generously rather than racing it.
+    deadline = time.monotonic() + 6
     while calls["n"] < 2 and time.monotonic() < deadline:
         time.sleep(0.02)
     assert swr.serve("k", build, fresh_for=60) == 2
