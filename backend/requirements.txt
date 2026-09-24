@@ -13,10 +13,6 @@ SQLAlchemy==2.0.52
 psycopg==3.3.5
 psycopg-binary==3.3.5
 
-# Claude, for the plain-English explanations (claude_service.py). The app
-# runs without a key set, but the package must be importable.
-anthropic==1.6.0
-
 # configuration
 python-dotenv==1.2.2
 

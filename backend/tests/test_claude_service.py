@@ -107,11 +107,32 @@ def test_no_key_means_a_clear_status(monkeypatch):
 
 def test_a_refusal_is_reported_not_shown_as_text(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
-    refused = SimpleNamespace(stop_reason="refusal", content=[], model="claude-opus-5")
-    client = SimpleNamespace(beta=SimpleNamespace(messages=SimpleNamespace(
-        create=lambda **kw: refused)))
-    monkeypatch.setattr(cl, "_get_client", lambda: client)
+    # The API answers over HTTP now; stand in for the transport, not an SDK.
+    monkeypatch.setattr(cl, "_post", lambda body: {
+        "stop_reason": "refusal", "content": [], "model": "claude-opus-5"})
     assert cl._ask("s", "p")["status"] == "REFUSED"
+
+
+def test_a_transport_failure_is_a_status_not_a_crash(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+
+    def boom(body):
+        raise cl._HTTPError("RATE_LIMITED", "slow down")
+
+    monkeypatch.setattr(cl, "_post", boom)
+    out = cl._ask("s", "p")
+    assert out["status"] == "RATE_LIMITED" and "slow" in out["detail"]
+
+
+def test_a_normal_answer_comes_back_as_text(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    monkeypatch.setattr(cl, "_post", lambda body: {
+        "stop_reason": "end_turn", "model": "claude-opus-5",
+        "content": [{"type": "text", "text": "Flow leaned bullish. RSI is stretched."}],
+        "usage": {"input_tokens": 10, "output_tokens": 5}})
+    out = cl._ask("s", "p")
+    assert out["status"] == "OK"
+    assert out["text"] == "Flow leaned bullish. RSI is stretched."
 
 
 def test_news_tone_needs_headlines():

@@ -44,13 +44,41 @@ def _run(key: str, fn: Callable[[], Any]) -> Any:
     return value
 
 
+# Keys with a refresh in flight, so a burst of polls does not start a dozen
+# refreshes of one screen.
+_refreshing: set[str] = set()
+
+
 def _refresh(key: str) -> None:
-    fn, _ = _fns[key]
-    if singleflight.running(f"swr:{key}"):
-        return
-    threading.Thread(target=singleflight.call,
-                     args=(f"swr:{key}", lambda: _run(key, fn), FIRST_WAIT),
-                     daemon=True, name=f"swr-{key}").start()
+    """
+    Rebuild ``key`` on a dedicated background thread.
+
+    This used to hand the work to singleflight's shared request pool. That
+    pool is bounded and also serves first-ever foreground builds, so under
+    load -- many screens warming or a slow provider holding workers -- a
+    background refresh could queue behind them and a stale screen would stay
+    stale far longer than its window. Refreshes run on their own threads now,
+    deduplicated per key, so a foreground pile-up can never starve them.
+    """
+    with _lock:
+        if key in _refreshing:
+            return
+        entry = _fns.get(key)
+        if entry is None:
+            return
+        _refreshing.add(key)
+    fn, _ = entry
+
+    def work() -> None:
+        try:
+            _run(key, fn)
+        except Exception:  # noqa: BLE001 - a failed refresh keeps the last good value
+            pass
+        finally:
+            with _lock:
+                _refreshing.discard(key)
+
+    threading.Thread(target=work, daemon=True, name=f"swr-{key}").start()
 
 
 # Cache keys are built from request input, so the three dicts below must not
@@ -140,3 +168,4 @@ def clear() -> None:
         _values.clear()
         _fns.clear()
         _asked.clear()
+        _refreshing.clear()

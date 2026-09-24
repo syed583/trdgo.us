@@ -11,13 +11,18 @@ Two jobs, both about explaining what the app has already decided:
                  tone.
 
 What Claude never does here: supply a price, a quote, a volume, a score or a
-buy/sell decision. Every number comes from TWS, Unusual Whales or the SEC, and
-the decision comes from the model. Claude is handed those figures and asked
-to explain them, and told not to add any of its own -- a language model asked
-for market data will produce something that looks like market data.
+buy/sell decision. Every number comes from Unusual Whales or the SEC, and the
+decision comes from the model. Claude is handed those figures and asked to
+explain them, and told not to add any of its own -- a language model asked for
+market data will produce something that looks like market data.
 
 Calls are made on demand and the result is stored with the call, so the cost
 is one request per explanation somebody actually asked for, not one per scan.
+
+The Messages API is called directly over HTTP. The official SDK is not a
+dependency here on purpose: this is two small text requests, the API key is
+the only thing needed, and one fewer package is one fewer thing to install and
+keep current on the server.
 """
 
 from __future__ import annotations
@@ -27,25 +32,22 @@ import logging
 import os
 import threading
 import time
+import urllib.error
+import urllib.request
 from typing import Any, Optional
 
 log = logging.getLogger(__name__)
 
+API_URL = "https://api.anthropic.com/v1/messages"
+API_VERSION = "2023-06-01"
+
 MODEL = "claude-opus-5"
 
-# A short, clear explanation needs little thinking; effort is the lever that
-# keeps these quick and cheap without changing model.
-EFFORT = "low"
-
-# Explanations are two sentences. The ceiling leaves room for adaptive
-# thinking at low effort so a reply is never cut off mid-sentence.
-MAX_TOKENS = 4000
+# Explanations are two short sentences; this ceiling only guards against a
+# reply being cut off mid-sentence.
+MAX_TOKENS = 1024
 
 TIMEOUT = 45.0
-
-# Anthropic re-runs a declined request on a fallback model server-side,
-# routed by refusal category, rather than returning a refusal to the screen.
-FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 EXPLAIN_SYSTEM = """You explain a stock call that a quantitative model has already made.
 
@@ -69,24 +71,54 @@ Rules:
 - If the headlines are routine or unrelated to the company's prospects, say "Neutral:" and say so.
 - No recommendation to buy or sell."""
 
-_client = None
-_client_lock = threading.Lock()
+
+class _HTTPError(Exception):
+    """Carries the status/detail an HTTP failure should surface as."""
+
+    def __init__(self, status: str, detail: str):
+        super().__init__(detail)
+        self.status = status
+        self.detail = detail
 
 
 def configured() -> bool:
     return bool(os.environ.get("ANTHROPIC_API_KEY"))
 
 
-def _get_client():
-    global _client
-    if _client is not None:
-        return _client
-    with _client_lock:
-        if _client is None:
-            import anthropic
+def _post(body: dict) -> dict:
+    """
+    POST one Messages request and return the parsed response JSON.
 
-            _client = anthropic.Anthropic(timeout=TIMEOUT, max_retries=2)
-    return _client
+    Raises _HTTPError with a status the caller maps to the screen. Kept apart
+    from _ask so a test can stand in for the network with one substitution.
+    """
+    data = json.dumps(body).encode("utf-8")
+    request = urllib.request.Request(
+        API_URL, data=data, method="POST",
+        headers={
+            "x-api-key": os.environ.get("ANTHROPIC_API_KEY", ""),
+            "anthropic-version": API_VERSION,
+            "content-type": "application/json",
+        })
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+            return json.loads(response.read().decode("utf-8", "ignore") or "{}")
+    except urllib.error.HTTPError as exc:
+        code = exc.code
+        if code in (401, 403):
+            raise _HTTPError(
+                "AUTH_FAILED", "The Anthropic API key was rejected.") from exc
+        if code == 429:
+            raise _HTTPError(
+                "RATE_LIMITED",
+                "Anthropic rate limit reached; try again shortly.") from exc
+        if code == 400:
+            log.warning("claude bad request: HTTP 400")
+            raise _HTTPError(
+                "ERROR", "The explanation request was rejected.") from exc
+        raise _HTTPError("PROVIDER_ERROR", f"Anthropic returned {code}.") from exc
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise _HTTPError("PROVIDER_OFFLINE", "Could not reach Anthropic.") from exc
 
 
 def _ask(system: str, payload: str) -> dict:
@@ -98,64 +130,43 @@ def _ask(system: str, payload: str) -> dict:
         return {"status": "NOT_CONFIGURED",
                 "detail": "ANTHROPIC_API_KEY is not set in backend/.env."}
 
-    import anthropic
-
     started = time.monotonic()
+    body = {
+        "model": MODEL,
+        "max_tokens": MAX_TOKENS,
+        # The instructions are identical on every call, so they are the
+        # cacheable prefix; the call's own figures follow as the message.
+        "system": [{"type": "text", "text": system,
+                    "cache_control": {"type": "ephemeral"}}],
+        "messages": [{"role": "user", "content": payload}],
+    }
     try:
-        response = _get_client().beta.messages.create(
-            model=MODEL,
-            max_tokens=MAX_TOKENS,
-            betas=[FALLBACK_BETA],
-            fallbacks="default",
-            output_config={"effort": EFFORT},
-            # The instructions are identical on every call, so they are the
-            # cacheable prefix; the call's own figures follow as the message.
-            system=[{"type": "text", "text": system,
-                     "cache_control": {"type": "ephemeral"}}],
-            messages=[{"role": "user", "content": payload}],
-        )
-    except anthropic.AuthenticationError:
-        return {"status": "AUTH_FAILED",
-                "detail": "The Anthropic API key was rejected."}
-    except anthropic.PermissionDeniedError:
-        return {"status": "AUTH_FAILED",
-                "detail": "The API key lacks permission for this model."}
-    except anthropic.RateLimitError:
-        return {"status": "RATE_LIMITED",
-                "detail": "Anthropic rate limit reached; try again shortly."}
-    except anthropic.BadRequestError as exc:
-        log.warning("claude bad request: %s", exc)
-        return {"status": "ERROR", "detail": "The explanation request was rejected."}
-    except anthropic.APIStatusError as exc:
-        return {"status": "PROVIDER_ERROR",
-                "detail": f"Anthropic returned {exc.status_code}."}
-    except anthropic.APIConnectionError:
-        return {"status": "PROVIDER_OFFLINE",
-                "detail": "Could not reach Anthropic."}
+        response = _post(body)
+    except _HTTPError as exc:
+        return {"status": exc.status, "detail": exc.detail}
     except Exception as exc:  # noqa: BLE001 - an explanation must never break a screen
         log.warning("claude call failed: %s", exc)
         return {"status": "ERROR", "detail": type(exc).__name__}
 
-    if response.stop_reason == "refusal":
-        return {"status": "REFUSED",
-                "detail": "The explanation was declined."}
+    if response.get("stop_reason") == "refusal":
+        return {"status": "REFUSED", "detail": "The explanation was declined."}
 
-    text = " ".join(b.text for b in response.content
-                    if getattr(b, "type", "") == "text").strip()
+    text = " ".join(b.get("text", "") for b in (response.get("content") or [])
+                    if b.get("type") == "text").strip()
     if not text:
         return {"status": "EMPTY", "detail": "No explanation came back."}
 
-    usage = getattr(response, "usage", None)
+    usage = response.get("usage") or {}
     return {
         "status": "OK",
         "text": text,
-        "model": getattr(response, "model", MODEL),
-        "truncated": response.stop_reason == "max_tokens",
+        "model": response.get("model", MODEL),
+        "truncated": response.get("stop_reason") == "max_tokens",
         "seconds": round(time.monotonic() - started, 1),
         "usage": {
-            "input": getattr(usage, "input_tokens", None),
-            "output": getattr(usage, "output_tokens", None),
-            "cache_read": getattr(usage, "cache_read_input_tokens", None),
+            "input": usage.get("input_tokens"),
+            "output": usage.get("output_tokens"),
+            "cache_read": usage.get("cache_read_input_tokens"),
         },
     }
 
