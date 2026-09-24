@@ -41,7 +41,10 @@ log = logging.getLogger(__name__)
 API_URL = "https://api.anthropic.com/v1/messages"
 API_VERSION = "2023-06-01"
 
-MODEL = "claude-opus-5"
+# Two-sentence explanations do not need a frontier model, and this is billed
+# per explanation the operator asks for. Haiku 4.5 is fast and cheap and
+# writes these well; change it here if a heavier model is ever wanted.
+MODEL = "claude-haiku-4-5-20251001"
 
 # Explanations are two short sentences; this ceiling only guards against a
 # reply being cut off mid-sentence.
@@ -93,18 +96,32 @@ def _post(body: dict) -> dict:
     from _ask so a test can stand in for the network with one substitution.
     """
     data = json.dumps(body).encode("utf-8")
+    headers = {
+        "x-api-key": os.environ.get("ANTHROPIC_API_KEY", ""),
+        "anthropic-version": API_VERSION,
+        "content-type": "application/json",
+    }
+    # An account/admin-level key is not tied to a workspace, so the API
+    # requires the workspace to be named on every request. A workspace-scoped
+    # key does not need this; set ANTHROPIC_WORKSPACE_ID only when using an
+    # unscoped key.
+    workspace = (os.environ.get("ANTHROPIC_WORKSPACE_ID") or "").strip()
+    if workspace:
+        headers["anthropic-workspace-id"] = workspace
     request = urllib.request.Request(
-        API_URL, data=data, method="POST",
-        headers={
-            "x-api-key": os.environ.get("ANTHROPIC_API_KEY", ""),
-            "anthropic-version": API_VERSION,
-            "content-type": "application/json",
-        })
+        API_URL, data=data, method="POST", headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
             return json.loads(response.read().decode("utf-8", "ignore") or "{}")
     except urllib.error.HTTPError as exc:
         code = exc.code
+        # Read the body once: the API's own message is what an operator needs
+        # to fix a 400 (a wrong model, an unscoped key). Logged, not returned,
+        # so a public screen never shows provider internals.
+        try:
+            reason = exc.read().decode("utf-8", "ignore")[:300]
+        except Exception:  # noqa: BLE001
+            reason = ""
         if code in (401, 403):
             raise _HTTPError(
                 "AUTH_FAILED", "The Anthropic API key was rejected.") from exc
@@ -113,9 +130,10 @@ def _post(body: dict) -> dict:
                 "RATE_LIMITED",
                 "Anthropic rate limit reached; try again shortly.") from exc
         if code == 400:
-            log.warning("claude bad request: HTTP 400")
+            log.warning("claude bad request: %s", reason)
             raise _HTTPError(
                 "ERROR", "The explanation request was rejected.") from exc
+        log.warning("claude HTTP %s: %s", code, reason)
         raise _HTTPError("PROVIDER_ERROR", f"Anthropic returned {code}.") from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise _HTTPError("PROVIDER_OFFLINE", "Could not reach Anthropic.") from exc
