@@ -124,6 +124,21 @@ rather than leaving it open to the internet.
 > anything derived from it. That is a contractual reason on top of the
 > obvious one.
 
+## Day to day: the batch files
+
+Double-click these in `deploy\windows\` -- each asks for administrator
+rights itself, so there is no "run as administrator" to remember:
+
+| File | What it does |
+|---|---|
+| `start-server.bat` | Starts the app (and Caddy), then checks it answers |
+| `stop-server.bat` | Stops both |
+| `restart-server.bat` | Restart after editing `.env` or pulling changes |
+| `status.bat` | What is running, whether the app answers, and the last log lines |
+
+A `HTTP 401` from those scripts is the **correct** answer: the app is up and
+asking for the password. "Connection refused" means it is not running.
+
 ## Updating
 
 ```powershell
