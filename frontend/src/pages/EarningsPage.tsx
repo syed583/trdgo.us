@@ -445,7 +445,12 @@ function StockHeader({
           )}
           <div className="u">
             <Freshness stamp={(q as any).freshness} compact />
-            {q.market.label} · {q.market.date_et} {q.market.time_et}
+            {/* A quote from a fallback provider may carry no session clock.
+                Reading through it unguarded unmounted this entire page --
+                chart, chain, score and all -- over a missing timestamp. */}
+            {q.market
+              ? `${q.market.label} · ${q.market.date_et} ${q.market.time_et}`
+              : 'Session time unavailable'}
           </div>
         </div>
 

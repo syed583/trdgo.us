@@ -283,6 +283,16 @@ def quote(symbol: str) -> dict:
                    ttl=TTL_QUOTE)
 
 
+def _market_clock() -> dict:
+    """The session clock every quote in this app carries."""
+    try:
+        import live_market_service as market
+
+        return market.market_clock() or {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def get_quote(symbol: str) -> Optional[dict]:
     """
     One symbol's quote, in the shape the fallback chain already reads.
@@ -332,6 +342,11 @@ def get_quote(symbol: str) -> Optional[dict]:
         "average_volume": None,
         "market_cap": None,
         "session": data.get("market_time"),
+        # Part of the quote contract, not decoration: screens render
+        # "<session> - <time>" straight from it, and a quote without it took
+        # the whole Earnings page down with "cannot read properties of
+        # undefined" the moment TWS was not the one answering.
+        "market": _market_clock(),
         "status": "OK",
         "source": SOURCE,
         "delayed": False,
