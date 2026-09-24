@@ -1090,22 +1090,29 @@ def get_earnings_overview(symbol: str, chart_range: str = "6M") -> dict:
         opt_metrics = {"status": chain.get("status"), "error": chain.get("error")}
         risk_zones = {"status": chain.get("status")}
 
+    # Read defensively. When the history provider cannot answer -- rate
+    # limited, not configured, a symbol it does not carry -- it returns a
+    # payload with a status and no statistics. Indexing that dict raised
+    # KeyError inside a request handler, which the browser received as a 500
+    # and rendered as an entirely blank page: no history, and no earnings
+    # screen either. A missing figure is a missing figure; it is not a
+    # reason to lose the chart, the chain and the score alongside it.
     stats = history_payload.get("stats") or {}
     history = {
-        "quarters": history_payload["quarters"],
-        "beat_rate": stats["beat_rate"],
-        "average_surprise": stats["average_surprise"],
-        "consecutive_beats": stats["consecutive_beats"],
-        "average_move": stats["average_move"],
-        "median_move": stats["median_move"],
-        "largest_move": stats["largest_move"],
-        "sample_size": stats["sample_size"],
-        "basis": stats["basis"],
-        "basis_detail": stats["detail"],
-        "verified_count": history_payload["verified_count"],
-        "seed_count": history_payload["seed_count"],
-        "provider": history_payload["provider"],
-        "status": history_payload["status"],
+        "quarters": history_payload.get("quarters") or [],
+        "beat_rate": stats.get("beat_rate"),
+        "average_surprise": stats.get("average_surprise"),
+        "consecutive_beats": stats.get("consecutive_beats"),
+        "average_move": stats.get("average_move"),
+        "median_move": stats.get("median_move"),
+        "largest_move": stats.get("largest_move"),
+        "sample_size": stats.get("sample_size"),
+        "basis": stats.get("basis"),
+        "basis_detail": stats.get("detail") or history_payload.get("detail"),
+        "verified_count": history_payload.get("verified_count", 0),
+        "seed_count": history_payload.get("seed_count", 0),
+        "provider": history_payload.get("provider"),
+        "status": history_payload.get("status", "DATA_UNAVAILABLE"),
     }
     lifecycle = earnings_intel.get_event_lifecycle(symbol)
 
