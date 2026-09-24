@@ -34,7 +34,16 @@ def test_a_sizing_parameter_says_it_is_sizing():
 
 
 def test_no_reason_is_left_pointing_at_a_parameter_that_no_longer_exists():
-    names = set(dm.WEIGHTS)
+    """
+    Scored parameters and context readings both keep their reasons.
+
+    The session readings -- VWAP, the opening range, relative volume -- are
+    shown at zero weight rather than scored, and a reader asking why one is
+    on the screen deserves the same sentence as one asking about a scored
+    parameter. What must not survive is a reason for something the app no
+    longer computes at all.
+    """
+    names = set(dm.WEIGHTS) | set(hm.LABELS) | set(dm.INSIDER_SPLIT)
     for weights in hm.WEIGHTS.values():
         names |= set(weights)
     stale = sorted(set(dm.WEIGHT_REASONS) - names)

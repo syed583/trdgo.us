@@ -1,9 +1,15 @@
 """
-Symbol lookup and validation, backed by IBKR's own contract database.
+Symbol lookup and validation.
 
-Used by the search box: typing gives suggestions from reqMatchingSymbols, and
-committing a symbol validates it against a real qualified contract so the UI
-can say SYMBOL NOT FOUND with certainty rather than after a failed page load.
+Used by the search box: typing gives suggestions, and committing a symbol
+validates it so the UI can say SYMBOL NOT FOUND with certainty rather than
+after a failed page load.
+
+Two sources, and they answer different questions. SEC's registry says the
+ticker belongs to a real US issuer; the market feed says whether it actually
+carries data for it. A symbol can pass the first and fail the second -- a
+delisted shell, a ticker that has not traded in years -- and the page would
+then load with every panel empty, so validation asks both.
 """
 
 from __future__ import annotations
@@ -11,28 +17,24 @@ from __future__ import annotations
 import difflib
 from typing import Optional
 
-import ib_bootstrap  # noqa: F401  (must precede ib_insync)
-from ib_insync import IB, Stock
-
-from ibkr_client import IBKRUnavailable, ibkr
 from live_market_service import cache
 
 SEARCH_TTL = 900.0
 VALIDATE_TTL = 3600.0
 
-# SEC's company_tickers.json is the fallback universe when TWS is down: every
-# SEC-registered US issuer, no API key and no request quota. It carries ticker,
-# company name and CIK -- but no exchange and no IBKR conId, so those come back
-# None rather than guessed.
+# SEC's company_tickers.json is the universe: every SEC-registered US
+# issuer, no API key and no request quota. It carries ticker, company name and
+# CIK -- but no exchange, so that comes back None rather than guessed.
 SEC_SOURCE = "SEC"
+FEED_SOURCE = "UNUSUAL_WHALES"
 
 
 def _sec_universe() -> list[dict]:
     """
     [{symbol, name, cik}], cached by sec_service's own HTTP cache.
 
-    Returns [] if SEC cannot be reached, so callers fall back to reporting the
-    original IBKR failure rather than an empty-but-successful search.
+    Returns [] if SEC cannot be reached, so callers report that rather than
+    an empty-but-successful search.
     """
     import sec_service
 
@@ -133,79 +135,65 @@ def _fuzzy_search(query: str, limit: int) -> list[dict]:
 
 
 def search(query: str, limit: int = 12) -> dict:
+    """
+    Tickers matching what has been typed so far.
+
+    This used to ask TWS (``reqMatchingSymbols``) and fall back to the SEC
+    registry. The registry now leads outright: it was already doing the work
+    -- TWS returned an empty description on most rows, so every result
+    rendered as "MSFT - MSFT" until the company name was filled in from here
+    anyway.
+    """
     query = (query or "").strip()
     if len(query) < 1:
-        return {"query": query, "matches": [], "status": "OK", "source": "IBKR"}
+        return {"query": query, "matches": [], "status": "OK",
+                "source": SEC_SOURCE}
 
     key = f"symsearch:{query.upper()}:{limit}"
     cached = cache.get(key, SEARCH_TTL)
     if cached:
         return cached
 
-    async def job(ib: IB):
-        return await ib.reqMatchingSymbolsAsync(query)
-
-    try:
-        found = ibkr.run(job, timeout=30)
-    except IBKRUnavailable as exc:
-        matches = _sec_search(query, limit)
-        if matches:
-            result = {"query": query, "matches": matches,
-                      "count": len(matches), "status": "OK",
-                      "source": SEC_SOURCE}
-            cache.put(key, result)
-            return result
-        return {"query": query, "matches": [], "status": "PROVIDER_OFFLINE",
-                "detail": str(exc), "source": "IBKR"}
-
-    # IBKR's reqMatchingSymbols often returns an empty description, which made
-    # every row render as "MSFT - MSFT". SEC's registry has the real names and
-    # is already cached, so use it to fill the gaps.
-    sec_names = {row["symbol"]: row["name"] for row in _sec_universe()}
-
-    matches = []
-    for item in found or []:
-        contract = item.contract
-        # US stocks only: this application scores equities, not FX or futures.
-        if contract.secType != "STK" or contract.currency != "USD":
-            continue
-        matches.append({
-            "symbol": contract.symbol,
-            "name": (getattr(item, "description", None)
-                     or sec_names.get(contract.symbol.upper())
-                     or contract.symbol),
-            "exchange": contract.primaryExchange or contract.exchange,
-            "currency": contract.currency,
-            "con_id": contract.conId,
-        })
-        if len(matches) >= limit:
-            break
-
-    if not matches:
-        # Nothing matched exactly; offer the nearest tickers instead of an
-        # empty box, which gives the operator no idea whether they mistyped or
-        # the symbol does not exist.
-        suggestions = _fuzzy_search(query, limit)
-        result = {
-            "query": query,
-            "matches": suggestions,
-            "count": len(suggestions),
-            "approximate": bool(suggestions),
-            "status": "OK",
-            "detail": (f"No exact match for {query.upper()}; showing closest "
-                       f"tickers." if suggestions else None),
-            "source": SEC_SOURCE if suggestions else "IBKR",
-        }
+    matches = _sec_search(query, limit)
+    if matches:
+        result = {"query": query, "matches": matches, "count": len(matches),
+                  "status": "OK", "source": SEC_SOURCE}
         cache.put(key, result)
         return result
 
-    result = {"query": query, "matches": matches, "count": len(matches),
-              "status": "OK", "source": "IBKR"}
+    if not _sec_universe():
+        return {"query": query, "matches": [], "status": "PROVIDER_OFFLINE",
+                "detail": "The SEC ticker registry could not be read.",
+                "source": SEC_SOURCE}
+
+    # Nothing matched exactly; offer the nearest tickers instead of an empty
+    # box, which gives the operator no idea whether they mistyped or the
+    # symbol does not exist.
+    suggestions = _fuzzy_search(query, limit)
+    result = {
+        "query": query,
+        "matches": suggestions,
+        "count": len(suggestions),
+        "approximate": bool(suggestions),
+        "status": "OK",
+        "detail": (f"No exact match for {query.upper()}; showing closest "
+                   f"tickers." if suggestions else None),
+        "source": SEC_SOURCE,
+    }
     cache.put(key, result)
     return result
 
 
 def validate(symbol: str) -> dict:
+    """
+    Is this a real US ticker, and does the feed carry it?
+
+    Both are asked, because they are different claims. The registry proves
+    the issuer exists; it says nothing about whether any screen in this app
+    will have data to show. A ticker the feed does not know is reported as
+    found-but-uncovered rather than as valid, so the page can say which of
+    the two went wrong instead of loading empty.
+    """
     symbol = (symbol or "").strip().upper()
     if not symbol:
         return {"symbol": symbol, "valid": False, "status": "INVALID",
@@ -216,50 +204,45 @@ def validate(symbol: str) -> dict:
     if cached:
         return cached
 
-    async def job(ib: IB):
-        contract = Stock(symbol, "SMART", "USD")
-        try:
-            await ib.qualifyContractsAsync(contract)
-        except Exception:  # noqa: BLE001 - unknown symbols raise here
-            return None
-        if not contract.conId:
-            return None
-        details = await ib.reqContractDetailsAsync(contract)
-        detail = details[0] if details else None
-        return {
-            "symbol": contract.symbol,
-            "con_id": contract.conId,
-            "exchange": contract.primaryExchange or contract.exchange,
-            "name": (detail.longName if detail else None) or contract.symbol,
-            "industry": getattr(detail, "industry", None) if detail else None,
-            "category": getattr(detail, "category", None) if detail else None,
-        }
+    registered = next((row for row in _sec_universe()
+                       if row["symbol"] == symbol), None)
 
+    info = None
     try:
-        info = ibkr.run(job, timeout=40)
-    except IBKRUnavailable as exc:
-        # A ticker present in SEC's registry is a real US issuer, which is
-        # enough to let the page load. It is not proof of an IBKR tradable
-        # contract, hence source=SEC on the payload.
-        for row in _sec_universe():
-            if row["symbol"] == symbol:
-                result = {
-                    "symbol": symbol, "name": row["name"], "cik": row["cik"],
-                    "con_id": None, "exchange": None,
-                    "industry": None, "category": None,
-                    "valid": True, "status": "OK", "source": SEC_SOURCE,
-                }
-                cache.put(key, result)
-                return result
-        return {"symbol": symbol, "valid": False, "status": "PROVIDER_OFFLINE",
-                "detail": str(exc), "source": "IBKR"}
+        import unusualwhales_service as uw
 
-    if not info:
-        result = {"symbol": symbol, "valid": False, "status": "SYMBOL_NOT_FOUND",
-                  "detail": f"IBKR has no US stock contract for {symbol}",
-                  "source": "IBKR"}
-    else:
-        result = {**info, "valid": True, "status": "OK", "source": "IBKR"}
+        if uw.configured():
+            out = uw.get(f"/api/stock/{symbol}/info")
+            info = out.get("data") if out.get("status") == "OK" else None
+    except Exception:  # noqa: BLE001 - the registry answer still stands
+        info = None
 
+    if not registered and not info:
+        result = {"symbol": symbol, "valid": False,
+                  "status": "SYMBOL_NOT_FOUND",
+                  "detail": f"No US issuer or market data found for {symbol}.",
+                  "source": SEC_SOURCE}
+        cache.put(key, result)
+        return result
+
+    result = {
+        "symbol": symbol,
+        "name": ((info or {}).get("full_name")
+                 or (registered or {}).get("name") or symbol),
+        "cik": (registered or {}).get("cik"),
+        "con_id": None,
+        "exchange": None,
+        "industry": (info or {}).get("sector"),
+        "category": (info or {}).get("issue_type"),
+        "valid": True,
+        "status": "OK",
+        # Said plainly: registered but uncovered means the pages will load
+        # with nothing on them, and that is worth knowing before they do.
+        "covered": bool(info),
+        "detail": (None if info else
+                   f"{symbol} is a registered issuer, but the market feed "
+                   f"carries no data for it."),
+        "source": FEED_SOURCE if info else SEC_SOURCE,
+    }
     cache.put(key, result)
     return result

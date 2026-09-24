@@ -17,7 +17,6 @@ from sqlalchemy import text
 
 import live_market_service as market
 from database import engine
-from ibkr_client import IBKRUnavailable, ibkr
 
 # Status vocabulary shared with the frontend.
 OK = "OK"
@@ -37,7 +36,7 @@ def _database() -> dict:
             conn.execute(text("SELECT 1"))
         return {"status": OK, "detail": "PostgreSQL reachable"}
     except Exception as exc:  # noqa: BLE001
-        return {"status": PROVIDER_OFFLINE, "detail": str(exc)}
+        return {"status": PROVIDER_OFFLINE, "detail": type(exc).__name__}
 
 
 def _sec() -> dict:
@@ -50,70 +49,36 @@ def _sec() -> dict:
             return {"status": OK, "detail": "SEC EDGAR reachable (6h cache)"}
         return {"status": DATA_UNAVAILABLE, "detail": "SEC returned no CIK"}
     except Exception as exc:  # noqa: BLE001
-        return {"status": PROVIDER_OFFLINE, "detail": str(exc)}
+        return {"status": PROVIDER_OFFLINE, "detail": type(exc).__name__}
 
 
 def _estimates() -> dict:
-    """
-    Analyst estimates: Alpha Vantage when configured, otherwise whatever the
-    database holds. Seed-only data must never read as a real signal.
-    """
-    import alpha_vantage_estimates_service as av
-    import provider_config as pcfg
+    """Analyst estimates, from the one feed that carries them."""
+    import uw_company_service as uwc
 
-    if pcfg.ALPHA_VANTAGE.configured:
-        return av.provider_status()
-
-    try:
-        from models import EstimateSnapshot
-        from database import SessionLocal
-
-        db = SessionLocal()
-        try:
-            rows = db.query(EstimateSnapshot).limit(200).all()
-            if not rows:
-                return {"status": DATA_UNAVAILABLE,
-                        "detail": "No estimate snapshots on record"}
-            sources = {(r.source or "").upper() for r in rows}
-            if sources.issubset({"TEST", ""}):
-                return {
-                    "status": TEST_DATA,
-                    "detail": (
-                        "Only seed rows on record. A real estimates provider "
-                        "(e.g. Refinitiv/FactSet/Zacks feed) is required before "
-                        "this component can score."
-                    ),
-                }
-            return {"status": OK, "detail": f"Sources: {', '.join(sorted(sources))}"}
-        finally:
-            db.close()
-    except Exception as exc:  # noqa: BLE001
-        return {"status": PROVIDER_OFFLINE, "detail": str(exc)}
+    out = uwc.estimate_revisions("AAPL")
+    return {"status": OK if out.get("rows") else DATA_UNAVAILABLE,
+            "detail": out.get("detail"), "source": "UNUSUAL_WHALES"}
 
 
-def _benzinga() -> dict:
-    import benzinga_earnings_service as benzinga
+def _earnings() -> dict:
+    """Can the feed name the next report for a company that has one?"""
+    import uw_company_service as uwc
 
-    return benzinga.provider_status()
-
-
-def _alpha_vantage() -> dict:
-    import alpha_vantage_estimates_service as av
-
-    return av.provider_status()
+    if not uwc.configured():
+        return {"status": PROVIDER_NOT_CONFIGURED,
+                "detail": "UNUSUAL_WHALES_API_KEY is not set."}
+    nxt = uwc.next_report("AAPL")
+    return {"status": OK if nxt else DATA_UNAVAILABLE,
+            "detail": (f"Next AAPL report {nxt.get('date')}" if nxt
+                       else "No scheduled report returned."),
+            "source": "UNUSUAL_WHALES"}
 
 
 def _news() -> dict:
-    # Marketaux first: it needs no TWS, so a closed gateway is not the same
-    # thing as having no news.
-    import marketaux_news_service as marketaux
+    import uw_news_adapter as uwnews
 
-    if marketaux.configured():
-        return marketaux.provider_status()
-
-    from ibkr_news_service import provider_status
-
-    return provider_status()
+    return uwnews.provider_status()
 
 
 def _earnings_calendar() -> dict:
@@ -122,35 +87,31 @@ def _earnings_calendar() -> dict:
     return calendar_source_status()
 
 
-def _ibkr() -> dict:
-    status = ibkr.status()
-    if not status.get("socket_connected"):
-        # Inside the retry window the answer is already known. probe() forces a
-        # real connection attempt (~2s on a refused socket), and calling it on
-        # every health poll made this the slowest thing on the dashboard while
-        # defeating the very back-off that exists to avoid it.
-        if ibkr.is_offline():
-            return {
-                "status": PROVIDER_OFFLINE,
-                "detail": status.get("last_error") or "TWS not reachable",
-                **{k: status.get(k) for k in ("host", "port", "client_id")},
-            }
-        probe = ibkr.probe()
-        if not probe.get("connected"):
-            return {
-                "status": PROVIDER_OFFLINE,
-                "detail": probe.get("last_error") or "TWS not reachable",
-                **{k: probe.get(k) for k in ("host", "port", "client_id")},
-            }
-        status = probe
+def _feed() -> dict:
+    """
+    Is the one feed answering, and how much of today's budget is left?
+
+    This asks it something rather than reporting the status of the last call
+    somebody else happened to make. On a freshly started server nothing has
+    called it yet, and "UNKNOWN" on the chip for the feed the whole app now
+    runs on reads as broken.
+    """
+    import unusualwhales_service as uw
+
+    if not uw.configured():
+        return {"status": PROVIDER_NOT_CONFIGURED,
+                "detail": "UNUSUAL_WHALES_API_KEY is not set."}
+
+    quote = uw.get_quote("SPY")
+    budget = uw.budget()
+    status = uw.provider_status()
+    left, cap = budget.get("app_left"), budget.get("app_budget")
     return {
-        "status": OK if status.get("connected") else PROVIDER_OFFLINE,
-        "detail": status.get("last_error") or "TWS API connected",
-        "degraded_note": status.get("degraded_note"),
-        "host": status.get("host"),
-        "port": status.get("port"),
-        "client_id": status.get("client_id"),
-        "market_data_type": status.get("market_data_type"),
+        **status,
+        "status": OK if quote and quote.get("price") else status["status"],
+        "detail": (f"Answering; {left} of {cap} requests left today"
+                   if quote and quote.get("price")
+                   else "The feed did not return a quote."),
     }
 
 
@@ -158,7 +119,7 @@ def _market_data() -> dict:
     """A real quote is the only honest proof that market data is flowing."""
     quote = market.get_quote("SPY")
     if quote.get("status") == "OK" and quote.get("price"):
-        source = quote.get("source") or "IBKR"
+        source = quote.get("source") or "UNUSUAL_WHALES"
         detail = f"SPY {quote['price']} via {source}"
         if quote.get("delayed"):
             # Flowing, but end-of-day. Say so on the chip instead of implying
@@ -166,8 +127,6 @@ def _market_data() -> dict:
             detail += f" (delayed, as of {quote.get('as_of') or 'last close'})"
         return {"status": OK, "detail": detail, "source": source,
                 "delayed": bool(quote.get("delayed"))}
-    if quote.get("status") == "IBKR_UNAVAILABLE":
-        return {"status": PROVIDER_OFFLINE, "detail": quote.get("error", "")}
     return {"status": DATA_UNAVAILABLE, "detail": quote.get("status", "")}
 
 
@@ -179,8 +138,6 @@ def _options() -> dict:
         priced = sum(1 for r in chain["rows"] if r.get("mid"))
         return {"status": OK,
                 "detail": f"{len(chain['rows'])} contracts, {priced} priced"}
-    if chain.get("status") == "IBKR_UNAVAILABLE":
-        return {"status": PROVIDER_OFFLINE, "detail": chain.get("error", "")}
     if chain.get("status") == "OK":
         return {"status": OK, "detail": f"{len(chain['rows'])} contracts "
                 f"via {chain.get('source')}"}
@@ -188,7 +145,7 @@ def _options() -> dict:
 
 
 def _scanner() -> dict:
-    from ibkr_scanner_service import scanner_status
+    from uw_scanner_service import scanner_status
 
     return scanner_status()
 
@@ -216,52 +173,44 @@ def get_health(deep: bool = False) -> dict:
                 try:
                     out[name] = future.result()
                 except Exception as exc:  # noqa: BLE001
-                    out[name] = {"status": PROVIDER_OFFLINE, "detail": str(exc)}
+                    out[name] = {"status": PROVIDER_OFFLINE, "detail": type(exc).__name__}
         return out
 
     providers: dict[str, Any] = gather({
-        "ibkr": _ibkr,
+        "feed": _feed,
         "database": _database,
         "market_data": _market_data,
         "estimates": _estimates,
         "earnings_calendar": _earnings_calendar,
-        "benzinga": _benzinga,
-        "alpha_vantage": _alpha_vantage,
+        "earnings": _earnings,
     })
 
-    ib_ok = providers["ibkr"]["status"] == OK
-    import marketaux_news_service as _marketaux
-
-    providers["news"] = _news() if (ib_ok or _marketaux.configured()) else {
-        "status": PROVIDER_OFFLINE, "detail": "No news provider configured"}
-    providers["scanner"] = _scanner() if ib_ok else {
-        "status": PROVIDER_OFFLINE, "detail": "IBKR not connected"}
-
-    # Options are no longer IBKR-only: Unusual Whales serves the chain, so
-    # the probe has to ask rather than assume a closed TWS means no options.
     import unusualwhales_service as uw
 
-    od_ok = uw.configured()
+    feed_ok = uw.configured()
+    providers["news"] = _news() if feed_ok else {
+        "status": PROVIDER_OFFLINE, "detail": "No news provider configured"}
+    providers["scanner"] = _scanner()
+
     if deep:
-        providers["options"] = _options() if (ib_ok or od_ok) else {
+        providers["options"] = _options() if feed_ok else {
             "status": PROVIDER_OFFLINE, "detail": "No option chain provider"}
         providers["sec"] = _sec()
     else:
         providers["options"] = {
-            "status": OK if (ib_ok or od_ok) else PROVIDER_OFFLINE,
-            "detail": ("Not deep-probed" if ib_ok
-                       else "Unusual Whales chain available" if od_ok
+            "status": OK if feed_ok else PROVIDER_OFFLINE,
+            "detail": ("Not deep-probed" if feed_ok
                        else "No option chain provider"),
         }
         providers["sec"] = {"status": OK, "detail": "Not deep-probed"}
 
     result = {
         "providers": providers,
-        "live": ib_ok,
+        "live": feed_ok,
         "market": market.market_clock(),
         "checked_at": time.time(),
         # Flat shorthand the dashboard badge reads.
-        "ibkr": providers["ibkr"]["status"],
+        "feed": providers["feed"]["status"],
         "market_data": providers["market_data"]["status"],
         "options": providers["options"]["status"],
     }

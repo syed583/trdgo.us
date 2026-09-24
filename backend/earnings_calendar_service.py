@@ -15,15 +15,11 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
-import ib_bootstrap  # noqa: F401  (must precede ib_insync)
-from ib_insync import IB
 
 import live_market_service as market
 from database import SessionLocal
-from ibkr_client import IBKRUnavailable, ibkr
 from models import Company, EarningsEvent
 
-WSH_TTL = 6 * 3600.0
 
 RANGES = ("TODAY", "TOMORROW", "THIS_WEEK", "NEXT_WEEK", "THIS_MONTH", "ALL")
 
@@ -34,110 +30,34 @@ CALENDAR_TTL_OPEN = 300.0
 CALENDAR_TTL_CLOSED = 900.0
 
 
-def wsh_available() -> dict:
-    """
-    Probe IBKR's Wall Street Horizon event feed once and cache the answer.
-
-    Kept as its own check so that if the entitlement is ever added, the
-    calendar can switch source without any other code changing.
-    """
-    cached = market.cache.get("wsh:available", WSH_TTL)
-    if cached is not None:
-        return cached
-
-    async def job(ib: IB):
-        return await ib.reqWshMetaDataAsync()
-
-    try:
-        meta = ibkr.run(job, timeout=45)
-        ok = bool(meta and len(str(meta)) > 2)
-        result = {
-            "available": ok,
-            "status": "OK" if ok else "ENTITLEMENT_REQUIRED",
-            "detail": (
-                "Wall Street Horizon event data available"
-                if ok else
-                "IBKR returned no WSH metadata for this account. A Wall Street "
-                "Horizon subscription is required for an IBKR-sourced earnings "
-                "calendar."
-            ),
-        }
-    except IBKRUnavailable as exc:
-        result = {"available": False, "status": "PROVIDER_OFFLINE",
-                  "detail": str(exc)}
-    except Exception as exc:  # noqa: BLE001
-        result = {"available": False, "status": "ENTITLEMENT_REQUIRED",
-                  "detail": f"{type(exc).__name__}: {exc}"}
-
-    market.cache.put("wsh:available", result)
-    return result
-
-
 def calendar_source_status() -> dict:
-    """Health entry describing where calendar rows come from."""
-    # Benzinga first: with a cached provider calendar the screen is healthy,
-    # and saying "IBKR cannot supply a calendar" would be both wrong and
-    # actionable-looking. Only fall through to the IBKR/WSH story when no
-    # provider rows exist at all.
+    """
+    Where calendar rows come from, and whether that source can answer.
+
+    One feed now. The old cached-rows story belonged to a provider whose
+    calendar had to be synced before the screen could read it; this one is
+    read on demand, so the only question is whether the key works.
+    """
     try:
-        import benzinga_earnings_service as benzinga
+        import uw_earnings_feed as feed
 
-        status = benzinga.provider_status()
-        cached = status.get("cached_rows") or 0
-        symbols = status.get("cached_symbols") or 0
-    except Exception:  # noqa: BLE001
-        cached = symbols = 0
-
-    if cached:
-        return {
-            "status": "OK",
-            "detail": f"{cached} cached events across {symbols} companies "
-                      f"(Benzinga)",
-            "source": "BENZINGA",
-            "companies_tracked": symbols,
-            "scheduled_events": cached,
-        }
-
-    wsh = wsh_available()
-    db = SessionLocal()
-    try:
-        tracked = db.query(Company).count()
-        scheduled = (
-            db.query(EarningsEvent)
-            .filter(EarningsEvent.status == "scheduled")
-            .count()
-        )
+        if feed.configured():
+            return {
+                "status": "OK",
+                "detail": ("Scheduled reports read on demand, with the move "
+                           "the options market is pricing into each."),
+                "source": "UNUSUAL_WHALES",
+            }
     except Exception as exc:  # noqa: BLE001
-        db.close()
-        return {"status": "PROVIDER_OFFLINE", "detail": str(exc)}
-    finally:
-        db.close()
-
-    if scheduled == 0:
-        return {
-            "status": "DATA_UNAVAILABLE",
-            "detail": (
-                f"No scheduled earnings rows in the database "
-                f"({tracked} companies tracked). "
-                "IBKR cannot supply a calendar on this account: " + wsh["detail"]
-            ),
-            "source": "DATABASE",
-            "ibkr_wsh": wsh["status"],
-            "companies_tracked": tracked,
-            "scheduled_events": 0,
-            "required_provider": (
-                "An earnings-calendar feed (Wall Street Horizon via IBKR, or a "
-                "third-party calendar API) populating earnings_events."
-            ),
-        }
+        return {"status": "PROVIDER_OFFLINE", "detail": type(exc).__name__,
+                "source": "UNUSUAL_WHALES"}
 
     return {
-        "status": "OK",
-        "detail": f"{scheduled} scheduled events across {tracked} companies",
-        "source": "DATABASE",
-        "ibkr_wsh": wsh["status"],
-        "companies_tracked": tracked,
-        "scheduled_events": scheduled,
+        "status": "PROVIDER_NOT_CONFIGURED",
+        "detail": ("No earnings calendar is configured. Add "
+                   "UNUSUAL_WHALES_API_KEY to backend/.env."),
+        "source": "UNUSUAL_WHALES",
+        "required_provider": "An earnings-calendar feed (Unusual Whales).",
     }
 
 
@@ -178,7 +98,7 @@ def _provider_rows(start, end, query: Optional[str], limit: int) -> list[dict]:
     Never triggers a provider call; returns [] when the cache is empty so the
     caller can fall back to the seed table.
     """
-    import benzinga_earnings_service as benzinga
+    import uw_earnings_feed as benzinga
 
     if start is None:
         start = datetime.now(market.EASTERN).date()
@@ -223,7 +143,7 @@ def _provider_rows(start, end, query: Optional[str], limit: int) -> list[dict]:
             "price": None, "change": None, "change_percent": None,
             "score": None, "confidence": None, "expected_move": None,
             "data_status": "OK",
-            "source": "BENZINGA",
+            "source": "UNUSUAL_WHALES",
         })
         if len(out) >= limit:
             break
@@ -337,10 +257,9 @@ def get_calendar(
     # Benzinga's cached calendar and the seed table stay behind it.
     rows = _unusual_whales_rows(start, end, query, limit)
     if rows:
-        # Named for where these rows came from. The header read "from
-        # BENZINGA - 97 cached events" over rows the live feed supplied,
-        # which is the kind of small mislabel that makes the next label
-        # worth less.
+        # Named for where these rows came from. The header once read
+        # "97 cached events" over rows the live feed supplied, which is the
+        # kind of small mislabel that makes the next label worth less.
         source = {
             "status": "OK",
             "source": "UNUSUAL_WHALES",
@@ -352,7 +271,7 @@ def get_calendar(
     if not rows:
         rows = _provider_rows(start, end, query, limit)
         if rows:
-            source = {**source, "status": "OK", "provider": "BENZINGA"}
+            source = {**source, "status": "OK", "provider": "UNUSUAL_WHALES"}
 
     # The seed table is only consulted when no provider answered. Reaching
     # for it anyway is how a calendar that already had its rows came back

@@ -90,118 +90,31 @@ def _parse_time(stamp: Optional[str]) -> Optional[datetime]:
 
 def _fetch() -> tuple[list[dict], dict]:
     """
-    Walk the provider's pages, merging and de-duplicating.
+    The desk feed: headlines across the names on the board.
 
-    One request per page regardless of how many symbols it names, so the symbol
-    groups cost nothing extra -- they only widen what each page can contain.
+    One provider now. Marketaux carried its own per-article sentiment model
+    and Yahoo carried none at all; both were removed with the rest of the
+    free tier, so the tone beside a headline here is this app's keyword
+    estimate and every payload says so. A counted score and a modelled one
+    are different claims, and only one of them has read the article.
     """
-    import marketaux_news_service as mx
-    import provider_config as cfg
+    import uw_news_adapter as uwnews
 
-    if not mx.configured() or mx.blocked():
-        return _yahoo_fetch()
-
-    seen: set[str] = set()
-    articles: list[dict] = []
-    found = 0
-    per_page = None
-    failures = 0
-
-    for index in range(PAGES):
-        symbols = COVERAGE[index % len(COVERAGE)]
-        page = index // len(COVERAGE) + 1
-        try:
-            payload = mx._call("news/all", {
-                "symbols": symbols,
-                "filter_entities": "true",
-                "language": "en",
-                "limit": 3,
-                "page": page,
-            })
-        except cfg.ProviderError:
-            failures += 1
-            continue
-
-        meta = payload.get("meta") or {}
-        found = max(found, int(meta.get("found") or 0))
-        per_page = per_page or int(meta.get("limit") or 0) or None
-
-        for article in payload.get("data") or []:
-            uuid = article.get("uuid")
-            if not uuid or uuid in seen:
-                continue
-            seen.add(uuid)
-
-            entities = article.get("entities") or []
-            # Each named company carries its own score, so an article can be
-            # good news for one ticker and bad for another. Kept per symbol
-            # rather than collapsed: "who does this move, and which way" is the
-            # question a headline is read for.
-            impacts = []
-            for entity in entities:
-                symbol = entity.get("symbol")
-                if not symbol:
-                    continue
-                entity_score = _num(entity.get("sentiment_score"))
-                impacts.append({
-                    "symbol": symbol,
-                    "name": entity.get("name"),
-                    "industry": entity.get("industry"),
-                    "score": entity_score,
-                    "sentiment": _bucket(entity_score),
-                    "match": _num(entity.get("match_score")),
-                })
-            # Strongest opinion first, so the ticker the piece is really about
-            # leads rather than whichever the provider happened to list first.
-            impacts.sort(key=lambda e: -(abs(e["score"]) if e["score"] is not None else -1))
-            tickers = [e["symbol"] for e in impacts]
-            scores = [e["score"] for e in impacts if e["score"] is not None]
-            # The article's own read is the mean of its entities' scores: a
-            # headline about five companies has five opinions in it, and
-            # taking the first entity's would be arbitrary.
-            score = round(sum(scores) / len(scores), 4) if scores else None
-
-            articles.append({
-                "id": uuid,
-                "headline": article.get("title"),
-                "summary": article.get("description") or article.get("snippet"),
-                "url": article.get("url"),
-                "image_url": article.get("image_url"),
-                "provider": article.get("source"),
-                "published_at": article.get("published_at"),
-                "time_label": mx._local_time(article.get("published_at")),
-                "symbols": tickers[:4],
-                "impacts": impacts[:6],
-                "sentiment_score": score,
-                "sentiment": _bucket(score),
-            })
-
-    if not articles:
-        return _yahoo_fetch()
-    articles.sort(key=lambda a: str(a.get("published_at") or ""), reverse=True)
-    return articles, {
-        "status": "OK" if articles else "NO_DATA",
-        "found": found,
-        "per_page": per_page,
-        "pages_requested": PAGES,
-        "pages_failed": failures,
-    }
-
-
-def _yahoo_fetch() -> tuple[list[dict], dict]:
-    """The same desk from Yahoo headlines when Marketaux cannot answer."""
-    import yahoo_news_service as yahoo
+    if not uwnews.configured():
+        return [], {"status": "PROVIDER_NOT_CONFIGURED", "found": 0,
+                    "per_page": None, "pages_requested": 0, "pages_failed": 0,
+                    "detail": "Add UNUSUAL_WHALES_API_KEY to read the news desk."}
 
     symbols = [s for group in COVERAGE for s in group.split(",")]
-    articles = yahoo.desk_articles(symbols, per_symbol=4)
+    articles = uwnews.desk_articles(symbols, per_symbol=4)
     return articles, {
         "status": "OK" if articles else "NO_DATA",
         "found": len(articles),
         "per_page": None,
         "pages_requested": len(symbols),
         "pages_failed": 0,
-        "fallback": "YAHOO_RSS",
-        "detail": yahoo.SENTIMENT_NOTE,
+        "detail": ("Tone is a keyword estimate over the headline, not a "
+                   "provider sentiment model."),
     }
 
 
@@ -334,7 +247,7 @@ def get_desk() -> dict:
             "articles, not over the whole feed."
             if meta.get("found") and not meta.get("fallback") else (meta.get("detail") or f"{len(articles)} articles retrieved.")
         ),
-        "source": meta.get("fallback") or "MARKETAUX",
+        "source": "UNUSUAL_WHALES",
     }
     market.cache.put("news_desk", result)
     return result

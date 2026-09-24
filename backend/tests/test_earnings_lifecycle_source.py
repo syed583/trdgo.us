@@ -1,10 +1,14 @@
 """
 The next scheduled report comes from whoever actually knows it.
 
-Benzinga's calendar is a cache somebody has to sync, so on a fresh install
-it holds nothing -- and the lifecycle strip read "no scheduled earnings
-event on record" for companies reporting in three weeks. That sentence is a
-claim about the company; the truth was a claim about our cache.
+The calendar this replaces was a cache somebody had to sync, so on a fresh
+install it held nothing -- and the lifecycle strip read "no scheduled
+earnings event on record" for companies reporting in three weeks. That
+sentence is a claim about the company; the truth was a claim about our
+cache.
+
+Two tiers remain, both on the one feed: the symbol asked about directly,
+and the dated calendar window behind it.
 """
 
 import earnings_intelligence_service as ei
@@ -23,14 +27,14 @@ def test_the_paid_feed_supplies_the_next_report(monkeypatch):
     assert out["event"]["date"] == "2026-11-18"
 
 
-def test_benzinga_still_answers_when_the_paid_feed_cannot(monkeypatch):
+def test_the_calendar_window_answers_when_the_symbol_lookup_cannot(monkeypatch):
     monkeypatch.setattr(uwc, "next_report", lambda s: None)
     monkeypatch.setattr(ei.benzinga, "get_upcoming", lambda a, b, c: {
         "rows": [{"symbol": "NVDA", "date": "2026-11-18",
                   "lifecycle": "SCHEDULED"}]})
 
     out = ei.get_event_lifecycle("NVDA")
-    assert out["status"] == "OK" and out["source"] == "BENZINGA"
+    assert out["status"] == "OK" and out["source"] == "UNUSUAL_WHALES"
 
 
 def test_with_no_date_anywhere_it_does_not_blame_a_provider(monkeypatch):

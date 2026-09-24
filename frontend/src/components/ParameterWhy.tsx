@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ExternalLink, Loader2, Sparkles } from 'lucide-react';
 import { api2 } from '../api/client';
+import { safeHref } from '../lib/format';
 
 /**
  * "What does this parameter actually mean for this company?"
@@ -68,7 +69,7 @@ export default function ParameterWhy({ symbol, parameter, label, horizon }: {
       {filings.length > 0 && (
         <div className="pw-filings">
           {filings.slice(0, 4).map((f) => (
-            <a key={`${f.filed}-${f.event}`} href={f.url} target="_blank"
+            <a key={`${f.filed}-${f.event}`} href={safeHref(f.url)} target="_blank"
               rel="noopener noreferrer">
               {f.filed} · {f.event} <ExternalLink size={10} />
             </a>

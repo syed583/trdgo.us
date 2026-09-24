@@ -135,7 +135,7 @@ def _filings(symbol: str, categories: tuple, limit: int = 6) -> list[dict]:
 
 def _headlines(symbol: str, limit: int = 6) -> list[dict]:
     try:
-        import marketaux_news_service as news
+        import uw_news_adapter as news
 
         items = (news.get_news(symbol, limit) or {}).get("items") or []
     except Exception:  # noqa: BLE001
@@ -289,7 +289,10 @@ def _signal(symbol: str, parameter: str,
             if h in seen:
                 continue
             seen.add(h)
-            if parameter not in hm.WEIGHTS[h]:
+            # Session readings are computed by the outlook but carry no
+            # weight, so the weight table is no longer the test of whether
+            # an outlook has the reading. Ask the outlook itself.
+            if parameter not in hm.WEIGHTS[h] and parameter not in hm.LABELS:
                 continue
             found = _find(hm.score_horizon(symbol, h, base=base), parameter)
             if found:

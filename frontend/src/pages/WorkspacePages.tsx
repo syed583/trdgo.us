@@ -597,25 +597,24 @@ export function SettingsPage({ ctx }: { ctx: PageContext }) {
                   </div>
                 </Panel>
 
-                <Panel title="IBKR connection" noBody>
+                <Panel title="Market data feed" noBody>
                   <div className="kv">
                     <div className="kv-row">
-                      <span className="k">Host</span>
-                      <span className="v">{providers.ibkr?.host || '--'}</span>
+                      <span className="k">Provider</span>
+                      <span className="v">{providers.feed?.provider || '--'}</span>
                     </div>
                     <div className="kv-row">
-                      <span className="k">Port</span>
-                      <span className="v">{providers.ibkr?.port || '--'}</span>
-                    </div>
-                    <div className="kv-row">
-                      <span className="k">Client ID</span>
-                      <span className="v">{providers.ibkr?.client_id ?? '--'}</span>
-                    </div>
-                    <div className="kv-row">
-                      <span className="k">Market data type</span>
+                      <span className="k">Requests left today</span>
                       <span className="v">
-                        {providers.ibkr?.market_data_type === 2 ? '2 (frozen)'
-                          : providers.ibkr?.market_data_type ?? '--'}
+                        {providers.feed?.app_left ?? '--'}
+                        {providers.feed?.app_budget
+                          ? ` of ${providers.feed.app_budget}` : ''}
+                      </span>
+                    </div>
+                    <div className="kv-row">
+                      <span className="k">Plan limit</span>
+                      <span className="v">
+                        {providers.feed?.plan_minute_remaining ?? '--'}
                       </span>
                     </div>
                     <div className="kv-row">
@@ -624,7 +623,8 @@ export function SettingsPage({ ctx }: { ctx: PageContext }) {
                     </div>
                   </div>
                   <div className="hint">
-                    Read-only connection. This application never places orders.
+                    Read-only market data. This application has no brokerage
+                    connection and cannot place an order.
                   </div>
                 </Panel>
 

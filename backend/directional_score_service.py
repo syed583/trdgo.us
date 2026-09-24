@@ -187,17 +187,6 @@ def _gather(symbol: str, progress=None) -> dict:
     # not is worth keeping.
     history = _safe(
         lambda: __import__("uw_company_service").earnings_history(symbol, 8), {})
-    if (history or {}).get("status") != "OK":
-        history = _safe(
-            lambda: __import__("finviz_service").earnings_history(symbol, 8), {})
-    if (history or {}).get("status") != "OK":
-        history = _safe(
-            lambda: __import__("benzinga_earnings_service")
-            .get_history(symbol, quarters=8), {})
-    if (history or {}).get("status") != "OK":
-        history = _safe(
-            lambda: __import__("alpha_vantage_estimates_service")
-            .get_earnings_history(symbol, quarters=8), {})
     out["earnings_history"] = history
     report("earnings_history", (history or {}).get("status") == "OK")
 
@@ -227,6 +216,7 @@ def build_signals(data: dict) -> list:
         sig.disparity(data.get("disparity") or {}),
 
         sig.implied_volatility(overview.get("metrics") or {}),
+        sig.expected_move(overview.get("metrics") or {}),
 
         sig.ema_trend(data.get("technicals") or {}),
         sig.rsi(data.get("technicals") or {}),

@@ -40,16 +40,16 @@ export function Panel({
 /* ------------------------------------------------------- status / loading */
 
 const STATUS_COPY: Record<string, { title: string; detail: string }> = {
-  IBKR_UNAVAILABLE: {
-    title: 'IBKR not connected',
-    detail: 'Start TWS or IB Gateway and enable API connections on port 7496.',
+  PROVIDER_NOT_CONFIGURED: {
+    title: 'No market data key',
+    detail: 'Set UNUSUAL_WHALES_API_KEY in backend/.env and restart the server.',
   },
   NO_DATA: { title: 'No data', detail: 'The provider returned nothing for this request.' },
   NO_TRADES: { title: 'No prints yet', detail: 'No qualifying option trades on the tape.' },
   NO_VOLUME: { title: 'No volume', detail: 'No option volume or open interest reported.' },
   NO_CHAIN: { title: 'No option chain', detail: 'This symbol has no listed options.' },
   NO_PRICE: { title: 'No price', detail: 'No quote is available for this symbol.' },
-  UNKNOWN_SYMBOL: { title: 'Unknown symbol', detail: 'IBKR could not resolve this ticker.' },
+  UNKNOWN_SYMBOL: { title: 'Unknown symbol', detail: 'This ticker could not be resolved.' },
   INSUFFICIENT_DATA: { title: 'Not enough history', detail: 'Too few observations to compute this.' },
   NOT_TRACKED: {
     title: 'Not covered',
@@ -90,7 +90,7 @@ export function StateBlock({
   // "Backend unreachable" only when the request itself failed. A payload that
   // arrived carrying a provider status means the backend answered fine and it
   // is the upstream feed that is down -- saying otherwise sent people looking
-  // for a dead API server when TWS was simply closed.
+  // for a dead API server when the feed was simply unconfigured.
   if (error && !status) {
     return (
       <div className="state" style={compact ? { minHeight: 60, padding: 14 } : undefined}>
@@ -110,7 +110,7 @@ export function StateBlock({
 
   return (
     <div className="state" style={compact ? { minHeight: 60, padding: 14 } : undefined}>
-      {status === 'IBKR_UNAVAILABLE' ? <PlugZap size={17} /> : <AlertTriangle size={17} />}
+      {status === 'PROVIDER_NOT_CONFIGURED' ? <PlugZap size={17} /> : <AlertTriangle size={17} />}
       <span className="state-title">{copy.title}</span>
       <span>{copy.detail}</span>
     </div>

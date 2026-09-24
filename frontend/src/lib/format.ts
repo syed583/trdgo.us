@@ -78,13 +78,6 @@ export function strike(value: number | null | undefined): string {
   return Number.isInteger(value) ? String(value) : String(value);
 }
 
-/** "09/18/26" -> "09/18". The tables have no room for the year. */
-export function shortExpiry(label: string | null | undefined): string {
-  if (!label) return DASH;
-  const parts = label.split('/');
-  return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : label;
-}
-
 /**
  * Force millions, the way an options dashboard quotes contract volume
  * (0.76M rather than 760K) so a row of tiles shares one unit.
@@ -95,4 +88,19 @@ export function millions(value: number | null | undefined, digits = 2): string {
   // back to the natural unit rather than forcing the shared one.
   if (Math.abs(value) < 1e6) return compact(value, 0);
   return `${num(value / 1e6, digits)}M`;
+}
+
+/**
+ * A link target that is safe to render, or undefined.
+ *
+ * News and filing URLs arrive from upstream feeds and are rendered as
+ * clickable links. A `javascript:` or `data:` URL from a hostile or
+ * compromised feed would run in this app's origin the moment it is clicked,
+ * so only http(s) links are allowed through; anything else returns undefined
+ * and the caller renders plain text instead of a link.
+ */
+export function safeHref(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  const trimmed = String(url).trim();
+  return /^https?:\/\//i.test(trimmed) ? trimmed : undefined;
 }

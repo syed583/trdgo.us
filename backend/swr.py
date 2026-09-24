@@ -53,6 +53,25 @@ def _refresh(key: str) -> None:
                      daemon=True, name=f"swr-{key}").start()
 
 
+# Cache keys are built from request input, so the three dicts below must not
+# be allowed to grow without bound. When _asked exceeds this ceiling the
+# least-recently-asked keys are dropped from all three at once. IDLE_AFTER
+# already stops refreshing them; this reclaims the memory a flood of distinct
+# keys would otherwise pin forever.
+_MAX_KEYS = 2000
+
+
+def _evict_if_full(now: float) -> None:
+    """Drop the least-recently-asked keys. Caller holds _lock."""
+    if len(_asked) <= _MAX_KEYS:
+        return
+    ordered = sorted(_asked, key=_asked.get)
+    for key in ordered[: len(_asked) - _MAX_KEYS]:
+        _asked.pop(key, None)
+        _fns.pop(key, None)
+        _values.pop(key, None)
+
+
 def serve(key: str, fn: Callable[[], Any], fresh_for: float) -> Any:
     """The held answer for ``key``, refreshing it in the background if old."""
     now = time.time()
@@ -60,6 +79,7 @@ def serve(key: str, fn: Callable[[], Any], fresh_for: float) -> Any:
         _fns[key] = (fn, fresh_for)
         _asked[key] = now
         held = _values.get(key)
+        _evict_if_full(now)
 
     if held is not None:
         at, value = held

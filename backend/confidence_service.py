@@ -61,7 +61,8 @@ def calculate_confidence(payload: dict):
             continue
 
         comp_status = str(comp.get("status") or comp.get("data_quality") or "OK").upper()
-        if comp_status in {"NO_DATA", "NO_OPTIONS", "MISSING_OPTION_CONTRACT", "IBKR_UNAVAILABLE", "UNKNOWN"}:
+        if comp_status in {"NO_DATA", "NO_OPTIONS", "MISSING_OPTION_CONTRACT", "PROVIDER_OFFLINE",
+                           "DATA_UNAVAILABLE", "UNKNOWN"}:
             comp_status = "UNAVAILABLE"
 
         if comp_status == "TEST_DATA":
@@ -152,7 +153,8 @@ def calculate_confidence(payload: dict):
 
     # Option data missing signal.
     options = components.get("options")
-    if options and options.get("status") in ("NO_OPTIONS", "IBKR_UNAVAILABLE", "MISSING_OPTION_CONTRACT"):
+    if options and options.get("status") in ("NO_OPTIONS", "PROVIDER_OFFLINE", "DATA_UNAVAILABLE",
+                                       "MISSING_OPTION_CONTRACT"):
         confidence -= 20
         warnings.append("Options data unavailable or missing")
 

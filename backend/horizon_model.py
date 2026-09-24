@@ -43,101 +43,23 @@ HORIZONS = ("TODAY", "TOMORROW", "SWING")
 # Parameters and their weights per horizon. Each set sums to 100 so a score
 # means the same thing on every horizon. Names shared with the swing model
 # reuse its reading of that parameter; the rest are computed below.
+# Every outlook scores the same thirteen market parameters and the same
+# seven company ones, on the weights the operator specified.
+#
+# This is a deliberate simplification of what used to be here. Each outlook
+# used to swap in its own inputs -- the today outlook scored VWAP, the
+# opening range and the intraday trend in place of forty-one points of tape
+# and trend, on the reasoning that a Form 4 filed last week says little
+# about the next two hours. One table everywhere costs that: an intraday
+# call is now made on the same evidence as a swing call.
+#
+# What the outlooks still change is *when* a call is recorded and judged
+# against -- a TODAY call is scored against today's close, a SWING call
+# against the weeks after it. The session readings are still computed and
+# shown on the screen; they simply no longer carry weight.
 WEIGHTS: dict[str, dict[str, int]] = {
-    # Every outlook is weighted the way the swing model is: eighty points
-    # of market and price, twenty of company and ownership.
-    #
-    # What changes between outlooks is the emphasis inside the eighty --
-    # today leans on the session, tomorrow on the close and the trend --
-    # not which parameters exist. Leaving the trend out of the short
-    # outlooks showed a reader "Trend & Price Action: 0pt", which reads
-    # as "nothing found" when the truth was that nobody asked.
-    "TODAY": {
-        # Market and price -- 80.
-        "vwap": 9,
-        "opening_range": 8,
-        "intraday_trend": 8,
-        "relative_strength_day": 7,
-        "relative_volume": 5,
-        "gap_hold": 4,
-        "options_flow": 9,
-        "unusual_activity": 7,
-        "volume_pcr": 5,
-        "key_levels": 4,
-        "ema_trend": 6,
-        "rsi": 4,
-        "price_action": 2,
-        "implied_volatility": 2,
-        # Company and ownership -- 20, the same on every outlook.
-        "insider_activity": 5,
-        "fund_flows": 4,
-        "earnings_results": 4,
-        "merger_activity": 3,
-        "funding_activity": 2,
-        "dividend_trend": 1,
-        "event_radar": 1,
-    },
-    "TOMORROW": {
-        # Market and price -- 80.
-        "close_location": 10,
-        "relative_strength_day": 8,
-        "after_hours": 9,
-        "options_flow": 11,
-        "unusual_activity": 9,
-        "volume_pcr": 6,
-        "ema_trend": 13,
-        "rsi": 8,
-        "price_action": 4,
-        "implied_volatility": 2,
-        # Company and ownership -- 20, the same on every outlook.
-        "insider_activity": 5,
-        "fund_flows": 4,
-        "earnings_results": 4,
-        "merger_activity": 3,
-        "funding_activity": 2,
-        "dividend_trend": 1,
-        "event_radar": 1,
-    },
-    "TODAY_PREMARKET": {
-        # Market and price -- 80.
-        "after_hours": 17,
-        "close_location": 9,
-        "options_flow": 11,
-        "unusual_activity": 9,
-        "volume_pcr": 6,
-        "ema_trend": 13,
-        "rsi": 8,
-        "price_action": 4,
-        "implied_volatility": 3,
-        # Company and ownership -- 20, the same on every outlook.
-        "insider_activity": 5,
-        "fund_flows": 4,
-        "earnings_results": 4,
-        "merger_activity": 3,
-        "funding_activity": 2,
-        "dividend_trend": 1,
-        "event_radar": 1,
-    },
-    "TOMORROW_EARLY": {
-        # Market and price -- 80.
-        "ema_trend": 16,
-        "rsi": 9,
-        "options_flow": 14,
-        "unusual_activity": 11,
-        "volume_pcr": 7,
-        "close_location": 7,
-        "relative_strength_day": 7,
-        "price_action": 6,
-        "implied_volatility": 3,
-        # Company and ownership -- 20, the same on every outlook.
-        "insider_activity": 5,
-        "fund_flows": 4,
-        "earnings_results": 4,
-        "merger_activity": 3,
-        "funding_activity": 2,
-        "dividend_trend": 1,
-        "event_radar": 1,
-    },
+    horizon: dict(dm.WEIGHTS)
+    for horizon in ("TODAY", "TOMORROW", "TODAY_PREMARKET", "TOMORROW_EARLY")
 }
 
 COMPANY_PARAMS = (
@@ -513,7 +435,8 @@ def _after_hours(quote: dict, w: int) -> dm.Signal:
     label = ext.get("session_label") or "Extended hours"
     return _signal("after_hours", _clamp(pct / 2.0), w,
                    detail=f"{label}: {pct:+.2f}% vs the close at {_f(ext.get('price')) or 0:.2f}",
-                   evidence={"change_pct": pct}, source=ext.get("source") or "IBKR")
+                   evidence={"change_pct": pct},
+                   source=ext.get("source") or "UNUSUAL_WHALES")
 
 
 # ---------------------------------------------------------------------------
@@ -654,18 +577,32 @@ def score_horizon(symbol: str, horizon: str, base: Optional[dict] = None,
     if horizon == "TODAY" and not premarket:
         intraday = _intraday(symbol, cached)
         bars = _today_bars(intraday)
-        signals += [
-            _vwap(bars, price, weights["vwap"]),
-            _opening_range(bars, price, weights["opening_range"]),
-            _intraday_trend(bars, weights["intraday_trend"]),
-            _relative_strength(day_pct, spy_pct, weights["relative_strength_day"]),
-            _relative_volume_matched(bars, _prior_sessions(symbol), day_pct,
-                                     weights["relative_volume"]),
-            _gap_hold(daily, bars, price, weights["gap_hold"]),
-        ]
+        session_builders = (
+            ("vwap", lambda w: _vwap(bars, price, w)),
+            ("opening_range", lambda w: _opening_range(bars, price, w)),
+            ("intraday_trend", lambda w: _intraday_trend(bars, w)),
+            ("relative_strength_day",
+             lambda w: _relative_strength(day_pct, spy_pct, w)),
+            ("relative_volume",
+             lambda w: _relative_volume_matched(
+                 bars, _prior_sessions(symbol), day_pct, w)),
+            ("gap_hold", lambda w: _gap_hold(daily, bars, price, w)),
+        )
+        # Built whatever the table says. A parameter the table does not
+        # weigh is still worth showing -- VWAP and the opening range are the
+        # reason to look at a today call at all -- so it is computed at zero
+        # weight: visible to the reader, silent in the arithmetic.
+        for name, build in session_builders:
+            signals.append(build(weights.get(name, 0)))
         for name in ("options_flow", "unusual_activity", "volume_pcr",
                      "key_levels"):
-            signals.append(_reuse(base, name, weights[name]))
+            if name in weights:
+                signals.append(_reuse(base, name, weights[name]))
+        # The rest of the table, read from the swing result.
+        built = {s.name for s in signals}
+        for name, weight in weights.items():
+            if name not in built and name not in COMPANY_PARAMS:
+                signals.append(_reuse(base, name, weight))
         basis = "Intraday price and volume since the open, and the options tape as it prints."
     else:
         early = horizon == "TOMORROW" and session in ("PRE_MARKET", "OPEN")
@@ -678,6 +615,11 @@ def score_horizon(symbol: str, horizon: str, base: Optional[dict] = None,
             "relative_strength_day": lambda w: _relative_strength(day_pct, spy_pct, w),
             "after_hours": lambda w: _after_hours(quote, w),
         }
+        # Same rule as the intraday branch: what the table does not weigh is
+        # still shown, at zero.
+        for name, build in builders.items():
+            if name not in weights:
+                signals.append(build(0))
         for name, w in weights.items():
             if name in COMPANY_PARAMS:
                 continue          # appended below, for both branches alike

@@ -83,19 +83,22 @@ def weakest(*stamps: Optional[dict]) -> Optional[dict]:
 
 def for_quote(price_source: str, session: str) -> dict:
     """
-    A price is live only when a broker print is what is being shown.
+    A price is live only when a current print is what is being shown.
 
-    Outside regular hours the headline is the last close by design -- the
-    extended print sits beside it -- so the badge says LAST CLOSE rather than
-    implying the market is moving.
+    Outside regular hours the headline is the last close by design, so the
+    badge says LAST CLOSE rather than implying the market is moving. The
+    broker print that used to earn a LIVE badge here is gone; during regular
+    hours the feed's own last trade earns it instead, and it is a real trade
+    rather than a snapshot.
     """
     src = (price_source or "").upper()
-    if src.startswith("IBKR") and session == "OPEN":
-        return stamp(LIVE, source="IBKR", detail="Live print from TWS.")
+    if session == "OPEN" and src and not src.startswith("PROVIDER_SNAPSHOT"):
+        return stamp(LIVE, source=price_source or UW,
+                     detail="Last trade, during the regular session.")
     if session == "OPEN":
         return stamp(
             SNAPSHOT, source=price_source or "PROVIDER",
-            detail="The broker print was unavailable, so this is the last "
+            detail="No live print was available, so this is the last "
                    "completed session's close rather than a live price.")
     return stamp(
         SNAPSHOT, source=price_source or "PROVIDER",
@@ -104,13 +107,9 @@ def for_quote(price_source: str, session: str) -> dict:
 
 
 def for_chain(source: str) -> dict:
-    src = (source or "").upper()
-    if src.startswith("IBKR"):
-        return stamp(LIVE, source="IBKR",
-                     detail="Live quotes and greeks from TWS.")
-    return stamp(DELAYED, source=source or "Unusual Whales", delay_minutes=15,
-                 detail="Provider chain. TWS serves the live chain during "
-                        "regular hours.")
+    return stamp(DELAYED, source=source or UW, delay_minutes=15,
+                 detail="Provider chain: quotes, implied volatility and "
+                        "greeks published per contract.")
 
 
 def for_tape(delay_minutes: float = 15.0, plan: Optional[dict] = None) -> dict:

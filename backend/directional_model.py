@@ -57,7 +57,7 @@ WEIGHTS: dict[str, int] = {
     "unusual_activity": 11,   # contracts far above their own baseline
     "disparity": 9,           # thirteen imbalance readings, partly overlapping
     "volume_pcr": 7,
-    "key_levels": 7,          # strikes where open interest slows price
+    "key_levels": 6,          # strikes where open interest slows price
     "daily_oi_change": 4,     # positions opened or closed overnight
     "flow_by_expiry": 2,
     "oi_positioning": 1,      # standing open interest, the slowest of these
@@ -66,16 +66,18 @@ WEIGHTS: dict[str, int] = {
     # behind the moving averages are small.
     "ema_trend": 10,
     "rsi": 5,
-    "price_action": 5,
+    "price_action": 4,
 
-    # How far, never which way -- 7 points that shape confidence and sizing
+    # How far, never which way -- 9 points that shape confidence and sizing
     # and contribute nothing to direction.
     #
-    # The expected move was dropped: it is the same sentence implied
-    # volatility already says, in dollars rather than percent, and two
-    # parameters saying one thing is two chances to read it twice. Its three
-    # points went to implied volatility, key levels and price action.
-    "implied_volatility": 7,
+    # These two say the same thing in different units: implied volatility as
+    # a percentage, the expected move as the dollar range that percentage
+    # implies by expiry. Both are listed because both are read, and neither
+    # votes on direction, so the overlap costs confidence arithmetic rather
+    # than pointing the score anywhere.
+    "implied_volatility": 6,
+    "expected_move": 3,
 
     # ---- LIST 2: company and ownership -- 20 --------------------------
     # Who owns it, 9. Held down by age: a Form 4 is two days old, a 13F a
@@ -141,6 +143,10 @@ WEIGHT_REASONS: dict[str, str] = {
     "price_action": (
         "Swing structure and strength against SPY. Kept small because both "
         "the trend and the session readings already cover much of it."),
+    "expected_move": (
+        "Three points: the dollar range the options market prices by expiry. "
+        "It sizes a trade and never points it -- the same reading implied "
+        "volatility gives in percent, which is why it sits below it."),
     "implied_volatility": (
         "Sizing only. How big a move is priced, never which way -- folding "
         "it into direction would make expensive options read as bullish."),
@@ -184,7 +190,7 @@ WEIGHT_REASONS: dict[str, str] = {
 # Parameters that describe magnitude rather than direction. They are scored
 # for confidence and sizing, and contribute zero to the directional total --
 # a high IV rank is not bullish or bearish, it is just loud.
-NON_DIRECTIONAL = {"implied_volatility"}
+NON_DIRECTIONAL = {"implied_volatility", "expected_move"}
 
 # The weight that can actually vote. Coverage is measured against this, so a
 # parameter the caller never supplied counts as missing rather than as absent

@@ -26,7 +26,7 @@ export default function MarketPage({ ctx }: { ctx: PageContext }) {
     <div className="page">
       <PageHead
         title="Market Overview"
-        subtitle="Broad indices and the eleven SPDR sectors, live from IBKR."
+        subtitle="Broad indices and the eleven SPDR sectors."
         right={
           <button className="ghost-btn" onClick={data.refresh}>
             <RefreshCw size={12} className={data.loading ? 'spin' : undefined} />
@@ -43,7 +43,11 @@ export default function MarketPage({ ctx }: { ctx: PageContext }) {
                 {d.indices.map((c: any) => (
                   <IndexCard key={c.symbol} card={c} onOpen={open} />
                 ))}
-                {d.vix && (
+                {/* Only when there is a level to show. The feed behind this
+                    strip carries no VIX quote, and the card rendered as a
+                    blank price with an empty sparkline, which reads as still
+                    loading rather than as unavailable. */}
+                {d.vix && d.vix.value != null && (
                   <div className="panel ov-card" title="CBOE Volatility Index">
                     <div className="ov-label">VIX <span className="ov-sub">Volatility</span></div>
                     <div className="ov-price">{num(d.vix.value)}</div>

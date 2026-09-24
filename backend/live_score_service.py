@@ -154,7 +154,7 @@ def _earnings_rows(db, symbols: list[str]) -> dict[str, dict]:
     symbol list, and the seed fallback needs only two more queries for the
     whole batch.
     """
-    import benzinga_earnings_service as benzinga
+    import uw_earnings_feed as benzinga
 
     symbols = [s.upper() for s in symbols]
     today = datetime.now(timezone.utc).date()
@@ -188,7 +188,7 @@ def _earnings_rows(db, symbols: list[str]) -> dict[str, dict]:
             "date_confirmed": row.get("date_confirmed", True),
             "lifecycle": row.get("lifecycle"),
             "status": "OK",
-            "source": "BENZINGA",
+            "source": "UNUSUAL_WHALES",
         }
 
     if not unresolved:
@@ -216,11 +216,9 @@ def _earnings_rows(db, symbols: list[str]) -> dict[str, dict]:
         if not company:
             out[symbol] = {
                 "status": "NOT_TRACKED",
-                "source": "BENZINGA",
+                "source": "UNUSUAL_WHALES",
                 "detail": (
-                    f"{symbol} is not in the Benzinga calendar cache. "
-                    "Coverage follows the subscribed plan; run the calendar "
-                    "sync in Settings to refresh it."
+                    f"No scheduled report on record for {symbol}."
                 ),
             }
             continue
@@ -266,7 +264,7 @@ def _earnings_row(db, symbol: str) -> dict:
     so on the Earnings screen the single ticker showing a date was showing a
     fixture, while the tickers that had real provider rows showed "No date".
     """
-    import benzinga_earnings_service as benzinga
+    import uw_earnings_feed as benzinga
 
     symbol = symbol.upper()
     today = datetime.now(timezone.utc).date()
@@ -289,14 +287,14 @@ def _earnings_row(db, symbol: str) -> dict:
             "date_confirmed": row.get("date_confirmed", True),
             "lifecycle": row.get("lifecycle"),
             "status": "OK",
-            "source": "BENZINGA",
+            "source": "UNUSUAL_WHALES",
         }
 
     company = db.query(Company).filter(Company.symbol == symbol).first()
     if not company:
         return {
             "status": "NOT_TRACKED",
-            "source": "BENZINGA",
+            "source": "UNUSUAL_WHALES",
             "detail": (
                 f"{symbol} is not in the Benzinga calendar cache. "
                 "Coverage follows the subscribed plan; run the calendar sync "
@@ -413,7 +411,7 @@ def get_watchlist(symbols: list[str]) -> dict:
     # Symbols with no usable quote need the composite fallback; work them out
     # up front so they can be scored concurrently instead of one at a time.
     # A quote can now succeed while bars are absent: the fallback chain serves
-    # prices from OptionData but carries no history. Keyed on status alone,
+    # prices from the feed but carries no history. Keyed on status alone,
     # those symbols skipped the composite and scored nothing at all, so test
     # for the bars the technical composite actually needs.
     needs_composite = [
@@ -1120,18 +1118,13 @@ def get_earnings_overview(symbol: str, chart_range: str = "6M") -> dict:
     final = score.get("final", {})
     bullish, bearish = _collect_reasons(components, opt_metrics)
 
-    # Alpha Vantage takes over the estimates panel once it is configured.
-    import alpha_vantage_estimates_service as av_estimates
-    import provider_config as pcfg
+    # The estimates panel: the current consensus and which way analysts are
+    # moving it. The 7/30/60/90-day snapshot comparison this panel was built
+    # around went with Alpha Vantage, and the payload says as much rather
+    # than letting a one-week revision count pass for it.
+    import uw_company_service as uwc
 
-    revisions = (
-        av_estimates.get_revisions(symbol)
-        if pcfg.ALPHA_VANTAGE.configured
-        else {
-            "symbol": symbol, "rows": [], "horizons_available": [],
-            **pcfg.ALPHA_VANTAGE.status(),
-        }
-    )
+    revisions = uwc.estimate_revisions(symbol)
 
     analysis = build_analysis(
         {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { api2 } from '../api/client';
+import { safeHref } from '../lib/format';
 import type { PageContext } from '../App';
 import { useApi } from '../hooks/useApi';
 import { Panel } from '../components/common';
@@ -20,7 +21,7 @@ export default function NewsPage({ ctx }: { ctx: PageContext }) {
     <div className="page">
       <PageHead
         title={`News & Sentiment · ${symbol}`}
-        subtitle="Headlines and article text from the news providers entitled to this IBKR account. Nothing is scraped."
+        subtitle="Headlines from the market data feed, each carrying the tickers it is about. Nothing is scraped."
         right={
           <button className="ghost-btn" onClick={() => { news.refresh(); sentiment.refresh(); }}>
             <RefreshCw size={12} className={news.loading ? 'spin' : undefined} />
@@ -41,8 +42,8 @@ export default function NewsPage({ ctx }: { ctx: PageContext }) {
                 <Unavailable
                   status={news.data?.status}
                   detail={news.data?.detail}
-                  required={news.data?.status === 'ENTITLEMENT_REQUIRED'
-                    ? 'An IBKR news subscription (e.g. Dow Jones, Briefing.com)'
+                  required={news.data?.status === 'PROVIDER_NOT_CONFIGURED'
+                    ? 'A market data key (UNUSUAL_WHALES_API_KEY)'
                     : undefined}
                 />
               ) : (
@@ -112,8 +113,8 @@ export default function NewsPage({ ctx }: { ctx: PageContext }) {
                   ))}
                 </div>
                 <div className="hint">
-                  Streaming news bulletins are not entitled on this account
-                  (IBKR error 10276); historical headlines and article bodies are.
+                  Headlines are read on request rather than streamed, and each
+                  links out to its publisher.
                 </div>
               </>
             ) : <Unavailable status={news.data?.status} compact />}
@@ -127,14 +128,11 @@ export default function NewsPage({ ctx }: { ctx: PageContext }) {
 function NewsItem({
   item, open, onToggle,
 }: { item: any; open: boolean; onToggle: () => void }) {
-  // Only the IBKR feed has an article-text endpoint; web feeds link out.
+  // Every headline links out to its publisher. The article-text endpoint
+  // that used to render a body inline belonged to the broker news wire,
+  // is gone; a headline with no link now says so rather than spinning on a
+  // fetch that cannot be served.
   const linked = !!item.url;
-  const article = useApi<any>(
-    (s) => (open && !linked ? api2.newsArticle(item.provider_code, item.article_id, s)
-      : Promise.resolve(null)),
-    [open, item.article_id],
-    { enabled: open && !linked },
-  );
 
   const stamp = item.published_at || item.time;
   const parsed = stamp ? new Date(stamp) : null;
@@ -157,12 +155,18 @@ function NewsItem({
           {linked ? (
             <div className="news-text">
               {item.summary && <p>{item.summary}</p>}
-              <a href={item.url} target="_blank" rel="noopener noreferrer">Read the full article at {item.provider || 'source'} →</a>
+              <a href={safeHref(item.url)} target="_blank" rel="noopener noreferrer">Read the full article at {item.provider || 'source'} →</a>
             </div>
-          ) : article.loading && !article.data ? <Loading label="Fetching article…" />
-            : article.data?.status === 'OK'
-              ? <pre className="news-text">{article.data.text}</pre>
-              : <Unavailable status={article.data?.status} detail={article.data?.detail} compact />}
+          ) : (
+            <div className="news-text">
+              {item.summary && <p>{item.summary}</p>}
+              <Unavailable
+                status="NO_LINK"
+                detail="This headline arrived without a link to its source."
+                compact
+              />
+            </div>
+          )}
         </div>
       )}
     </div>

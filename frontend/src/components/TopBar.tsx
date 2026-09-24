@@ -106,7 +106,7 @@ export default function TopBar({
 }
 
 /**
- * Ticker search with live IBKR suggestions.
+ * Ticker search, suggesting from the SEC ticker registry.
  *
  * Suggestions come from reqMatchingSymbols, and committing a symbol validates
  * it against a real contract before navigating, so an unknown ticker says so
@@ -265,7 +265,10 @@ function HealthBadge({
     return <span className="conn"><i className="dot" />Connecting</span>;
   }
 
-  const live = health.ibkr === 'OK';
+  // "Live" used to mean the TWS socket was open. It means the market feed
+  // is answering, which is what the badge was really reporting: whether the
+  // numbers on screen are coming from anywhere.
+  const live = health.feed === 'OK';
   const degraded = live && (
     health.market_data !== 'OK' || health.providers?.news?.status !== 'OK'
   );
@@ -281,7 +284,7 @@ function HealthBadge({
       title={title || 'Provider status'}
     >
       <i className="dot" />
-      {live ? (degraded ? 'LIVE · DEGRADED' : 'LIVE · IBKR') : 'IBKR OFFLINE'}
+      {live ? (degraded ? 'LIVE · DEGRADED' : 'LIVE') : 'FEED OFFLINE'}
     </NavLink>
   );
 }

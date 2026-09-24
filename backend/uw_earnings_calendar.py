@@ -148,13 +148,29 @@ def calendar(start: Optional[str] = None, end: Optional[str] = None,
     last = (datetime.strptime(end, "%Y-%m-%d").date() if end
             else cursor + timedelta(days=max(days, 1)))
 
-    rows: list[dict] = []
-    asked = 0
-    while cursor <= last and asked < 40:
+    days: list[str] = []
+    while cursor <= last and len(days) < 40:
         if cursor.weekday() < 5:
-            rows.extend(_for_date(cursor.isoformat()))
-            asked += 1
+            days.append(cursor.isoformat())
         cursor += timedelta(days=1)
+
+    # Fetched together, not one after another. The feed answers per date, so
+    # a two-month window is forty round trips -- 48 seconds of pure latency
+    # on a cold Market Overview, which is what the date strip at the top of
+    # every page was waiting on. The client paces its own requests, so the
+    # pool here only removes the waiting, not the spacing.
+    rows: list[dict] = []
+    asked = len(days)
+    if days:
+        from concurrent.futures import ThreadPoolExecutor
+
+        pool = ThreadPoolExecutor(max_workers=min(8, len(days)),
+                                  thread_name_prefix="cal")
+        try:
+            for day_rows in pool.map(_for_date, days):
+                rows.extend(day_rows)
+        finally:
+            pool.shutdown(wait=False)
 
     rows.sort(key=lambda r: (r["date"], -(r["market_cap"] or 0)))
     by_day: dict[str, int] = {}
@@ -215,6 +231,15 @@ def preview(symbol: str) -> dict:
     if expected is not None and abs(expected) <= 1:
         expected *= 100
 
+    # Their figure exists only once the report is inside the front-month
+    # straddle. Beyond that, price it from the chain ourselves rather than
+    # showing an empty cell.
+    computed = None
+    if expected is None and next_report:
+        computed = implied_move(symbol, _day(next_report.get("report_date")))
+        if computed:
+            expected = computed["percent"]
+
     history = [{
         "date": _day(r.get("report_date")),
         "quarter_ending": _day(r.get("ending_fiscal_quarter")),
@@ -245,10 +270,22 @@ def preview(symbol: str) -> dict:
         "street_estimate": _f((next_report or {}).get("street_mean_est")),
         "expected_move_percent": (round(expected, 2)
                                   if expected is not None else None),
-        "expected_move": _f((next_report or {}).get("expected_move")),
+        "expected_move": (_f((next_report or {}).get("expected_move"))
+                          or (computed or {}).get("dollars")),
+        # Said plainly: their published number, or this app's own reading of
+        # the chain. Those are different claims and the screen should not
+        # present them as one.
+        "expected_move_source": ("PROVIDER" if not computed
+                                 else "CHAIN" if expected is not None else None),
+        "expected_move_basis": (computed or {}).get("basis"),
         "typical_move_percent": typical,
         # The sentence the screen is really there to let someone form.
-        "expectation_vs_history": _verdict(expected, typical),
+        # The comparison is only fair on their figure. Ours is a straddle
+        # bought weeks early and held past the report, so most of it is time
+        # value -- calling that "more than this stock usually moves" would
+        # be a false reading drawn from an upper bound.
+        "expectation_vs_history": (_verdict(expected, typical) if not computed
+                                   else _chain_verdict(expected, typical, computed)),
         "reports_measured": len(history),
         "beat_count": beaten,
         "beat_rate": (round(beaten / len(beats) * 100) if beats else None),
@@ -259,11 +296,96 @@ def preview(symbol: str) -> dict:
     }
 
 
+def implied_move(symbol: str, report_date: str) -> Optional[dict]:
+    """
+    The move the option market is pricing, computed from the chain.
+
+    Their published figure comes from the front-month straddle and only
+    exists once the report is inside it -- so a company reporting in five
+    weeks shows nothing, which on screen reads as missing data rather than
+    as "not priced yet".
+
+    This computes it instead: the first expiry after the report date, the
+    strike nearest spot, and the cost of owning both sides of it. A straddle
+    is what someone pays to be right about the size of a move and not its
+    direction, so its price *is* the move being priced.
+
+    One honest caveat, carried in the payload rather than left for the
+    reader to know: that expiry is usually days past the report, so the
+    price includes time value beyond the event. It is an upper bound on the
+    earnings move, not the move itself.
+    """
+    symbol = (symbol or "").upper().strip()
+    if not symbol or not report_date:
+        return None
+
+    expiries = sorted({str(r.get("expires") or "")[:10]
+                       for r in uw._rows(uw.expirations(symbol))
+                       if r.get("expires")})
+    after = next((e for e in expiries if e >= report_date), None)
+    if not after:
+        return None
+
+    chain = uw.load_chain(symbol, after)
+    spot = (chain or {}).get("spot")
+    rows = (chain or {}).get("rows") or []
+    if not spot or not rows:
+        return None
+
+    strikes = sorted({r["strike"] for r in rows if r.get("strike")})
+    if not strikes:
+        return None
+    atm = min(strikes, key=lambda k: abs(k - spot))
+
+    def side(right: str) -> Optional[float]:
+        for r in rows:
+            if r.get("strike") == atm and r.get("right") == right:
+                return r.get("mid") or r.get("last")
+        return None
+
+    call, put = side("C"), side("P")
+    if call is None or put is None:
+        return None
+
+    straddle = call + put
+    return {
+        "percent": round(straddle / spot * 100, 2),
+        "dollars": round(straddle, 2),
+        "expiry": after,
+        "strike": atm,
+        "spot": spot,
+        "basis": ("Computed here from the "
+                  f"{atm:g} straddle expiring {after} -- the first expiry "
+                  "after the report. It includes time value beyond the "
+                  "event, so it is an upper bound on the earnings move."),
+    }
+
+
 def _pct(value) -> Optional[float]:
     figure = _f(value)
     if figure is None:
         return None
     return round(figure * 100, 2) if abs(figure) <= 1 else round(figure, 2)
+
+
+def _chain_verdict(expected: Optional[float], typical: Optional[float],
+                   computed: dict) -> Optional[str]:
+    """
+    What our own straddle reading is allowed to say.
+
+    It states the range and where it came from, and stops. The provider's
+    figure isolates the event; this one cannot, so it draws no conclusion
+    about whether options look expensive.
+    """
+    if expected is None:
+        return None
+    line = (f"No published expected move yet -- this report is too far out "
+            f"for the front-month straddle. The {computed['expiry']} straddle "
+            f"prices a {expected:.1f}% range, which includes time value "
+            f"beyond the report.")
+    if typical:
+        line += f" This stock has typically moved {typical:.1f}% on results."
+    return line
 
 
 def _verdict(expected: Optional[float],

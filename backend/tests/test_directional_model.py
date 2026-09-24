@@ -28,18 +28,17 @@ def test_weights_total_one_hundred():
 
 def test_volatility_parameters_carry_weight_but_never_vote():
     """
-    Implied volatility describes magnitude, not direction. It holds real
-    weight in the framework and must still contribute nothing to the
-    directional total.
+    Implied volatility and the expected move describe magnitude, not
+    direction. Both hold real weight in the framework and both must still
+    contribute nothing to the directional total -- they size a trade and
+    never point it.
 
-    Two parameters used to sit beside it and have been dropped: dealer gamma,
-    which needed the live chain and went missing whenever TWS was down, and
-    the expected move, which said what implied volatility already says in
-    dollars rather than percent.
+    Dealer gamma used to sit beside them and was dropped: it needed the live
+    chain and went missing whenever TWS was down.
     """
-    for gone in ("gamma_exposure", "expected_move"):
+    for gone in ("gamma_exposure",):
         assert gone not in dm.WEIGHTS, gone
-    for name in ("implied_volatility",):
+    for name in ("implied_volatility", "expected_move"):
         assert dm.WEIGHTS[name] > 0
         assert dm.Signal(name, 1.0).points == 0.0
         assert dm.Signal(name, -1.0).points == 0.0

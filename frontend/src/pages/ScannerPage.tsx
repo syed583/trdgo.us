@@ -67,9 +67,9 @@ export default function ScannerPage({ ctx }: { ctx: PageContext }) {
         title="Market Scanner"
         subtitle={
           <>
-            Scans run inside TWS and return a ranked list;
-            quotes are attached to the visible rows only, so a scan never
-            approaches the market-data line limit.
+            Ranked across every optionable US name. Each row arrives with
+            its quote, RSI and moving-average posture already on it, so the
+            technicals toggle costs almost nothing.
           </>
         }
         right={
@@ -158,7 +158,7 @@ export default function ScannerPage({ ctx }: { ctx: PageContext }) {
         </span>}
       >
         {scan.error ? <ErrorState error={scan.error} />
-          : scan.initialLoading ? <Loading label="Running scan in TWS…" />
+          : scan.initialLoading ? <Loading label="Running scan…" />
             : !sorted.length
               ? <Unavailable status={scan.data?.status} detail={scan.data?.detail} />
               : (

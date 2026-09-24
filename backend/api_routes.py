@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import swr
 import time
+import input_validation as validate
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeout
 from typing import Any, Optional
@@ -23,14 +24,11 @@ from fastapi import APIRouter, Body, Query
 from sqlalchemy import text
 
 import ai_insights_service as insights
-import alpha_vantage_estimates_service as av_estimates
-import benzinga_earnings_service as benzinga
 import earnings_intelligence_service as earnings_intel
 import provider_config as pcfg
 import backtest_service as backtests
 import earnings_calendar_service as calendar
-import ibkr_news_service as news
-import ibkr_scanner_service as scanner
+import uw_scanner_service as scanner
 import live_market_service as market
 import live_options_analytics as opt_analytics
 import live_options_service as options
@@ -40,7 +38,6 @@ import provider_health as health
 import symbol_service as symbols
 import workspace_service as workspace
 from database import engine
-from ibkr_client import ibkr
 
 router = APIRouter(prefix="/api", tags=["dashboard"])
 
@@ -63,15 +60,24 @@ def status() -> dict:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         db = {"connected": True, "error": None}
-    except Exception as exc:  # noqa: BLE001
-        db = {"connected": False, "error": str(exc)}
+    except Exception:  # noqa: BLE001
+        # The badge needs connected/not; the exception text names the DB host
+        # and user, so it is logged rather than returned.
+        import logging
+        logging.getLogger(__name__).exception("status: database unreachable")
+        db = {"connected": False, "error": "database unreachable"}
 
-    ib_status = ibkr.probe()
+    # "live" used to mean "the TWS socket is open". It now means the market
+    # feed is configured and answering, which is what the badge was really
+    # telling anyone: whether the numbers on screen are coming from anywhere.
+    import unusualwhales_service as uw
+
+    feed = uw.provider_status()
     return {
-        "ibkr": ib_status,
+        "feed": feed,
         "database": db,
         "market": market.market_clock(),
-        "live": bool(ib_status.get("connected")),
+        "live": bool(feed.get("configured")) and not feed.get("blocked"),
     }
 
 
@@ -116,7 +122,10 @@ def chart(
 
 @router.get("/indices")
 def indices() -> dict:
-    return market.get_indices()
+    # Served stale-while-revalidate: the strip is on every page, and a poll
+    # that lands the moment the cache expired should get the last answer at
+    # once, not wait out a rebuild.
+    return swr.serve("indices", market.get_indices, 30)
 
 
 @router.get("/market/pulse")
@@ -129,7 +138,11 @@ def market_pulse() -> dict:
 
 @router.get("/market/overview")
 def market_overview() -> dict:
-    return overview.get_market_overview()
+    # Stale-while-revalidate: the Market Overview build fans out to every
+    # index and sector, so a synchronous rebuild on expiry blocked the page
+    # for the length of that fan-out. Now the page gets the held answer
+    # instantly and the refresh happens behind it.
+    return swr.serve("market_overview", overview.get_market_overview, 45)
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +159,7 @@ def ticker_strip(symbols: Optional[str] = None) -> dict:
     the operator has saved symbols of their own.
     """
     if symbols:
-        requested = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+        requested = validate.clean_symbols(symbols, limit=10)
     else:
         saved = [r["symbol"] for r in
                  workspace.list_watchlist(with_quotes=False)["rows"]]
@@ -272,20 +285,16 @@ def estimate_revisions(symbol: str) -> dict:
     """
     Which way the estimate for the next quarter is moving.
 
-    Alpha Vantage leads when it has history: comparing stored snapshots 7,
-    30, 60 and 90 days apart is the better measurement, and it is the one
-    this screen was built around. It needs months of its own snapshots
-    before it can say anything, though, so a fresh install falls back to the
-    provider's own revision counts rather than showing an empty panel.
-    """
-    stored = av_estimates.get_revisions(symbol)
-    if stored.get("rows"):
-        return stored
+    The current estimate and how many analysts moved it in the last week.
 
+    The snapshot comparison this screen was built around -- stored estimates
+    7, 30, 60 and 90 days apart -- came from Alpha Vantage and went with it.
+    That was the better measurement and it is worth saying so: this one is a
+    single week's revision count, and the payload says which it is.
+    """
     import uw_company_service as uwc
 
-    live = uwc.estimate_revisions(symbol)
-    return live if live.get("rows") else stored
+    return uwc.estimate_revisions(symbol)
 
 
 # ---------------------------------------------------------------------------
@@ -298,55 +307,15 @@ def providers() -> dict:
     """Configuration state of every external provider. Never returns a key."""
     import unusualwhales_service as uw
 
-    bz_status = benzinga.provider_status()
-    av_status = av_estimates.provider_status()
-
     # provider_matrix() only knows whether a key is configured. The per-service
-    # statuses also weigh the last fetch, so a rejected key reports as rejected
-    # instead of a green OK; let those win where they overlap.
+    # status also weighs the last fetch, so a rejected key reports as rejected
+    # instead of a green OK; let that win where they overlap.
     matrix = pcfg.provider_matrix()
     # Not in the shared matrix: its key is read from the environment directly
     # rather than through a ProviderSpec, so it reports for itself.
     matrix["UNUSUAL_WHALES_API_KEY"] = uw.provider_status()
 
-    import finviz_service as finviz
-
-    matrix["FINVIZ_AUTH_TOKEN"] = finviz.provider_status()
-    for spec, detailed in ((pcfg.BENZINGA, bz_status),
-                           (pcfg.ALPHA_VANTAGE, av_status)):
-        if spec.key_env in matrix:
-            matrix[spec.key_env] = {**matrix[spec.key_env], **detailed}
-
-    return {
-        "providers": matrix,
-        "benzinga": bz_status,
-        "alpha_vantage": av_status,
-        "status": "OK",
-    }
-
-
-@router.post("/providers/benzinga/sync")
-def benzinga_sync(payload: dict = Body(default={})) -> dict:
-    """Refresh the earnings-calendar cache. Explicit, never automatic."""
-    symbols = payload.get("symbols")
-    if isinstance(symbols, str):
-        symbols = [s.strip() for s in symbols.split(",") if s.strip()]
-    return benzinga.sync_calendar(symbols=symbols,
-                                  force=bool(payload.get("force")))
-
-
-@router.post("/providers/alpha-vantage/sync")
-def alpha_vantage_sync(payload: dict = Body(default={})) -> dict:
-    """Snapshot current consensus for one symbol."""
-    symbol = (payload.get("symbol") or "").strip()
-    if not symbol:
-        return {"status": "INVALID", "detail": "symbol required"}
-    return av_estimates.snapshot_symbol(symbol, force=bool(payload.get("force")))
-
-
-# ---------------------------------------------------------------------------
-# general directional model
-# ---------------------------------------------------------------------------
+    return {"providers": matrix, "status": "OK"}
 
 
 @router.get("/directional/{symbol}")
@@ -384,22 +353,6 @@ def event_radar(symbol: str) -> dict:
 # ---------------------------------------------------------------------------
 # score snapshots -- the record that will eventually validate the weights
 # ---------------------------------------------------------------------------
-
-
-@router.get("/warmer/status")
-def warmer_status() -> dict:
-    """Whether the TWS connection is being held warm, and when it last ran."""
-    import market_warmer_service as warmer
-
-    return warmer.status()
-
-
-@router.post("/warmer/run")
-def warmer_run(payload: dict = Body(default={})) -> dict:
-    """Force a warm cycle now, rather than waiting for the next one."""
-    import market_warmer_service as warmer
-
-    return warmer.warm_now(payload.get("symbols"))
 
 
 @router.get("/snapshots/status")
@@ -675,45 +628,12 @@ def options_chain(symbol: str, expiry: Optional[str] = None) -> dict:
     chain = options.load_chain(symbol, expiry=expiry)
     table = opt_analytics.get_chain_table(chain)
 
-    # During the session, put live TWS prices over the ladder.
-    #
-    # The ladder itself comes from the provider chain, which is fast but
-    # fifteen minutes behind and carries no bid or ask. With TWS connected the
-    # page kept showing that frozen copy, so nothing on it moved. The strikes
-    # on screen are quoted live instead; IV and greeks stay the provider's and
-    # the badge says exactly that.
-    if (table.get("status") == "OK" and table.get("strikes")
-            and (market.market_clock() or {}).get("session") == "OPEN"):
-        live = options.live_quotes(
-            symbol, table.get("expiry") or "",
-            [row["strike"] for row in table["strikes"]])
-        quotes = live.get("quotes") or {}
-        applied = 0
-        for row in table["strikes"]:
-            for side, right in (("call", "C"), ("put", "P")):
-                leg = row.get(side)
-                q = quotes.get(f"{right}:{round(float(row['strike']), 4)}")
-                if not leg or not q:
-                    continue
-                for field in ("bid", "ask", "last"):
-                    if q.get(field) is not None:
-                        leg[field] = q[field]
-                if q.get("bid") and q.get("ask"):
-                    leg["mid"] = round((q["bid"] + q["ask"]) / 2, 4)
-                leg["live"] = True
-                applied += 1
-        if applied:
-            import freshness
-
-            table["freshness"] = freshness.stamp(
-                freshness.LIVE, source="IBKR", label="LIVE QUOTES",
-                detail=("Bid, ask and last are live from TWS. IV and greeks "
-                        "come from the provider chain, 15 minutes behind."),
-                as_of=live.get("as_of"))
-            table["live_legs"] = applied
-        else:
-            table["live_status"] = live.get("status")
-            table["live_detail"] = live.get("detail")
+    # The ladder carries its own quote. The block that stood here overlaid
+    # live TWS prices on top, because the chain this page used to read was
+    # fifteen minutes behind and carried no bid or ask at all -- so nothing on
+    # the page moved. The chain it reads now publishes bid, ask, mid, last,
+    # IV and greeks together, from one request, which is what the overlay was
+    # reaching for.
     return table
 
 
@@ -928,139 +848,6 @@ def providers_usage() -> dict:
     return swr.serve("providers:usage", provider_usage.usage, 300)
 
 
-@router.get("/finviz/screen")
-def finviz_screen(f: str = "", v: str = "111", o: str = "",
-                  t: str = "", limit: int = 200) -> dict:
-    """
-    Run a Finviz Elite screen, using their own filter vocabulary.
-
-    ``f`` is the filter string copied from a screener URL, so a screen built
-    by hand on their site behaves identically here.
-    """
-    import finviz_service as finviz
-
-    return swr.serve(f"finviz:{v}:{f}:{o}:{t}:{limit}",
-                     lambda: finviz.screen(filters=f, view=v, order=o,
-                                           tickers=t, limit=limit), 900)
-
-
-@router.get("/finviz/stock/{symbol}")
-def finviz_stock(symbol: str, p: str = "d", limit: int = 500) -> dict:
-    """Daily, weekly or monthly price history for one ticker."""
-    import finviz_service as finviz
-
-    return swr.serve(f"finviz:stock:{symbol.upper()}:{p}:{limit}",
-                     lambda: finviz.stock_history(symbol, p, limit), 900)
-
-
-@router.get("/finviz/options/{symbol}")
-def finviz_options(symbol: str, e: str = "", limit: int = 1000) -> dict:
-    """Finviz's own option chain -- a second opinion, fifteen minutes behind."""
-    import finviz_service as finviz
-
-    return swr.serve(f"finviz:options:{symbol.upper()}:{e}:{limit}",
-                     lambda: finviz.options_chain(symbol, e, limit), 600)
-
-
-@router.get("/finviz/groups")
-def finviz_groups(g: str = "sector", v: str = "152", o: str = "") -> dict:
-    """Sector, industry or country performance."""
-    import finviz_service as finviz
-
-    return swr.serve(f"finviz:groups:{g}:{v}:{o}",
-                     lambda: finviz.groups(g, v, o), 900)
-
-
-@router.get("/finviz/filings")
-def finviz_filings(t: str = "", o: str = "-filingDate", limit: int = 100) -> dict:
-    """SEC filings as Finviz lists them."""
-    import finviz_service as finviz
-
-    return swr.serve(f"finviz:filings:{t}:{o}:{limit}",
-                     lambda: finviz.latest_filings(t, o, limit), 900)
-
-
-@router.get("/finviz/news")
-def finviz_news(v: str = "1", limit: int = 200) -> dict:
-    """The market news table."""
-    import finviz_service as finviz
-
-    return swr.serve(f"finviz:news:{v}:{limit}",
-                     lambda: finviz.news(v, limit), 600)
-
-
-@router.get("/finviz/insiders")
-def finviz_insiders(tc: str = "", t: str = "", limit: int = 200) -> dict:
-    """Insider trades; tc=7 is open-market buys."""
-    import finviz_service as finviz
-
-    return swr.serve(f"finviz:insiders:{tc}:{t}:{limit}",
-                     lambda: finviz.insiders(tc, t, limit), 1800)
-
-
-@router.get("/finviz/managers")
-def finviz_managers(search: str = "", limit: int = 200) -> dict:
-    """13F managers, by partial name."""
-    import finviz_service as finviz
-
-    return swr.serve(f"finviz:managers:{search}:{limit}",
-                     lambda: finviz.managers(search, limit), 6 * 3600)
-
-
-@router.get("/finviz/funds")
-def finviz_funds(search: str = "", limit: int = 200) -> dict:
-    """Funds, by partial name."""
-    import finviz_service as finviz
-
-    return swr.serve(f"finviz:funds:{search}:{limit}",
-                     lambda: finviz.funds(search, limit), 6 * 3600)
-
-
-@router.get("/finviz/funds/{investor_id}/holdings")
-def finviz_fund_holdings(investor_id: str, limit: int = 1000) -> dict:
-    """One fund's holdings, by investor id (e.g. S000007195)."""
-    import finviz_service as finviz
-
-    return swr.serve(f"finviz:fundholdings:{investor_id}:{limit}",
-                     lambda: finviz.fund_holdings(investor_id, limit), 6 * 3600)
-
-
-@router.get("/finviz/calendar/{kind}")
-def finviz_calendar(kind: str, dateFrom: str = "", limit: int = 500) -> dict:
-    """The economic, earnings or dividends calendar."""
-    import finviz_service as finviz
-
-    return swr.serve(f"finviz:calendar:{kind}:{dateFrom}:{limit}",
-                     lambda: finviz.calendar(kind, dateFrom, limit), 3600)
-
-
-@router.get("/finviz/performance/{market}")
-def finviz_performance(market: str) -> dict:
-    """Futures, forex or crypto performance."""
-    import finviz_service as finviz
-
-    return swr.serve(f"finviz:perf:{market}",
-                     lambda: finviz.performance(market), 600)
-
-
-@router.get("/finviz/portfolio/{pid}")
-def finviz_portfolio(pid: str, o: str = "", limit: int = 500) -> dict:
-    """One of your own Finviz portfolios, exported as rows."""
-    import finviz_service as finviz
-
-    return swr.serve(f"finviz:pf:{pid}:{o}:{limit}",
-                     lambda: finviz.portfolio(pid, order=o, limit=limit), 900)
-
-
-@router.get("/finviz/fundamentals/{symbol}")
-def finviz_fundamentals(symbol: str) -> dict:
-    """Valuation, margins, growth and float for one company."""
-    import finviz_service as finviz
-
-    return swr.serve(f"finviz:fund:{symbol.upper()}",
-                     lambda: finviz.fundamentals(symbol), 3600)
-
-
 @router.get("/disparity/{symbol}")
 def options_disparity(symbol: str) -> dict:
     """How far the options market sits from its own balance, reading by reading."""
@@ -1196,21 +983,17 @@ def options_flow(symbol: str, limit: int = 40) -> dict:
 
 def _news_backend():
     """
-    Whichever news source can actually answer.
+    The news source.
 
-    Unusual Whales leads: it is the paid feed, has no daily article cap, and
-    carries the tickers each headline is about. Marketaux stays behind it for
-    its per-article sentiment model, and the IBKR feed behind that for
-    installs running TWS with a news entitlement.
+    One feed. The IBKR wire sat behind it for installs running TWS with a
+    news entitlement, and Marketaux between them; both are gone. What went
+    with Marketaux was a per-article sentiment model, which is why the tone
+    shown now is labelled as this app's own keyword estimate everywhere it
+    appears.
     """
     import uw_news_adapter as uwnews
 
-    if uwnews.configured():
-        return uwnews
-
-    import marketaux_news_service as marketaux
-
-    return marketaux if marketaux.configured() else news
+    return uwnews
 
 
 @router.get("/news/desk")
@@ -1231,11 +1014,6 @@ def symbol_news(symbol: str, limit: int = 20) -> dict:
     backend = _news_backend()
     getter = getattr(backend, "get_symbol_news", None) or backend.get_news
     return getter(symbol, limit)
-
-
-@router.get("/news/article/{provider_code}/{article_id}")
-def news_article(provider_code: str, article_id: str) -> dict:
-    return news.get_article(provider_code, article_id)
 
 
 @router.get("/sentiment/{symbol}")
@@ -1423,7 +1201,7 @@ def _dashboard_build() -> dict:
         try:
             return fn()
         except Exception as exc:  # noqa: BLE001
-            return {**fallback, "status": "ERROR", "detail": str(exc)}
+            return {**fallback, "status": "ERROR", "detail": type(exc).__name__}
 
     def upcoming_earnings() -> dict:
         """

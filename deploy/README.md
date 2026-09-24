@@ -4,12 +4,10 @@ What you need: a small Linux server (2 vCPU / 4 GB is comfortable; 1 vCPU /
 2 GB works), Python 3.12+, Node 20+, Postgres 14+, and a domain name if you
 want HTTPS.
 
-**Interactive Brokers does not come with you.** TWS is a desktop application
-and there will be none on the server. That is fine: Unusual Whales serves the
-quotes and the intraday bars the app used to need TWS for. The Settings
-screen will show IBKR as offline, every other provider as OK, and no screen
-goes blank. If you do want TWS on the server, that is IB Gateway plus a
-headless X display, and it is a separate project — don't start there.
+**There is nothing to install besides the app.** It used to need a
+brokerage desktop application running alongside it for quotes and intraday
+bars; that connection was removed. One HTTP feed serves the whole app, so a
+server install is the app, Postgres and a reverse proxy.
 
 ---
 

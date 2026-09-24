@@ -136,7 +136,7 @@ def capture(symbols: list[str], on: Optional[date] = None) -> dict:
                 "stored": stored, "skipped": skipped}
     except Exception as exc:  # noqa: BLE001
         session.rollback()
-        return {"status": "ERROR", "detail": str(exc)[:300]}
+        return {"status": "ERROR", "detail": type(exc).__name__}
     finally:
         session.close()
 
@@ -216,7 +216,7 @@ def fill_forward_returns(limit: int = 200) -> dict:
         return {"status": "OK", "filled": filled, "examined": len(rows)}
     except Exception as exc:  # noqa: BLE001
         session.rollback()
-        return {"status": "ERROR", "detail": str(exc)[:300]}
+        return {"status": "ERROR", "detail": type(exc).__name__}
     finally:
         session.close()
 

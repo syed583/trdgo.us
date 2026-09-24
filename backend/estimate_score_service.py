@@ -17,20 +17,9 @@ def _revision_data(db, symbol: str) -> dict:
     # Twelve Data first: its /eps_trend returns all four windows (7/30/60/90)
     # in one response, so the component can reach full confidence immediately.
     # Alpha Vantage omits the 90-day window and its free tier is 25 calls/day.
-    if cfg.TWELVE_DATA.configured:
-        import twelve_data_market_service as td
-
-        data = td.revision_windows(symbol)
-        if data.get("status") != "NO_DATA":
-            return data
-
-    if cfg.ALPHA_VANTAGE.configured:
-        import alpha_vantage_estimates_service as av
-
-        data = av.revision_windows(symbol)
-        if data.get("status") != "NO_DATA":
-            return data
-
+    # The provider windows are gone with their providers. What remains is
+    # this app's own snapshots, which is what the component was built on:
+    # estimates stored over time and compared against themselves.
     try:
         return calculate_estimate_revisions(db, symbol)
     except ValueError:

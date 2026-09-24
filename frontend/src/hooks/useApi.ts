@@ -13,7 +13,7 @@ export interface AsyncState<T> {
 /**
  * Runs an async loader and keeps the previous data visible while refreshing.
  *
- * Options data takes tens of seconds to assemble from TWS, so replacing the
+ * Options data takes seconds to assemble, so replacing the
  * screen with a spinner on every poll would make it unusable. In-flight
  * requests are aborted when the dependencies change or the component unmounts.
  */

@@ -52,7 +52,6 @@ export function BrandLockup() {
   );
 }
 
-export const BRAND_NAME = 'Tradgo.US';
-export const BRAND_TAGLINE = 'TRADE SMARTER. FASTER.';
+// Shown in the sidebar footer. The other brand strings that used to live
+// here (name, tagline, an options variant) had no readers and were removed.
 export const BRAND_QUOTE_EARNINGS = '“Data. Discipline. Edge.”';
-export const BRAND_QUOTE_OPTIONS = '“Options flow turns data into opportunity.”';

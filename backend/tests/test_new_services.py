@@ -1,51 +1,21 @@
 """
 Tests for the services added in the application phase.
 
-Everything here is offline: news text cleaning, the backtest's point-in-time
-guarantee, strategy validation and the provider-status vocabulary. The IBKR
-round trips themselves are covered by the live verification run, not by unit
-tests that would need a socket.
+Everything here is offline: the backtest's point-in-time guarantee, strategy
+validation and the provider-status vocabulary. The network round trips
+themselves are covered by the live verification run, not by unit tests that
+would need one.
+
+The news-text tests that used to open this file went with the IBKR news
+wire: they covered the routing-code stripping and entity unescaping that its
+payloads needed, and the feed that replaced it sends neither.
 """
 
 import pytest
 
 import backtest_service as bt
-import ibkr_news_service as news
 import provider_health as health
 import workspace_service as ws
-
-
-# ---------------------------------------------------------------- news text
-
-
-def test_headline_strips_the_dow_jones_routing_code():
-    raw = "{A:800015:L:en}Palantir, Nvidia Launch AI Platform"
-    assert news._clean_headline(raw) == "Palantir, Nvidia Launch AI Platform"
-
-
-def test_headline_unescapes_entities():
-    assert news._clean_headline("AT&amp;T beats") == "AT&T beats"
-
-
-def test_article_body_is_flattened_to_readable_text():
-    raw = "<p>&#10;  By A Reporter </p>&#10;<pre> </pre><p>Nvidia&apos;s quarter</p>"
-    out = news._clean_body(raw)
-    assert "<p>" not in out
-    assert "By A Reporter" in out
-    assert "Nvidia's quarter" in out
-
-
-def test_empty_article_body_stays_empty():
-    assert news._clean_body("") == ""
-    assert news._clean_body(None) == ""
-
-
-# ------------------------------------------------------- sentiment lexicon
-
-
-def test_sentiment_terms_do_not_overlap():
-    """A word scoring both ways would make the ratio meaningless."""
-    assert not (news.POSITIVE & news.NEGATIVE)
 
 
 # ------------------------------------------------------------- backtesting
@@ -347,27 +317,36 @@ def test_refresh_keeps_what_cannot_have_changed():
 
 # --- freshness badges ------------------------------------------------------
 
-def test_a_live_badge_needs_a_broker_print_and_an_open_market():
+def test_a_live_badge_needs_a_real_print_and_an_open_market():
     """
     The flow page said "Live data" over a fifteen-minute-delayed tape. The
     badge has to come from the source that actually answered, or it is a
     decoration that is wrong exactly when it matters.
+
+    The vocabulary is now the one get_quote actually writes: a live trade
+    carries the feed's name, and a figure that is really the last completed
+    session's close carries PROVIDER_SNAPSHOT.
     """
     import freshness as f
 
-    assert f.for_quote("IBKR", "OPEN")["kind"] == f.LIVE
-    # A provider snapshot during RTH is the last close, not a live price.
-    assert f.for_quote("OPTIONDATA", "OPEN")["kind"] == f.SNAPSHOT
-    # And a broker print outside RTH is still not the market moving.
-    assert f.for_quote("IBKR", "CLOSED")["kind"] == f.SNAPSHOT
+    assert f.for_quote("UNUSUAL_WHALES", "OPEN")["kind"] == f.LIVE
+    # A snapshot during RTH is the last close, not a live price.
+    assert f.for_quote("PROVIDER_SNAPSHOT", "OPEN")["kind"] == f.SNAPSHOT
+    # And a real print outside RTH is still not the market moving.
+    assert f.for_quote("UNUSUAL_WHALES", "CLOSED")["kind"] == f.SNAPSHOT
 
 
-def test_the_chain_badge_follows_the_source():
+def test_the_chain_badge_says_delayed():
+    """
+    There is no live chain to badge any more. TWS served one during regular
+    hours and earned a LIVE badge; the chain now always carries the
+    provider's fifteen-minute delay, and says so rather than keeping a
+    branch that can no longer be reached.
+    """
     import freshness as f
 
-    assert f.for_chain("IBKR")["kind"] == f.LIVE
-    assert f.for_chain("OPTIONDATA")["kind"] == f.DELAYED
-    assert f.for_chain("OPTIONDATA")["delay_minutes"] == 15
+    assert f.for_chain("UNUSUAL_WHALES")["kind"] == f.DELAYED
+    assert f.for_chain("UNUSUAL_WHALES")["delay_minutes"] == 15
 
 
 def test_the_tape_says_the_delay_is_a_licence_not_the_app():

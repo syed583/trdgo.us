@@ -234,6 +234,12 @@ def get_sector_flow(extra: Optional[list[str]] = None) -> dict:
 
 def get_unusual(limit: int = 15, extra: Optional[list[str]] = None) -> dict:
     """Contracts whose day is abnormal for them, market-wide."""
+    # limit reaches a provider fetch as limit*3; bound it so an unbounded
+    # query parameter cannot turn into an unbounded upstream request.
+    try:
+        limit = max(1, min(int(limit), 200))
+    except (TypeError, ValueError):
+        limit = 15
     tape = get_tape(limit=max(limit * 3, 30))
     if tape["status"] != "OK":
         return {**tape, "rows": [], "count": 0}

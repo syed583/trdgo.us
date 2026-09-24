@@ -275,7 +275,7 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
           <Panel title={`${symbol} · Options Flow`}>
             <StateBlock loading />
             <div className="hint" style={{ textAlign: 'center' }}>
-              Building the chain, tape and analytics from live IBKR data. The first
+              Building the chain, tape and analytics. The first
               load takes a moment; later refreshes are cached.
             </div>
           </Panel>
@@ -382,8 +382,8 @@ function Tiles({ data }: { data: OptionsOverview }) {
   const tapeBasis = t.volume_basis === 'LAST_SESSION_TAPE';
 
   const basisNote = tapeBasis
-    ? 'Last completed session (from the trade tape) - TWS reports no volume outside market hours'
-    : 'Current session volume from IBKR';
+    ? 'Last completed session (from the trade tape) - no volume is reported outside market hours'
+    : 'Current session volume';
 
   const sentColor =
     s.label === 'BULLISH' ? GREEN : s.label === 'BEARISH' ? RED : 'var(--amber)';
@@ -645,7 +645,7 @@ function FlowScatterPanel({ data }: { data: OptionsOverview }) {
           </div>
           <div className="hint">
             {filtered.length} clustered prints · bubble size = notional · sourced from
-            IBKR historical ticks{data.flow.session_date ? ` for ${data.flow.session_date}` : ''}.
+            Provider tape{data.flow.session_date ? ` for ${data.flow.session_date}` : ''}.
           </div>
         </>
       ) : (
@@ -1284,7 +1284,7 @@ function TradeIdeasPanel({ data, demo }: { data: OptionsOverview; demo?: boolean
 /* ------------------------------------------- advanced options data (gaps) */
 
 /**
- * The metrics an IBKR-only pipeline cannot produce, and why.
+ * The metrics this pipeline cannot produce, and why.
  *
  * Kept as a visible card rather than silently omitted: knowing a number is
  * absent - and what would be needed to get it - matters more than the number.

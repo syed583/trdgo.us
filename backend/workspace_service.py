@@ -78,9 +78,19 @@ def list_watchlist(with_quotes: bool = True) -> dict:
 
 
 def add_watchlist(symbol: str, note: Optional[str] = None) -> dict:
-    symbol = symbol.strip().upper()
-    if not symbol:
+    # A watchlist row is read straight back into a provider URL and a cache
+    # key, so an invalid symbol is refused at write time rather than stored
+    # and replayed. See input_validation.is_symbol.
+    import input_validation as validate
+
+    symbol = (symbol or "").strip().upper()
+    if not validate.is_symbol(symbol):
         return {"status": "INVALID", "detail": "Symbol required"}
+
+    # A note is free text but is stored and shown back; keep it short so it
+    # cannot be used to stuff the row with an unbounded payload.
+    if note is not None:
+        note = str(note)[:280]
 
     db = SessionLocal()
     try:

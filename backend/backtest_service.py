@@ -274,7 +274,7 @@ def run_backtest(
         "trades": trades[-300:],
         "stats": stats,
         "methodology": _methodology(min_confidence),
-        "source": "IBKR",
+        "source": "UNUSUAL_WHALES",
     }
 
 

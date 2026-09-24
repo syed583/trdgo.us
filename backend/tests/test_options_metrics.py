@@ -57,11 +57,11 @@ def test_provider_skew_overrides_the_chain():
     """A constant-maturity 30-day skew beats whatever the front expiry implies."""
     metrics = analytics.get_metrics(
         _chain(call_iv=0.28, put_iv=0.33),
-        iv_history={"skew_25d_30d": -0.02, "source": "OptionData"},
+        iv_history={"skew_25d_30d": -0.02, "source": "Unusual Whales"},
     )
 
     assert metrics["skew_25d"] == -2.0
-    assert metrics["skew_source"] == "OptionData 25d/30d"
+    assert metrics["skew_source"] == "Unusual Whales 25d/30d"
 
 
 def test_iv_rank_flows_through_from_the_provider():
@@ -69,14 +69,14 @@ def test_iv_rank_flows_through_from_the_provider():
         _chain(call_iv=0.28, put_iv=0.33),
         iv_history={
             "iv_rank": 46.2, "iv_percentile": 43.0, "hv": 30.5,
-            "source": "OptionData", "as_of": "2026-09-11",
+            "source": "Unusual Whales", "as_of": "2026-09-11",
         },
     )
 
     assert metrics["iv_rank"] == 46.2
     assert metrics["iv_percentile"] == 43.0
     assert metrics["historical_volatility"] == 30.5
-    assert metrics["iv_rank_source"] == "OptionData"
+    assert metrics["iv_rank_source"] == "Unusual Whales"
 
 
 def test_data_basis_reports_iv_rank_from_the_value_not_the_code_path():
@@ -90,7 +90,7 @@ def test_data_basis_reports_iv_rank_from_the_value_not_the_code_path():
     assert missing["supported"]["iv_rank_percentile"]["available"] is False
 
     present = analytics.get_data_basis(
-        chain, None, {"iv_rank": 46.2, "iv_rank_source": "OptionData"})
+        chain, None, {"iv_rank": 46.2, "iv_rank_source": "Unusual Whales"})
     assert present["supported"]["iv_rank_percentile"]["available"] is True
 
 

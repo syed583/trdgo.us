@@ -93,9 +93,12 @@ CATEGORIES: list[dict] = [
                 "oi_positioning"]},                                  # 52
     {"key": "trend", "label": "Trend & Price Action", "group": "Market & Price",
      "params": ["ema_trend", "rsi", "price_action"]},                # 19
-    {"key": "volatility", "label": "Implied Volatility",
+    {"key": "volatility", "label": "Volatility & Expected Move",
      "group": "Market & Price",
-     "params": ["implied_volatility"]},                              # 7
+     # Both sizing readings sit together: neither votes on direction, and a
+     # category holding only one of them would leave the other's points
+     # outside every category and the breakdown short of a hundred.
+     "params": ["implied_volatility", "expected_move"]},              # 9
     # The session parameters belong to this list too: the today and tomorrow
     # outlooks score them instead of the trend and tape above.
     {"key": "session", "label": "Session & Intraday", "group": "Market & Price",
@@ -291,7 +294,7 @@ def stream_analysis(symbol: str, refresh: bool = False,
 
             updates.put({"type": "result", "result": result})
         except Exception as exc:  # noqa: BLE001
-            updates.put({"type": "error", "detail": str(exc)[:300]})
+            updates.put({"type": "error", "detail": type(exc).__name__})
         finally:
             updates.put(None)
 

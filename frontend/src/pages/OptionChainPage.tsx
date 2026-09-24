@@ -28,9 +28,9 @@ export default function OptionChainPage({
   // Poll at the pace the source can actually change.
   //
   // This never refreshed at all: the chain was fetched once on arrival, so
-  // even when TWS was serving it live the ladder on screen froze at whatever
+  // even when the ladder was being served live it froze at whatever
   // it read first. The cadence comes from the payload's own badge -- a live
-  // TWS chain is re-read every ten seconds, a delayed or closed-market copy
+  // chain is re-read every ten seconds, a delayed or closed-market copy
   // once a minute, because asking a fifteen-minute-delayed feed every ten
   // seconds only repeats the same numbers. The server shares one build per
   // chain, so a short interval here costs one snapshot, not one per viewer.

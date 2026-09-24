@@ -3,12 +3,6 @@
 Everything here assumes a Windows Server box you can RDP into, with
 administrator rights. Budget about half an hour the first time.
 
-**One thing you gain over a Linux server:** TWS and IB Gateway are Windows
-applications, so they *can* run here. You do not need them — Unusual Whales
-serves the quotes and intraday bars — but if you want IBKR's own feed on the
-server, this is the platform where that is straightforward rather than a
-project. See the last section.
-
 ---
 
 ## 1. Install the prerequisites
@@ -54,7 +48,6 @@ Fill in at minimum:
 | `SESSION_SECRET` | `python -c "import secrets; print(secrets.token_hex(32))"` |
 | `DATABASE_URL` | `postgresql+psycopg://usstocks:yourpassword@localhost:5432/usstocks` |
 | `UNUSUAL_WHALES_API_KEY` | your token |
-| `IBKR_ENABLED` | **`0`** on a server -- there is no TWS here, and left on it retries and logs forever |
 | `ANTHROPIC_API_KEY` | optional — only for the written explanations |
 
 Then build the frontend:
@@ -158,19 +151,3 @@ curl.exe -I http://127.0.0.1:8000/
 "Connection refused" means the service is not running; check the log at
 `logs\service.err.log`.
 
----
-
-## Optional: IBKR on the same box
-
-TWS or IB Gateway will run on a Windows VPS, which is the one real advantage
-of this platform for this app. Two things to know:
-
-* **It needs a logged-in desktop session.** RDP disconnects leave it running;
-  logging off does not. Use `tscon` to disconnect while leaving the session
-  alive, or run IB Gateway under a tool that keeps a console session open.
-* **The app already works without it.** Every parameter falls back to Unusual
-  Whales, and the Settings screen reports IBKR as offline rather than hiding
-  it. Get the app running first, add TWS afterwards if you want it.
-
-Defaults in `.env` (`IBKR_HOST=127.0.0.1`, `IBKR_PORT=7497`) are right for
-TWS on the same machine. IB Gateway uses 4001 for live, 4002 for paper.

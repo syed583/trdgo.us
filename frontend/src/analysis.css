@@ -151,7 +151,7 @@
 
 /* --- 6. result ---------------------------------------------------------- */
 
-.an-result-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.an-result-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; margin-bottom: 8px; }
 .an-result-head h2 {
   margin: 0; font-size: 21px; font-weight: 800; letter-spacing: -.5px; color: var(--text);
 }
@@ -552,3 +552,29 @@
 .ep-neg { color: #dc2626; }
 .ep-dim { color: var(--mute, #9ca3af); }
 .ep-note, .ep-foot { margin: 0; font-size: 11.5px; color: var(--mute, #9ca3af); }
+
+/* Headlines for one symbol. */
+.sn-list { display: flex; flex-direction: column; }
+.sn-row { padding: 10px 12px; border-bottom: 1px solid var(--border, #e5e7eb); }
+.sn-row:last-child { border-bottom: 0; }
+.sn-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+.sn-tone { font-size: 9px; font-weight: 700; letter-spacing: .4px;
+  text-transform: uppercase; padding: 2px 6px; border-radius: 4px;
+  background: rgba(107,114,128,.14); color: #6b7280; }
+.sn-tone.sn-positive { background: rgba(22,163,74,.14); color: #16a34a; }
+.sn-tone.sn-negative { background: rgba(220,38,38,.14); color: #dc2626; }
+.sn-meta em { font-style: normal; font-size: 10.5px; color: var(--mute, #9ca3af); }
+.sn-src { font-size: 9.5px; font-weight: 700; letter-spacing: .3px;
+  text-transform: uppercase; color: var(--mute, #9ca3af); margin-left: auto; }
+.sn-head { font-size: 12.5px; line-height: 1.4; }
+.sn-head a { color: inherit; }
+.sn-head a:hover { color: #2563eb; }
+.sn-tickers { display: flex; gap: 5px; margin-top: 4px; }
+.sn-tickers span { font-size: 9.5px; font-weight: 700; padding: 1px 5px;
+  border-radius: 4px; background: var(--soft, #f1f5f9); color: var(--mute, #9ca3af); }
+.sn-tickers span.on { background: rgba(37,99,235,.12); color: #2563eb; }
+.sn-note, .sn-foot { margin: 0; padding: 12px; font-size: 11.5px;
+  color: var(--mute, #9ca3af); }
+.ep-from { display: inline-block; margin-left: 5px; font-style: normal;
+  font-size: 8.5px; letter-spacing: .3px; padding: 1px 4px; border-radius: 3px;
+  background: rgba(37,99,235,.12); color: #2563eb; cursor: help; }

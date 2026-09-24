@@ -73,26 +73,37 @@ def _num(value: Any) -> Optional[float]:
 
 
 def _fetch(symbol: str, days: int) -> Optional[list[dict]]:
-    since = (date.today() - timedelta(days=days)).isoformat()
-    params = {
-        "token": cfg.BENZINGA.api_key,
-        "parameters[tickers]": symbol.upper(),
-        "parameters[date_from]": since,
-        "pagesize": 200,
-    }
-    url = (f"{cfg.BENZINGA.base_url}/v2.1/calendar/ratings?"
-           + urllib.parse.urlencode(params))
-    try:
-        request = urllib.request.Request(
-            url, headers={"Accept": "application/json",
-                          "User-Agent": cfg.USER_AGENT})
-        with urllib.request.urlopen(request, timeout=30) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except Exception:  # noqa: BLE001 - the panel must render without a provider
+    """
+    Recent analyst actions, in the shape the rest of this file reads.
+
+    The keys below are Benzinga's -- ``rating_current``, ``pt_current`` --
+    and are kept because the bucketing, the per-firm de-duplication and the
+    target average downstream are all written against them. Only the source
+    changed.
+    """
+    import uw_company_service as uwc
+
+    out = uwc.analyst_actions(symbol, limit=200)
+    if out.get("status") == "OK":
+        pass
+    elif out.get("status") == "NO_DATA":
+        return []
+    else:
         return None
 
-    rows = payload.get("ratings") if isinstance(payload, dict) else payload
-    return rows or []
+    since = (date.today() - timedelta(days=days)).isoformat()
+    return [
+        {
+            "analyst": r.get("firm") or r.get("analyst"),
+            "firm_id": r.get("firm"),
+            "date": r.get("date"),
+            "rating_current": r.get("recommendation"),
+            "pt_current": r.get("target"),
+            "adjusted_pt_current": None,
+        }
+        for r in out.get("rows") or []
+        if str(r.get("date") or "") >= since
+    ]
 
 
 def get_consensus(symbol: str, days: int = WINDOW_DAYS) -> dict:
@@ -103,7 +114,9 @@ def get_consensus(symbol: str, days: int = WINDOW_DAYS) -> dict:
     if cached:
         return cached
 
-    if not cfg.BENZINGA.configured:
+    import uw_company_service as uwc
+
+    if not uwc.configured():
         return {"status": "PROVIDER_NOT_CONFIGURED",
                 "detail": "No ratings provider is configured."}
 

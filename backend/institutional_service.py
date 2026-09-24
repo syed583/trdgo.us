@@ -679,7 +679,7 @@ def ingest_dataset(link: str, quarter: Optional[str] = None,
                 "skipped_non_share": parsed["skipped_non_share"]}
     except Exception as exc:  # noqa: BLE001
         session.rollback()
-        return {"status": "ERROR", "dataset": name, "detail": str(exc)[:300]}
+        return {"status": "ERROR", "dataset": name, "detail": type(exc).__name__}
     finally:
         if own:
             session.close()

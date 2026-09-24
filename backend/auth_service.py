@@ -21,6 +21,7 @@ import hashlib
 import hmac
 import os
 import secrets
+import threading
 import time
 from typing import Optional
 
@@ -31,13 +32,19 @@ SESSION_TTL = 30 * 24 * 3600  # 30 days
 
 # Paths reachable without a session: the login page itself, the endpoint that
 # checks the password, and the static assets needed to render the form.
-PUBLIC_PREFIXES = (
+# Exact public paths: reachable with no session because the login screen
+# needs them. Matched exactly, not by prefix -- a prefix of "/health" would
+# also open any future "/health-internal" route by accident.
+PUBLIC_PATHS = frozenset({
     "/auth/login",
     "/auth/status",
-    "/assets/",
-    "/favicon",
+    "/favicon.ico",
     "/health",
-)
+})
+
+# The one prefix that must stay a prefix: hashed build assets live under it
+# and there is no session yet when the login page loads them.
+PUBLIC_PREFIXES = ("/assets/",)
 
 
 def _password() -> str:
@@ -85,6 +92,61 @@ def valid_token(token: Optional[str]) -> bool:
     return hmac.compare_digest(token, _sign(expires_at))
 
 
+# --- login throttle --------------------------------------------------------
+# One shared password is brute-forceable if a caller may try it without limit.
+# Failed attempts are counted per client, and after a threshold that client
+# waits out a lockout. In-memory and per-process, which is enough for a
+# single-instance deployment; it is not a distributed rate limiter.
+_MAX_FAILS = 8
+_LOCKOUT = 300.0  # seconds a client is refused after too many failures
+_WINDOW = 300.0   # failures older than this no longer count
+
+# A per-client counter can be evaded by spoofing X-Forwarded-For, so a global
+# ceiling backs it up: once this many failures land across all clients inside
+# the window, every login waits out the lockout. It is high enough not to trip
+# in normal single-operator use, and it caps a distributed guessing attack.
+_MAX_FAILS_GLOBAL = 40
+
+_fail_lock = threading.Lock()
+_fails: dict[str, list[float]] = {}
+_fails_global: list[float] = []
+
+
+def _prune(times: list[float], now: float) -> list[float]:
+    return [t for t in times if now - t < _WINDOW]
+
+
+def login_blocked(client: str) -> Optional[int]:
+    """Seconds the caller must wait, or None if a login may be attempted."""
+    now = time.time()
+    with _fail_lock:
+        glob = _prune(_fails_global, now)
+        _fails_global[:] = glob
+        if len(glob) >= _MAX_FAILS_GLOBAL:
+            wait = int(_LOCKOUT - (now - glob[-1]))
+            if wait > 0:
+                return wait
+
+        times = _prune(_fails.get(client, []), now)
+        _fails[client] = times
+        if len(times) >= _MAX_FAILS:
+            wait = int(_LOCKOUT - (now - times[-1]))
+            return wait if wait > 0 else None
+    return None
+
+
+def note_login_failure(client: str) -> None:
+    now = time.time()
+    with _fail_lock:
+        _fails[client] = _prune(_fails.get(client, []), now) + [now]
+        _fails_global[:] = _prune(_fails_global, now) + [now]
+
+
+def note_login_success(client: str) -> None:
+    with _fail_lock:
+        _fails.pop(client, None)
+
+
 def check_password(candidate: str) -> bool:
     expected = _password()
     if not expected:
@@ -96,7 +158,7 @@ def check_password(candidate: str) -> bool:
 
 
 def is_public_path(path: str) -> bool:
-    return any(path.startswith(prefix) for prefix in PUBLIC_PREFIXES)
+    return path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES)
 
 
 def require_session(request: Request) -> None:

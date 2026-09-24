@@ -167,86 +167,24 @@ def analyst_actions(symbol: str, days: int = ACTION_WINDOW_DAYS) -> dict:
     """
     Upgrades, downgrades and price-target revisions.
 
-    Unusual Whales leads and Benzinga stays behind it. Benzinga's ratings
-    feed covers a restricted universe -- plenty of the board came back "no
-    analyst actions published", which reads as "nobody is covering this
-    stock" and is a different statement from "our provider does not carry
-    it". The paid feed covers the market.
+    One feed, which covers the market.
     """
     provider = _from_unusual_whales(symbol, days)
     if provider:
         return provider
 
-    if not cfg.BENZINGA.configured:
-        return {"status": "NOT_CONFIGURED"}
-
-    import urllib.parse
-    import urllib.request
-    from datetime import timedelta
-
-    since = (date.today() - timedelta(days=days)).isoformat()
-    params = {
-        "token": cfg.BENZINGA.api_key,
-        "parameters[tickers]": symbol.upper(),
-        "parameters[date_from]": since,
-        "pagesize": 100,
-    }
-    url = (f"{cfg.BENZINGA.base_url}/v2.1/calendar/ratings?"
-           + urllib.parse.urlencode(params))
-    try:
-        request = urllib.request.Request(
-            url, headers={"Accept": "application/json",
-                          "User-Agent": cfg.USER_AGENT})
-        with urllib.request.urlopen(request, timeout=30) as response:
-            import json
-            payload = json.loads(response.read().decode("utf-8"))
-    except Exception:  # noqa: BLE001
-        return {"status": "PROVIDER_OFFLINE"}
-
-    rows = payload.get("ratings") if isinstance(payload, dict) else payload
-    rows = rows or []
-    if not rows:
-        return {"status": "NO_COVERAGE",
-                "detail": ("No analyst actions published for this symbol. "
-                           "The provider's ratings feed covers a restricted "
-                           "universe.")}
-
-    upgrades = sum(1 for r in rows if r.get("action_company") == "Upgrades")
-    downgrades = sum(1 for r in rows if r.get("action_company") == "Downgrades")
-
-    raised = cut = 0
-    for r in rows:
-        now, before = _num(r.get("pt_current")), _num(r.get("pt_prior"))
-        if not now or not before:
-            continue
-        if now > before:
-            raised += 1
-        elif now < before:
-            cut += 1
-
-    latest = rows[0]
-    return {
-        "status": "OK",
-        "actions": len(rows),
-        "window_days": days,
-        "upgrades": upgrades,
-        "downgrades": downgrades,
-        "targets_raised": raised,
-        "targets_cut": cut,
-        "latest": {
-            "analyst": latest.get("analyst"),
-            "date": latest.get("date"),
-            "action": latest.get("action_company"),
-            "rating": latest.get("rating_current"),
-            "price_target": _num(latest.get("pt_current")),
-        },
-    }
+    # Nothing behind it. Benzinga sat here and was removed; its ratings feed
+    # covered a restricted universe anyway, so "no analyst actions published"
+    # from it read as "nobody covers this stock" when it meant "we do not
+    # carry it".
+    return {"status": "NO_COVERAGE",
+            "detail": "No analyst actions on record for this symbol."}
 
 
 def news_tone(symbol: str) -> dict:
     """Per-symbol headline sentiment."""
     try:
-        import marketaux_news_service as news
+        import uw_news_adapter as news
     except ImportError:
         return {"status": "NOT_CONFIGURED"}
     if not news.configured():

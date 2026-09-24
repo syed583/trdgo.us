@@ -108,7 +108,7 @@ function Shell() {
     (s) => (demo
       ? Promise.resolve({
         providers: {}, live: true, market: DEMO_STATUS.market,
-        ibkr: 'OK', market_data: 'OK', options: 'OK',
+        feed: 'OK', market_data: 'OK', options: 'OK',
       } as HealthPayload)
       : api2.health(false, s)),
     [demo],

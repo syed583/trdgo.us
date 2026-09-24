@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Building2, ExternalLink } from 'lucide-react';
 import { Panel } from './common';
 import { api2 } from '../api/client';
+import { safeHref } from '../lib/format';
 import { useApi } from '../hooks/useApi';
 
 /**
@@ -154,7 +155,7 @@ export default function CorporateEvents({ symbol }: { symbol: string }) {
                 )}
               </div>
               {e.url && (
-                <a className="ce-link" href={e.url} target="_blank"
+                <a className="ce-link" href={safeHref(e.url)} target="_blank"
                   rel="noopener noreferrer" onClick={(ev) => ev.stopPropagation()}>
                   Filing <ExternalLink size={11} />
                 </a>

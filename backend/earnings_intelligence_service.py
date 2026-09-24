@@ -21,7 +21,7 @@ import statistics
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
-import benzinga_earnings_service as benzinga
+import uw_earnings_feed as benzinga
 import live_market_service as market
 import provider_config as cfg
 from database import SessionLocal
@@ -225,50 +225,6 @@ def _from_unusual_whales(symbol: str, quarters: int) -> list[dict]:
     return rows[:quarters]
 
 
-def _from_finviz(symbol: str, quarters: int) -> list[dict]:
-    """Reported quarters from Finviz, in the shape the model already reads."""
-    try:
-        import finviz_service as finviz
-
-        out = finviz.earnings_history(symbol, quarters)
-    except Exception:  # noqa: BLE001 - the history stands without it
-        return []
-    if out.get("status") != cfg.OK:
-        return []
-
-    rows = []
-    for r in out.get("rows") or []:
-        actual, estimate = r.get("eps_actual"), r.get("eps_estimate")
-        if actual is None:
-            continue  # not reported yet; a forecast is not a track record
-        date_str = r.get("date") or ""
-        rows.append({
-            "symbol": symbol, "company": r.get("company"), "date": date_str,
-            "date_label": _label(date_str), "quarter_label": _label(date_str),
-            "eps_estimate": estimate, "eps_actual": actual,
-            "eps_surprise_percent": r.get("eps_surprise_percent"),
-            "revenue_estimate": r.get("revenue_estimate"),
-            "revenue_actual": r.get("revenue_actual"),
-            "revenue_surprise_percent": r.get("revenue_surprise_percent"),
-            "post_earnings_move_percent": r.get("price_reaction_pct"),
-            "eps_prior": None, "revenue_prior": None,
-            # Carried through deliberately: the reaction to an after-close
-            # report is the next session, and dropping the clock here
-            # measured the day before the news.
-            "reporting_time": r.get("reporting_time"),
-            "report_time": r.get("report_time"),
-            "time_label": {"AMC": "After Close", "BMO": "Before Open",
-                           "DMT": "During Market"}.get(r.get("reporting_time")),
-            "exchange": None, "importance": None, "importance_label": None,
-            "fiscal_period": None, "fiscal_year": None,
-            "lifecycle": "REPORTED", "date_confirmed": True,
-            "beat": bool(estimate is not None and actual > estimate),
-            "verified": True, "data_status": cfg.OK,
-            "source": "FINVIZ", "fetched_at": None,
-        })
-    return rows[:quarters]
-
-
 def _label(date_str: str) -> Optional[str]:
     try:
         return datetime.strptime(date_str, "%Y-%m-%d").strftime("%b %d, %Y")
@@ -288,10 +244,10 @@ def get_history(symbol: str, quarters: int = 8) -> dict:
     if cached:
         return cached
 
-    # Unusual Whales leads. Benzinga's history is a local cache somebody has
-    # to sync, and a half-synced one answers with a single quarter -- which
-    # the screen then presents as a company's whole track record, beat rate
-    # and all. Finviz stays behind both.
+    # One feed, read on demand. The local Benzinga cache that used to sit
+    # here answered with a single quarter when half-synced -- which the
+    # screen then presented as a company's whole track record, beat rate and
+    # all -- and the Finviz tier behind it is gone too.
     provider = benzinga.get_history(symbol, quarters)
     cached_rows = [
         {**r, "verified": True, "data_status": cfg.OK}
@@ -300,8 +256,6 @@ def get_history(symbol: str, quarters: int = 8) -> dict:
     verified = _from_unusual_whales(symbol, quarters)
     if len(verified) < len(cached_rows):
         verified = cached_rows
-    if not verified:
-        verified = _from_finviz(symbol, quarters)
 
     db = SessionLocal()
     try:
@@ -334,21 +288,21 @@ def get_history(symbol: str, quarters: int = 8) -> dict:
         ),
         "stats": stats,
         "provider": {
-            "name": "Benzinga",
+            "name": "Unusual Whales",
             "status": provider.get("status"),
             "detail": provider.get("detail"),
-            "configured": cfg.BENZINGA.configured,
-            "env_var": cfg.BENZINGA.key_env,
-            "signup": cfg.BENZINGA.signup,
+            "configured": __import__("unusualwhales_service").configured(),
+            "env_var": "UNUSUAL_WHALES_API_KEY",
+            "signup": "https://unusualwhales.com/api",
         },
         "status": (
             cfg.OK if stats["basis"] == "VERIFIED"
             else cfg.TEST_DATA if merged
             else cfg.DATA_UNAVAILABLE
         ),
-        # Named for where the rows actually came from. Reporting
-        # "BENZINGA+DATABASE" over quarters Finviz supplied is the kind of
-        # small lie that makes every other label worth less.
+        # Named for where the rows actually came from. Naming one provider
+        # over quarters another supplied is the kind of small lie that makes
+        # every other label worth less.
         "source": "+".join(sorted({r.get("source") or "DATABASE"
                                    for r in merged}) or ["DATABASE"]),
     }
@@ -500,7 +454,7 @@ def get_event_lifecycle(symbol: str) -> dict:
                                          [symbol])
         rows = upcoming.get("rows", [])
         event = rows[0] if rows else None
-        source = "BENZINGA" if event else None
+        source = "UNUSUAL_WHALES" if event else None
 
     if not event:
         db = SessionLocal()
@@ -545,6 +499,6 @@ def get_event_lifecycle(symbol: str) -> dict:
             if waiting else None
         ),
         "source": source,
-        "status": (cfg.OK if source in ("BENZINGA", "UNUSUAL_WHALES")
+        "status": (cfg.OK if source == "UNUSUAL_WHALES"
                    else cfg.TEST_DATA),
     }

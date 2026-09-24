@@ -2,20 +2,20 @@
 Aggregations over the live option chain.
 
 Every panel on the Options Flow screen resolves to a function here. All inputs
-come from live_options_service (real TWS data); nothing is invented. Values
+come from live_options_service; nothing is invented. Values
 that cannot be computed are returned as None so the UI can show a dash rather
 than a fabricated number.
 """
 
 from __future__ import annotations
 
+SOURCE_UW = "Unusual Whales"
+
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeout
 from typing import Any, Optional
 
-import ib_bootstrap  # noqa: F401  (must precede ib_insync)
-from ib_insync import IB, Option
 
 import live_options_service as svc
 
@@ -24,12 +24,11 @@ import live_options_service as svc
 # this point, so a long wait here buys one number at the cost of the screen.
 REALIZED_MOVE_BUDGET = 5.0
 
-# Ceilings for the provider fetches that share OptionData's rate limit. Paging
+# Ceilings for the provider fetches that share one rate limit. Paging
 # through symbols queues these behind one another, and an unbounded wait turned
 # a five-second page into fifty.
 PROVIDER_BUDGET = 8.0
 FLOW_BUDGET = 12.0
-from ibkr_client import IBKRUnavailable, ibkr
 from live_market_service import cache, market_clock, num
 
 
@@ -52,7 +51,7 @@ def _effective_volume(rows: list[dict], tape: dict[tuple, float]) -> tuple[str, 
     """
     Pick the volume series to display.
 
-    TWS reports zero session volume before the open and after the close. The
+    The feed reports zero session volume before the open and after the close. The
     tape still holds the previous session's real prints, so it is used instead
     and the basis is labelled so the UI can say which one it is showing.
     """
@@ -107,11 +106,11 @@ def _chain_source(chain: Optional[dict]) -> str:
     """
     Which provider actually supplied the chain these numbers came from.
 
-    Hardcoding "IBKR" was wrong the moment OptionData became the primary
+    Hardcoding a provider name was wrong the moment a second one appeared
     source: every panel claimed a broker feed it had not used, which is the
     one field an operator checks when a number looks wrong.
     """
-    return str((chain or {}).get("source") or "IBKR")
+    return str((chain or {}).get("source") or SOURCE_UW)
 
 
 def get_tiles(
@@ -281,7 +280,11 @@ def get_metrics(
     provider_skew = ivh.get("skew_25d_30d") if isinstance(ivh, dict) else None
     if provider_skew is not None:
         skew = round(float(provider_skew) * 100, 2)
-        skew_source = "OptionData 25d/30d"
+        # Named from the payload that carried it, not from a constant. This
+        # read "OptionData 25d/30d" long after OptionData was gone -- and it
+        # is a tooltip the operator sees, so it was telling them the figure
+        # came from a provider this app no longer calls.
+        skew_source = f"{ivh.get('source') or SOURCE_UW} 25d/30d"
 
     _, vol_map = _effective_volume(rows, _tape_map(flow))
     call_vol = sum(v for k, v in vol_map.items() if k[2] == "C")
@@ -610,7 +613,7 @@ def get_sentiment(chain: dict, flow: dict, metrics: dict,
     # Premium is a better read on conviction than contract counts: a thousand
     # cheap lottery calls and one large in-the-money call both move the volume
     # ratio, but only the second moves premium. Used when the per-print tape is
-    # unavailable, which is the normal case without an advanced IBKR feed.
+    # unavailable, which is the normal case for a thin name.
     pos = positioning or {}
     if pos.get("status") == "OK" and pos.get("call_premium_share") is not None:
         signals.append(
@@ -645,104 +648,65 @@ def get_sentiment(chain: dict, flow: dict, metrics: dict,
 
 
 # ---------------------------------------------------------------------------
-# volume context: today vs the trailing average, per contract
-# ---------------------------------------------------------------------------
-
-
-def get_volume_context(chain: dict, top: int = 20) -> dict:
-    """
-    Compare today's call/put volume against the trailing 5-session average for
-    the same contracts. This is what drives the +42% / -18% deltas on the tiles.
-    """
-    symbol = chain.get("symbol")
-    rows = [r for r in chain.get("rows", []) if r.get("volume")]
-    if not rows or not symbol:
-        return {}
-
-    key = f"volctx:{symbol}:{chain.get('expiry')}"
-    cached = cache.get(key, 300.0)
-    if cached:
-        return cached
-
-    rows.sort(key=lambda r: r["volume"], reverse=True)
-    targets = rows[:top]
-
-    async def job(ib: IB) -> dict:
-        contracts = [
-            Option(symbol, r["expiry"], r["strike"], r["right"], "SMART",
-                   tradingClass=symbol)
-            for r in targets
-        ]
-        qualified = await ib.qualifyContractsAsync(*contracts)
-
-        async def history(contract):
-            try:
-                return await ib.reqHistoricalDataAsync(
-                    contract, "", "10 D", "1 day", "TRADES", True, 1
-                )
-            except Exception:  # noqa: BLE001
-                return []
-
-        results = await asyncio.gather(
-            *[history(c) for c in qualified if c and c.conId],
-            return_exceptions=True,
-        )
-
-        today = {"C": 0.0, "P": 0.0}
-        baseline = {"C": 0.0, "P": 0.0}
-
-        for row, bars in zip(targets, results):
-            if not isinstance(bars, list) or len(bars) < 2:
-                continue
-            right = row["right"]
-            today[right] += float(bars[-1].volume or 0.0)
-            prior = [float(b.volume or 0.0) for b in bars[:-1][-5:]]
-            if prior:
-                baseline[right] += sum(prior) / len(prior)
-
-        def change(r: str) -> Optional[float]:
-            if not baseline[r]:
-                return None
-            return round((today[r] - baseline[r]) / baseline[r] * 100.0, 1)
-
-        total_today = today["C"] + today["P"]
-        total_base = baseline["C"] + baseline["P"]
-
-        return {
-            "call_change": change("C"),
-            "put_change": change("P"),
-            "total_change": (
-                round((total_today - total_base) / total_base * 100.0, 1)
-                if total_base else None
-            ),
-            "basis": "5-session average for the same contracts",
-            "sampled_contracts": len(targets),
-        }
-
-    try:
-        result = ibkr.run(job, timeout=180)
-    except IBKRUnavailable:
-        return {}
-
-    cache.put(key, result)
-    return result
-
-
-# ---------------------------------------------------------------------------
 # one call that powers the whole Options Flow screen
 # ---------------------------------------------------------------------------
 
 
-SOURCE_UW = "Unusual Whales"
+def _gamma_flip(symbol: str) -> Optional[float]:
+    """
+    The strike where cumulative dealer gamma crosses zero.
+
+    Above it dealers are long gamma and dampen moves; below it they are short
+    and chase. It is the one level on this panel that says what dealers will
+    do to a move rather than how big their book is, and the disparity screen
+    reported it as "not published" -- which was true of the aggregate
+    endpoint, but the per-strike exposure it can be summed from is published.
+
+    Returns None rather than a guess when the running total never changes
+    sign: a book that is long gamma at every strike has no flip, and naming
+    the nearest strike anyway would invent a level.
+    """
+    import unusualwhales_service as uw
+
+    rows = uw._rows(uw.get(f"/api/stock/{symbol}/greek-exposure/strike"))
+    if not rows:
+        return None
+
+    # One date per response in practice, but the endpoint has sent more than
+    # one before; the current book is the latest of them.
+    latest = max((r.get("date") for r in rows if r.get("date")), default=None)
+    if latest:
+        rows = [r for r in rows if r.get("date") == latest]
+
+    priced = []
+    for row in rows:
+        strike = _num(row.get("strike"))
+        if strike is None:
+            continue
+        net = (_num(row.get("call_gex")) or 0.0) + (_num(row.get("put_gex")) or 0.0)
+        priced.append((strike, net))
+    if len(priced) < 2:
+        return None
+
+    priced.sort()
+    running = 0.0
+    previous = None
+    flip = None
+    for strike, net in priced:
+        running += net
+        if previous is not None and (previous < 0) != (running < 0):
+            flip = strike
+        previous = running
+    return flip
 
 
 def get_dealer_positioning(symbol: str) -> dict:
     """
-    Gamma exposure and aggregate premium flow from OptionData.
+    Gamma exposure and aggregate premium flow, as published.
 
     These were previously reported as permanently unobtainable, which was true
-    of IBKR: the tick stream carries price, size and venue only, with no dealer
-    inventory and no participant tagging. OptionData publishes both, so the
+    of a raw tick stream: price, size and venue only, with no dealer
+    inventory and no participant tagging. The feed publishes both, so the
     figures are the provider's, not ours, and are labelled as such.
     """
     import unusualwhales_service as uw
@@ -781,6 +745,7 @@ def get_dealer_positioning(symbol: str) -> dict:
     call_gex = _num(gex.get("call_gex"))
     put_gex = _num(gex.get("put_gex"))
     net_gex = (call_gex + put_gex) if (call_gex is not None and put_gex is not None) else None
+    flip = _gamma_flip(symbol)
 
     call_prem = _num(flow.get("call_premium"))
     put_prem = _num(flow.get("put_premium"))
@@ -797,6 +762,14 @@ def get_dealer_positioning(symbol: str) -> dict:
         "gamma_regime": (
             None if net_gex is None
             else ("LONG_GAMMA" if net_gex > 0 else "SHORT_GAMMA")),
+        # The strike where dealer gamma changes sign. This is ours -- the
+        # per-strike exposure is published, the crossing is arithmetic over
+        # it -- so it is labelled as derived rather than as the provider's.
+        "gamma_flip": flip,
+        "gamma_flip_basis": (
+            "Strike where cumulative dealer gamma crosses zero, summed over "
+            "the provider's per-strike call and put exposure."
+            if flip is not None else None),
         "call_premium": call_prem,
         "put_premium": put_prem,
         "total_premium": total_prem,
@@ -826,7 +799,7 @@ def _num(v):
         return None
 
 
-def _optiondata_flow_configured() -> bool:
+def _flow_provider_configured() -> bool:
     """Whether the provider tape is available at all."""
     try:
         import uw_flow_service as odflow
@@ -853,9 +826,8 @@ def get_overview(symbol: str) -> dict:
 
     # The chain is fetched on its own, before the rest fan out. It shares one
     # provider rate limit with the print scans, and when those five queries
-    # start alongside it the chain loses the token, falls through to TWS, and
-    # costs a minute instead of four seconds. Ordering it first trades a little
-    # of the best case for the removal of that outlier.
+    # start alongside it the chain loses the token and waits. Ordering it
+    # first trades a little of the best case for the removal of that outlier.
     chain = svc.load_chain(symbol, extra_expiries=2)
 
     with ThreadPoolExecutor(max_workers=3,
@@ -877,7 +849,7 @@ def get_overview(symbol: str) -> dict:
 
         iv_history = settled(iv_job, {}, PROVIDER_BUDGET)
         positioning = settled(positioning_job,
-                              {"status": "NO_DATA", "source": "OptionData"},
+                              {"status": "NO_DATA", "source": SOURCE_UW},
                               PROVIDER_BUDGET)
         # The print scans are the heaviest thing here and share one provider
         # rate limit, so opening several symbols in a row queues them behind
@@ -918,42 +890,25 @@ def get_overview(symbol: str) -> dict:
             # Let it finish in the background so the cache is warm next time.
             pool.shutdown(wait=False)
 
-    # Flow source, in priority order.
-    #
-    # The IBKR tape is asked only when OptionData has not already answered.
-    # Without an OPRA subscription that scan walks historical ticks contract by
-    # contract, returns nothing, and was costing forty seconds on a liquid
-    # name -- the single largest remaining item on this page, spent to confirm
-    # an empty result we then discarded in favour of the provider tape.
-    unusual: list = []
-    if od_flow.get("status") == "OK" and od_flow.get("trades"):
-        flow = od_flow
-        unusual = od_flow.get("unusual") or []
-    elif _optiondata_flow_configured():
-        # OptionData is the flow source when it is configured, so the IBKR tape
-        # is not a fallback worth taking: without an OPRA subscription that
-        # scan walks historical ticks contract by contract for thirty-odd
-        # seconds and returns nothing. When the provider has not answered yet
-        # the panel says so and fills on the next load, rather than the page
-        # paying half a minute to confirm an empty tape.
-        flow = od_flow or {}
-        if not flow:
-            flow = {
-                "symbol": symbol,
-                "trades": [],
-                "status": "PENDING",
-                "source": "OptionData",
-                "note": "Print history still loading; it will appear shortly.",
-            }
-        unusual = flow.get("unusual") or []
-    else:
-        flow = svc.get_flow(symbol, chain=chain)
-        unusual = flow.get("unusual") or []
+    # One flow source. The IBKR tape used to sit behind this and was asked
+    # only when the provider had not answered; without an OPRA subscription
+    # that scan walked historical ticks contract by contract, returned
+    # nothing, and cost forty seconds on a liquid name -- the single largest
+    # item on this page, spent to confirm an empty result we then discarded.
+    flow = od_flow or {}
+    if not flow:
+        flow = {
+            "symbol": symbol,
+            "trades": [],
+            "status": "PENDING",
+            "source": SOURCE_UW,
+            "note": "Print history still loading; it will appear shortly.",
+        }
+    unusual = flow.get("unusual") or []
 
-    # get_volume_context is intentionally not called here. TWS refuses
-    # historical bars on option contracts ("No data of type EODChart is
-    # available"), so it burned ~20 failing requests per page load and always
-    # produced nulls. The tiles show no change figure rather than a fake one.
+    # Per-contract volume context is not shown. It needed daily bars on each
+    # option contract, which no feed here serves, so the tiles show no change
+    # figure rather than a fabricated one.
     volume_context: dict = {}
 
     metrics = get_metrics(chain, iv_history, realized, flow)
@@ -998,9 +953,11 @@ def get_chain_table(chain: dict) -> dict:
     """
     Reshape a loaded chain into the ladder the Option Chain screen renders.
 
-    Every field here is either quoted directly by TWS (bid, ask, last, volume,
-    open interest) or solved locally from that quote (IV and the greeks). No
-    value is filled in from a model of what it "should" be.
+    Every field here is quoted by the feed -- bid, ask, last, volume, open
+    interest, implied volatility and the greeks all arrive on the contract.
+    No value is filled in from a model of what it "should" be. The IV and
+    greeks used to be solved here with Black-Scholes from the quoted mid,
+    which was this app's arithmetic rather than anyone's measurement.
     """
     rows = chain.get("rows", [])
     spot = chain.get("spot")
@@ -1058,9 +1015,10 @@ def get_chain_table(chain: dict) -> dict:
         # from is worse than no badge.
         "freshness": chain.get("freshness"),
         "greeks_note": (
-            "IV and greeks are solved locally from the quoted bid/ask "
-            "(Black-Scholes); TWS does not serve model greeks on this "
-            "market-data line."
+            "IV and greeks are published per contract by the provider. They "
+            "used to be solved here from the quoted bid/ask with "
+            "Black-Scholes, which was this app's arithmetic rather than a "
+            "measurement."
         ),
     }
 
@@ -1076,16 +1034,16 @@ def get_data_basis(chain: dict, flow: Optional[dict] = None,
     """
     Say exactly what produced each options metric, and what cannot be produced.
 
-    The distinction this encodes: a figure computed from a value TWS actually
-    quoted (open interest, bid/ask) is real; a figure that needs exchange-side
-    order attribution or dealer inventory is not obtainable from IBKR at all
-    and is reported as REQUIRES_ADVANCED_OPTIONS_DATA rather than estimated.
+    The distinction this encodes: a figure computed from a value the feed
+    actually quoted (open interest, bid/ask) is real; a figure that needs
+    exchange-side order attribution is not obtainable here at all and is
+    reported as REQUIRES_ADVANCED_OPTIONS_DATA rather than estimated.
     """
     rows = (chain.get("rows") or []) + (chain.get("other_expiry_rows") or [])
     has_oi = any(r.get("open_interest") for r in rows)
     has_px = any(r.get("mid") for r in rows)
     tape = bool((flow or {}).get("trades"))
-    tape_source = (flow or {}).get("source") or "IBKR"
+    tape_source = (flow or {}).get("source") or SOURCE_UW
     delayed = (flow or {}).get("delay_minutes")
 
     def entry(available: bool, basis: str, note: str = "") -> dict:
@@ -1098,29 +1056,31 @@ def get_data_basis(chain: dict, flow: Optional[dict] = None,
 
     supported = {
         "open_interest": entry(
-            has_oi, "IBKR generic tick 101 (live market-data type)"),
+            has_oi, f"{SOURCE_UW}: open interest published per contract"),
         "volume": entry(
-            True, "IBKR generic tick 100, with the previous session's tape as "
-                  "the labelled fallback outside market hours"),
-        "bid_ask_last": entry(has_px, "IBKR option market data"),
+            True, f"{SOURCE_UW}: session volume per contract, with the "
+                  "previous session's as the labelled fallback outside "
+                  "market hours"),
+        "bid_ask_last": entry(has_px, f"{SOURCE_UW} option quotes"),
         "implied_volatility": entry(
-            has_px, "Black-Scholes solved locally from the quoted mid",
-            "TWS serves no model greeks on this market-data line."),
+            has_px, f"{SOURCE_UW}: published per contract",
+            "Published by the provider, not solved here from the mid."),
         "greeks": entry(
-            has_px, "Black-Scholes from the solved IV"),
+            has_px, f"{SOURCE_UW}: delta, gamma, theta, vega and rho "
+                    "published per contract"),
         "expected_move": entry(
             has_px, "ATM straddle from live quotes"),
         "put_call_ratios": entry(has_oi or has_px, "Quoted volume / open interest"),
         # Reported from the value actually produced, not from the fact that a
         # code path exists. This entry used to be hardcoded available while
-        # IBKR returned NO_DATA, so the panel promised a figure it never had.
+        # the source returned NO_DATA, so the panel promised a figure it
+        # never had.
         "iv_rank_percentile": entry(
             (metrics or {}).get("iv_rank") is not None,
-            ((metrics or {}).get("iv_rank_source") or "IBKR")
-            + " 1-year implied-volatility history",
+            ((metrics or {}).get("iv_rank_source") or SOURCE_UW)
+            + " implied-volatility rank and percentile",
             "" if (metrics or {}).get("iv_rank") is not None
-            else "TWS serves no OPTION_IMPLIED_VOLATILITY bars for this "
-                 "symbol and no configured provider returned a rank."),
+            else "The provider returned no rank for this symbol."),
         "call_wall": entry(
             has_oi, "Strike with the largest quoted call open interest"),
         "put_wall": entry(
@@ -1136,15 +1096,17 @@ def get_data_basis(chain: dict, flow: Optional[dict] = None,
             "Several legs stamped at one instant is a sweep; a single "
             "oversized print is a block. This is a classification "
             "of real prints, not an exchange-supplied flag."),
+        # A stronger claim than it used to be. The side was previously
+        # inferred here from where a print landed in the spread.
         "trade_side": entry(
             tape,
-            f"{tape_source}: each print matched to the quote standing at its "
-            f"timestamp"
+            f"{tape_source}: the side each print crossed on, counted by the "
+            f"provider rather than inferred from the price"
             + (f", delayed {int(delayed)} minutes" if delayed else "")),
     }
 
-    # A per-contract baseline needs historical option volume. TWS refuses it,
-    # but the provider's print history supplies 15 rolling days of it.
+    # A per-contract baseline needs historical option volume, which the
+    # provider's print history supplies as 15 rolling days.
     if (flow or {}).get("unusual") is not None:
         supported["unusual_activity_baseline"] = entry(
             bool((flow or {}).get("unusual")),
@@ -1153,19 +1115,25 @@ def get_data_basis(chain: dict, flow: Optional[dict] = None,
             "Contracts without a meaningful baseline are excluded rather "
             "than shown with an inflated ratio.")
 
-    # OptionData publishes dealer positioning and aggregate premium flow, so
-    # these are no longer out of reach -- they simply come from a different
-    # provider than the chain does, and are labelled with that provider.
+    # Dealer positioning and aggregate premium flow are published, so these
+    # are not out of reach.
     pos_ok = (positioning or {}).get("status") == "OK"
     if pos_ok:
         supported["gamma_exposure"] = entry(
             (positioning or {}).get("net_gex") is not None,
-            "OptionData intraday dealer gamma exposure",
+            f"{SOURCE_UW}: intraday dealer gamma exposure",
             "Provider-published dealer positioning, not derived by us.")
         supported["premium_flow"] = entry(
             (positioning or {}).get("total_premium") is not None,
-            "OptionData aggregate call/put premium and directional exposure",
+            f"{SOURCE_UW}: aggregate call/put premium and directional exposure",
             "Session totals, not individual prints.")
+
+    # Off-exchange prints were listed here as out of reach because the IBKR
+    # tick stream could not distinguish them. The feed publishes them, and
+    # the app has a Dark Pool screen reading exactly that.
+    supported["dark_pool_prints"] = entry(
+        True, f"{SOURCE_UW}: off-exchange prints with venue and size",
+        "Shown on the Dark Pool tab rather than on this ladder.")
 
     # Genuinely out of reach on this data source.
     unsupported = {}
@@ -1175,8 +1143,8 @@ def get_data_basis(chain: dict, flow: Optional[dict] = None,
             "status": "REQUIRES_ADVANCED_OPTIONS_DATA",
             "label": "Gamma Exposure (GEX)",
             "reason": (
-                "Requires dealer inventory / market-maker positioning. No "
-                "IBKR endpoint exposes it and OptionData did not answer."
+                "Requires dealer inventory / market-maker positioning, and "
+                "the provider did not answer for this symbol."
             ),
             "needs": "An options analytics provider publishing dealer positioning.",
         }
@@ -1188,10 +1156,10 @@ def get_data_basis(chain: dict, flow: Optional[dict] = None,
             "status": "REQUIRES_ADVANCED_OPTIONS_DATA",
             "label": "Per-print institutional aggressor flow",
             "reason": (
-                "Requires exchange-side participant and aggressor tagging on "
-                "each print. IBKR ticks carry price, size and venue only. "
-                "OptionData supplies session-level directional exposure, but "
-                "not trade-by-trade attribution."
+                "Requires exchange-side participant tagging on each print. "
+                "The feed supplies the side each print crossed on and "
+                "session-level directional exposure, but not who was on "
+                "either end of it."
             ),
             "needs": "An OPRA-level feed with participant classification.",
         },
@@ -1200,18 +1168,10 @@ def get_data_basis(chain: dict, flow: Optional[dict] = None,
             "status": "REQUIRES_ADVANCED_OPTIONS_DATA",
             "label": "Unusual activity vs historical average",
             "reason": (
-                "Requires historical per-contract option volume. TWS refuses "
-                "historical bars on option contracts (no EODChart), so there "
-                "is no baseline to compare against."
+                "Requires historical per-contract option volume, which the "
+                "provider did not return for this symbol."
             ),
             "needs": "A provider with historical option volume by contract.",
-        },
-        "dark_pool_prints": {
-            "available": False,
-            "status": "REQUIRES_ADVANCED_OPTIONS_DATA",
-            "label": "Dark-pool / off-exchange prints",
-            "reason": "Not distinguishable in the IBKR tick stream.",
-            "needs": "A consolidated tape with venue classification.",
         },
     })
     for name in list(unsupported):

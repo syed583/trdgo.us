@@ -153,7 +153,7 @@ export default function Sidebar({
               Personal Edition
             </div>
             <div className="upgrade-copy">
-              Live IBKR market data, options analytics and scoring.
+              Live market data, options analytics and scoring.
             </div>
             <NavLink to={`/settings${search}`} className="upgrade-btn">
               Provider Status

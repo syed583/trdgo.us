@@ -28,7 +28,6 @@ export type ProviderStatus =
   | 'NO_VOLUME'
   | 'NO_CHAIN'
   | 'NO_PRICE'
-  | 'IBKR_UNAVAILABLE'
   | 'UNKNOWN_SYMBOL'
   | 'INSUFFICIENT_DATA'
   | 'TEST_DATA'
@@ -393,7 +392,10 @@ export interface EarningsOverview {
 }
 
 export interface SystemStatus {
-  ibkr: { connected: boolean; host: string; port: number; last_error: string | null };
+  feed: {
+    provider: string; configured: boolean; status: string;
+    app_left?: number | null; app_budget?: number | null; blocked?: boolean;
+  };
   database: { connected: boolean; error: string | null };
   market: MarketClock;
   live: boolean;
@@ -473,7 +475,7 @@ export interface HealthPayload {
   providers: Record<string, ProviderEntry>;
   live: boolean;
   market: MarketClock;
-  ibkr: ProviderStatus;
+  feed: ProviderStatus;
   market_data: ProviderStatus;
   options: ProviderStatus;
 }
@@ -557,11 +559,6 @@ export const api2 = {
     request<any>(
       `/api/calls/latest/${encodeURIComponent(symbol)}`
       + (horizon ? `?horizon=${encodeURIComponent(horizon)}` : ''), s),
-  callHistory: (symbol?: string, horizon?: string, limit = 50, s?: AbortSignal) =>
-    request<any>(
-      `/api/calls/history?limit=${limit}`
-      + (symbol ? `&symbol=${encodeURIComponent(symbol)}` : '')
-      + (horizon ? `&horizon=${encodeURIComponent(horizon)}` : ''), s),
   aiTradeBoard: (horizon: string = 'SWING', s?: AbortSignal) =>
     request<any>(`/api/ai-trade/board?horizon=${encodeURIComponent(horizon)}`, s),
   callScorecard: (horizon?: string, days = 30, s?: AbortSignal) =>
@@ -595,7 +592,6 @@ export const api2 = {
   disparity: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/disparity/${encodeURIComponent(symbol)}`, s),
 
-  liveFilings: (s?: AbortSignal) => request<any>('/api/filings/live', s),
 
   corporateEvents: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/filings/corporate/${encodeURIComponent(symbol)}`, s),
@@ -647,8 +643,6 @@ export const api2 = {
     request<any>(`/api/insiders/sectors?limit=${limit}`, s),
   earningsPreview: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/earnings/preview/${encodeURIComponent(symbol)}`, s),
-  earningsUpcoming: (days = 14, s?: AbortSignal) =>
-    request<any>(`/api/earnings/upcoming?days=${days}`, s),
   optionsLevels: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/options/levels/${encodeURIComponent(symbol)}`, s),
   flowBaseline: (symbol: string, s?: AbortSignal) =>
@@ -668,14 +662,9 @@ export const api2 = {
   newsDesk: (s?: AbortSignal) => request<any>('/api/news/desk', s),
   news: (symbol: string, limit = 20, s?: AbortSignal) =>
     request<any>(`/api/news/${encodeURIComponent(symbol)}?limit=${limit}`, s),
-  newsArticle: (provider: string, id: string, s?: AbortSignal) =>
-    request<any>(
-      `/api/news/article/${encodeURIComponent(provider)}/${encodeURIComponent(id)}`, s),
   sentiment: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/sentiment/${encodeURIComponent(symbol)}`, s),
 
-  insights: (symbol: string, s?: AbortSignal) =>
-    request<any>(`/api/insights/${encodeURIComponent(symbol)}`, s),
 
   scannerPresets: (s?: AbortSignal) => request<any>('/api/scanner/presets', s),
   scannerRun: (params: Record<string, string | number>, s?: AbortSignal) => {
@@ -721,12 +710,8 @@ export const api2 = {
     send<any>('/api/providers/alpha-vantage/sync', 'POST', payload),
 
   // earnings intelligence
-  earningsHistory: (symbol: string, s?: AbortSignal) =>
-    request<any>(`/api/earnings/history/${encodeURIComponent(symbol)}`, s),
   earningsLifecycle: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/earnings/lifecycle/${encodeURIComponent(symbol)}`, s),
-  estimateRevisions: (symbol: string, s?: AbortSignal) =>
-    request<any>(`/api/estimates/revisions/${encodeURIComponent(symbol)}`, s),
 };
 
 export { ApiError };

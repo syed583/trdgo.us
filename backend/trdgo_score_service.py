@@ -74,7 +74,8 @@ def score_trdgo(payload: dict):
         raw_status = str(comp.get("status") or comp.get("data_quality") or comp.get("source_quality") or "OK").upper()
 
         # Normalize vendor/source status names to the contract statuses.
-        if raw_status in {"NO_DATA", "NO_OPTIONS", "MISSING_OPTION_CONTRACT", "IBKR_UNAVAILABLE", "UNKNOWN"}:
+        if raw_status in {"NO_DATA", "NO_OPTIONS", "MISSING_OPTION_CONTRACT", "PROVIDER_OFFLINE",
+                           "DATA_UNAVAILABLE", "UNKNOWN"}:
             raw_status = "UNAVAILABLE"
         elif raw_status == "TEST_DATA":
             raw_status = "TEST_DATA"

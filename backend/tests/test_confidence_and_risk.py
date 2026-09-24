@@ -36,7 +36,7 @@ def test_risk_and_validation_services_are_safe_from_missing_data():
 
     validation = validate_symbol_data("NVDA", {
         "source": "TEST",
-        "status": "IBKR_UNAVAILABLE"
+        "status": "PROVIDER_OFFLINE"
     })
     assert validation["test_data"] is True
     assert any("TEST" in w or "Missing" in w for w in validation["warnings"])

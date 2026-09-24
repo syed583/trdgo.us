@@ -33,6 +33,12 @@ SUMMARY_FIELDS = (
     "put_volume", "call_open_interest", "put_open_interest", "iv30d",
     "implied_move", "next_earnings_date", "dividend_yield", "eps_growth_4q",
     "ema_20", "ema_50", "rsi_14", "bullish_premium", "bearish_premium",
+    # The scanner ranks and filters on these. They are on every row the
+    # provider sends; this tuple is what decides whether they survive the
+    # trip, and a field pruned here reads downstream as a missing figure
+    # rather than as a field nobody asked for.
+    "stock_volume", "one_day_perc", "relative_volume", "bid", "ask",
+    "sma_200", "week_52_high", "week_52_low", "iv_rank",
 )
 
 

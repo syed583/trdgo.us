@@ -25,7 +25,10 @@ not evidence of calm.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Optional
+
+_LOG = logging.getLogger(__name__)
 
 SOURCE = "Unusual Whales + option chain"
 
@@ -216,9 +219,8 @@ def _from_overview(overview: dict, symbol: str = "") -> list[dict]:
     """
     Gamma, dealer positioning and IV rank.
 
-    Gamma needs the live chain, so it goes missing when TWS is down. IV rank
-    does not -- Unusual Whales publishes its own against a year of history,
-    and using it keeps the reading alive when the chain is unavailable.
+    Gamma and the flip level come from the provider's dealer-exposure
+    endpoints; IV rank is published against a year of its own history.
     """
     positioning = (overview or {}).get("positioning") or {}
     metrics = (overview or {}).get("metrics") or {}
@@ -247,7 +249,11 @@ def _from_overview(overview: dict, symbol: str = "") -> list[dict]:
 
     out = []
 
-    gex = _f(positioning.get("net_gamma") or positioning.get("gamma_exposure"))
+    # ``net_gex`` is what the positioning payload calls it. This looked for
+    # "net_gamma" and "gamma_exposure", found neither, and reported the
+    # reading as missing while the number sat right there -- two of thirteen
+    # readings dark on every symbol.
+    gex = _f(positioning.get("net_gex"))
     if gex is not None:
         # Sign matters more than size: positive net gamma means dealers sell
         # rallies and buy dips, which pins price; negative means they chase.
@@ -261,7 +267,7 @@ def _from_overview(overview: dict, symbol: str = "") -> list[dict]:
                             directional=False,
                             missing="No gamma reading on the chain."))
 
-    flip = positioning.get("gamma_flip") or positioning.get("flip_point")
+    flip = positioning.get("gamma_flip")
     spot = _f((overview or {}).get("spot"))
     flip_value = _f(flip)
     if flip_value and spot:
@@ -273,7 +279,9 @@ def _from_overview(overview: dict, symbol: str = "") -> list[dict]:
             f"at {flip_value:.2f}"))
     else:
         out.append(_reading("dealer_positioning", "Dealer Positioning", None,
-                            missing="No gamma flip level published."))
+                            missing="Dealer gamma does not change sign across "
+                                    "the listed strikes, so there is no flip "
+                                    "level to measure against."))
 
     iv_rank = _f(metrics.get("iv_rank"))
     if iv_rank is None:
@@ -335,11 +343,17 @@ def get_disparity(symbol: str, day_change_pct: Optional[float] = None) -> dict:
 
     overview = {}
     try:
-        import live_options_service as options
+        import live_options_analytics as options
 
         overview = options.get_overview(symbol) or {}
-    except Exception:  # noqa: BLE001 - the chain is optional here
+    except Exception as exc:  # noqa: BLE001 - the chain is optional here
+        # Named, not swallowed. This imported live_options_service, which has
+        # no get_overview -- the AttributeError landed here every time and
+        # left the overview empty, so Gamma Exposure and Dealer Positioning
+        # reported "no reading" on every symbol while the figures were
+        # sitting in the payload one module over.
         overview = {}
+        _LOG.warning("disparity: overview unavailable for %s: %s", symbol, exc)
 
     if day_change_pct is None:
         try:

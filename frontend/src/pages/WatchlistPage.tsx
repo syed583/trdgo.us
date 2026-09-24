@@ -25,7 +25,7 @@ export default function WatchlistPage({ ctx }: { ctx: PageContext }) {
     setBusy(true);
     setError(null);
     try {
-      // Validate against a real IBKR contract before persisting, so the
+      // Validate the ticker before persisting, so the
       // watchlist can never hold a symbol that will not load.
       const check = await api2.validateSymbol(symbol);
       if (!check.valid) {

@@ -51,7 +51,7 @@ export default function BacktestPage({ ctx }: { ctx: PageContext }) {
     <div className="page">
       <PageHead
         title="Backtesting"
-        subtitle="Walk-forward over real IBKR daily bars. Signals use only bars up to the decision date; entry is the next bar's open."
+        subtitle="Walk-forward over real daily bars. Signals use only bars up to the decision date; entry is the next bar's open."
       />
 
       <Panel title="Parameters" noBody>

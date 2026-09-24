@@ -213,17 +213,36 @@ def get_events(symbol: str, days: int = DEFAULT_DAYS, limit: int = 40) -> dict:
                 "impact": "high", "url": url, "source": SOURCE,
             })
 
-    # Benzinga fills in what the SEC tag leaves out -- who bought whom, how
-    # much an offering raised -- and adds dividends, which are not an 8-K item
-    # at all. Purely additive: a failure here costs the detail, not the feed.
+    # Dividends are not an 8-K item, so they are added from the dividend
+    # feed rather than read off a filing.
+    #
+    # The deal and offering particulars that used to be merged here -- who
+    # bought whom, how much an offering raised -- came from Benzinga and went
+    # with it. The 8-K item code still says a merger agreement was signed and
+    # still links the filing; what is lost is the sentence summarising it.
     try:
-        import benzinga_events_service as bz
+        import uw_company_service as uwc
 
-        for extra in bz.get_events(symbol, days):
+        for row in (uwc.dividends(symbol, limit=6).get("payments") or []):
+            if not row.get("declared"):
+                continue
             events.append({
-                **extra,
-                "category_label": CATEGORY_LABEL.get(extra["category"],
-                                                     extra["category"].title()),
+                "symbol": symbol, "filed": row["declared"],
+                "days_ago": _age(row["declared"]),
+                "form": "Dividend", "item": None, "category": "dividend",
+                "category_label": CATEGORY_LABEL["dividend"],
+                "headline": "Dividend declared",
+                "detail": (f"Dividend {row['amount']:g}"
+                           + (f", ex {row['ex_date']}" if row.get("ex_date") else "")
+                           + (f", payable {row['pay_date']}" if row.get("pay_date") else "")
+                           + "."),
+                "impact": "low", "url": None, "source": "UNUSUAL_WHALES",
+                "facts": [
+                    {"label": "Amount", "value": f"{row['amount']:g}"},
+                    {"label": "Declared", "value": row.get("declared") or "-"},
+                    {"label": "Ex-dividend", "value": row.get("ex_date") or "-"},
+                    {"label": "Payable", "value": row.get("pay_date") or "-"},
+                ],
             })
     except Exception:  # noqa: BLE001
         pass

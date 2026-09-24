@@ -112,7 +112,16 @@ def get_dividends(symbol: str, limit: int = 8) -> dict:
     Nasdaq's is a public page this app scrapes and which breaks whenever
     their markup changes. Nasdaq stays as the fallback.
     """
+    # Interpolated into a Nasdaq URL and a cache key, so it is validated
+    # before either. A malformed symbol is not a dividend query.
+    import input_validation as validate
+
     symbol = (symbol or "").upper().strip()
+    if not validate.is_symbol(symbol):
+        return {"symbol": symbol, "status": "INVALID", "payments": [],
+                "detail": "Not a valid symbol.", "source": SOURCE}
+    limit = validate.clamp_int(limit, low=1, high=50, default=8)
+
     provider = _from_unusual_whales(symbol, limit)
     if provider:
         return provider

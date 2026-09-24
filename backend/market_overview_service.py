@@ -98,19 +98,30 @@ def get_market_overview() -> dict:
         return cached
 
     symbols = [s["symbol"] for s in INDICES] + [s["symbol"] for s in SECTORS]
-    batch = market.get_batch(symbols)
+
+    # The two calls do not need each other, and this page is the first thing
+    # the app opens with: run them together rather than adding their waits.
+    from concurrent.futures import ThreadPoolExecutor
+
+    pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="overview")
+    try:
+        batch_f = pool.submit(market.get_batch, symbols)
+        indices_f = pool.submit(market.get_indices)
+        batch = batch_f.result()
+        try:
+            idx = indices_f.result()
+        except Exception:  # noqa: BLE001
+            idx = {}
+    finally:
+        pool.shutdown(wait=False)
+
     rows = batch.get("symbols", {})
 
     indices = [_card(spec, rows.get(spec["symbol"], {})) for spec in INDICES]
     sectors = [_card(spec, rows.get(spec["symbol"], {})) for spec in SECTORS]
 
     # VIX is an index rather than an ETF, so it comes from the indices feed.
-    vix = None
-    try:
-        idx = market.get_indices()
-        vix = next((i for i in idx.get("indices", []) if i["label"] == "VIX"), None)
-    except Exception:  # noqa: BLE001
-        vix = None
+    vix = next((i for i in idx.get("indices", []) if i["label"] == "VIX"), None)
 
     ranked = sorted(
         [s for s in sectors if s.get("change_percent") is not None],
@@ -135,7 +146,7 @@ def get_market_overview() -> dict:
         },
         "market": market.market_clock(),
         "status": batch.get("status", "OK"),
-        "source": "IBKR",
+        "source": "UNUSUAL_WHALES",
     }
     market.cache.put("market_overview", result)
     return result

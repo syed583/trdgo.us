@@ -63,7 +63,9 @@ def test_legacy_routes_are_untouched():
         "/companies/{symbol}",
         "/market/score/{symbol}",
         "/market/analysis/{symbol}",
-        "/market/options/{symbol}",
+        # /market/options/{symbol} is deliberately absent: it and its two
+        # siblings were served by a legacy chain that opened its own TWS
+        # sockets, and nothing in the UI ever called them.
         "/market/environment-score",
     ):
         assert legacy in paths, f"legacy route {legacy} disappeared"
@@ -204,12 +206,12 @@ def test_metrics_route_reports_the_chain_status_when_it_is_unavailable(
     monkeypatch.setattr(
         api_routes.options, "load_chain",
         lambda symbol, expiry=None: {
-            "status": "IBKR_UNAVAILABLE", "error": "TWS not running",
+            "status": "PROVIDER_OFFLINE", "error": "the feed did not answer",
         },
     )
     body = client.get("/api/options/metrics/NVDA").json()
-    assert body["status"] == "IBKR_UNAVAILABLE"
-    assert body["error"] == "TWS not running"
+    assert body["status"] == "PROVIDER_OFFLINE"
+    assert body["error"] == "the feed did not answer"
     assert body["symbol"] == "NVDA"
 
 
@@ -219,16 +221,17 @@ def test_status_route_reports_a_dead_database_without_raising(client, monkeypatc
             raise RuntimeError("connection refused")
 
     monkeypatch.setattr(api_routes, "engine", Boom())
-    monkeypatch.setattr(
-        api_routes.ibkr, "probe",
-        lambda: {"connected": False, "host": "127.0.0.1", "port": 7496,
-                 "last_error": "no TWS"},
-    )
 
     body = client.get("/api/status").json()
     assert body["database"]["connected"] is False
-    assert "connection refused" in body["database"]["error"]
-    assert body["live"] is False
+    # The exception text names the DB host and user, so it must NOT reach the
+    # client; a static message stands in and the detail is logged instead.
+    assert body["database"]["error"] == "database unreachable"
+    assert "connection refused" not in str(body)
+    # "live" now follows the market feed rather than a broker socket, so a
+    # dead database does not make it false -- the two are reported apart.
+    assert isinstance(body["live"], bool)
+    assert "feed" in body
     assert body["market"]["session"] in (
         "OPEN", "PRE_MARKET", "AFTER_HOURS", "CLOSED",
     )

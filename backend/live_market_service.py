@@ -13,18 +13,16 @@ import os
 import threading
 import time
 from datetime import date, datetime, time as dtime, timedelta
-from typing import Any, Iterable, Optional
+from collections import OrderedDict
+from typing import Any, Optional
 
 import price_levels as _levels
 from zoneinfo import ZoneInfo
 
-import ib_bootstrap  # noqa: F401  (must precede ib_insync)
-from ib_insync import IB, Index, Stock
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from concurrent.futures import TimeoutError as FuturesTimeout
 
-from ibkr_client import IBKRUnavailable, ibkr
 
 
 EASTERN = ZoneInfo("America/New_York")
@@ -93,8 +91,15 @@ def ema(values: list[float], period: int) -> list[Optional[float]]:
 
 
 class _TTLCache:
+    # A hard ceiling on entries. Cache keys are built from request input
+    # (symbols, ranges), so without a cap a caller asking for endless distinct
+    # symbols would grow this without bound. At the ceiling the oldest-written
+    # entries are dropped -- an LRU-by-insertion, which is enough because
+    # every entry expires by TTL anyway; this only bounds a flood.
+    _MAX_ENTRIES = 5000
+
     def __init__(self) -> None:
-        self._data: dict[str, tuple[float, Any]] = {}
+        self._data: "OrderedDict[str, tuple[float, Any]]" = OrderedDict()
         self._lock = threading.Lock()
 
     def get(self, key: str, ttl: float) -> Any:
@@ -110,6 +115,9 @@ class _TTLCache:
     def put(self, key: str, value: Any) -> None:
         with self._lock:
             self._data[key] = (time.time(), value)
+            self._data.move_to_end(key)
+            while len(self._data) > self._MAX_ENTRIES:
+                self._data.popitem(last=False)
 
     def clear(self) -> None:
         with self._lock:
@@ -244,13 +252,18 @@ def _session_dates() -> dict:
                        month_start, month_end),
     }
 
-    # How many companies actually report in each window, from the cached
-    # provider calendar. The strip used to show only a date range, which told
-    # the operator nothing about whether anything was happening in it.
-    # Look a year ahead: the fixed windows only need this month, but next_up
-    # has to find the next report even when the whole month is empty.
+    # How many companies actually report in each window. The strip used to
+    # show only a date range, which told the operator nothing about whether
+    # anything was happening in it.
+    #
+    # Six weeks past month end, not the year this used to ask for. The old
+    # window was free against a local calendar cache; the feed that replaced
+    # it is read a day at a time, so a year was forty round trips -- 48
+    # seconds, spent on every cold load of the Market Overview, to fill four
+    # counts and a "next earnings" date. Forty weekday requests was also the
+    # feed's own ceiling, so the year was never really covered.
     counts = _earnings_counts(min(w[3] for w in windows.values()),
-                              today + timedelta(days=400))
+                              month_end + timedelta(days=42))
 
     out = {}
     for slot, (key, label, value, start, end) in windows.items():
@@ -287,11 +300,19 @@ def _session_dates() -> dict:
 
 
 def _earnings_counts(start: date, end: date) -> list[tuple]:
-    """[(date, symbol)] from the cached calendar, or [] if it is unavailable."""
-    try:
-        import benzinga_earnings_service as benzinga
+    """[(date, symbol)] from the earnings feed, or [] if it is unavailable."""
+    # Cached across callers. Who reports next week does not change between
+    # two page loads, and this is the single most expensive thing behind the
+    # date strip -- one request per weekday in the window.
+    key = f"earnings_counts:{start}:{end}"
+    cached = cache.get(key, session_ttl(1800.0, 21600.0))
+    if cached is not None:
+        return [(date.fromisoformat(d), sym) for d, sym in cached]
 
-        rows = benzinga.get_upcoming(start, end).get("rows") or []
+    try:
+        import uw_earnings_feed as feed
+
+        rows = feed.get_upcoming(start, end).get("rows") or []
     except Exception:  # noqa: BLE001 - the strip must render without a provider
         return []
 
@@ -305,33 +326,9 @@ def _earnings_counts(start: date, end: date) -> list[tuple]:
                         str(row.get("symbol") or "").upper()))
         except ValueError:
             continue
-    return sorted(out)
-
-
-# ---------------------------------------------------------------------------
-# contract helpers
-# ---------------------------------------------------------------------------
-
-
-async def _stock(ib: IB, symbol: str) -> Stock:
-    c = Stock(symbol.upper(), "SMART", "USD")
-    await ib.qualifyContractsAsync(c)
-    if not c.conId:
-        raise ValueError(f"Unknown symbol: {symbol.upper()}")
-    return c
-
-
-async def _settle(ib: IB, tickers: Iterable, seconds: float = 3.0) -> None:
-    """Give TWS time to populate the ticker fields."""
-    import asyncio
-
-    deadline = time.time() + seconds
-    while time.time() < deadline:
-        await asyncio.sleep(0.25)
-        if all(num(t.last) is not None or num(t.close) is not None for t in tickers):
-            # One more beat so bid/ask/volume land too.
-            await asyncio.sleep(0.4)
-            return
+    out.sort()
+    cache.put(key, [(d.isoformat(), sym) for d, sym in out])
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -350,7 +347,7 @@ def _note_live_failure(symbol: str, reason: str) -> None:
 
 
 def live_price_status(symbol: str) -> Optional[str]:
-    """The last reason TWS could not supply a live price for this symbol."""
+    """The last reason a live price could not be had for this symbol."""
     return _LIVE_FAILURES.get(symbol.upper())
 
 
@@ -366,22 +363,24 @@ def extended_hours_quote(symbol: str,
                          reference_close: Optional[float] = None,
                          timeout: float = LIVE_PRICE_BUDGET_REQUEST) -> Optional[dict]:
     """
-    The pre- or post-market price, from TWS.
+    The pre- or post-market price.
 
-    The data providers do not have this. Their snapshots carry an effective
-    date of the last completed session, so at nine in the morning they return
-    Friday's close -- which the screen would otherwise present as the current
-    price. TWS quotes the extended session live, and it is the only source
-    here that does.
+    This was TWS's job, and TWS was the only source here that quoted the
+    extended sessions live. What replaces it is the feed's own last print,
+    which is a weaker claim and is treated as one: it is only used during
+    regular hours, because outside them the last trade *is* the closing
+    print, and presenting that as a pre-market quote would invent a session
+    that has not traded yet.
 
-    ``reference_close`` is supplied by the caller because TWS does not
-    reliably populate it on this line: outside regular hours ``ticker.close``
-    comes back as NaN, and deriving the change from it silently produced
-    nothing at all. The provider snapshot already carries the last completed
-    session's close, which is exactly the right reference.
+    So between four and nine-thirty, and again after the close, this now
+    returns None where it used to return a real extended print. The caller
+    keeps the last completed session's close and the screen labels it as
+    such, which is the honest reading -- not a gap, but not a live quote
+    either.
 
-    Returns None when TWS is unavailable or has no extended print, so the
-    caller keeps the provider figure rather than showing a gap.
+    ``reference_close`` is supplied by the caller: the feed's snapshot
+    already carries the last completed session's close, which is exactly the
+    right reference to measure a move against.
     """
     symbol = symbol.upper()
     clock = market_clock()
@@ -393,67 +392,11 @@ def extended_hours_quote(symbol: str,
     if cached is not None:
         return cached or None
 
-    async def job(ib: IB) -> Optional[dict]:
-        contract = await _stock(ib, symbol)
-        ticker = ib.reqMktData(contract, "", False, False)
-        # Leave room inside the caller's budget for the contract lookup and
-        # the round trip, or the settle alone eats the whole allowance.
-        await _settle(ib, [ticker], max(1.5, timeout - 1.5))
-
-        last = _first_num(ticker.last, ticker.markPrice)
-        bid, ask = num(ticker.bid), num(ticker.ask)
-        stamp = getattr(ticker, "time", None)
-        # TWS populates close inconsistently outside regular hours, so it is
-        # only a fallback behind the value the caller passed in.
-        fallback_close = num(ticker.close)
-        ib.cancelMktData(contract)
-
-        prev_close = reference_close if reference_close else fallback_close
-        if last is None or not prev_close:
-            return None
-        # An extended print identical to the close is the close being echoed
-        # back rather than a trade; reporting it as a move of exactly zero
-        # would imply the session has traded when it has not.
-        if abs(last - prev_close) < 1e-9:
-            return None
-
-        change = last - prev_close
-        return {
-            "price": round(last, 2),
-            "previous_close": round(prev_close, 2),
-            "change": round(change, 2),
-            "change_percent": round(change / prev_close * 100, 2),
-            "bid": bid,
-            "ask": ask,
-            "session": clock.get("session"),
-            "session_label": clock.get("label"),
-            "as_of": stamp.isoformat() if stamp else None,
-            "source": "IBKR",
-        }
-
-    # A failure here is silent by design -- the provider figure still renders
-    # -- so the reason is recorded rather than swallowed.
-    # Failures fall through to the provider fallback rather than returning
-    # here. Returning early was why the fallback never ran when TWS was
-    # missing entirely -- the one case it exists for.
     result = None
-    try:
-        result = ibkr.run(job, timeout=timeout)
-    except IBKRUnavailable as exc:
-        _note_live_failure(symbol, str(exc)[:160])
-    except Exception as exc:  # noqa: BLE001
-        _note_live_failure(symbol, f"{type(exc).__name__}: {str(exc)[:120]}")
-
-    if not result:
-        _note_live_failure(symbol, "TWS returned no last price")
-
-    # TWS is preferred because it is the only source that quotes the extended
-    # sessions, but it is not the only live price available. Twelve Data has a
-    # dedicated real-time endpoint -- distinct from its daily snapshot, which
-    # is dated to the last completed session -- so the app is not dark when
-    # TWS is down or was never running.
-    if not result and reference_close:
+    if reference_close:
         result = _provider_live_price(symbol, reference_close, clock)
+    if not result:
+        _note_live_failure(symbol, "No live print outside the regular session")
 
     cache.put(key, result or {})
     return result
@@ -462,9 +405,9 @@ def extended_hours_quote(symbol: str,
 def _provider_live_price(symbol: str, reference_close: float,
                          clock: dict) -> Optional[dict]:
     """
-    Live last price from Twelve Data, when TWS cannot supply one.
+    The feed's live last price.
 
-    Regular hours only. That endpoint reports the last trade, which outside
+    Regular hours only. The endpoint reports the last trade, which outside
     RTH is the closing print -- passing it off as a pre-market quote would
     invent a session that has not traded.
     """
@@ -472,9 +415,9 @@ def _provider_live_price(symbol: str, reference_close: float,
         return None
 
     try:
-        import twelve_data_market_service as td
+        import unusualwhales_service as uw
 
-        price = td.live_price(symbol)
+        price = (uw.get_quote(symbol) or {}).get("price")
     except Exception:  # noqa: BLE001
         return None
 
@@ -493,7 +436,7 @@ def _provider_live_price(symbol: str, reference_close: float,
         "session": clock.get("session"),
         "session_label": clock.get("label"),
         "as_of": None,
-        "source": "TWELVE_DATA",
+        "source": "UNUSUAL_WHALES",
     }
 
 
@@ -509,7 +452,7 @@ def get_quote(symbol: str, ttl: Optional[float] = None,
     # answers in ~0.3s. The TWS path qualifies the contract, pulls five days of
     # history and waits 4s for the market-data line to settle -- about 15s per
     # symbol, which is what made opening a new ticker feel stuck.
-    if _optiondata_quotes_first():
+    if _feed_quotes_first():
         import freshness
         import unusualwhales_service as od
 
@@ -541,7 +484,7 @@ def get_quote(symbol: str, ttl: Optional[float] = None,
                         "bid": live.get("bid") or fast.get("bid"),
                         "ask": live.get("ask") or fast.get("ask"),
                         "as_of": live.get("as_of") or fast.get("as_of"),
-                        "price_source": live.get("source", "IBKR"),
+                        "price_source": live.get("source", "UNUSUAL_WHALES"),
                     }
                 else:
                     # The figure below is the last completed session's close,
@@ -566,102 +509,15 @@ def get_quote(symbol: str, ttl: Optional[float] = None,
             cache.put(key, fast)
             return fast
 
-    async def job(ib: IB) -> dict:
-        contract = await _stock(ib, symbol)
-
-        details = await ib.reqContractDetailsAsync(contract)
-        detail = details[0] if details else None
-
-        bars = await ib.reqHistoricalDataAsync(
-            contract,
-            endDateTime="",
-            durationStr="5 D",
-            barSizeSetting="1 day",
-            whatToShow="TRADES",
-            useRTH=True,
-            formatDate=1,
-        )
-
-        ticker = ib.reqMktData(contract, "", False, False)
-        await _settle(ib, [ticker], 4.0)
-
-        last = _first_num(ticker.last, ticker.close, ticker.markPrice)
-        prev_close = None
-
-        if bars:
-            today = datetime.now(EASTERN).date()
-            last_bar = bars[-1]
-            bar_date = last_bar.date if isinstance(last_bar.date, date) else None
-            if bar_date == today and len(bars) >= 2:
-                prev_close = num(bars[-2].close)
-            else:
-                prev_close = num(last_bar.close)
-            if last is None:
-                last = num(last_bar.close)
-
-        # ticker.close is the prior session close during RTH.
-        if prev_close is None:
-            prev_close = num(ticker.close)
-
-        ib.cancelMktData(contract)
-
-        change = None
-        change_pct = None
-        if last is not None and prev_close:
-            change = round(last - prev_close, 2)
-            change_pct = round((last - prev_close) / prev_close * 100, 2)
-
-        last_bar = bars[-1] if bars else None
-        tags: list[str] = []
-        if detail:
-            for value in (detail.industry, detail.category, detail.subcategory):
-                if value and value not in tags:
-                    tags.append(value)
-
-        return {
-            "symbol": symbol,
-            "name": (detail.longName if detail else None) or symbol,
-            "exchange": contract.primaryExchange or contract.exchange,
-            "con_id": contract.conId,
-            "tags": tags[:3],
-            "price": round(last, 2) if last is not None else None,
-            "change": change,
-            "change_percent": change_pct,
-            "previous_close": round(prev_close, 2) if prev_close else None,
-            "bid": num(ticker.bid),
-            "ask": num(ticker.ask),
-            "open": num(last_bar.open) if last_bar else None,
-            "high": num(last_bar.high) if last_bar else None,
-            "low": num(last_bar.low) if last_bar else None,
-            "close": num(last_bar.close) if last_bar else None,
-            "volume": num(last_bar.volume) if last_bar else None,
-            "market": market_clock(),
-            "status": "OK" if last is not None else "NO_PRICE",
-            "source": "IBKR",
-        }
-
-    try:
-        result = ibkr.run(job)
-    except IBKRUnavailable as exc:
-        # Fall back to a delayed Alpha Vantage quote rather than a blank card.
-        # It is tagged source=ALPHA_VANTAGE and delayed=True so the UI never
-        # presents an end-of-day print as a live one.
-        fallback = _fallback_quote(symbol)
-        if fallback:
-            cache.put(key, fallback)
-            return fallback
-        return _offline_quote(symbol, str(exc))
-    except ValueError as exc:
-        return {
-            "symbol": symbol,
-            "status": "UNKNOWN_SYMBOL",
-            "source": "IBKR",
-            "error": str(exc),
-            "market": market_clock(),
-        }
-
-    cache.put(key, result)
-    return result
+    # The feed is the only source now. The block that stood here opened a
+    # market-data line, waited four seconds for it to settle and pulled five
+    # days of history to find the prior close -- about fifteen seconds a
+    # symbol, which is what made opening a new ticker feel stuck.
+    fallback = _fallback_quote(symbol)
+    if fallback:
+        cache.put(key, fallback)
+        return fallback
+    return _offline_quote(symbol, "The feed did not return a quote.")
 
 
 def _offline_quote(symbol: str, error: str) -> dict:
@@ -681,8 +537,8 @@ def _offline_quote(symbol: str, error: str) -> dict:
         "close": None,
         "volume": None,
         "market": market_clock(),
-        "status": "IBKR_UNAVAILABLE",
-        "source": "IBKR",
+        "status": "DATA_UNAVAILABLE",
+        "source": "UNUSUAL_WHALES",
         "error": error,
     }
 
@@ -713,16 +569,14 @@ def _bar_providers():
     """
     Fallback bar sources, best first.
 
-    Unusual Whales leads when it is configured: it is a paid subscription
-    with a daily allowance in the tens of thousands, against Twelve Data's
-    800 free requests a day and Alpha Vantage's 25. Both stay behind it, so
-    a lapsed key drops the app back to where it was rather than blanking it.
+    One feed. Twelve Data and Alpha Vantage sat behind this on free tiers of
+    800 and 25 requests a day and were removed: a fallback that only fires
+    when the paid feed is down would be carrying a price bar onto a screen
+    whose tape, chain and quotes had already gone with it.
     """
-    import alpha_vantage_market_service as av
-    import twelve_data_market_service as td
     import unusualwhales_service as uw
 
-    return [p for p in (uw, td, av) if p.configured()]
+    return [uw] if uw.configured() else []
 
 
 def _live_today_bar(symbol: str) -> Optional[dict]:
@@ -812,9 +666,13 @@ def _fallback_batch(symbols: list[str]) -> dict:
     """
     Per-symbol rows from the quote chain, shaped like get_batch's output.
 
-    Bars are attached only when a bar provider already has them cached -- the
-    strip needs prices far more often than it needs a sparkline, and fetching a
-    year of history per symbol here would cost one request each.
+    Bars come with the row. They used to be left out to save a request each
+    -- the reasoning being that the strip needs prices far more often than
+    sparklines -- but with TWS off this is the only path the Market Overview
+    ever takes, and a card with no bars has no moving averages either: all
+    fifteen of them read "Insufficient data" for their trend while showing a
+    perfectly good price. One cached daily-bar call per symbol, fetched in
+    the same parallel pass as the quote, is worth that.
     """
     def one(symbol: str) -> tuple[str, dict]:
         quote = _fallback_quote(symbol)
@@ -822,14 +680,15 @@ def _fallback_batch(symbols: list[str]) -> dict:
             return symbol, {
                 "symbol": symbol, "price": None, "change": None,
                 "change_percent": None, "bars": [],
-                "status": "IBKR_UNAVAILABLE",
+                "status": "DATA_UNAVAILABLE",
             }
+        bars, _source = _fallback_bars(symbol, "1 Y")
         return symbol, {
             "symbol": symbol,
             "price": quote.get("price"),
             "change": quote.get("change"),
             "change_percent": quote.get("change_percent"),
-            "bars": [],
+            "bars": bars or [],
             "status": "OK",
             "source": quote.get("source"),
             "delayed": quote.get("delayed"),
@@ -877,7 +736,7 @@ def _fallback_batch(symbols: list[str]) -> dict:
     return out if any(r.get("price") is not None for r in out.values()) else {}
 
 
-def _optiondata_quotes_first() -> bool:
+def _feed_quotes_first() -> bool:
     """
     Whether to ask the provider before TWS for quotes.
 
@@ -895,14 +754,19 @@ def _quote_providers():
     """
     Fallback quote sources, best first.
 
-    Unusual Whales serves both the live quote and the bar history, so it
-    appears once at the head of this list and again through _bar_providers;
-    the duplicate is harmless because both answers come out of the same
-    short-lived cache entry.
+    One feed serves both the live quote and the bar history, so this list
+    and _bar_providers now name the same module. De-duplicated rather than
+    left to repeat: a symbol the feed does not carry -- SPX, NDX, VIX on the
+    index strip -- was looked up, missed, and looked up again.
     """
     import unusualwhales_service as uw
 
-    return ([uw] if uw.configured() else []) + _bar_providers()
+    seen, out = set(), []
+    for provider in ([uw] if uw.configured() else []) + _bar_providers():
+        if id(provider) not in seen:
+            seen.add(id(provider))
+            out.append(provider)
+    return out
 
 
 # A provider quote is worth keeping for a few seconds.
@@ -938,7 +802,7 @@ def _bars_fallback_note(intraday: bool) -> str:
 
     providers = _bar_providers()
     if not providers:
-        return ("No fallback bar source configured: set TWELVE_DATA_API_KEY "
+        return ("No bar source configured: set UNUSUAL_WHALES_API_KEY "
                 "in backend/.env to chart without TWS.")
     if intraday:
         return ("Fallback providers serve daily bars only, so intraday "
@@ -1037,13 +901,13 @@ def _uw_intraday_chart(symbol: str, range_key: str, bar_size: str,
 def _av_chart(symbol: str, range_key: str, bar_size: str,
               keep: Optional[int], intraday: bool) -> Optional[dict]:
     """
-    Rebuild the get_chart payload from Alpha Vantage daily bars when TWS is
-    down. Returns None if Alpha Vantage cannot answer, so the caller can fall
-    back to its IBKR_UNAVAILABLE payload.
+    Rebuild the get_chart payload from the feed's daily bars when TWS is
+    down. Returns None if it cannot answer, so the caller can fall back to
+    its DATA_UNAVAILABLE payload.
 
     Daily bars only: an intraday range gets daily candles instead, which is
-    why the result carries source=ALPHA_VANTAGE and delayed=True rather than
-    pretending the requested granularity was met.
+    why the result carries delayed=True rather than pretending the requested
+    granularity was met.
     """
     if intraday:
         return _uw_intraday_chart(symbol, range_key, bar_size, keep)
@@ -1131,136 +995,23 @@ def get_chart(symbol: str, range_key: str = "6M", ttl: Optional[float] = None) -
     duration, bar_size, keep = RANGE_SPECS[range_key]
     intraday = "min" in bar_size or "hour" in bar_size
 
-    # Daily ranges come from the bar providers first: TWS took ~23s to return
-    # the same end-of-day candles that Twelve Data serves in about one, and
-    # _av_chart re-applies the live session candle on top, so nothing is lost
-    # by not asking TWS. Intraday still needs TWS - no fallback sells it.
-    if not intraday and _bar_providers():
-        fast = _av_chart(symbol, range_key, bar_size, keep, intraday)
-        if fast:
-            cache.put(key, fast)
-            return fast
+    # One source. _av_chart handles the daily ranges and re-applies the live
+    # session candle on top; intraday goes to the feed's own intraday bars.
+    # TWS used to serve both and took ~23s to return the same end-of-day
+    # candles the feed returns in about one.
+    result = _av_chart(symbol, range_key, bar_size, keep, intraday)
+    if result:
+        cache.put(key, result)
+        return result
 
-    async def job(ib: IB) -> dict:
-        contract = await _stock(ib, symbol)
-        bars = await ib.reqHistoricalDataAsync(
-            contract,
-            endDateTime="",
-            durationStr=duration,
-            barSizeSetting=bar_size,
-            whatToShow="TRADES",
-            useRTH=not intraday,
-            formatDate=1,
-        )
-        if not bars:
-            return {
-                "symbol": symbol,
-                "range": range_key,
-                "bars": [],
-                "status": "NO_DATA",
-                "source": "IBKR",
-            }
-
-        closes = [float(b.close) for b in bars]
-        # EMAs are computed over the full fetched series so the trimmed window
-        # still shows a correct EMA200 instead of a truncated one.
-        e20 = ema(closes, 20)
-        e50 = ema(closes, 50)
-        e200 = ema(closes, 200)
-
-        rows = []
-        for i, b in enumerate(bars):
-            ts = b.date
-            if isinstance(ts, datetime):
-                label = ts.strftime("%H:%M") if intraday else ts.strftime("%b %d")
-                iso = ts.isoformat()
-            else:
-                label = ts.strftime("%b %d")
-                iso = ts.isoformat()
-            rows.append(
-                {
-                    "t": iso,
-                    "label": label,
-                    "open": round(float(b.open), 2),
-                    "high": round(float(b.high), 2),
-                    "low": round(float(b.low), 2),
-                    "close": round(float(b.close), 2),
-                    "volume": float(b.volume) if b.volume and b.volume > 0 else 0.0,
-                    "ema20": round(e20[i], 2) if e20[i] is not None else None,
-                    "ema50": round(e50[i], 2) if e50[i] is not None else None,
-                    "ema200": round(e200[i], 2) if e200[i] is not None else None,
-                }
-            )
-
-        if range_key == "YTD":
-            year = datetime.now(EASTERN).year
-            rows = [r for r in rows if r["t"][:4] == str(year)]
-        elif keep:
-            rows = rows[-keep:]
-
-        first = rows[0] if rows else None
-        last = rows[-1] if rows else None
-        change = None
-        change_pct = None
-        if first and last and first["close"]:
-            change = round(last["close"] - first["close"], 2)
-            change_pct = round(change / first["close"] * 100, 2)
-
-        total_volume = sum(r["volume"] for r in rows)
-
-        return _levels.attach({
-            "symbol": symbol,
-            "range": range_key,
-            "bar_size": bar_size,
-            "bars": rows,
-            "ohlc": {
-                "open": last["open"] if last else None,
-                "high": max((r["high"] for r in rows), default=None),
-                "low": min((r["low"] for r in rows), default=None),
-                "close": last["close"] if last else None,
-            },
-            "ema": {
-                "ema20": last["ema20"] if last else None,
-                "ema50": last["ema50"] if last else None,
-                "ema200": last["ema200"] if last else None,
-            },
-            "change": change,
-            "change_percent": change_pct,
-            "volume": total_volume,
-            "status": "OK",
-            "source": "IBKR",
-        })
-
-    try:
-        result = ibkr.run(job, timeout=60)
-    except IBKRUnavailable as exc:
-        fallback = _av_chart(symbol, range_key, bar_size, keep, intraday)
-        if fallback:
-            cache.put(key, fallback)
-            return fallback
-        return {
-            "symbol": symbol,
-            "range": range_key,
-            "bars": [],
-            "status": "IBKR_UNAVAILABLE",
-            "source": "IBKR",
-            # Name the fallback too. Reporting only the IBKR error made it look
-            # like TWS was the single option, when the second source had been
-            # tried and had its own reason for failing.
-            "error": f"{exc} {_bars_fallback_note(intraday)}".strip(),
-        }
-    except ValueError as exc:
-        return {
-            "symbol": symbol,
-            "range": range_key,
-            "bars": [],
-            "status": "UNKNOWN_SYMBOL",
-            "source": "IBKR",
-            "error": str(exc),
-        }
-
-    cache.put(key, result)
-    return result
+    return {
+        "symbol": symbol,
+        "range": range_key,
+        "bars": [],
+        "status": "DATA_UNAVAILABLE",
+        "source": "UNUSUAL_WHALES",
+        "error": _bars_fallback_note(intraday),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1293,10 +1044,10 @@ INDEX_FALLBACK = {
 
 def _provider_indices() -> Optional[dict]:
     """
-    The index strip from the quote providers, for when TWS is unavailable.
+    The index strip.
 
-    Fetched in parallel: four sequential provider calls is four round trips for
-    a strip that sits at the top of every page.
+    Fetched in parallel: four sequential calls is four round trips for a
+    strip that sits at the top of every page.
     """
     providers = _quote_providers()
     if not providers:
@@ -1348,8 +1099,9 @@ def _provider_indices() -> Optional[dict]:
         "dates": _session_dates(),
         "status": "OK" if priced == len(rows) else "PARTIAL_DATA",
         "source": "FALLBACK",
-        "detail": (f"{priced} of {len(rows)} index levels from the quote "
-                   "providers; TWS is not connected."),
+        "detail": (f"{priced} of {len(rows)} index levels. The feed carries "
+                   "no quote for SPX, NDX or VIX, so where a level is "
+                   "missing the row says so rather than showing its ETF."),
     }
 
 
@@ -1358,10 +1110,16 @@ def get_indices(ttl: Optional[float] = None) -> dict:
     if cached:
         return cached
 
-    async def job(ib: IB) -> dict:
-        out = []
-        for spec in INDEX_SPECS:
-            row = {
+    result = _provider_indices()
+    if result:
+        cache.put("indices", result)
+        return result
+
+    # The strip is on every page, and four blank cells read as a broken app.
+    # Said as unavailable rather than left empty.
+    return {
+        "indices": [
+            {
                 "label": spec["label"],
                 "value": None,
                 "change": None,
@@ -1369,121 +1127,16 @@ def get_indices(ttl: Optional[float] = None) -> dict:
                 "spark": [],
                 "instrument": None,
                 "is_proxy": False,
-                "status": "UNAVAILABLE",
+                "status": "DATA_UNAVAILABLE",
             }
-
-            candidates = []
-            sym, exch = spec["index"]
-            candidates.append((Index(sym, exch), sym, False))
-            if spec["proxy"]:
-                candidates.append(
-                    (Stock(spec["proxy"], "SMART", "USD"), spec["proxy"], True)
-                )
-
-            for contract, name, is_proxy in candidates:
-                if name in _NO_INDEX_DATA:
-                    continue
-                try:
-                    await ib.qualifyContractsAsync(contract)
-                    if not contract.conId:
-                        continue
-                    bars = await ib.reqHistoricalDataAsync(
-                        contract,
-                        endDateTime="",
-                        durationStr="5 D",
-                        barSizeSetting="1 hour",
-                        whatToShow="TRADES",
-                        useRTH=True,
-                        formatDate=1,
-                    )
-                    if not bars:
-                        # No permission for this index: stop asking every refresh.
-                        if not is_proxy:
-                            _NO_INDEX_DATA.add(name)
-                        continue
-
-                    closes = [float(b.close) for b in bars if num(b.close) is not None]
-                    if len(closes) < 2:
-                        continue
-
-                    daily = await ib.reqHistoricalDataAsync(
-                        contract,
-                        endDateTime="",
-                        durationStr="5 D",
-                        barSizeSetting="1 day",
-                        whatToShow="TRADES",
-                        useRTH=True,
-                        formatDate=1,
-                    )
-                    value = closes[-1]
-                    prev = (
-                        num(daily[-2].close)
-                        if daily and len(daily) >= 2
-                        else closes[0]
-                    )
-
-                    row.update(
-                        {
-                            "value": round(value, 2),
-                            "change": round(value - prev, 2) if prev else None,
-                            "change_percent": (
-                                round((value - prev) / prev * 100, 2) if prev else None
-                            ),
-                            "spark": [round(c, 2) for c in closes[-40:]],
-                            "instrument": name,
-                            "is_proxy": is_proxy,
-                            "status": "OK",
-                        }
-                    )
-                    break
-                except Exception:  # noqa: BLE001 - try the next candidate
-                    continue
-
-            out.append(row)
-
-        return {
-            "indices": out,
-            "market": market_clock(),
-            "dates": _session_dates(),
-            "status": "OK",
-            "source": "IBKR",
-        }
-
-    try:
-        result = ibkr.run(job, timeout=60)
-    except IBKRUnavailable as exc:
-        # The strip is on every page, and four blank cells read as a broken
-        # app rather than a disconnected broker. OptionData carries SPX, NDX
-        # and VIX as real index quotes, so the row is the index itself rather
-        # than an ETF wearing its name.
-        fallback = _provider_indices()
-        if fallback:
-            fallback["error"] = str(exc)
-            cache.put("indices", fallback)
-            return fallback
-        return {
-            "indices": [
-                {
-                    "label": s["label"],
-                    "value": None,
-                    "change": None,
-                    "change_percent": None,
-                    "spark": [],
-                    "instrument": None,
-                    "is_proxy": False,
-                    "status": "IBKR_UNAVAILABLE",
-                }
-                for s in INDEX_SPECS
-            ],
-            "market": market_clock(),
-            "dates": _session_dates(),
-            "status": "IBKR_UNAVAILABLE",
-            "source": "IBKR",
-            "error": str(exc),
-        }
-
-    cache.put("indices", result)
-    return result
+            for spec in INDEX_SPECS
+        ],
+        "market": market_clock(),
+        "dates": _session_dates(),
+        "status": "DATA_UNAVAILABLE",
+        "source": "UNUSUAL_WHALES",
+        "error": "The feed returned no index levels.",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1496,152 +1149,41 @@ def get_indices(ttl: Optional[float] = None) -> dict:
 # produce a gateway timeout: the request was killed before the call it was
 # waiting on was allowed to give up. A batch that overruns falls back to the
 # HTTP provider, which answers in seconds.
-BATCH_IBKR_BUDGET = 30.0
-
-
-def get_batch(
-    symbols: list[str], ttl: Optional[float] = None,
-    budget: float = BATCH_IBKR_BUDGET,
-) -> dict:
+def get_batch(symbols: list[str], ttl: Optional[float] = None,
+              budget: float = 30.0) -> dict:
     """
     Quotes plus one year of daily bars for many symbols in a single pass.
 
-    Fetching these one symbol at a time costs a market-data settle per symbol
-    (~7s each). Requesting every ticker on one batch and gathering the
-    historical calls concurrently turns ten symbols into roughly one round
-    trip instead of ten.
-    """
-    import asyncio
+    The TWS version of this opened one market-data line per symbol, let them
+    settle together and gathered the history calls concurrently -- one round
+    trip for ten symbols instead of ten. ``_fallback_batch`` does the same
+    shape of thing against the feed: every symbol fetched in parallel under a
+    deadline, with a symbol that misses it reported as pending rather than as
+    having no price.
 
+    ``budget`` is accepted and unused. It bounded the TWS call; the deadline
+    that matters now lives in ``_fallback_batch``.
+    """
     symbols = [s.upper() for s in symbols]
     key = "batch:" + ",".join(symbols)
     cached = cache.get(key, ttl if ttl is not None else session_ttl(60.0, 900.0))
     if cached:
         return cached
 
-    async def job(ib: IB) -> dict:
-        contracts: dict[str, Stock] = {}
-        for symbol in symbols:
-            c = Stock(symbol, "SMART", "USD")
-            try:
-                await ib.qualifyContractsAsync(c)
-            except Exception:  # noqa: BLE001
-                continue
-            if c.conId:
-                contracts[symbol] = c
+    rows = _fallback_batch(symbols)
+    if rows:
+        result = {"symbols": rows, "status": "OK", "source": "UNUSUAL_WHALES"}
+        cache.put(key, result)
+        return result
 
-        # One market-data line per symbol, all settling together.
-        tickers = {s: ib.reqMktData(c, "", False, False) for s, c in contracts.items()}
-        await asyncio.sleep(4.0)
-
-        snapshots = {}
-        for s, t in tickers.items():
-            snapshots[s] = {
-                "last": _first_num(t.last, t.close, t.markPrice),
-                "close": num(t.close),
-                "bid": num(t.bid),
-                "ask": num(t.ask),
-            }
-            ib.cancelMktData(contracts[s])
-
-        async def history(symbol: str, contract: Stock):
-            try:
-                return symbol, await ib.reqHistoricalDataAsync(
-                    contract, "", "1 Y", "1 day", "TRADES", True, 1
-                )
-            except Exception:  # noqa: BLE001
-                return symbol, []
-
-        results = await asyncio.gather(
-            *[history(s, c) for s, c in contracts.items()],
-            return_exceptions=True,
-        )
-
-        out: dict[str, dict] = {}
-        today = datetime.now(EASTERN).date()
-
-        for item in results:
-            if isinstance(item, Exception) or not isinstance(item, tuple):
-                continue
-            symbol, bars = item
-            snap = snapshots.get(symbol, {})
-
-            rows = [
-                {
-                    "date": str(b.date),
-                    "open": float(b.open),
-                    "high": float(b.high),
-                    "low": float(b.low),
-                    "close": float(b.close),
-                    "volume": float(b.volume or 0.0),
-                }
-                for b in bars
-            ]
-
-            price = snap.get("last")
-            prev = None
-            if bars:
-                last_bar = bars[-1]
-                bar_date = last_bar.date if isinstance(last_bar.date, date) else None
-                if bar_date == today and len(bars) >= 2:
-                    prev = num(bars[-2].close)
-                else:
-                    prev = num(last_bar.close)
-                if price is None:
-                    price = num(last_bar.close)
-            if prev is None:
-                prev = snap.get("close")
-
-            change = round(price - prev, 2) if price is not None and prev else None
-            change_pct = (
-                round((price - prev) / prev * 100, 2)
-                if price is not None and prev else None
-            )
-
-            out[symbol] = {
-                "symbol": symbol,
-                "price": round(price, 2) if price is not None else None,
-                "change": change,
-                "change_percent": change_pct,
-                "bars": rows,
-                "status": "OK" if price is not None else "NO_PRICE",
-            }
-
-        for symbol in symbols:
-            out.setdefault(
-                symbol,
-                {"symbol": symbol, "price": None, "change": None,
-                 "change_percent": None, "bars": [], "status": "UNKNOWN_SYMBOL"},
-            )
-
-        return {"symbols": out, "status": "OK", "source": "IBKR"}
-
-    try:
-        result = ibkr.run(job, timeout=budget)
-    except IBKRUnavailable as exc:
-        # ``ibkr.run`` reports its own timeout as IBKRUnavailable, so an
-        # overrun of ``budget`` arrives here too -- which is right: slow and
-        # unavailable are the same thing once the caller's deadline has gone.
-        # The strip and the calendar read this, so it needs the same fallback
-        # chain as get_quote. Without it every card showed "--" even when a
-        # provider had a perfectly good price.
-        fallback = _fallback_batch(symbols)
-        if fallback:
-            result = {"symbols": fallback, "status": "OK",
-                      "source": "FALLBACK", "error": str(exc)}
-            cache.put(key, result)
-            return result
-        return {
-            "symbols": {
-                s: {"symbol": s, "price": None, "change": None,
-                    "change_percent": None, "bars": [],
-                    "status": "IBKR_UNAVAILABLE"}
-                for s in symbols
-            },
-            "status": "IBKR_UNAVAILABLE",
-            "source": "IBKR",
-            "error": str(exc),
-        }
-
-    cache.put(key, result)
-    return result
+    return {
+        "symbols": {
+            s: {"symbol": s, "price": None, "change": None,
+                "change_percent": None, "bars": [],
+                "status": "DATA_UNAVAILABLE"}
+            for s in symbols
+        },
+        "status": "DATA_UNAVAILABLE",
+        "source": "UNUSUAL_WHALES",
+        "error": "The feed returned no rows.",
+    }

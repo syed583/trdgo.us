@@ -32,7 +32,6 @@ const STATUS_TONE: Record<string, string> = {
   DATA_CONFLICT: 'amber',
   ENTITLEMENT_REQUIRED: 'blue',
   PROVIDER_OFFLINE: 'red',
-  IBKR_UNAVAILABLE: 'red',
   SYMBOL_NOT_FOUND: 'red',
   ERROR: 'red',
 };
@@ -64,7 +63,7 @@ export function Unavailable({
   const entitlement = status === 'ENTITLEMENT_REQUIRED';
   const notConfigured = status === 'PROVIDER_NOT_CONFIGURED';
   const advanced = status === 'REQUIRES_ADVANCED_OPTIONS_DATA';
-  const offline = status === 'PROVIDER_OFFLINE' || status === 'IBKR_UNAVAILABLE';
+  const offline = status === 'PROVIDER_OFFLINE';
 
   const title = notConfigured ? 'Provider not configured'
     : advanced ? 'Requires advanced options data'
@@ -107,17 +106,6 @@ export function ErrorState({ error }: { error: string }) {
       <WifiOff size={17} />
       <span className="state-title">Backend unreachable</span>
       <span>{error}</span>
-    </div>
-  );
-}
-
-/** Skeleton rows for a table that is still loading. */
-export function SkeletonRows({ rows = 6, height = 26 }: { rows?: number; height?: number }) {
-  return (
-    <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-      {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="skeleton" style={{ height }} />
-      ))}
     </div>
   );
 }

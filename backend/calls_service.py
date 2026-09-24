@@ -534,7 +534,7 @@ def explain(call_id: int, symbol_news: bool = True) -> dict:
     if symbol_news:
         headlines: list = []
         try:
-            import ibkr_news_service
+            import uw_news_adapter as symbol_news_feed
 
             # Headlines are a nice-to-have: never let a slow news farm hold
             # the explanation hostage.
@@ -542,7 +542,7 @@ def explain(call_id: int, symbol_news: bool = True) -> dict:
 
             pool = ThreadPoolExecutor(max_workers=1)
             try:
-                news = pool.submit(ibkr_news_service.get_symbol_news, symbol, 15).result(
+                news = pool.submit(symbol_news_feed.get_news, symbol, 15).result(
                     timeout=NEWS_BUDGET) or {}
             finally:
                 pool.shutdown(wait=False)

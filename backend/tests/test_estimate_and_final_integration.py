@@ -72,7 +72,7 @@ def test_low_confidence_blocks_buy_and_sell():
 def test_analysis_response_structure_and_validation_warning_shape():
     validation = validate_symbol_data("NVDA", {
         "source": "TEST",
-        "status": "IBKR_UNAVAILABLE",
+        "status": "PROVIDER_OFFLINE",
         "underlying_price": None,
         "call": None,
         "put": None,

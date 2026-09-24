@@ -48,7 +48,14 @@ export default function EarningsPreview({ symbol }: { symbol: string }) {
 
       <div className="ep-tiles">
         <div className="ep-tile">
-          <span>MARKET IS PRICING</span>
+          <span>
+            MARKET IS PRICING
+            {p.expected_move_source === 'CHAIN' && (
+              <i className="ep-from" title={p.expected_move_basis}>
+                from chain
+              </i>
+            )}
+          </span>
           <b>{expected == null ? 'not yet' : `±${expected}%`}</b>
           {p.expected_move != null && (
             <em>{money(p.expected_move)} either way</em>
@@ -72,8 +79,9 @@ export default function EarningsPreview({ symbol }: { symbol: string }) {
       </div>
 
       {p.expectation_vs_history && (
-        <p className={`ep-verdict ${wide == null ? ''
-          : wide >= 1.25 ? 'ep-wide' : wide <= 0.8 ? 'ep-tight' : ''}`}>
+        <p className={`ep-verdict ${p.expected_move_source === 'CHAIN' ? ''
+          : wide == null ? ''
+            : wide >= 1.25 ? 'ep-wide' : wide <= 0.8 ? 'ep-tight' : ''}`}>
           {p.expectation_vs_history}
         </p>
       )}

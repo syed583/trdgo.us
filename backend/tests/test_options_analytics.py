@@ -355,8 +355,8 @@ def test_failed_chain_load_is_cached_so_one_outage_is_paid_once():
     key = "chain:TEST:front:0"
     market.cache.clear()
     try:
-        offline = opts._offline_chain("TEST", "IBKR_UNAVAILABLE", "timeout")
-        assert offline["status"] == "IBKR_UNAVAILABLE"
+        offline = opts._offline_chain("TEST", "PROVIDER_OFFLINE", "timeout")
+        assert offline["status"] == "PROVIDER_OFFLINE"
         market.cache.put(key, offline)
 
         # A failure is readable inside the short window ...

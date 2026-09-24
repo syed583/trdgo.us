@@ -229,6 +229,9 @@ def _parse_form4(body: str, filed: str, url: str) -> list[dict]:
 
 def insider_transactions(symbol: str, days: int = 180,
                          max_filings: int = 60) -> dict:
+    # days widens the scan window; cap it so a huge value cannot walk an
+    # issuer's entire submission history. max_filings already bounds fetches.
+    days = max(1, min(int(days) if str(days).lstrip("-").isdigit() else 180, 3650))
     """
     Form 4 activity for one symbol.
 

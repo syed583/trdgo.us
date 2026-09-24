@@ -94,11 +94,21 @@ def get_sentiment(symbol: str, limit: int = 20) -> dict:
 
 
 def desk_articles(symbols: list, per_symbol: int = 4) -> list[dict]:
-    """The merged desk feed: headlines across the names on the board."""
+    """
+    The merged desk feed: headlines across the names on the board.
+
+    Fetched concurrently. One request per symbol, run one after another, was
+    ~0.7s x 38 names = the twenty-six seconds the News desk took to open. The
+    client paces its own requests, so the pool only removes the waiting
+    between them, not the spacing the provider sees.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
     seen: dict = {}
-    for symbol in symbols:
-        for item in (get_news(symbol, per_symbol).get("items") or []):
-            seen[item["headline"]] = item
+    with ThreadPoolExecutor(max_workers=12, thread_name_prefix="desk") as pool:
+        for result in pool.map(lambda sym: get_news(sym, per_symbol), symbols):
+            for item in (result.get("items") or []):
+                seen[item["headline"]] = item
     articles = list(seen.values())
     articles.sort(key=lambda a: str(a.get("published_at") or ""), reverse=True)
     return articles

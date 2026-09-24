@@ -4,6 +4,7 @@ import {
   Activity, ExternalLink, Hash, Layers, Newspaper, RefreshCw, Search,
 } from 'lucide-react';
 import { api2 } from '../api/client';
+import { safeHref } from '../lib/format';
 import type { PageContext } from '../App';
 import { useApi } from '../hooks/useApi';
 import { Panel } from '../components/common';
@@ -212,7 +213,7 @@ export default function NewsDeskPage({ ctx }: { ctx: PageContext }) {
           ) : (
             <div className="nd-feed">
               {articles.map((a) => (
-                <a className="nd-article" key={a.id} href={a.url}
+                <a className="nd-article" key={a.id} href={safeHref(a.url)}
                   target="_blank" rel="noopener noreferrer">
                   <div className="nd-article-body">
                     <b>{a.headline}</b>
@@ -251,7 +252,7 @@ export default function NewsDeskPage({ ctx }: { ctx: PageContext }) {
         <div className="nd-side">
           {featured && (
             <Panel title="Featured" icon={<ExternalLink size={13} />}>
-              <a className="nd-featured" href={featured.url}
+              <a className="nd-featured" href={safeHref(featured.url)}
                 target="_blank" rel="noopener noreferrer">
                 <span className={`nd-badge ${featured.sentiment}`}>
                   {featured.sentiment}

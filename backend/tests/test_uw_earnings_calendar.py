@@ -68,7 +68,10 @@ def test_weekends_are_not_requested(monkeypatch):
     monday = date(2026, 9, 21)
     cal.calendar(start=monday.isoformat(),
                  end=(monday + timedelta(days=6)).isoformat())
-    assert asked == [(monday + timedelta(days=i)).isoformat() for i in range(5)]
+    # Which days, not in which order: the dates are fetched together, so the
+    # order they arrive in is the pool's business rather than this module's.
+    assert sorted(asked) == [
+        (monday + timedelta(days=i)).isoformat() for i in range(5)]
 
 
 def test_a_day_holds_both_sessions(monkeypatch):

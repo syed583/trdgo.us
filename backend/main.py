@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 from fastapi import FastAPI, Depends, HTTPException
@@ -30,8 +31,6 @@ from sec_fundamental_service import get_clean_fundamentals
 from fundamental_score_service import score_fundamentals
 
 from market_environment_service import score_market_environment
-from options_score_service import score_options
-from options_analytics_service import calculate_options_analytics
 from trdgo_score_service import score_trdgo
 from analysis_service import build_analysis
 from live_score_service import get_trdgo_score
@@ -182,17 +181,32 @@ def _start_slow_screen_warmer() -> None:
 
     def warm() -> None:
         import api_routes as r
+        from concurrent.futures import ThreadPoolExecutor
 
-        time.sleep(20)  # let IBKR connect and the first page requests land
-        for fn in (r.dashboard, r.market_pulse, r.flow_market_summary,
+        # A brief pause so the first real page requests are served before the
+        # warmer competes with them for the provider's pacing. (This used to
+        # be twenty seconds "to let IBKR connect" -- the broker is gone, and
+        # that delay just left every screen cold for the first twenty seconds
+        # after a restart.)
+        time.sleep(2)
+
+        screens = (r.dashboard, r.market_pulse, r.flow_market_summary,
                    r.flow_market_tape, r.flow_market_unusual,
                    r.flow_market_intraday, r.flow_market_sectors,
                    r.flow_market_comparison, r.flow_market_expiries,
-                   r.news_desk, r.earnings_calendar_context):
+                   r.news_desk, r.earnings_calendar_context)
+
+        # Built together rather than one after another: each waits mostly on
+        # the provider, so the first build of all eleven screens finishes in
+        # about one screen's time instead of eleven.
+        def build(fn):
             try:
                 fn()
             except Exception:  # noqa: BLE001 - warming is best effort
                 pass
+
+        with ThreadPoolExecutor(max_workers=6, thread_name_prefix="warm") as pool:
+            list(pool.map(build, screens))
         swr.start_warmer()
 
     threading.Thread(target=warm, daemon=True, name="slow-screen-warmer").start()
@@ -212,26 +226,6 @@ def _warm_default_strip() -> None:
         from live_score_service import warm_scores
 
         warm_scores(list(DEFAULT_STRIP))
-    except Exception:  # noqa: BLE001 - warming must never stop the server
-        pass
-
-
-@app.on_event("startup")
-def _start_market_warmer() -> None:
-    """
-    Hold the TWS connection open across the session.
-
-    The connection is the thing worth pre-warming. At the opening bell TWS is
-    servicing every subscription at once and its handshake times out, so a
-    connection established then fails -- and the app falls back to a provider
-    snapshot dated to the last completed session. One established beforehand
-    rides through, because the expensive part is connecting rather than
-    staying connected.
-    """
-    try:
-        import market_warmer_service as warmer
-
-        warmer.start()
     except Exception:  # noqa: BLE001 - warming must never stop the server
         pass
 
@@ -301,7 +295,7 @@ def _start_calendar_sync() -> None:
 
         while True:
             try:
-                import benzinga_earnings_service as benzinga
+                import uw_earnings_feed as benzinga
                 import earnings_calendar_service as calendar
                 import live_market_service as market
 
@@ -498,13 +492,16 @@ def health_check():
             "database": "connected"
         }
 
-    except Exception as exc:
-
+    except Exception:
+        # This endpoint is public (it is in auth_service.PUBLIC_PREFIXES, so a
+        # load balancer can poll it without a session). The exception string
+        # from a failed DB connect names the host, port, user and database, so
+        # it is logged for the operator and never returned to the caller.
+        logging.getLogger(__name__).exception("health check: database unreachable")
         return {
             "status": "error",
             "service": "US-Stock Reader",
             "database": "disconnected",
-            "error": str(exc)
         }
 
 
@@ -731,7 +728,7 @@ def market_history(symbol: str):
 
         raise HTTPException(
             status_code=500,
-            detail=f"Market data error: {str(exc)}"
+            detail="Market data error."
         )
 
 
@@ -761,10 +758,7 @@ def market_technicals(symbol: str):
 
         raise HTTPException(
             status_code=500,
-            detail=(
-                f"Technical analysis error: "
-                f"{str(exc)}"
-            )
+            detail="Technical analysis error."
         )
 
 
@@ -797,10 +791,7 @@ def market_technical_score(symbol: str):
 
         raise HTTPException(
             status_code=500,
-            detail=(
-                f"Technical score error: "
-                f"{str(exc)}"
-            )
+            detail="Technical score error."
         )
 
 
@@ -829,10 +820,7 @@ def market_fundamentals(symbol: str):
 
         raise HTTPException(
             status_code=500,
-            detail=(
-                f"SEC fundamental data error: "
-                f"{str(exc)}"
-            )
+            detail="SEC fundamental data error."
         )
 
 
@@ -868,10 +856,7 @@ def market_fundamental_score(symbol: str):
 
         raise HTTPException(
             status_code=500,
-            detail=(
-                f"Fundamental score error: "
-                f"{str(exc)}"
-            )
+            detail="Fundamental score error."
         )
 
 
@@ -897,10 +882,7 @@ def market_earnings_history(
 
         raise HTTPException(
             status_code=500,
-            detail=(
-                f"Earnings history error: "
-                f"{str(exc)}"
-            )
+            detail="Earnings history error."
         )
 
 
@@ -933,101 +915,7 @@ def market_earnings_history_score(
 
         raise HTTPException(
             status_code=500,
-            detail=(
-                f"Earnings history score error: "
-                f"{str(exc)}"
-            )
-        )
-
-
-# ---------------------------------------------------------
-# OPTIONS ANALYTICS
-# ---------------------------------------------------------
-
-@app.get("/market/options/{symbol}")
-def market_options(symbol: str):
-    try:
-        return calculate_options_analytics(symbol.upper())
-    except ConnectionRefusedError:
-        return {
-            "symbol": symbol.upper(),
-            "status": "IBKR_UNAVAILABLE",
-            "provider_status": "IBKR_UNAVAILABLE",
-            "warnings": ["IBKR/TWS connection refused; options analytics unavailable"],
-            "data_quality": "NO_DATA",
-        }
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                f"Options analytics error: {str(exc)}"
-            )
-        )
-
-
-@app.get("/market/options-score/{symbol}")
-def market_options_score(symbol: str):
-    try:
-        analytics = calculate_options_analytics(symbol.upper())
-        score = score_options(analytics)
-        return {
-            "symbol": symbol.upper(),
-            **score,
-            "provider_status": str(analytics.get("status") or "UNKNOWN").upper(),
-        }
-    except ConnectionRefusedError:
-        return {
-            "symbol": symbol.upper(),
-            "score": 0,
-            "max_score": 15,
-            "bias": "INSUFFICIENT_DATA",
-            "confidence": 0,
-            "reasons": ["Options provider unavailable"],
-            "warnings": ["IBKR/TWS connection refused; options score unavailable"],
-            "data_quality": "NO_DATA",
-            "provider_status": "IBKR_UNAVAILABLE",
-        }
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                f"Options score error: {str(exc)}"
-            )
-        )
-
-
-@app.get("/market/expected-move/{symbol}")
-def market_expected_move(symbol: str):
-    try:
-        analytics = calculate_options_analytics(symbol.upper())
-        return {
-            "symbol": symbol.upper(),
-            "expected_move": {
-                "dollars": analytics.get("expected_move_dollars"),
-                "percent": analytics.get("expected_move_percent"),
-                "range": analytics.get("expected_range"),
-            },
-            "status": analytics.get("status", "OK"),
-            "provider_status": str(analytics.get("status") or "UNKNOWN").upper(),
-        }
-    except ConnectionRefusedError:
-        return {
-            "symbol": symbol.upper(),
-            "expected_move": {
-                "dollars": None,
-                "percent": None,
-                "range": {"lower": None, "upper": None},
-            },
-            "status": "IBKR_UNAVAILABLE",
-            "provider_status": "IBKR_UNAVAILABLE",
-            "warnings": ["IBKR/TWS connection refused; expected move unavailable"],
-        }
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                f"Expected move error: {str(exc)}"
-            )
+            detail="Earnings history score error."
         )
 
 
@@ -1057,7 +945,7 @@ def market_final_score(symbol: str):
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"Final score error: {str(exc)}",
+            detail="Score computation error.",
         )
 
 
@@ -1104,7 +992,7 @@ def market_analysis(symbol: str):
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"Analysis error: {str(exc)}",
+            detail="Analysis error.",
         )
 
 
@@ -1124,10 +1012,7 @@ def market_environment_score():
 
         raise HTTPException(
             status_code=500,
-            detail=(
-                f"Market environment error: "
-                f"{str(exc)}"
-            )
+            detail="Market environment error."
         )
 
 # ---------------------------------------------------------------------------
@@ -1186,8 +1071,23 @@ def auth_status() -> dict:
     return {"required": auth.enabled()}
 
 
+def _client_key(request: Request) -> str:
+    """Best-effort client identity for the login throttle."""
+    fwd = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    return fwd or (request.client.host if request.client else "unknown")
+
+
 @app.post("/auth/login")
 async def auth_login(request: Request):
+    # Rate-limit before doing any work: one shared password is only as safe as
+    # the number of guesses an attacker is allowed.
+    client = _client_key(request)
+    wait = auth.login_blocked(client)
+    if wait:
+        return JSONResponse(
+            {"detail": f"Too many attempts. Try again in {wait}s."},
+            status_code=429)
+
     # The login page posts JSON. A form post is accepted too, but only if
     # the multipart parser is installed -- and when it is not, an unparseable
     # body used to raise inside the fallback and surface as a 500. A wrong or
@@ -1206,7 +1106,10 @@ async def auth_login(request: Request):
                 status_code=400)
 
     if not auth.check_password(str(body.get("password") or "")):
+        auth.note_login_failure(client)
         return JSONResponse({"detail": "Incorrect password"}, status_code=401)
+
+    auth.note_login_success(client)
 
     # The tunnel terminates TLS and forwards plain HTTP to us, so the scheme on
     # this hop is always http -- but the browser sees https and several block a

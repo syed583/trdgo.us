@@ -21,8 +21,7 @@ def test_every_provider_says_what_it_powers_and_what_is_lost():
 
 def test_the_providers_the_model_depends_on_are_all_listed():
     listed = {p["key"] for p in pu.PROVIDERS}
-    for required in ("IBKR", "UNUSUAL_WHALES", "SEC", "FINVIZ",
-                     "BENZINGA", "ANTHROPIC"):
+    for required in ("UNUSUAL_WHALES", "SEC", "ANTHROPIC"):
         assert required in listed, required
 
 

@@ -218,7 +218,7 @@ def import_estimate_snapshots(
                     "snapshot_time"
                 ),
 
-                "error": str(exc)
+                "error": type(exc).__name__
             })
 
     created = len([

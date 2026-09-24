@@ -31,7 +31,7 @@ House rules
 One subscription, one person: the token is read from backend/.env, never
 logged, and never returned by any status endpoint. Their limits are read
 from the response headers and honoured -- a 429 is a signal to stop, not to
-retry -- on the same terms this app already applies to OptionsBell.
+retry.
 """
 
 from __future__ import annotations
@@ -53,6 +53,18 @@ load_dotenv()
 
 SOURCE = "UNUSUAL_WHALES"
 BASE = "https://api.unusualwhales.com"
+
+# urllib follows 3xx by default and re-sends every header -- including the
+# Authorization bearer -- to the redirect target, cross-origin included. A
+# provider-side open redirect would then leak the API token. This opener
+# refuses to follow: a redirect is surfaced as an HTTPError and handled like
+# any other non-200 rather than chased.
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):  # noqa: D401, ANN001
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
 ENV_KEY = "UNUSUAL_WHALES_API_KEY"
 TIMEOUT = 30.0
 
@@ -71,10 +83,15 @@ TTL_SETTLED = 30 * 24 * 3600.0   # a finished day cannot change
 
 # The app fans out: a board scan touches thirty-eight symbols across several
 # endpoints at once, and firing those together is what trips their burst
-# limit -- after which every screen falls back to a free provider for the
-# length of the pause, which looks exactly like the migration not working.
-# Requests are spaced instead of refused.
-MIN_INTERVAL = 0.12
+# limit -- after which every screen would be blocked for the length of the
+# pause. Requests are spaced instead of refused.
+#
+# 0.06s = ~1000 requests/minute. The plan's own per-minute headroom is far
+# above what any single screen needs (a cold dashboard is a few dozen calls),
+# and this is the dispatch spacing every multi-call screen waits on, so it is
+# kept as low as stays comfortably clear of the burst limit. It was 0.12s,
+# which doubled the wait on every screen that fans out.
+MIN_INTERVAL = 0.06
 
 _gate = threading.Lock()
 _last_call = 0.0
@@ -177,6 +194,15 @@ def get(path: str, params: Optional[dict] = None) -> dict:
                            "Unusual Whales requests is spent."),
                 "source": SOURCE}
 
+    if any(bad in path for bad in ("?", "#", "..", "//")) or not path.startswith("/"):
+        # A well-formed path is built from validated segments. Anything with a
+        # query, a fragment, a parent-directory hop or a doubled slash was not
+        # built the way this function's callers build paths -- it is an
+        # injected symbol, and it does not get sent with the token.
+        _last_status = "BAD_REQUEST"
+        return {"status": "BAD_REQUEST", "data": None,
+                "detail": "Malformed request path.", "source": SOURCE}
+
     _space_out()
 
     query = urllib.parse.urlencode(
@@ -189,7 +215,7 @@ def get(path: str, params: Optional[dict] = None) -> dict:
                  "User-Agent": "US-Stock-Reader/1.0"})
 
     try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+        with _OPENER.open(request, timeout=TIMEOUT) as response:
             _note_limits(response.headers)
             body = json.loads(response.read().decode("utf-8", "ignore") or "{}")
     except urllib.error.HTTPError as exc:

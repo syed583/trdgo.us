@@ -66,13 +66,12 @@ def validate_symbol_data(symbol: str, payload: dict):
         if price is not None and price <= 0:
             warnings.append("Underlying price is not positive")
 
-    # IBKR/SEC flags.
-    ibkr_status = payload.get("ibkr_status") or payload.get("status")
-    if str(ibkr_status).upper() == "IBKR_UNAVAILABLE":
-        warnings.append("IBKR data unavailable")
-
-    if str(payload.get("status") or "").upper() == "IBKR_UNAVAILABLE":
-        warnings.append("IBKR data unavailable")
+    # Provider flags.
+    status = str(payload.get("provider_status")
+                 or payload.get("status") or "").upper()
+    if status in ("PROVIDER_OFFLINE", "DATA_UNAVAILABLE",
+                  "PROVIDER_NOT_CONFIGURED"):
+        warnings.append(f"Market data unavailable ({status})")
 
     # Time/source freshness example.
     timestamp = payload.get("timestamp") or payload.get("updated_at")

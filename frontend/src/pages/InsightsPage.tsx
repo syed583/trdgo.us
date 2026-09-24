@@ -13,6 +13,9 @@ import WhyCall from '../components/WhyCall';
 import CorporateEvents from '../components/CorporateEvents';
 import Disparity from '../components/Disparity';
 import ParameterWhy from '../components/ParameterWhy';
+import EarningsPreview from '../components/EarningsPreview';
+import InstitutionalPanel from '../components/InstitutionalPanel';
+import SymbolNews from '../components/SymbolNews';
 import Dividends from '../components/Dividends';
 import FundActivity from '../components/FundActivity';
 import HorizonSwitch, { HORIZON_COPY, defaultHorizon } from '../components/HorizonSwitch';
@@ -285,7 +288,7 @@ function SearchScreen({
 
       <div className="an-stats">
         <div><b>12</b><span>Data Sources</span></div>
-        <div><b>16</b><span>Scored Parameters</span></div>
+        <div><b>20</b><span>Scored Parameters</span></div>
         <div><b>US</b><span>Market Coverage</span></div>
         <div><b>Live</b><span>Prices &amp; Flow</span></div>
       </div>
@@ -583,7 +586,9 @@ const TABS: [string, string][] = [
   // reading one area closely; this is for seeing the whole model at once,
   // which is what a finished run is actually being asked.
   ['all', 'All parameters'],
-  ['options', 'Options'],
+  // No Options tab: every option parameter is in the list above and the
+  // Disparity tab reads the tape closely. A third view of the same numbers
+  // was three places to check one thing.
   ['disparity', 'Disparity'],
   ['price', 'Price Action'],
   ['earnings', 'Earnings'],
@@ -788,13 +793,33 @@ function ResultScreen({
         ))}
       </div>
 
+      {/* One tab, one subject. These panels used to render on every tab, so
+          Overview showed the whole page and every other tab showed Overview
+          plus its own -- which made the tab strip decorative. */}
       {tab === 'disparity' && <Disparity symbol={symbol} />}
 
-      <CorporateEvents symbol={symbol} />
+      {tab === 'earnings' && (
+        <>
+          <Panel title="Next Report" icon={<CalendarDays size={13} />}>
+            <EarningsPreview symbol={symbol} />
+          </Panel>
+          <Dividends symbol={symbol} />
+        </>
+      )}
 
-      <FundActivity symbol={symbol} />
+      {tab === 'institutional' && (
+        <>
+          <InstitutionalPanel symbol={symbol} />
+          <FundActivity symbol={symbol} />
+        </>
+      )}
 
-      <Dividends symbol={symbol} />
+      {tab === 'news' && (
+        <>
+          <SymbolNews symbol={symbol} />
+          <CorporateEvents symbol={symbol} />
+        </>
+      )}
 
       <Panel title={tab === 'overview' ? 'Key Insights' : 'Parameters'} noBody>
         {tab === 'overview' ? (
@@ -895,13 +920,13 @@ function ResultScreen({
 // scores are the model's.
 const TAB_PARAMS: Record<string, string[]> = {
   disparity: ['disparity'],
-  options: ['options_flow', 'unusual_activity', 'gamma_exposure',
-            'oi_positioning', 'daily_oi_change', 'flow_by_expiry',
-            'key_levels', 'implied_volatility', 'expected_move', 'volume_pcr'],
-  price: ['price_action', 'ema_trend', 'rsi'],
+  price: ['price_action', 'ema_trend', 'rsi',
+          'vwap', 'opening_range', 'intraday_trend', 'gap_hold',
+          'close_location', 'relative_strength_day', 'relative_volume',
+          'after_hours'],
   earnings: ['earnings_results', 'dividend_trend'],
   institutional: ['insider_activity', 'fund_flows'],
-  news: ['event_radar', 'merger_activity', 'management_change'],
+  news: ['event_radar', 'merger_activity', 'funding_activity'],
 };
 
 function Ring({ value, colour }: { value: number | null; colour: string }) {

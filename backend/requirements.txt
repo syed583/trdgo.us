@@ -13,13 +13,6 @@ SQLAlchemy==2.0.52
 psycopg==3.3.5
 psycopg-binary==3.3.5
 
-# IBKR TWS API. eventkit is ib_insync's event library and is pulled in
-# transitively, but it is pinned here because ib_bootstrap.py depends on
-# how it acquires the asyncio event loop under Python 3.14.
-ib_insync==0.9.86
-eventkit==1.0.3
-nest-asyncio==1.6.0
-
 # configuration
 python-dotenv==1.2.2
 

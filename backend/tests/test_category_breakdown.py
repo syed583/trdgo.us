@@ -12,10 +12,16 @@ import directional_model as dm
 
 
 def _every_parameter():
-    """Every parameter any outlook scores: swing, today, tomorrow."""
+    """
+    Every parameter any outlook puts on the screen.
+
+    That is wider than what it scores: the session readings are computed at
+    zero weight and shown as context, so they need a category to live in
+    even though they add nothing to the hundred.
+    """
     import horizon_model as hm
 
-    names = set(dm.WEIGHTS)
+    names = set(dm.WEIGHTS) | set(hm.LABELS)
     for weights in hm.WEIGHTS.values():
         names |= set(weights)
     return names

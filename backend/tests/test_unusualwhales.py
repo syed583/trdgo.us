@@ -40,6 +40,9 @@ def _stub(monkeypatch, body=None, calls=None, headers=None, error=None):
                          headers or {})
 
     monkeypatch.setenv(uw.ENV_KEY, "uw_test_token")
+    # The client sends through a non-redirecting opener (so a 3xx cannot carry
+    # the bearer token to another host); stub that, not the bare urlopen.
+    monkeypatch.setattr(uw._OPENER, "open", urlopen)
     monkeypatch.setattr(uw.urllib.request, "urlopen", urlopen)
     monkeypatch.setattr(uw, "_spent", {"day": None, "count": 0})
     monkeypatch.setattr(uw, "_blocked_until", 0.0)
