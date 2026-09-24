@@ -111,7 +111,11 @@ def serve(key: str, fn: Callable[[], Any], fresh_for: float) -> Any:
 
     if held is not None:
         at, value = held
-        if now - at > fresh_for:
+        # >= not >: a value that has reached its freshness age is due for
+        # refresh. With > and a coarse clock (Windows time.time() ticks every
+        # ~16ms), two calls in one tick give now-at==0, and 0 > 0 is False --
+        # so a 0-second window never refreshed at all.
+        if now - at >= fresh_for:
             _refresh(key)
         return value
 
@@ -134,7 +138,7 @@ def warm_once() -> None:
     with _lock:
         due = [k for k, (_, fresh) in _fns.items()
                if now - _asked.get(k, 0) < IDLE_AFTER
-               and now - _values.get(k, (0, None))[0] > fresh]
+               and now - _values.get(k, (0, None))[0] >= fresh]
     for key in due:
         fn, _ = _fns[key]
         singleflight.call(f"swr:{key}", lambda k=key, f=fn: _run(k, f), FIRST_WAIT)
