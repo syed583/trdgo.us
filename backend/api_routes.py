@@ -269,7 +269,23 @@ def earnings_lifecycle(symbol: str) -> dict:
 
 @router.get("/estimates/revisions/{symbol}")
 def estimate_revisions(symbol: str) -> dict:
-    return av_estimates.get_revisions(symbol)
+    """
+    Which way the estimate for the next quarter is moving.
+
+    Alpha Vantage leads when it has history: comparing stored snapshots 7,
+    30, 60 and 90 days apart is the better measurement, and it is the one
+    this screen was built around. It needs months of its own snapshots
+    before it can say anything, though, so a fresh install falls back to the
+    provider's own revision counts rather than showing an empty panel.
+    """
+    stored = av_estimates.get_revisions(symbol)
+    if stored.get("rows"):
+        return stored
+
+    import uw_company_service as uwc
+
+    live = uwc.estimate_revisions(symbol)
+    return live if live.get("rows") else stored
 
 
 # ---------------------------------------------------------------------------

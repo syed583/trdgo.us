@@ -153,6 +153,84 @@ def earnings_estimates(symbol: str) -> dict:
             "source": SOURCE}
 
 
+def estimate_revisions(symbol: str) -> dict:
+    """
+    The current estimate and which way it is being revised.
+
+    Not the same measurement the snapshot-based version makes. That one
+    compares stored estimates 7, 30, 60 and 90 days apart, which needs
+    months of its own history before it can say anything; this reads the
+    provider's own count of analysts revising up and down over the last
+    week. Fewer horizons, available immediately, and the direction -- which
+    is the part that carries information -- is stated rather than derived.
+    """
+    symbol = (symbol or "").upper().strip()
+    out = earnings_estimates(symbol)
+    if out.get("status") != "OK" or not out.get("rows"):
+        return {"symbol": symbol, "rows": [], "horizons_available": [],
+                "status": out.get("status", "DATA_UNAVAILABLE"),
+                "detail": out.get("detail"), "source": SOURCE}
+
+    from datetime import date as _date
+
+    today = _date.today().isoformat()
+    ahead = [r for r in out["rows"]
+             if (r.get("period_ending") or "") >= today
+             and str(r.get("horizon") or "").startswith("fiscal quarter")]
+    current = ahead[0] if ahead else out["rows"][-1]
+
+    up = current.get("revisions_up")
+    down = current.get("revisions_down")
+    return {
+        "symbol": symbol,
+        "rows": [{
+            "label": "Current",
+            "days_ago": 0,
+            "eps_estimate": current.get("eps_estimate"),
+            "eps_low": current.get("eps_low"),
+            "eps_high": current.get("eps_high"),
+            "revenue_estimate": current.get("revenue_estimate"),
+            "analysts": current.get("analysts"),
+            "period_ending": current.get("period_ending"),
+        }],
+        "horizons_available": [0],
+        "revisions_up": up,
+        "revisions_down": down,
+        "revision_lean": current.get("revision_lean"),
+        "status": "OK",
+        "detail": ("The current estimate and how many analysts moved it up or "
+                   "down in the last week. Not a 7/30/60/90-day comparison -- "
+                   "that needs months of stored snapshots before it can say "
+                   "anything."),
+        "source": SOURCE,
+    }
+
+
+def next_report(symbol: str) -> Optional[dict]:
+    """The next scheduled report, or None. Shaped like a calendar row."""
+    try:
+        import uw_earnings_calendar as uwcal
+
+        out = uwcal.preview(symbol)
+    except Exception:  # noqa: BLE001
+        return None
+    if out.get("status") != "OK" or not out.get("next_report"):
+        return None
+    return {
+        "symbol": symbol,
+        "date": out["next_report"],
+        "date_label": out.get("next_report_label"),
+        "reporting_time": out.get("next_report_time"),
+        "quarter_label": out.get("quarter_ending"),
+        "eps_estimate": out.get("street_estimate"),
+        "eps_actual": None,
+        "expected_move_percent": out.get("expected_move_percent"),
+        # Scheduled and not yet reported: the pipeline has not started.
+        "lifecycle": "SCHEDULED",
+        "source": SOURCE,
+    }
+
+
 # ---------------------------------------------------------------------------
 # dividends
 # ---------------------------------------------------------------------------

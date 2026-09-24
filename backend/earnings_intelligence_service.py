@@ -481,11 +481,26 @@ def get_event_lifecycle(symbol: str) -> dict:
     symbol = symbol.upper()
     today = datetime.now(timezone.utc).date()
 
-    upcoming = benzinga.get_upcoming(today, today + timedelta(days=400), [symbol])
-    rows = upcoming.get("rows", [])
+    # The paid feed knows every scheduled report; Benzinga's cache only knows
+    # what somebody synced, and on a fresh install that is nothing -- which
+    # showed as "no scheduled earnings event on record" for companies that
+    # report in three weeks.
+    event = None
+    source = None
+    try:
+        import uw_company_service as uwc
 
-    event = rows[0] if rows else None
-    source = "BENZINGA"
+        event = uwc.next_report(symbol)
+        source = "UNUSUAL_WHALES" if event else None
+    except Exception:  # noqa: BLE001
+        event = None
+
+    if not event:
+        upcoming = benzinga.get_upcoming(today, today + timedelta(days=400),
+                                         [symbol])
+        rows = upcoming.get("rows", [])
+        event = rows[0] if rows else None
+        source = "BENZINGA" if event else None
 
     if not event:
         db = SessionLocal()
@@ -506,8 +521,8 @@ def get_event_lifecycle(symbol: str) -> dict:
             "status": cfg.DATA_UNAVAILABLE,
             "detail": (
                 f"No scheduled earnings event on record for {symbol}. "
-                + ("Configure Benzinga to populate the calendar."
-                   if not cfg.BENZINGA.configured else "")
+                "The company has not announced its next date, or no "
+                "configured provider carries it."
             ),
         }
 
@@ -530,5 +545,6 @@ def get_event_lifecycle(symbol: str) -> dict:
             if waiting else None
         ),
         "source": source,
-        "status": cfg.OK if source == "BENZINGA" else cfg.TEST_DATA,
+        "status": (cfg.OK if source in ("BENZINGA", "UNUSUAL_WHALES")
+                   else cfg.TEST_DATA),
     }
