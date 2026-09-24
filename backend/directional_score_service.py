@@ -91,7 +91,14 @@ def _gather(symbol: str, progress=None) -> dict:
             seen.add(stage)
             progress(stage, "complete" if ok else "unavailable")
 
-    with ThreadPoolExecutor(max_workers=6, thread_name_prefix="dir") as pool:
+    # Deliberately not a `with` block. Leaving one calls shutdown(wait=True),
+    # which waits for every straggler however long it takes -- so the budget
+    # below was decorative: a single slow provider held the whole analysis
+    # until the stream gave up at two minutes, with two stages still
+    # spinning on screen. The pool is shut down without waiting instead, and
+    # a straggler finishes into its own cache with nobody watching.
+    pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix="dir")
+    try:
         jobs = {
             "overview": pool.submit(_safe, lambda: options.get_overview(symbol), {}),
             "oi": pool.submit(_safe, lambda: odflow.daily_oi_change(symbol), {}),
@@ -147,7 +154,10 @@ def _gather(symbol: str, progress=None) -> dict:
             except Exception:  # noqa: BLE001
                 out[name] = {} if name not in ("bars", "bench") else ([], None)
                 report(name, False)
-        pool.shutdown(wait=False)
+    finally:
+        # cancel_futures clears anything still queued; whatever is already
+        # running is left to finish on its own time.
+        pool.shutdown(wait=False, cancel_futures=True)
 
     bars = (out.get("bars") or ([], None))[0]
     bench = (out.get("bench") or ([], None))[0]
