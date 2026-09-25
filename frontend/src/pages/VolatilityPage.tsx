@@ -72,10 +72,33 @@ function VolatilityExplainer() {
   );
 }
 
+const RANGES: { key: string; label: string; days: number }[] = [
+  { key: '1M', label: '1 Month', days: 31 },
+  { key: '3M', label: '3 Months', days: 93 },
+  { key: '6M', label: '6 Months', days: 186 },
+  { key: '1Y', label: '1 Year', days: 366 },
+  { key: 'ALL', label: 'All', days: 100000 },
+];
+
+function sliceByRange(series: any[] | undefined, days: number): any[] {
+  if (!series?.length) return [];
+  if (days >= 100000) return series;
+  // The series is daily and date-sorted ascending; keep rows on or after the
+  // cutoff measured back from the most recent point (not "today", so a stale
+  // feed still shows a full window).
+  const last = series[series.length - 1]?.date;
+  const end = last ? new Date(last) : new Date();
+  const cutoff = new Date(end);
+  cutoff.setDate(cutoff.getDate() - days);
+  return series.filter((r) => r.date && new Date(r.date) >= cutoff);
+}
+
 export default function VolatilityPage({ ctx }: { ctx: PageContext }) {
   const symbol = ctx.symbol;
   const vol = useApi<any>((s) => api2.volatility(symbol, s), [symbol]);
   const d = vol.data;
+  const [range, setRange] = useState('1Y');
+  const ivrv = sliceByRange(d?.iv_rv_series, RANGES.find((r) => r.key === range)?.days ?? 366);
 
   return (
     <div className="page">
@@ -114,9 +137,18 @@ export default function VolatilityPage({ ctx }: { ctx: PageContext }) {
 
                 <div className="two-col">
                   <Panel title="IV vs Realized Vol & IV Rank">
-                    {d.iv_rv_series?.length ? (
+                    <div className="vol-range">
+                      {RANGES.map((r) => (
+                        <button key={r.key}
+                          className={`vol-range-btn ${range === r.key ? 'active' : ''}`}
+                          onClick={() => setRange(r.key)}>
+                          {r.key === 'ALL' ? 'All' : r.key}
+                        </button>
+                      ))}
+                    </div>
+                    {ivrv.length ? (
                       <ResponsiveContainer width="100%" height={300}>
-                        <ComposedChart data={d.iv_rv_series}
+                        <ComposedChart data={ivrv}
                           margin={{ top: 8, right: 8, bottom: 4, left: -8 }}>
                           <CartesianGrid stroke="var(--border-2)" vertical={false} />
                           <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--text-mute)' }}

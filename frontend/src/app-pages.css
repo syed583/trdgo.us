@@ -366,6 +366,19 @@ a.index-card { color: inherit; }
 }
 .vol-stat-v.up { color: var(--green); }
 .vol-stat-v.down { color: var(--red); }
+.vol-range {
+  display: flex; gap: 4px; margin: 0 0 10px; flex-wrap: wrap;
+}
+.vol-range-btn {
+  font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--text-mute); cursor: pointer;
+}
+.vol-range-btn:hover { color: var(--text); }
+.vol-range-btn.active {
+  background: var(--blue-2, #2563eb); color: #fff; border-color: transparent;
+}
+
 .vol-legend {
   display: flex; flex-wrap: wrap; gap: 14px;
   padding: 8px 4px 2px; font-size: 11px; color: var(--text-mute);
