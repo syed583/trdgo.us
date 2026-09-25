@@ -589,6 +589,18 @@ def institutional_activity(symbol: str) -> dict:
     because a dataset is ninety megabytes and nobody should trigger that by
     typing a ticker.
     """
+    # Unusual Whales leads: it returns the current quarter's 13F census on
+    # demand, where the SEC path needs a 90 MB dataset ingested first and is
+    # only as current as the last ingest. SEC stays as the fallback for when
+    # the feed is not configured or has no coverage for a name.
+    symbol = validate.clean_symbol(symbol)
+    import uw_ownership_service as uw_own
+
+    if uw_own.configured():
+        out = uw_own.institutional_activity(symbol)
+        if out.get("status") == "OK":
+            return out
+
     import institutional_service as inst
 
     return inst.get_institutional_activity(symbol)

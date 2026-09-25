@@ -159,6 +159,9 @@ def institutional_activity(symbol: str, top: int = 10) -> dict:
         "holders": holders[:top],
         "family_transfers": [],
         "staleness_note": STALENESS_NOTE,
+        # 13F holdings are a quarterly filing; the badge names the quarter so
+        # nobody reads a three-month-old census as current.
+        "freshness": __import__("freshness").for_quarterly(_quarter(report)),
         "detail": ((f"The {len(rows)} largest holders on file, not every "
                     "filer -- the share totals below are theirs alone.")
                    if capped else
