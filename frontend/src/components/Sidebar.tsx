@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import {
-  Activity, BarChart3, Brain, CalendarDays, LineChart,
+  Activity, BarChart3, Brain, CalendarDays, LineChart, Users,
   LayoutDashboard, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
   Settings, Sparkles, Star, TrendingUp, X,
 } from 'lucide-react';
@@ -53,11 +53,15 @@ function readCollapsed(): boolean {
 export default function Sidebar({
   optionsMode,
   search,
+  isAdmin,
 }: {
   optionsMode: boolean;
   search: string;
+  isAdmin?: boolean;
 }) {
-  const nav = NAV;
+  const nav = isAdmin
+    ? [...NAV, { to: '/admin/users', label: 'Users', icon: <Users size={S} /> }]
+    : NAV;
   const [collapsed, setCollapsed] = React.useState(readCollapsed);
 
   // On a phone the sidebar is a drawer rather than a column. Without it there

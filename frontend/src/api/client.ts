@@ -680,6 +680,19 @@ export const api2 = {
 
   watchlist: (s?: AbortSignal) => request<any>('/api/watchlist', s),
   watchlistView: (s?: AbortSignal) => request<any>('/api/watchlist/view', s),
+  me: (s?: AbortSignal) => request<any>('/auth/me', s),
+  adminUsers: (s?: AbortSignal) => request<any>('/api/admin/users', s),
+  adminLogins: (limit = 50, s?: AbortSignal) =>
+    request<any>(`/api/admin/logins?limit=${limit}`, s),
+  adminCreateUser: (username: string) =>
+    send<any>('/api/admin/users', 'POST', { username }),
+  adminResetUser: (username: string) =>
+    send<any>(`/api/admin/users/${encodeURIComponent(username)}/reset`, 'POST'),
+  adminSetActive: (username: string, active: boolean) =>
+    send<any>(`/api/admin/users/${encodeURIComponent(username)}/active`, 'POST', { active }),
+  adminDeleteUser: (username: string) =>
+    send<any>(`/api/admin/users/${encodeURIComponent(username)}`, 'DELETE'),
+
   watchlistAdd: (symbol: string, note?: string) =>
     send<any>('/api/watchlist', 'POST', { symbol, note }),
   watchlistRemove: (symbol: string) =>

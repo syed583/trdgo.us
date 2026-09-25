@@ -14,6 +14,7 @@ import TopBar from './components/TopBar';
 const EarningsPage = lazy(() => import('./pages/EarningsPage'));
 const OptionsFlowPage = lazy(() => import('./pages/OptionsFlowPage'));
 const VolatilityPage = lazy(() => import('./pages/VolatilityPage'));
+const UsersPage = lazy(() => import('./pages/UsersPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
 const ScannerPage = lazy(() => import('./pages/ScannerPage'));
@@ -152,13 +153,16 @@ function Shell() {
     [navigate, location],
   );
 
+  const me = useApi<any>((s) => (demo ? Promise.resolve({ is_admin: false }) : api2.me(s)), [demo]);
+  const isAdmin = !!me.data?.is_admin;
+
   const ctx: PageContext = {
     symbol, demo, onSymbol, indices, strip, quote, search: location.search,
   };
 
   return (
     <div className="app">
-      <Sidebar optionsMode={optionsMode} search={location.search} />
+      <Sidebar optionsMode={optionsMode} search={location.search} isAdmin={isAdmin} />
 
       <div className="app-main">
         <TopBar
@@ -209,6 +213,7 @@ function Shell() {
           <Route path="/trade-journal" element={<JournalPage ctx={ctx} />} />
           <Route path="/strategy" element={<StrategyPage ctx={ctx} />} />
           <Route path="/settings" element={<SettingsPage ctx={ctx} />} />
+          <Route path="/admin/users" element={<UsersPage ctx={ctx} />} />
           <Route path="/community" element={<CommunityPage ctx={ctx} />} />
 
           <Route path="*" element={<NotFound />} />

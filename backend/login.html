@@ -75,14 +75,17 @@
     </div>
     <div class="tag">TRADE SMARTER. FASTER.</div>
 
-    <label for="password">Access password</label>
+    <label for="username">Username</label>
+    <input id="username" name="username" type="text" autocomplete="username"
+           placeholder="admin" autofocus />
+    <label for="password">Password</label>
     <input id="password" name="password" type="password" autocomplete="current-password"
-           autofocus required />
+           required />
     <button id="submit" type="submit">Sign in</button>
     <div class="err" id="err"></div>
 
     <div class="foot">
-      Private research tool. It reads market data and never places orders.
+      Private research tool. Leave the username as <b>admin</b> to sign in as the owner, or use the account you were given.
     </div>
   </form>
 
@@ -101,7 +104,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ password: document.getElementById('password').value }),
+        body: JSON.stringify({ username: document.getElementById('username').value, password: document.getElementById('password').value }),
       });
       if (response.ok) {
         window.location.replace('/');

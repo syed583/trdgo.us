@@ -20,7 +20,7 @@ from typing import Any, Optional
 # limit: a row click that takes a minute is a row click nobody makes twice.
 BRIEF_BUDGET = 20.0
 
-from fastapi import APIRouter, Body, Query
+from fastapi import APIRouter, Body, Query, Request
 from sqlalchemy import text
 
 import ai_insights_service as insights
@@ -1329,3 +1329,62 @@ def clear_cache() -> dict:
 def dashboard() -> dict:
     """The landing screen, served from the last build and refreshed behind it."""
     return swr.serve("dashboard", _dashboard_build, 120)
+
+
+# ---------------------------------------------------------------------------
+# admin: user accounts (admin only)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/admin/users")
+def admin_list_users(request: Request) -> dict:
+    """Every invited account, with its last login. Admin only."""
+    import auth_service as auth
+    auth.require_admin(request)
+    import user_service
+    return {"users": user_service.list_users(), "status": "OK"}
+
+
+@router.post("/admin/users")
+def admin_create_user(request: Request, payload: dict = Body(...)) -> dict:
+    """Create an account; the one-time password is in the response once."""
+    import auth_service as auth
+    auth.require_admin(request)
+    import user_service
+    return user_service.create_user(str(payload.get("username") or ""))
+
+
+@router.post("/admin/users/{username}/reset")
+def admin_reset_user(request: Request, username: str) -> dict:
+    """Issue a fresh one-time password for a user."""
+    import auth_service as auth
+    auth.require_admin(request)
+    import user_service
+    return user_service.reset_password(username)
+
+
+@router.post("/admin/users/{username}/active")
+def admin_set_active(request: Request, username: str,
+                     payload: dict = Body(default={})) -> dict:
+    """Enable or disable an account without deleting it."""
+    import auth_service as auth
+    auth.require_admin(request)
+    import user_service
+    return user_service.set_active(username, bool(payload.get("active", True)))
+
+
+@router.delete("/admin/users/{username}")
+def admin_delete_user(request: Request, username: str) -> dict:
+    import auth_service as auth
+    auth.require_admin(request)
+    import user_service
+    return user_service.delete_user(username)
+
+
+@router.get("/admin/logins")
+def admin_logins(request: Request, limit: int = 50) -> dict:
+    """Recent login attempts across all users -- who, when, from where."""
+    import auth_service as auth
+    auth.require_admin(request)
+    import user_service
+    return {"events": user_service.recent_logins(limit), "status": "OK"}

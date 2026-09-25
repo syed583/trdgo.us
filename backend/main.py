@@ -1071,6 +1071,16 @@ def auth_status() -> dict:
     return {"required": auth.enabled()}
 
 
+@app.get("/auth/me")
+def auth_me(request: Request) -> dict:
+    """Who is logged in and whether they are the admin. For the frontend nav."""
+    user = auth.current_user(request)
+    if not user:
+        return {"authenticated": False}
+    return {"authenticated": True, "username": user["username"],
+            "role": user["role"], "is_admin": user["role"] == "admin"}
+
+
 def _client_key(request: Request) -> str:
     """Best-effort client identity for the login throttle."""
     fwd = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
@@ -1105,11 +1115,27 @@ async def auth_login(request: Request):
                 {"detail": "Send the password as JSON: {\"password\": \"...\"}"},
                 status_code=400)
 
-    if not auth.check_password(str(body.get("password") or "")):
+    username = str(body.get("username") or "").strip().lower()
+    password = str(body.get("password") or "")
+    user = auth.authenticate(username, password)
+    ua = request.headers.get("user-agent", "")[:256]
+    if not user:
         auth.note_login_failure(client)
-        return JSONResponse({"detail": "Incorrect password"}, status_code=401)
+        try:
+            import user_service
+            user_service.record_login(username or "admin", False, client, ua)
+        except Exception:  # noqa: BLE001
+            pass
+        return JSONResponse({"detail": "Incorrect username or password"},
+                            status_code=401)
 
     auth.note_login_success(client)
+    if user["role"] != "admin":
+        try:
+            import user_service
+            user_service.record_login(user["username"], True, client, ua)
+        except Exception:  # noqa: BLE001
+            pass
 
     # The tunnel terminates TLS and forwards plain HTTP to us, so the scheme on
     # this hop is always http -- but the browser sees https and several block a
@@ -1118,10 +1144,11 @@ async def auth_login(request: Request):
     forwarded = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
     over_https = forwarded == "https" or request.url.scheme == "https"
 
-    response = JSONResponse({"status": "OK"})
+    response = JSONResponse({"status": "OK", "role": user["role"],
+                            "username": user["username"]})
     response.set_cookie(
         auth.COOKIE_NAME,
-        auth.issue_token(),
+        auth.issue_token(user["username"], user["role"]),
         max_age=auth.SESSION_TTL,
         httponly=True,      # not readable by page scripts
         samesite="lax",

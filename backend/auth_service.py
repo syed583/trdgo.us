@@ -68,28 +68,75 @@ def enabled() -> bool:
     return bool(_password())
 
 
-def _sign(expires_at: int) -> str:
-    mac = hmac.new(_secret(), str(expires_at).encode(), hashlib.sha256)
-    return f"{expires_at}.{mac.hexdigest()}"
+# A session cookie now carries WHO is logged in, not just that someone is.
+# Payload is "username|role|expires"; the signature covers all three, so a
+# user cannot edit their own cookie to become admin.
+def _sign(payload: str) -> str:
+    mac = hmac.new(_secret(), payload.encode(), hashlib.sha256)
+    return f"{payload}.{mac.hexdigest()}"
 
 
-def issue_token() -> str:
-    return _sign(int(time.time()) + SESSION_TTL)
+def issue_token(username: str = "admin", role: str = "admin") -> str:
+    payload = f"{username}|{role}|{int(time.time()) + SESSION_TTL}"
+    return _sign(payload)
 
 
-def valid_token(token: Optional[str]) -> bool:
-    if not token or "." not in token:
-        return False
+def read_token(token: Optional[str]) -> Optional[dict]:
+    """Return {username, role} from a valid token, or None."""
+    if not token or token.count(".") < 1:
+        return None
+    payload, _, _mac = token.rpartition(".")
+    parts = payload.split("|")
+    if len(parts) != 3:
+        # A pre-upgrade cookie ("expires.mac") -- treat as the admin so an
+        # existing session is not force-logged-out by the format change.
+        return _read_legacy(token)
+    username, role, stamp = parts
+    try:
+        expires_at = int(stamp)
+    except ValueError:
+        return None
+    if expires_at < time.time():
+        return None
+    # compare_digest: constant time, so a wrong signature cannot be guessed by
+    # timing how long the comparison takes.
+    if not hmac.compare_digest(token, _sign(payload)):
+        return None
+    return {"username": username, "role": role}
+
+
+def _read_legacy(token: str) -> Optional[dict]:
     stamp, _, _mac = token.partition(".")
     try:
         expires_at = int(stamp)
     except ValueError:
-        return False
+        return None
     if expires_at < time.time():
-        return False
-    # compare_digest: constant time, so a wrong signature cannot be guessed by
-    # timing how long the comparison takes.
-    return hmac.compare_digest(token, _sign(expires_at))
+        return None
+    legacy = f"{expires_at}"
+    mac = hmac.new(_secret(), legacy.encode(), hashlib.sha256)
+    if hmac.compare_digest(token, f"{expires_at}.{mac.hexdigest()}"):
+        return {"username": "admin", "role": "admin"}
+    return None
+
+
+def valid_token(token: Optional[str]) -> bool:
+    return read_token(token) is not None
+
+
+def authenticate(username: str, password: str) -> Optional[dict]:
+    """
+    Check a login. Returns {username, role} or None.
+
+    The admin is ACCESS_PASSWORD under the username 'admin'; everyone else is
+    a stored account. An empty username is treated as the admin so the plain
+    password login the app shipped with still works.
+    """
+    username = (username or "").strip().lower() or "admin"
+    if username == "admin":
+        return {"username": "admin", "role": "admin"} if check_password(password) else None
+    import user_service
+    return user_service.check_credentials(username, password)
 
 
 # --- login throttle --------------------------------------------------------
@@ -161,19 +208,35 @@ def is_public_path(path: str) -> bool:
     return path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES)
 
 
+def current_user(request: Request) -> Optional[dict]:
+    """The logged-in user {username, role}, or None. Admin when auth is off."""
+    if not enabled():
+        return {"username": "admin", "role": "admin"}
+    user = read_token(request.cookies.get(COOKIE_NAME))
+    if user:
+        return user
+    # A bearer token (the admin password) is accepted too, so scripts and curl
+    # can use the same access without the cookie flow.
+    header = request.headers.get("authorization") or ""
+    if header.lower().startswith("bearer ") and check_password(header[7:].strip()):
+        return {"username": "admin", "role": "admin"}
+    return None
+
+
 def require_session(request: Request) -> None:
     """Raise 401 unless the request carries a valid session."""
-    if not enabled():
-        return
-    if valid_token(request.cookies.get(COOKIE_NAME)):
-        return
-    # A bearer token is accepted too, so scripts and curl can use the same
-    # password without driving the cookie flow.
-    header = request.headers.get("authorization") or ""
-    if header.lower().startswith("bearer "):
-        if check_password(header[7:].strip()):
-            return
-    raise HTTPException(status_code=401, detail="Authentication required")
+    if current_user(request) is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+
+def require_admin(request: Request) -> dict:
+    """Raise unless the caller is the admin. Returns the admin user."""
+    user = current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only.")
+    return user
 
 
 def new_secret() -> str:

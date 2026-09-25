@@ -394,3 +394,46 @@ a.index-card { color: inherit; }
 .vol-term { display: flex; flex-direction: column; gap: 3px; padding-top: 10px; }
 .vol-term b { font-size: 12.5px; color: var(--text); }
 .vol-term span { font-size: 12px; line-height: 1.5; color: var(--text-dim); }
+
+/* ---- Users & Access (admin) ---- */
+.usr-create { display: flex; gap: 8px; align-items: center; }
+.usr-input {
+  flex: 1; max-width: 320px; padding: 8px 11px; font-size: 13px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel-2); color: var(--text);
+}
+.usr-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 600;
+  border: 1px solid var(--border); background: var(--panel-2);
+  color: var(--text); cursor: pointer;
+}
+.usr-btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+.usr-btn:disabled { opacity: .5; cursor: default; }
+.usr-err { margin-top: 10px; color: var(--red); font-size: 12.5px; }
+.usr-issued {
+  display: flex; gap: 9px; align-items: flex-start; margin-top: 12px;
+  padding: 12px 14px; border-radius: 8px; font-size: 13px; line-height: 1.5;
+  background: rgba(33,208,122,.08); border: 1px solid rgba(33,208,122,.35);
+}
+.usr-issued svg { color: var(--green); flex: 0 0 auto; margin-top: 2px; }
+.usr-pw { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.usr-pw code {
+  font-family: var(--mono); font-size: 14px; font-weight: 700;
+  padding: 4px 9px; border-radius: 6px; background: var(--panel-3);
+  color: var(--text); letter-spacing: .3px;
+}
+.usr-copy {
+  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--panel); color: var(--text-dim);
+  border-radius: 6px; padding: 4px 9px; font-size: 12px;
+}
+.usr-empty { padding: 20px; color: var(--text-mute); font-size: 13px; text-align: center; }
+.usr-actions { display: flex; gap: 6px; justify-content: flex-end; white-space: nowrap; }
+.usr-actions button {
+  display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text-dim);
+  border-radius: 6px; padding: 4px 8px; font-size: 11.5px;
+}
+.usr-actions button:hover { background: var(--panel-3); color: var(--text); }
+.usr-actions button.danger:hover { color: var(--red); border-color: var(--red); }

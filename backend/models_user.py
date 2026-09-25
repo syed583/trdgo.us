@@ -94,3 +94,38 @@ def create_all(engine) -> list[str]:
     ]
     Base.metadata.create_all(bind=engine, tables=tables)
     return [t.name for t in tables]
+
+
+class AppUser(Base):
+    """
+    A login account. The admin (the owner) is not stored here -- it logs in
+    with ACCESS_PASSWORD -- so every row here is an invited, non-admin user
+    the admin created. Passwords are never stored in the clear: only a scrypt
+    hash and its per-user salt.
+    """
+
+    __tablename__ = "app_users"
+
+    id = Column(Integer, primary_key=True)
+    username = Column(String(40), nullable=False, unique=True, index=True)
+    password_hash = Column(String(256), nullable=False)
+    salt = Column(String(64), nullable=False)
+    role = Column(String(16), nullable=False, default="user")
+    active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    last_login_at = Column(DateTime(timezone=True), nullable=True)
+    last_login_ip = Column(String(64), nullable=True)
+    login_count = Column(Integer, nullable=False, default=0)
+
+
+class LoginEvent(Base):
+    """One login attempt: who, from where, and whether it succeeded."""
+
+    __tablename__ = "login_events"
+
+    id = Column(Integer, primary_key=True)
+    username = Column(String(40), nullable=False, index=True)
+    ok = Column(Boolean, nullable=False, default=False)
+    ip = Column(String(64), nullable=True)
+    user_agent = Column(String(256), nullable=True)
+    at = Column(DateTime(timezone=True), default=_utcnow, nullable=False, index=True)
