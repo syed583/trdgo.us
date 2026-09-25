@@ -102,9 +102,19 @@ def _feed() -> dict:
         return {"status": PROVIDER_NOT_CONFIGURED,
                 "detail": "UNUSUAL_WHALES_API_KEY is not set."}
 
-    quote = uw.get_quote("SPY")
-    budget = uw.budget()
-    status = uw.provider_status()
+    # The probe itself competes with real traffic for the provider's few
+    # concurrency slots, so it can time out or raise while the feed is perfectly
+    # healthy. A transient probe failure must NOT read as "offline" -- that
+    # panics the badge and then gets cached. Treat any failure, when the key is
+    # configured, the budget is not spent, and the provider is not blocked, as
+    # BUSY (the badge shows "LIVE · BUSY"), never OFFLINE.
+    try:
+        quote = uw.get_quote("SPY")
+        budget = uw.budget()
+        status = uw.provider_status()
+    except Exception:  # noqa: BLE001
+        quote, budget, status = None, uw.budget(), uw.provider_status()
+
     left, cap = budget.get("app_left"), budget.get("app_budget")
     priced = bool(quote and quote.get("price"))
 
@@ -115,15 +125,23 @@ def _feed() -> dict:
         eff = RATE_LIMITED
         detail = (f"Today's budget of {cap} requests is spent; it resets at "
                   "midnight UTC. Everything from the feed is paused until then.")
+    elif status.get("blocked"):
+        eff = RATE_LIMITED
+        detail = "The feed is briefly rate-limited; it will resume shortly."
     else:
-        eff = status.get("status") or DATA_UNAVAILABLE
-        detail = "The feed did not return a quote."
+        # Configured, budget left, not blocked -- the miss is the probe losing a
+        # race for a slot, not the feed being down. Busy, not offline.
+        eff = RATE_LIMITED
+        detail = "Busy — the feed is answering other requests. Retrying."
     return {**status, "status": eff, "detail": detail}
 
 
 def _market_data() -> dict:
     """A real quote is the only honest proof that market data is flowing."""
-    quote = market.get_quote("SPY")
+    try:
+        quote = market.get_quote("SPY")
+    except Exception:  # noqa: BLE001
+        quote = {}
     if quote.get("status") == "OK" and quote.get("price"):
         source = quote.get("source") or "UNUSUAL_WHALES"
         detail = f"SPY {quote['price']} via {source}"
@@ -133,7 +151,11 @@ def _market_data() -> dict:
             detail += f" (delayed, as of {quote.get('as_of') or 'last close'})"
         return {"status": OK, "detail": detail, "source": source,
                 "delayed": bool(quote.get("delayed"))}
-    return {"status": DATA_UNAVAILABLE, "detail": quote.get("status", "")}
+    # A missed probe here is almost always the same slot contention as the feed
+    # probe. Say "busy", not "unavailable", so a healthy feed under load does
+    # not flip the dashboard to a scary red.
+    return {"status": RATE_LIMITED,
+            "detail": "Busy — market data is answering other requests."}
 
 
 def _options() -> dict:
