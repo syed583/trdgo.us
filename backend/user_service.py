@@ -44,12 +44,20 @@ def _generate_password() -> str:
     return secrets.token_urlsafe(12)
 
 
-def create_user(username: str, role: str = "user") -> dict:
-    """
-    Make an account and return the one-time password to give the person.
+def valid_password(password: str) -> bool:
+    """A password the admin typed must be long enough to be worth having."""
+    return isinstance(password, str) and 6 <= len(password) <= 128
 
-    The password is in the response once and nowhere else -- it is not stored,
-    only its hash is.
+
+def create_user(username: str, role: str = "user",
+                password: Optional[str] = None) -> dict:
+    """
+    Make an account and return the password to give the person.
+
+    When the admin supplies a password, that is the one set (and echoed back
+    so it can be handed over). When none is given, a strong one is generated.
+    The plaintext is in the response once and nowhere else -- only its hash is
+    stored.
     """
     username = (username or "").strip().lower()
     if not valid_username(username):
@@ -61,7 +69,12 @@ def create_user(username: str, role: str = "user") -> dict:
     if role not in ("user",):
         role = "user"
 
-    password = _generate_password()
+    if password:
+        if not valid_password(password):
+            return {"status": "INVALID",
+                    "detail": "Password must be 6-128 characters."}
+    else:
+        password = _generate_password()
     salt = secrets.token_hex(16)
     db = SessionLocal()
     try:
@@ -76,15 +89,24 @@ def create_user(username: str, role: str = "user") -> dict:
             "detail": "Give this password to the user now; it is not shown again."}
 
 
-def reset_password(username: str) -> dict:
-    """Generate a new one-time password for an existing user."""
+def reset_password(username: str, password: Optional[str] = None) -> dict:
+    """
+    Set a new password for an existing user.
+
+    The admin may pass the exact password to set; otherwise a strong one is
+    generated. Either way the plaintext is returned once so it can be handed
+    over.
+    """
     username = (username or "").strip().lower()
+    if password and not valid_password(password):
+        return {"status": "INVALID",
+                "detail": "Password must be 6-128 characters."}
     db = SessionLocal()
     try:
         user = db.query(AppUser).filter(AppUser.username == username).first()
         if not user:
             return {"status": "NOT_FOUND"}
-        password = _generate_password()
+        password = password or _generate_password()
         salt = secrets.token_hex(16)
         user.password_hash = _hash(password, salt)
         user.salt = salt

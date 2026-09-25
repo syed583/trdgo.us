@@ -1347,20 +1347,24 @@ def admin_list_users(request: Request) -> dict:
 
 @router.post("/admin/users")
 def admin_create_user(request: Request, payload: dict = Body(...)) -> dict:
-    """Create an account; the one-time password is in the response once."""
+    """Create an account with a username and, optionally, a chosen password."""
     import auth_service as auth
     auth.require_admin(request)
     import user_service
-    return user_service.create_user(str(payload.get("username") or ""))
+    return user_service.create_user(
+        str(payload.get("username") or ""),
+        password=(str(payload.get("password")) if payload.get("password") else None))
 
 
 @router.post("/admin/users/{username}/reset")
-def admin_reset_user(request: Request, username: str) -> dict:
-    """Issue a fresh one-time password for a user."""
+def admin_reset_user(request: Request, username: str,
+                     payload: dict = Body(default={})) -> dict:
+    """Set a new password for a user -- a chosen one, or a generated one."""
     import auth_service as auth
     auth.require_admin(request)
     import user_service
-    return user_service.reset_password(username)
+    pw = payload.get("password") if isinstance(payload, dict) else None
+    return user_service.reset_password(username, password=(str(pw) if pw else None))
 
 
 @router.post("/admin/users/{username}/active")

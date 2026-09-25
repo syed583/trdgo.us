@@ -684,10 +684,11 @@ export const api2 = {
   adminUsers: (s?: AbortSignal) => request<any>('/api/admin/users', s),
   adminLogins: (limit = 50, s?: AbortSignal) =>
     request<any>(`/api/admin/logins?limit=${limit}`, s),
-  adminCreateUser: (username: string) =>
-    send<any>('/api/admin/users', 'POST', { username }),
-  adminResetUser: (username: string) =>
-    send<any>(`/api/admin/users/${encodeURIComponent(username)}/reset`, 'POST'),
+  adminCreateUser: (username: string, password?: string) =>
+    send<any>('/api/admin/users', 'POST', password ? { username, password } : { username }),
+  adminResetUser: (username: string, password?: string) =>
+    send<any>(`/api/admin/users/${encodeURIComponent(username)}/reset`, 'POST',
+      password ? { password } : undefined),
   adminSetActive: (username: string, active: boolean) =>
     send<any>(`/api/admin/users/${encodeURIComponent(username)}/active`, 'POST', { active }),
   adminDeleteUser: (username: string) =>

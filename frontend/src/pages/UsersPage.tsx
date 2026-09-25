@@ -22,6 +22,7 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
   const users = useApi<any>((s) => api2.adminUsers(s), []);
   const logins = useApi<any>((s) => api2.adminLogins(60, s), []);
   const [newName, setNewName] = useState('');
+  const [newPass, setNewPass] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [issued, setIssued] = useState<{ username: string; password: string } | null>(null);
@@ -32,16 +33,20 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
   const create = async () => {
     setErr(null); setBusy(true); setIssued(null); setCopied(false);
     try {
-      const r = await api2.adminCreateUser(newName.trim().toLowerCase());
+      const r = await api2.adminCreateUser(newName.trim().toLowerCase(), newPass.trim() || undefined);
       if (r.status !== 'OK') { setErr(r.detail || 'Could not create the user.'); }
-      else { setIssued({ username: r.username, password: r.password }); setNewName(''); refresh(); }
+      else { setIssued({ username: r.username, password: r.password }); setNewName(''); setNewPass(''); refresh(); }
     } catch (e: any) { setErr(e?.message || 'Request failed.'); }
     finally { setBusy(false); }
   };
 
   const reset = async (u: string) => {
-    const r = await api2.adminResetUser(u).catch(() => null);
+    const pw = window.prompt(
+      `New password for ${u} (leave blank to auto-generate one):`, '');
+    if (pw === null) return; // cancelled
+    const r = await api2.adminResetUser(u, pw.trim() || undefined).catch(() => null);
     if (r?.status === 'OK') { setIssued({ username: r.username, password: r.password }); setCopied(false); }
+    else if (r?.detail) { setErr(r.detail); }
   };
   const toggle = async (u: string, active: boolean) => {
     await api2.adminSetActive(u, active).catch(() => undefined); refresh();
@@ -69,9 +74,16 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && create()} />
+                <input className="usr-input" placeholder="password (optional — auto if blank)"
+                  value={newPass}
+                  onChange={(e) => setNewPass(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && create()} />
                 <button className="usr-btn primary" onClick={create} disabled={busy || !newName.trim()}>
                   <Plus size={13} /> Create
                 </button>
+              </div>
+              <div className="usr-hint">
+                Set a password to hand out, or leave it blank to generate a strong one.
               </div>
               {err && <div className="usr-err">{err}</div>}
               {issued && (
