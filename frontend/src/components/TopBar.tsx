@@ -57,12 +57,16 @@ export default function TopBar({
 
   return (
     <header className="topbar">
-      {variant === 'earnings' ? (
+      {/* Admin runs the operator panel, not the data pages -- no ticker search
+          or quote strip belongs in its header. */}
+      {isAdmin ? (
+        <div className="topbar-spacer" />
+      ) : variant === 'earnings' ? (
         <>
           {/* Route navigation lives in the sidebar only. The header used to
               repeat it as pills, which duplicated the sidebar and was the
               single widest thing in the bar. */}
-          {!isAdmin && <HeaderNav search={search} />}
+          <HeaderNav search={search} />
           <SymbolSearch symbol={symbol} onSymbol={onSymbol} demo={demo} />
           <div className="topbar-spacer" />
         </>
@@ -85,9 +89,10 @@ export default function TopBar({
         </>
       )}
 
-      {demo ? <DemoBadge /> : <HealthBadge health={health} search={search} />}
+      {demo || isAdmin ? null : <HealthBadge health={health} search={search} />}
+      {demo && <DemoBadge />}
 
-      {onRefresh && (
+      {onRefresh && !isAdmin && (
         <button className="icon-btn" onClick={onRefresh}
           title="Refresh live data" aria-label="Refresh live data">
           <RefreshCw size={15} className={refreshing ? 'spin' : undefined} />
