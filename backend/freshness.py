@@ -26,6 +26,9 @@ from typing import Any, Optional
 
 # The kinds, worst to best. Ordered so a payload assembled from several feeds
 # can report the weakest one -- a panel is only as live as its slowest input.
+# The one paid feed's display name, used as the default source label.
+UW = "Unusual Whales"
+
 QUARTERLY = "QUARTERLY"
 FILED = "FILED"
 SNAPSHOT = "SNAPSHOT"

@@ -45,10 +45,15 @@ def _stats(symbol: str, front: Optional[dict]) -> dict:
         return {"status": out.get("status", "NO_DATA")}
 
     iv, rv = uw._f(d.get("iv")), uw._f(d.get("rv"))
+    if iv is None and uw._f(d.get("iv_rank")) is None:
+        # The endpoint answered but with nothing in it -- an uncovered or
+        # bogus symbol. Not a real reading.
+        return {"status": "NO_DATA"}
     vrp = round(iv - rv, 4) if iv is not None and rv is not None else None
     return {
         "status": "OK",
-        "iv_rank": round(uw._f(d.get("iv_rank")), 2) if d.get("iv_rank") else None,
+        "iv_rank": (round(uw._f(d.get("iv_rank")), 2)
+                    if uw._f(d.get("iv_rank")) is not None else None),
         "iv": _pct(d.get("iv")),
         "rv": _pct(d.get("rv")),
         # Variance risk premium: how much dearer implied is than realized.
@@ -60,7 +65,8 @@ def _stats(symbol: str, front: Optional[dict]) -> dict:
         # Front-expiry implied move, the one the screen headlines.
         "implied_move_pct": _pct((front or {}).get("implied_move_perc")),
         "implied_move_dollars": (round(uw._f((front or {}).get("implied_move")), 2)
-                                 if (front or {}).get("implied_move") else None),
+                                 if uw._f((front or {}).get("implied_move")) is not None
+                                 else None),
         "as_of": d.get("date"),
     }
 
@@ -114,16 +120,20 @@ def get_volatility(symbol: str) -> dict:
 
     raw_term = uw._rows(uw.get("/api/stock/%s/volatility/term-structure" % symbol))
     term = _term_structure(raw_term)
-    # The nearest expiry carries the headline implied move.
-    front = raw_term[0] if raw_term else {}
+    # The nearest expiry carries the headline implied move. Pick it by the
+    # smallest dte rather than trusting the provider's row order.
+    front = min(raw_term,
+                key=lambda r: (uw._f(r.get("dte")) if uw._f(r.get("dte")) is not None
+                               else 1e9),
+                default={}) if raw_term else {}
 
     stats = _stats(symbol, front)
     series = _iv_rv_series(symbol)
 
+    has_data = stats.get("iv") is not None or bool(series) or bool(term)
     return {
         "symbol": symbol,
-        "status": "OK" if (stats.get("status") == "OK" or series or term)
-                  else "NO_DATA",
+        "status": "OK" if has_data else "NO_DATA",
         "stats": stats,
         "iv_rv_series": series,
         "term_structure": term,
