@@ -125,7 +125,7 @@ def indices() -> dict:
     # Served stale-while-revalidate: the strip is on every page, and a poll
     # that lands the moment the cache expired should get the last answer at
     # once, not wait out a rebuild.
-    return swr.serve("indices", market.get_indices, 30)
+    return swr.serve("indices", market.get_indices, 120)
 
 
 @router.get("/market/pulse")
@@ -133,7 +133,7 @@ def market_pulse() -> dict:
     """Indices, sectors, breadth, movers, macro proxies and sentiment."""
     import market_pulse_service as pulse
 
-    return swr.serve("pulse", pulse.get_pulse, 60)
+    return swr.serve("pulse", pulse.get_pulse, 180)
 
 
 @router.get("/market/overview")
@@ -142,7 +142,7 @@ def market_overview() -> dict:
     # index and sector, so a synchronous rebuild on expiry blocked the page
     # for the length of that fan-out. Now the page gets the held answer
     # instantly and the refresh happens behind it.
-    return swr.serve("market_overview", overview.get_market_overview, 45)
+    return swr.serve("market_overview", overview.get_market_overview, 180)
 
 
 # ---------------------------------------------------------------------------
@@ -672,7 +672,7 @@ def flow_market_summary() -> dict:
     """Call/put premium, net premium and sentiment across the watched tape."""
     import market_flow_service as mflow
 
-    return swr.serve("flow:summary", mflow.get_summary, 60)
+    return swr.serve("flow:summary", mflow.get_summary, 240)
 
 
 @router.get("/flow/market/tape")
@@ -680,7 +680,7 @@ def flow_market_tape(limit: int = 40) -> dict:
     """The largest prints of the session across every watched ticker."""
     import market_flow_service as mflow
 
-    return swr.serve(f"flow:tape:{limit}", lambda: mflow.get_tape(limit=limit), 30)
+    return swr.serve(f"flow:tape:{limit}", lambda: mflow.get_tape(limit=limit), 120)
 
 
 @router.get("/flow/market/unusual")
@@ -688,7 +688,7 @@ def flow_market_unusual(limit: int = 15) -> dict:
     """Contracts trading well above their own open interest."""
     import market_flow_service as mflow
 
-    return swr.serve(f"flow:unusual:{limit}", lambda: mflow.get_unusual(limit=limit), 60)
+    return swr.serve(f"flow:unusual:{limit}", lambda: mflow.get_unusual(limit=limit), 240)
 
 
 @router.get("/flow/market/comparison")
@@ -696,7 +696,7 @@ def flow_market_comparison() -> dict:
     """Today's premium against the previous session on record."""
     import market_flow_service as mflow
 
-    return swr.serve("flow:comparison", mflow.get_comparison, 60)
+    return swr.serve("flow:comparison", mflow.get_comparison, 240)
 
 
 @router.get("/flow/market/expiries")
@@ -704,7 +704,7 @@ def flow_market_expiries(limit: int = 8) -> dict:
     """Premium by expiration across the watched tape."""
     import market_flow_service as mflow
 
-    return swr.serve(f"flow:expiries:{limit}", lambda: mflow.get_expiry_flow(limit=limit), 120)
+    return swr.serve(f"flow:expiries:{limit}", lambda: mflow.get_expiry_flow(limit=limit), 600)
 
 
 @router.get("/flow/market/intraday")
@@ -712,7 +712,7 @@ def flow_market_intraday() -> dict:
     """Cumulative premium through the session, for the tile sparklines."""
     import market_flow_service as mflow
 
-    return swr.serve("flow:intraday", mflow.get_intraday, 60)
+    return swr.serve("flow:intraday", mflow.get_intraday, 240)
 
 
 @router.get("/flow/market/sectors")
@@ -720,7 +720,7 @@ def flow_market_sectors() -> dict:
     """Premium grouped by the issuer's sector."""
     import market_flow_service as mflow
 
-    return swr.serve("flow:sectors", mflow.get_sector_flow, 120)
+    return swr.serve("flow:sectors", mflow.get_sector_flow, 600)
 
 
 @router.get("/options/levels/{symbol}")
@@ -778,7 +778,7 @@ def market_movers(limit: int = 25) -> dict:
     """The day's biggest movers."""
     import uw_screener_service as screen
 
-    return swr.serve(f"movers:{limit}", lambda: screen.movers(limit), 120)
+    return swr.serve(f"movers:{limit}", lambda: screen.movers(limit), 300)
 
 
 @router.get("/shorts/{symbol}")
@@ -871,7 +871,7 @@ def market_regime() -> dict:
     """Which way the whole market's option premium is leaning today."""
     import uw_flow_service as uwflow
 
-    return swr.serve("uw:regime", uwflow.market_summary, 60)
+    return swr.serve("uw:regime", uwflow.market_summary, 240)
 
 
 @router.get("/flow/stock/{symbol}")
@@ -1001,7 +1001,7 @@ def news_desk() -> dict:
     """Merged headline feed plus every tally drawn from it."""
     import news_desk_service as desk
 
-    return swr.serve("news:desk", desk.get_desk, 120)
+    return swr.serve("news:desk", desk.get_desk, 900)
 
 
 @router.get("/news/providers")
@@ -1291,4 +1291,4 @@ def clear_cache() -> dict:
 @router.get("/dashboard")
 def dashboard() -> dict:
     """The landing screen, served from the last build and refreshed behind it."""
-    return swr.serve("dashboard", _dashboard_build, 30)
+    return swr.serve("dashboard", _dashboard_build, 120)

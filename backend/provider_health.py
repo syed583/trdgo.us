@@ -106,13 +106,19 @@ def _feed() -> dict:
     budget = uw.budget()
     status = uw.provider_status()
     left, cap = budget.get("app_left"), budget.get("app_budget")
-    return {
-        **status,
-        "status": OK if quote and quote.get("price") else status["status"],
-        "detail": (f"Answering; {left} of {cap} requests left today"
-                   if quote and quote.get("price")
-                   else "The feed did not return a quote."),
-    }
+    priced = bool(quote and quote.get("price"))
+
+    if priced:
+        eff, detail = OK, f"Answering; {left} of {cap} requests left today"
+    elif left == 0:
+        # Status and detail must agree: a spent budget is not "OK".
+        eff = RATE_LIMITED
+        detail = (f"Today's budget of {cap} requests is spent; it resets at "
+                  "midnight UTC. Everything from the feed is paused until then.")
+    else:
+        eff = status.get("status") or DATA_UNAVAILABLE
+        detail = "The feed did not return a quote."
+    return {**status, "status": eff, "detail": detail}
 
 
 def _market_data() -> dict:
