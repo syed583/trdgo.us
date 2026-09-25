@@ -52,6 +52,11 @@
   }
   button:hover { background: #1d4ed8; }
   button:disabled { opacity: .6; cursor: default; }
+  .demo-btn {
+    margin-top: 9px; background: transparent; color: var(--dim);
+    border: 1px solid var(--border-2); font-weight: 600;
+  }
+  .demo-btn:hover { background: #0a0f1c; color: var(--text); }
   .err {
     display: none; margin-top: 12px; font-size: 12px; color: var(--red);
     background: rgba(242,70,90,.12); border: 1px solid rgba(242,70,90,.35);
@@ -82,10 +87,12 @@
     <input id="password" name="password" type="password" autocomplete="current-password"
            required />
     <button id="submit" type="submit">Sign in</button>
+    <button id="demo" type="button" class="demo-btn">Try the demo</button>
     <div class="err" id="err"></div>
 
     <div class="foot">
       Private research tool. Leave the username as <b>admin</b> to sign in as the owner, or use the account you were given.
+      The demo opens the app with sample data — no account needed.
     </div>
   </form>
 
@@ -93,6 +100,12 @@
   const form = document.getElementById('form');
   const err = document.getElementById('err');
   const submit = document.getElementById('submit');
+
+  document.getElementById('demo').addEventListener('click', () => {
+    // The shell loads unauthenticated when ?demo=1 is set; it renders from
+    // bundled sample data and never calls a protected endpoint.
+    window.location.href = '/?demo=1';
+  });
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();

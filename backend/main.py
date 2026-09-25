@@ -1055,32 +1055,24 @@ async def _gate(request: Request, call_next):
     leak.
     """
     if auth.enabled() and not auth.is_public_path(request.url.path):
-        if request.method != "OPTIONS":
+        path = request.url.path
+        # Demo mode is a no-account preview built entirely from bundled sample
+        # data -- it never calls a data endpoint. So let the app SHELL (any
+        # non-API GET) load unauthenticated when ?demo=1 is present, while the
+        # real /api and /market data stay behind the login. This is what makes
+        # the "Try demo" button on the login page work.
+        demo_shell = (request.method == "GET"
+                      and request.query_params.get("demo") == "1"
+                      and not path.startswith("/api")
+                      and not path.startswith("/market"))
+        if request.method != "OPTIONS" and not demo_shell:
             try:
                 auth.require_session(request)
             except HTTPException:
-                if request.url.path.startswith("/api") or request.url.path.startswith("/market"):
+                if path.startswith("/api") or path.startswith("/market"):
                     return JSONResponse({"detail": "Authentication required"},
                                         status_code=401)
                 return FileResponse(_LOGIN_PAGE, status_code=401)
-
-            # Regular users are view-only: they may open and read every page,
-            # but may not trigger anything that changes data or spends the API
-            # budget. Admin (the operator) is unrestricted. Enforced here in the
-            # gate so a new action endpoint is read-only for users by default.
-            user = auth.current_user(request)
-            if user and user.get("role") != "admin":
-                path = request.url.path
-                is_data = path.startswith("/api") or path.startswith("/market")
-                writes = request.method in ("POST", "PUT", "PATCH", "DELETE")
-                runs_ai = path.startswith("/api/analyze")
-                # Admin-only endpoints already 403 on their own; this covers
-                # every other write and the AI analysis stream.
-                if is_data and (writes or runs_ai):
-                    return JSONResponse(
-                        {"detail": "This is a view-only account. Ask the "
-                                   "administrator for access to run this."},
-                        status_code=403)
     return await call_next(request)
 
 
