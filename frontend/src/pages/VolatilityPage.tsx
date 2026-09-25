@@ -173,6 +173,30 @@ export default function VolatilityPage({ ctx }: { ctx: PageContext }) {
                   </div>
                 </Panel>
 
+                {d.near_term_moves?.length > 0 && (
+                  <Panel title="Expected move — next sessions" noBody>
+                    <div className="vol-near">
+                      {d.near_term_moves.map((m: any) => (
+                        <div className="vol-near-cell" key={m.days}>
+                          <span className="vol-near-k">
+                            {m.days === 1 ? '1 day' : `${m.days} days`}
+                          </span>
+                          <span className="vol-near-v">
+                            ±{m.move_pct.toFixed(2)}%
+                          </span>
+                          {m.move_dollars != null && (
+                            <span className="vol-near-d">±${m.move_dollars.toFixed(2)}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="hint" style={{ padding: '6px 12px 10px' }}>
+                      The ± range the options market implies over the next 1, 3 and 5
+                      sessions, from implied volatility. It is a size, not a direction.
+                    </div>
+                  </Panel>
+                )}
+
                 <div className="two-col">
                   <Panel title="IV vs Realized Vol & IV Rank">
                     {ivrv.length ? (

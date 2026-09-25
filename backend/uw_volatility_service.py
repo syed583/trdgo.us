@@ -110,6 +110,39 @@ def _term_structure(rows: list[dict]) -> list[dict]:
     return out
 
 
+def _near_term_moves(symbol: str, stats: dict) -> list[dict]:
+    """
+    Expected ± move over the next 1, 3 and 5 sessions, from implied vol.
+
+    The options market prices one number -- annualised implied volatility. The
+    move it implies over a shorter horizon is that vol scaled by the square root
+    of time: move% = IV% * sqrt(days / 365). We turn it into dollars with the
+    current price so the reader sees "about ±$3 by Friday", not just a percent.
+    """
+    import math
+
+    iv = stats.get("iv")  # already a percent
+    if not iv:
+        return []
+    price = None
+    try:
+        q = uw.get_quote(symbol)
+        price = (q or {}).get("price")
+    except Exception:  # noqa: BLE001 - price is a nicety; percent still shows
+        price = None
+
+    out = []
+    for days in (1, 3, 5):
+        move_pct = iv * math.sqrt(days / 365.0)
+        out.append({
+            "days": days,
+            "move_pct": round(move_pct, 2),
+            "move_dollars": (round(price * move_pct / 100.0, 2)
+                             if price else None),
+        })
+    return out
+
+
 def get_volatility(symbol: str) -> dict:
     """Everything the Volatility screen renders for one symbol."""
     symbol = (symbol or "").upper().strip()
@@ -129,12 +162,14 @@ def get_volatility(symbol: str) -> dict:
 
     stats = _stats(symbol, front)
     series = _iv_rv_series(symbol)
+    near_term = _near_term_moves(symbol, stats)
 
     has_data = stats.get("iv") is not None or bool(series) or bool(term)
     return {
         "symbol": symbol,
         "status": "OK" if has_data else "NO_DATA",
         "stats": stats,
+        "near_term_moves": near_term,
         "iv_rv_series": series,
         "term_structure": term,
         "detail": ("Implied volatility is at-the-money, constant-maturity, and "

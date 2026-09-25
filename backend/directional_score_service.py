@@ -17,6 +17,7 @@ failing the request or quietly scoring neutral.
 
 from __future__ import annotations
 
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from concurrent.futures import TimeoutError as FuturesTimeout
@@ -42,6 +43,22 @@ CACHE_TTL_CLOSED = 900.0
 # being stuck with it. Storing 26% coverage for fifteen minutes means one cold
 # fetch blanks the panel for a quarter of an hour.
 THIN_COVERAGE_PCT = 70.0
+
+# One computation per symbol at a time. Without this, several users analysing
+# the same stock at once each gather providers independently, and under the
+# provider concurrency cap they see different partial data and get DIFFERENT
+# scores for the same stock. Serialising per symbol means the first request
+# computes and caches, and everyone else reads that one shared result.
+_compute_guard = threading.Lock()
+_compute_locks: dict[str, threading.Lock] = {}
+
+
+def _lock_for(symbol: str) -> threading.Lock:
+    with _compute_guard:
+        lock = _compute_locks.get(symbol)
+        if lock is None:
+            lock = _compute_locks[symbol] = threading.Lock()
+        return lock
 
 BENCHMARK = "SPY"
 
@@ -267,9 +284,9 @@ def get_directional_score(symbol: str, progress=None) -> dict:
         return {"symbol": symbol, "status": "INVALID_SYMBOL"}
 
     key = f"directional:{symbol}"
-    cached = market.cache.get(
-        key, market.session_ttl(CACHE_TTL_OPEN, CACHE_TTL_CLOSED))
-    if cached:
+    ttl = market.session_ttl(CACHE_TTL_OPEN, CACHE_TTL_CLOSED)
+
+    def _report_cached() -> None:
         # A cached answer still reports every stage, so the screen completes
         # rather than sitting at zero -- it simply completes immediately,
         # which is the honest depiction of cached data.
@@ -277,7 +294,26 @@ def get_directional_score(symbol: str, progress=None) -> dict:
             for stages in STAGE_MAP.values():
                 for stage in stages:
                     progress(stage, "complete", "cached")
+
+    cached = market.cache.get(key, ttl)
+    if cached:
+        _report_cached()
         return cached
+
+    # Serialise per symbol so concurrent users share one computation instead of
+    # each gathering partial data and getting a different score. The first in
+    # computes; the rest wait here and then read the cache it just filled.
+    lock = _lock_for(symbol)
+    with lock:
+        cached = market.cache.get(key, ttl)
+        if cached:
+            _report_cached()
+            return cached
+        return _compute(symbol, key, progress)
+
+
+def _compute(symbol: str, key: str, progress=None) -> dict:
+    import live_market_service as market
 
     data = _gather(symbol, progress)
     signals = build_signals(data)
