@@ -372,3 +372,25 @@ a.index-card { color: inherit; }
 }
 .vol-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .vol-legend i { width: 12px; height: 3px; border-radius: 2px; display: inline-block; }
+
+/* ---- Volatility explainer ---- */
+.vol-explain {
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  background: var(--panel); overflow: hidden;
+}
+.vol-explain-head {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 10px 14px; background: none; border: 0; cursor: pointer;
+  font-size: 13px; font-weight: 650; color: var(--text); text-align: left;
+}
+.vol-explain-head svg { color: var(--blue); }
+.vol-explain-caret { margin-left: auto; transition: transform .15s; color: var(--text-mute); }
+.vol-explain.open .vol-explain-caret { transform: rotate(90deg); }
+.vol-explain-body {
+  padding: 4px 14px 14px; display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px 20px;
+  border-top: 1px solid var(--border-2);
+}
+.vol-term { display: flex; flex-direction: column; gap: 3px; padding-top: 10px; }
+.vol-term b { font-size: 12.5px; color: var(--text); }
+.vol-term span { font-size: 12px; line-height: 1.5; color: var(--text-dim); }

@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   CartesianGrid, ComposedChart, Line, ResponsiveContainer,
   Tooltip, XAxis, YAxis,
 } from 'recharts';
+import { ChevronRight, Info } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
@@ -29,6 +30,48 @@ function Stat({ label, value, tone }: {
   );
 }
 
+const TERMS: { term: string; body: string }[] = [
+  { term: 'Volatility',
+    body: 'How much a stock moves, not which way. High volatility means big swings up or down; low means it drifts.' },
+  { term: 'Implied Volatility (IV)',
+    body: 'The movement the options market is pricing in for the future. It is baked into option prices — higher IV means options are more expensive because bigger moves are expected.' },
+  { term: 'Realized Volatility (RV)',
+    body: 'How much the stock has actually moved recently. This is history, measured from real price changes.' },
+  { term: 'IV vs RV',
+    body: 'The heart of it. When IV sits above RV, options are “rich” — the market is charging for more movement than the stock has delivered, which tends to favour option sellers. When IV is below RV, options look cheap.' },
+  { term: 'IV Rank',
+    body: 'Where today’s IV sits against its own past year, 0 to 100. IV Rank 80 means IV is near its yearly high; 20 means near its low. It answers “is this stock’s IV high for it?”, which a raw IV number cannot.' },
+  { term: 'Variance Risk Premium (VRP)',
+    body: 'IV minus RV. A positive VRP is the cushion option sellers are paid for taking on risk; a negative one means realized movement is outrunning what options priced.' },
+  { term: 'Implied Move',
+    body: 'The ± dollar and percent move the options market expects by a given expiry. ±0.91% ($3.05) means options are pricing roughly a three-dollar swing by that date, in either direction.' },
+  { term: 'Term Structure',
+    body: 'How implied volatility and the implied move change across expiries — near-dated vs further out. A rising curve means the market expects more movement the further ahead you look (often around an event).' },
+];
+
+function VolatilityExplainer() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`vol-explain ${open ? 'open' : ''}`}>
+      <button className="vol-explain-head" onClick={() => setOpen((v) => !v)}>
+        <Info size={13} />
+        What is volatility?
+        <ChevronRight size={14} className="vol-explain-caret" />
+      </button>
+      {open && (
+        <div className="vol-explain-body">
+          {TERMS.map((t) => (
+            <div className="vol-term" key={t.term}>
+              <b>{t.term}</b>
+              <span>{t.body}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function VolatilityPage({ ctx }: { ctx: PageContext }) {
   const symbol = ctx.symbol;
   const vol = useApi<any>((s) => api2.volatility(symbol, s), [symbol]);
@@ -40,6 +83,8 @@ export default function VolatilityPage({ ctx }: { ctx: PageContext }) {
         title={`Volatility · ${symbol}`}
         subtitle="Implied vs realized, the IV rank, and the term structure across every expiry — from Unusual Whales."
       />
+
+      <VolatilityExplainer />
 
       {vol.error ? <ErrorState error={vol.error} />
         : vol.initialLoading || !d ? <Loading />
