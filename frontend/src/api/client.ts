@@ -641,6 +641,8 @@ export const api2 = {
     request<any>(`/api/darkpool/${encodeURIComponent(symbol)}/levels?top=${top}`, s),
   insidersMarket: (days = 30, s?: AbortSignal) =>
     request<any>(`/api/insiders/market?days=${days}`, s),
+  insidersTransactions: (limit = 100, buys = false, s?: AbortSignal) =>
+    request<any>(`/api/insiders/transactions?limit=${limit}&buys=${buys}`, s),
   insidersSectors: (limit = 10, s?: AbortSignal) =>
     request<any>(`/api/insiders/sectors?limit=${limit}`, s),
   earningsPreview: (symbol: string, s?: AbortSignal) =>

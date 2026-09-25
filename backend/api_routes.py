@@ -845,6 +845,17 @@ def insiders_market(days: int = 30) -> dict:
                      lambda: dark.market_insiders(days), 600)
 
 
+@router.get("/insiders/transactions")
+def insiders_transactions(limit: int = 100, buys: bool = False) -> dict:
+    """The largest individual insider transactions across the market."""
+    limit = validate.clamp_int(limit, low=10, high=300, default=100)
+    import uw_ownership_service as own
+
+    return swr.serve(f"ins:txns:{limit}:{int(buys)}",
+                     lambda: own.market_insider_transactions(limit, buys_only=buys),
+                     300)
+
+
 @router.get("/insiders/sectors")
 def insiders_sectors(limit: int = 10) -> dict:
     """Which sectors insiders are buying, and which they are selling."""

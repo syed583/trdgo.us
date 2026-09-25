@@ -673,3 +673,19 @@ tr.mf-picked td:first-child { box-shadow: inset 2px 0 0 var(--blue); }
 .mf-signal.bear .mf-signal-head > svg { color: var(--red); }
 .mf-signal.warn .mf-signal-head > svg { color: var(--amber); }
 .mf-signal.quiet .mf-signal-head > svg { color: var(--blue); }
+
+/* ---- Market insider transactions table ---- */
+.ins-controls { display: inline-flex; align-items: center; gap: 8px; }
+.ins-wrap { max-height: 620px; overflow: auto; }
+.ins-table { width: 100%; }
+.ins-table th { position: sticky; top: 0; background: var(--panel-2); z-index: 1; }
+.ins-row.buy  { background: rgba(33,208,122,.08); }
+.ins-row.sell { background: rgba(242,70,90,.07); }
+.ins-row.buy:hover  { background: rgba(33,208,122,.15); }
+.ins-row.sell:hover { background: rgba(242,70,90,.13); }
+.ins-ticker {
+  background: none; border: 0; cursor: pointer; padding: 0;
+  color: var(--blue); font-weight: 700; font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.ins-ticker:hover { text-decoration: underline; }

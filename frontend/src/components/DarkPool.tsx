@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { Layers, Moon, UserCheck } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Panel } from './common';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
@@ -153,6 +154,78 @@ export function DarkPoolTab({ symbol }: { symbol: string }) {
   );
 }
 
+function MarketInsiderTransactions() {
+  const navigate = useNavigate();
+  const [byValue, setByValue] = useState(true);
+  const [buysOnly, setBuysOnly] = useState(false);
+  const txns = useApi<any>((s) => api2.insidersTransactions(150, buysOnly, s), [buysOnly]);
+  const t = txns.data;
+
+  const rows = useMemo(() => {
+    const r = [...(t?.rows || [])];
+    if (!byValue) r.sort((a, b) => (b.date < a.date ? -1 : b.date > a.date ? 1 : 0));
+    return r;
+  }, [t, byValue]);
+
+  return (
+    <Panel title="Largest Insider Transactions" icon={<UserCheck size={13} />}
+      right={
+        <div className="ins-controls">
+          <button className={`toggle ${byValue ? 'on' : ''}`}
+            onClick={() => setByValue((v) => !v)}
+            title="Sort by dollar size instead of most recent">
+            <span /> Largest first
+          </button>
+          <button className={`mf-chip ${buysOnly ? 'on' : ''}`}
+            onClick={() => setBuysOnly((v) => !v)}>Buys only</button>
+        </div>
+      }>
+      {txns.initialLoading ? (
+        <p className="dp-note">Reading insider filings…</p>
+      ) : t?.status !== 'OK' ? (
+        <p className="dp-note">{t?.detail || 'No insider transactions available.'}</p>
+      ) : (
+        <>
+          <div className="dp-table-wrap ins-wrap">
+            <table className="dp-table ins-table">
+              <thead>
+                <tr>
+                  <th>Ticker</th><th>Date</th><th>Name</th><th>Type</th>
+                  <th className="r">Shares</th><th className="r">Price</th>
+                  <th className="r">Amount</th><th>Owner</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r: any, i: number) => (
+                  <tr key={`${r.ticker}-${r.name}-${i}`}
+                    className={`ins-row ${r.direction}`}>
+                    <td>
+                      <button className="ins-ticker"
+                        onClick={() => navigate(`/earnings/${r.ticker}`)}>
+                        {r.ticker}
+                      </button>
+                    </td>
+                    <td className="dp-dim">{r.date}</td>
+                    <td title={r.name || ''}>{(r.name || '--').slice(0, 26)}</td>
+                    <td className="dp-dim">{r.type}{r.planned ? ' · 10b5-1' : ''}</td>
+                    <td className="r">{num(r.shares, 0)}</td>
+                    <td className="r">{money(r.price)}</td>
+                    <td className="r"><b>{compactMoney(r.value, 2)}</b></td>
+                    <td className="dp-dim" title={r.role || ''}>
+                      {(r.role || '--').slice(0, 22)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="dp-foot">{t.detail}</p>
+        </>
+      )}
+    </Panel>
+  );
+}
+
 export function MarketInsidersTab() {
   const market = useApi<any>((s) => api2.insidersMarket(30, s), []);
   const sectors = useApi<any>((s) => api2.insidersSectors(10, s), []);
@@ -162,6 +235,8 @@ export function MarketInsidersTab() {
 
   return (
     <div className="dp">
+      <MarketInsiderTransactions />
+
       <Panel title="Insiders Across the Market" icon={<UserCheck size={13} />}
         right={m?.status === 'OK'
           ? <span className={`badge ${m.lean === 'BUYING' ? 'green' : 'gray'}`}>

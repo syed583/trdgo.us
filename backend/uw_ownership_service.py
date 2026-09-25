@@ -305,3 +305,68 @@ def insider_transactions_preferred(symbol: str, days: int = 180) -> dict:
     import sec_filings_service as sec
 
     return sec.insider_transactions(symbol, days=days)
+
+
+# Transaction-code labels, in the words a filing uses.
+_TXN_LABELS = {
+    "P": "Open Market Purchase", "S": "Open Market Sale",
+    "A": "Grant / Award", "M": "Option Exercise", "X": "Option Exercise",
+    "F": "Tax Withholding", "G": "Gift", "C": "Conversion",
+    "D": "Disposition to Issuer", "W": "Acquisition/Disposition by Will",
+}
+
+
+def market_insider_transactions(limit: int = 100, buys_only: bool = False) -> dict:
+    """
+    The largest insider transactions across the whole market.
+
+    One row per filing: who, what ticker, buy or sell, how many shares, at what
+    price, for how much. Sorted by dollar size so the ones worth seeing lead.
+    Purchases and sales are both returned; the caller colours them.
+    """
+    out = uw.get("/api/insider/transactions", {"limit": 500})
+    if out["status"] != "OK":
+        return {"status": out["status"], "rows": [],
+                "detail": out.get("detail"), "source": SOURCE}
+
+    rows = []
+    for r in uw._rows(out):
+        code = str(r.get("transaction_code") or "").upper()
+        shares = abs(_f(r.get("amount")) or 0.0)
+        price = _f(r.get("price"))
+        if not shares or price is None:
+            continue
+        is_buy = code == "P"
+        is_sell = code == "S"
+        if buys_only and not is_buy:
+            continue
+        role = ("10% Owner" if r.get("is_ten_percent_owner")
+                else r.get("officer_title") if r.get("is_officer")
+                else "Director" if r.get("is_director") else "Insider")
+        rows.append({
+            "ticker": r.get("ticker"),
+            "date": str(r.get("transaction_date") or r.get("filing_date") or "")[:10],
+            "filed": str(r.get("filing_date") or "")[:10],
+            "name": r.get("owner_name"),
+            "code": code,
+            "type": _TXN_LABELS.get(code, code or "--"),
+            "direction": "buy" if is_buy else "sell" if is_sell else "neutral",
+            "shares": shares,
+            "price": round(price, 2),
+            "value": round(shares * price, 2),
+            "role": role,
+            "sector": r.get("sector"),
+            "planned": bool(r.get("is_10b5_1")),
+        })
+
+    rows.sort(key=lambda x: x["value"], reverse=True)
+    rows = rows[:max(1, min(limit, 300))]
+    return {
+        "status": "OK" if rows else "NO_DATA",
+        "rows": rows,
+        "count": len(rows),
+        "detail": ("The largest insider transactions filed across the market, "
+                   "by dollar value. Purchases are the signal; sales run on "
+                   "schedules and taxes as often as conviction."),
+        "source": SOURCE,
+    }
