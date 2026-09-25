@@ -73,6 +73,10 @@ function VolatilityExplainer() {
 }
 
 const RANGES: { key: string; label: string; days: number }[] = [
+  { key: '1D', label: '1 Day', days: 1 },
+  { key: '3D', label: '3 Days', days: 3 },
+  { key: '5D', label: '5 Days', days: 5 },
+  { key: '1W', label: '1 Week', days: 7 },
   { key: '1M', label: '1 Month', days: 31 },
   { key: '3M', label: '3 Months', days: 93 },
   { key: '6M', label: '6 Months', days: 186 },
