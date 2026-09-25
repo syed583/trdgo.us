@@ -469,6 +469,14 @@
   background: rgba(37,99,235,.05); border-left: 2px solid rgba(37,99,235,.3); }
 .ap-weight-why b { color: var(--text, #111827); }
 
+/* The score line sits under the weight line and answers the other half of the
+   question -- why this reading earned the points it did. A slate accent keeps
+   it distinct from the blue "why it is worth N" line above it. */
+.ap-score-why { margin: 5px 0 0; padding: 7px 9px; border-radius: 6px;
+  font-size: 11.5px; line-height: 1.55; color: var(--dim, #6b7280);
+  background: rgba(100,116,139,.07); border-left: 2px solid rgba(100,116,139,.4); }
+.ap-score-why b { color: var(--text, #111827); }
+
 /* An event line opens on itself: the particulars its source gave us, shown
    in place, so a row with no filing to link to is still worth clicking. */
 .ce-row[role="button"] { cursor: pointer; }

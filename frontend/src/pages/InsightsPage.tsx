@@ -866,6 +866,13 @@ function ResultScreen({
                         <b>Why {x.weight} points:</b> {(x as any).weight_reason}
                       </div>
                     )}
+                    {x.available && (x as any).score_reason && (
+                      <div className="ap-score-why">
+                        <b>Why {x.directional
+                          ? `${x.points > 0 ? '+' : ''}${x.points.toFixed(1)}`
+                          : 'this counts'}:</b> {(x as any).score_reason}
+                      </div>
+                    )}
                     <div className="ap-rule">{x.rule}</div>
                     <ParameterWhy symbol={symbol} parameter={x.name}
                       label={x.label} horizon={horizon} />
@@ -892,6 +899,13 @@ function ResultScreen({
                 {(s as any).weight_reason && (
                   <div className="ap-weight-why">
                     <b>Why {s.weight} points:</b> {(s as any).weight_reason}
+                  </div>
+                )}
+                {s.available && (s as any).score_reason && (
+                  <div className="ap-score-why">
+                    <b>Why {s.directional
+                      ? `${s.points > 0 ? '+' : ''}${s.points.toFixed(1)}`
+                      : 'this counts'}:</b> {(s as any).score_reason}
                   </div>
                 )}
                 <div className="ap-rule">{s.rule}</div>

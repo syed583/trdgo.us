@@ -273,6 +273,40 @@ class Signal:
             return 0.0
         return self.bias * self.weight
 
+    def _score_reason(self) -> Optional[str]:
+        """
+        One plain sentence on why this parameter scored what it did.
+
+        Built from the reading's strength and direction (``bias``) and the
+        points it moved, so it always agrees with the number shown and needs
+        no model call. The ``detail`` line carries the specific figures; this
+        says what they did to the score.
+        """
+        if not self.available:
+            return "No data for this parameter, so it scored nothing."
+        if not self.directional:
+            return ("This reading sizes the expected move rather than taking "
+                    "a side, so it adds context without pushing the score up "
+                    "or down.")
+        if self.bias is None:
+            return None
+
+        strength = self.bias
+        pts = self.points
+        mag = abs(strength)
+        adverb = ("strongly" if mag >= 0.85 else "clearly" if mag >= 0.5
+                  else "modestly" if mag >= 0.2 else "only slightly")
+
+        unit = "point" if self.weight == 1 else "points"
+        if mag <= 0.15:
+            return (f"A near-neutral reading, so it moved the score by just "
+                    f"{pts:+.1f} of a possible {self.weight}.")
+        if strength > 0:
+            return (f"A {adverb} bullish reading, so it added {pts:.1f} of its "
+                    f"{self.weight} {unit} to the upside.")
+        return (f"A {adverb} bearish reading, so {abs(pts):.1f} of its "
+                f"{self.weight} {unit} pushed the score down.")
+
     def as_dict(self) -> dict:
         return {
             "name": self.name,
@@ -295,6 +329,10 @@ class Signal:
             # matter as much as it does, which is the other half of the
             # question a reader asks at a row saying "12 of 100".
             "weight_reason": WEIGHT_REASONS.get(self.name),
+            # Why it earned THIS score, not just why it may earn 11. Read
+            # from the strength and direction of the reading, so it costs
+            # nothing and always matches the number beside it.
+            "score_reason": self._score_reason(),
             "evidence": self.evidence,
             "source": self.source,
             "unavailable_reason": self.unavailable_reason,
