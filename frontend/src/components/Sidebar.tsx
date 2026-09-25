@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import {
-  Activity, BarChart3, Brain, CalendarDays, Crown,
+  Activity, BarChart3, Brain, CalendarDays,
   LayoutDashboard, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
   Settings, Sparkles, Star, TrendingUp, X,
 } from 'lucide-react';
@@ -146,21 +146,6 @@ export default function Sidebar({
       </nav>
 
       <div className="sidebar-foot">
-        {!collapsed && (
-          <div className="upgrade-card">
-            <div className="upgrade-title">
-              <Crown size={13} />
-              Personal Edition
-            </div>
-            <div className="upgrade-copy">
-              Live market data, options analytics and scoring.
-            </div>
-            <NavLink to={`/settings${search}`} className="upgrade-btn">
-              Provider Status
-            </NavLink>
-          </div>
-        )}
-
         {!collapsed && (
           <div className="sidebar-quote">
             {BRAND_QUOTE_EARNINGS}
