@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import {
-  Activity, BarChart3, Brain, CalendarDays,
+  Activity, BarChart3, Brain, CalendarDays, LineChart,
   LayoutDashboard, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
   Settings, Sparkles, Star, TrendingUp, X,
 } from 'lucide-react';
@@ -31,6 +31,7 @@ const NAV: NavEntry[] = [
   { to: '/earnings-calendar', label: 'Earnings Calendar', icon: <CalendarDays size={S} /> },
   { to: '/earnings', label: 'Earnings Analysis', icon: <BarChart3 size={S} /> },
   { to: '/options-flow', label: 'Options', icon: <Activity size={S} /> },
+  { to: '/volatility', label: 'Volatility', icon: <LineChart size={S} /> },
   { to: '/market', label: 'Market Overview', icon: <TrendingUp size={S} /> },
   { to: '/watchlist', label: 'Watchlist', icon: <Star size={S} /> },
   { to: '/news', label: 'News & Sentiment', icon: <Newspaper size={S} /> },

@@ -857,6 +857,18 @@ def options_disparity(symbol: str) -> dict:
                      lambda: disparity.get_disparity(symbol), 300)
 
 
+@router.get("/volatility/{symbol}")
+def volatility(symbol: str) -> dict:
+    """
+    The volatility screen for one stock: IV rank and the implied-vs-realized
+    read, a year of both with the IV rank, and the term structure by expiry.
+    """
+    symbol = validate.clean_symbol(symbol)
+    import uw_volatility_service as vol
+
+    return swr.serve(f"vol:{symbol}", lambda: vol.get_volatility(symbol), 600)
+
+
 @router.get("/flow/unusual/{symbol}")
 def symbol_unusual_flow(symbol: str, limit: int = 25) -> dict:
     """Contracts trading far above their own normal volume, for one symbol."""

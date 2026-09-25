@@ -13,6 +13,7 @@ import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 const EarningsPage = lazy(() => import('./pages/EarningsPage'));
 const OptionsFlowPage = lazy(() => import('./pages/OptionsFlowPage'));
+const VolatilityPage = lazy(() => import('./pages/VolatilityPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
 const ScannerPage = lazy(() => import('./pages/ScannerPage'));
@@ -65,7 +66,7 @@ const OPTIONS_ROUTES = [
 
 /** Sections that carry a symbol in the URL. */
 const SYMBOL_SECTIONS =
-  /^\/(earnings|options-flow|options-chain|news|ai-insights)(\/|$)/;
+  /^\/(earnings|options-flow|options-chain|volatility|news|ai-insights)(\/|$)/;
 
 /**
  * The same sections, capturing the ticker itself.
@@ -77,7 +78,7 @@ const SYMBOL_SECTIONS =
  * ticker card changed the address bar while every panel kept showing NVDA.
  */
 const SYMBOL_IN_PATH =
-  /^\/(?:earnings|options-flow|options-chain|news|ai-insights)\/([A-Za-z0-9.\-]+)/;
+  /^\/(?:earnings|options-flow|options-chain|volatility|news|ai-insights)\/([A-Za-z0-9.\-]+)/;
 
 export interface PageContext {
   symbol: string;
@@ -188,6 +189,9 @@ function Shell() {
 
           <Route path="/options-flow" element={<Navigate to={`/options-flow/${DEFAULT_SYMBOL}${location.search}`} replace />} />
           <Route path="/options-flow/:symbol" element={<OptionsFlowPage ctx={ctx} />} />
+
+          <Route path="/volatility" element={<Navigate to={`/volatility/${DEFAULT_SYMBOL}${location.search}`} replace />} />
+          <Route path="/volatility/:symbol" element={<VolatilityPage ctx={ctx} />} />
           {/* The chain lives inside the options page now. Old links still
               work: they land on the same symbol's options screen. */}
           <Route path="/options-chain" element={<Navigate to={`/options-flow/${DEFAULT_SYMBOL}${location.search}`} replace />} />

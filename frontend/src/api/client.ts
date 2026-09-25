@@ -591,6 +591,8 @@ export const api2 = {
 
   disparity: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/disparity/${encodeURIComponent(symbol)}`, s),
+  volatility: (symbol: string, s?: AbortSignal) =>
+    request<any>(`/api/volatility/${encodeURIComponent(symbol)}`, s),
 
 
   corporateEvents: (symbol: string, s?: AbortSignal) =>
