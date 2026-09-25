@@ -269,6 +269,10 @@ function HealthBadge({
   // is answering, which is what the badge was really reporting: whether the
   // numbers on screen are coming from anywhere.
   const live = health.feed === 'OK';
+  // A rate-limit pause is temporary and the screens still serve their held
+  // data, so it is "busy", not "offline". Only a missing key or an actual
+  // outage is offline.
+  const busy = !live && (health.feed === 'RATE_LIMITED' || health.feed === 'UNKNOWN');
   const degraded = live && (
     health.market_data !== 'OK' || health.providers?.news?.status !== 'OK'
   );
@@ -280,11 +284,11 @@ function HealthBadge({
   return (
     <NavLink
       to={`/settings${search}`}
-      className={`conn ${live ? (degraded ? 'warn' : 'live') : 'down'}`}
+      className={`conn ${live ? (degraded ? 'warn' : 'live') : busy ? 'warn' : 'down'}`}
       title={title || 'Provider status'}
     >
       <i className="dot" />
-      {live ? (degraded ? 'LIVE · DEGRADED' : 'LIVE') : 'FEED OFFLINE'}
+      {live ? (degraded ? 'LIVE · DEGRADED' : 'LIVE') : busy ? 'LIVE · BUSY' : 'FEED OFFLINE'}
     </NavLink>
   );
 }
