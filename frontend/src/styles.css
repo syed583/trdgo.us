@@ -431,10 +431,34 @@ table { border-collapse: collapse; width: 100%; }
   font-size: 14px; font-weight: 700;
 }
 
-.plan { display: flex; align-items: center; gap: 5px; }
-.plan-text { font-size: 13px; line-height: 1.25; }
+.plan { display: flex; align-items: center; gap: 5px; background: none;
+  border: 0; cursor: pointer; color: inherit; padding: 2px 4px; border-radius: 8px; }
+.plan:hover { background: var(--panel-2, rgba(127,127,127,.1)); }
+.plan-text { font-size: 13px; line-height: 1.25; text-align: left; }
 .plan-text b { display: block; font-weight: 600; }
 .plan-text span { color: var(--amber); font-weight: 600; }
+
+/* account dropdown */
+.acct { position: relative; }
+.acct-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 60;
+  min-width: 210px; background: var(--panel, #fff);
+  border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0,0,0,.18); padding: 6px;
+}
+.acct-head { display: flex; align-items: center; gap: 10px; padding: 8px 8px 10px; }
+.acct-head b { display: block; font-size: 13px; font-weight: 600; }
+.acct-head span { display: block; font-size: 12px; color: var(--text-mute); }
+.avatar.lg { width: 34px; height: 34px; font-size: 16px; }
+.acct-sep { height: 1px; background: var(--border); margin: 6px 2px; }
+.acct-item {
+  display: block; width: 100%; text-align: left; padding: 8px 10px;
+  background: none; border: 0; border-radius: 7px; cursor: pointer;
+  font-size: 13px; color: var(--text);
+}
+.acct-item:hover { background: var(--panel-2, rgba(127,127,127,.12)); }
+.acct-item.danger { color: #e5484d; font-weight: 600; }
+.acct-item:disabled { opacity: .6; cursor: default; }
 
 /* connection badge */
 .conn {

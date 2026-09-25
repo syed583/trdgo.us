@@ -681,6 +681,7 @@ export const api2 = {
   watchlist: (s?: AbortSignal) => request<any>('/api/watchlist', s),
   watchlistView: (s?: AbortSignal) => request<any>('/api/watchlist/view', s),
   me: (s?: AbortSignal) => request<any>('/auth/me', s),
+  logout: () => send<any>('/auth/logout', 'POST'),
   adminUsers: (s?: AbortSignal) => request<any>('/api/admin/users', s),
   adminLogins: (limit = 50, s?: AbortSignal) =>
     request<any>(`/api/admin/logins?limit=${limit}`, s),

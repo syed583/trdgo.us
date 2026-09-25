@@ -39,6 +39,7 @@ function HeaderNav({ search }: { search: string }) {
 
 export default function TopBar({
   variant, symbol, onSymbol, quote, health, demo, onRefresh, refreshing, search,
+  isAdmin, username,
 }: {
   variant: 'earnings' | 'options';
   symbol: string;
@@ -49,6 +50,8 @@ export default function TopBar({
   onRefresh?: () => void;
   refreshing?: boolean;
   search: string;
+  isAdmin?: boolean;
+  username?: string;
 }) {
   const chgTone = tone2(quote?.change);
 
@@ -93,15 +96,90 @@ export default function TopBar({
 
       <ThemeToggle />
 
-      <NavLink to={`/settings${search}`} className="plan" title="Account & providers">
-        <div className="avatar">U</div>
+      <AccountMenu isAdmin={isAdmin} username={username} search={search} demo={demo} />
+    </header>
+  );
+}
+
+/**
+ * The profile control: a dropdown, not a link. Click it to see who you are
+ * signed in as and to sign out. Admins also get the provider Settings link
+ * here; regular users never see it (Settings is the admin panel).
+ */
+function AccountMenu({
+  isAdmin, username, search, demo,
+}: { isAdmin?: boolean; username?: string; search: string; demo?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const name = username || (isAdmin ? 'admin' : 'account');
+  const role = isAdmin ? 'Administrator' : 'User';
+  const initial = (name[0] || 'U').toUpperCase();
+
+  const signOut = async () => {
+    setBusy(true);
+    try { await api2.logout(); } catch { /* clear client-side regardless */ }
+    // The cookie is HttpOnly, so the server clears it; a hard reload drops any
+    // in-memory state and lands on the login screen the gate now redirects to.
+    window.location.href = '/';
+  };
+
+  return (
+    <div className={`acct ${open ? 'open' : ''}`} ref={ref}>
+      <button className="plan" title="Account"
+        onClick={() => setOpen((v) => !v)} aria-haspopup="menu" aria-expanded={open}>
+        <div className="avatar">{initial}</div>
         <div className="plan-text">
-          <b>Tradgo.US</b>
-          <span>Personal</span>
+          <b>{name}</b>
+          <span>{role}</span>
         </div>
         <ChevronDown size={13} color="var(--text-mute)" />
-      </NavLink>
-    </header>
+      </button>
+      {open && (
+        <div className="acct-menu" role="menu">
+          <div className="acct-head">
+            <div className="avatar lg">{initial}</div>
+            <div>
+              <b>{name}</b>
+              <span>{role}</span>
+            </div>
+          </div>
+          {isAdmin && !demo && (
+            <>
+              <button className="acct-item" role="menuitem"
+                onClick={() => { setOpen(false); navigate(`/admin/users${search}`); }}>
+                Manage users
+              </button>
+              <button className="acct-item" role="menuitem"
+                onClick={() => { setOpen(false); navigate(`/settings${search}`); }}>
+                Provider settings
+              </button>
+              <div className="acct-sep" />
+            </>
+          )}
+          <button className="acct-item danger" role="menuitem"
+            onClick={signOut} disabled={busy}>
+            {busy ? 'Signing out…' : 'Sign out'}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

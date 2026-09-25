@@ -303,8 +303,14 @@ def estimate_revisions(symbol: str) -> dict:
 
 
 @router.get("/providers")
-def providers() -> dict:
-    """Configuration state of every external provider. Never returns a key."""
+def providers(request: Request) -> dict:
+    """Configuration state of every external provider. Never returns a key.
+
+    Admin only: this is the provider settings panel, not something a handed-out
+    user account should see.
+    """
+    import auth_service as auth
+    auth.require_admin(request)
     import unusualwhales_service as uw
 
     # provider_matrix() only knows whether a key is configured. The per-service

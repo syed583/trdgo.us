@@ -175,6 +175,8 @@ function Shell() {
           onRefresh={refreshAll}
           refreshing={quote.loading || strip.loading}
           search={location.search}
+          isAdmin={isAdmin}
+          username={me.data?.username}
         />
 
         {/* Each page is its own download, fetched the first time it opens. */}
@@ -212,8 +214,12 @@ function Shell() {
           <Route path="/alerts" element={<AlertsPage ctx={ctx} />} />
           <Route path="/trade-journal" element={<JournalPage ctx={ctx} />} />
           <Route path="/strategy" element={<StrategyPage ctx={ctx} />} />
-          <Route path="/settings" element={<SettingsPage ctx={ctx} />} />
-          <Route path="/admin/users" element={<UsersPage ctx={ctx} />} />
+          <Route path="/settings" element={isAdmin
+            ? <SettingsPage ctx={ctx} />
+            : <Navigate to={`/dashboard${location.search}`} replace />} />
+          <Route path="/admin/users" element={isAdmin
+            ? <UsersPage ctx={ctx} />
+            : <Navigate to={`/dashboard${location.search}`} replace />} />
           <Route path="/community" element={<CommunityPage ctx={ctx} />} />
 
           <Route path="*" element={<NotFound />} />

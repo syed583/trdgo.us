@@ -35,7 +35,6 @@ const NAV: NavEntry[] = [
   { to: '/market', label: 'Market Overview', icon: <TrendingUp size={S} /> },
   { to: '/watchlist', label: 'Watchlist', icon: <Star size={S} /> },
   { to: '/news', label: 'News & Sentiment', icon: <Newspaper size={S} /> },
-  { to: '/settings', label: 'Settings', icon: <Settings size={S} /> },
 ];
 
 const COLLAPSE_KEY = 'usr.sidebar.collapsed';
@@ -59,8 +58,12 @@ export default function Sidebar({
   search: string;
   isAdmin?: boolean;
 }) {
+  // Settings (provider status/config) and Users are the admin panel: regular
+  // users see neither the links nor -- via the route guard -- the pages.
   const nav = isAdmin
-    ? [...NAV, { to: '/admin/users', label: 'Users', icon: <Users size={S} /> }]
+    ? [...NAV,
+       { to: '/admin/users', label: 'Users', icon: <Users size={S} /> },
+       { to: '/settings', label: 'Settings', icon: <Settings size={S} /> }]
     : NAV;
   const [collapsed, setCollapsed] = React.useState(readCollapsed);
 
