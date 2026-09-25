@@ -562,9 +562,11 @@ def price_action(symbol: str, benchmark: str = "SPY") -> dict:
 @router.get("/sec/insiders/{symbol}")
 def sec_insiders(symbol: str, days: int = 180) -> dict:
     """Form 4 activity, with scheduled plans and grants separated out."""
-    import sec_filings_service as filings
+    symbol = validate.clean_symbol(symbol)
+    days = validate.clamp_int(days, low=1, high=3650, default=180)
+    import uw_ownership_service as own
 
-    return filings.insider_transactions(symbol, days=days)
+    return own.insider_transactions_preferred(symbol, days=days)
 
 
 @router.get("/sec/ownership/{symbol}")

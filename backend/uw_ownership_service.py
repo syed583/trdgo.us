@@ -287,3 +287,21 @@ def insider_transactions(symbol: str, days: int = 180) -> dict:
         "status": "OK" if transactions else "NO_FILINGS",
         "source": SOURCE,
     }
+
+
+def insider_transactions_preferred(symbol: str, days: int = 180) -> dict:
+    """
+    Form 4 activity from Unusual Whales, or SEC's own filings as the fallback.
+
+    UW returns the same shape this app already reads and needs no local filing
+    store, so it leads; SEC EDGAR stands in when the feed is unconfigured or
+    has no coverage for a name. Both the insider panel and the directional
+    model's insider parameter go through here so they never disagree on source.
+    """
+    if configured():
+        out = insider_transactions(symbol, days=days)
+        if out.get("status") == "OK":
+            return out
+    import sec_filings_service as sec
+
+    return sec.insider_transactions(symbol, days=days)

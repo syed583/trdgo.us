@@ -556,7 +556,7 @@ def insider_activity(form4: dict, ownership: dict,
 
     if not parts:
         return Signal("insider_activity", None, label="Insider & Ownership",
-                      source="SEC EDGAR",
+                      source=form4.get("source") or "SEC EDGAR",
                       unavailable_reason="No filings in the lookback window.")
 
     weight = sum(w for _, _, w in parts)
@@ -574,7 +574,7 @@ def insider_activity(form4: dict, ownership: dict,
              "Grants, option exercises and pre-arranged "
              "10b5-1 sales are excluded: they run on a schedule and are not "
              "anyone deciding anything.",
-        evidence=evidence, source="SEC EDGAR")
+        evidence=evidence, source=form4.get("source") or "SEC EDGAR")
 
 
 def earnings_results(history: dict) -> Signal:

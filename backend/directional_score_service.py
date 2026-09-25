@@ -103,7 +103,9 @@ def _gather(symbol: str, progress=None) -> dict:
             "overview": pool.submit(_safe, lambda: options.get_overview(symbol), {}),
             "oi": pool.submit(_safe, lambda: odflow.daily_oi_change(symbol), {}),
             "form4": pool.submit(
-                _safe, lambda: filings.insider_transactions(symbol), {}),
+                _safe,
+                lambda: __import__("uw_ownership_service")
+                .insider_transactions_preferred(symbol), {}),
             "ownership": pool.submit(
                 _safe, lambda: filings.ownership_filings(symbol), {}),
             "bars": pool.submit(
