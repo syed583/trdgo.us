@@ -26,6 +26,12 @@ DATA_UNAVAILABLE = "DATA_UNAVAILABLE"
 TEST_DATA = "TEST_DATA"
 PROVIDER_NOT_CONFIGURED = "PROVIDER_NOT_CONFIGURED"
 PARTIAL_DATA = "PARTIAL_DATA"
+# A temporary, healthy-but-busy state: the feed is configured and answering,
+# just rate-limited or losing a race for a concurrency slot right now. The
+# badge shows "LIVE · BUSY" for this. It was referenced before it was defined,
+# which raised NameError inside the probe -> caught as PROVIDER_OFFLINE -> the
+# recurring false "FEED OFFLINE".
+RATE_LIMITED = "RATE_LIMITED"
 
 HEALTH_TTL = 30.0
 
