@@ -56,7 +56,7 @@ export default function ParameterWhy({ symbol, parameter, label, horizon }: {
         <button className="pw-btn" onClick={ask} disabled={busy}>
           {busy ? <Loader2 size={12} className="spin" /> : <Sparkles size={12} />}
           {busy ? `Reading the filings for ${label}…`
-            : `What does this mean for ${symbol}?`}
+            : `What does ${label} mean for ${symbol}?`}
         </button>
         {error && <span className="pw-err">{error}</span>}
       </div>
