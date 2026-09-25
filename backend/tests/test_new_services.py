@@ -336,17 +336,29 @@ def test_a_live_badge_needs_a_real_print_and_an_open_market():
     assert f.for_quote("UNUSUAL_WHALES", "CLOSED")["kind"] == f.SNAPSHOT
 
 
-def test_the_chain_badge_says_delayed():
+def test_the_chain_badge_reflects_the_real_age():
     """
-    There is no live chain to badge any more. TWS served one during regular
-    hours and earned a LIVE badge; the chain now always carries the
-    provider's fifteen-minute delay, and says so rather than keeping a
-    branch that can no longer be reached.
+    The chain badge is read from the newest contract's print, not a fixed
+    "15 minutes". A fresh print during the session is live; an old one names
+    the real gap; a closed market is the last session's close, not a delay.
     """
     import freshness as f
+    from datetime import datetime, timezone, timedelta
 
-    assert f.for_chain("UNUSUAL_WHALES")["kind"] == f.DELAYED
-    assert f.for_chain("UNUSUAL_WHALES")["delay_minutes"] == 15
+    now = datetime.now(timezone.utc)
+    fresh = now.isoformat()
+    stale = (now - timedelta(minutes=17)).isoformat()
+
+    # Fresh print, market open -> live.
+    assert f.for_chain("UNUSUAL_WHALES", fresh, "OPEN")["kind"] == f.LIVE
+    # Old print, market open -> delayed by the real gap, not a hardcoded 15.
+    old = f.for_chain("UNUSUAL_WHALES", stale, "OPEN")
+    assert old["kind"] == f.DELAYED and old["delay_minutes"] >= 15
+    # Market closed -> last close, not a delay.
+    assert f.for_chain("UNUSUAL_WHALES", stale, "CLOSED")["kind"] == f.SNAPSHOT
+    # No timestamp -> reported without claiming a specific delay.
+    unknown = f.for_chain("UNUSUAL_WHALES")
+    assert unknown["kind"] == f.DELAYED and unknown["delay_minutes"] is None
 
 
 def test_the_tape_says_the_delay_is_a_licence_not_the_app():

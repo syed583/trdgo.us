@@ -761,7 +761,11 @@ def load_chain(symbol: str, expiry: str = "") -> Optional[dict]:
         dte = 0
 
     rows = []
+    as_of = ""  # newest per-contract tape time = how fresh the chain really is
     for r in _rows(out):
+        tape = str(r.get("last_tape_time") or "")
+        if tape > as_of:
+            as_of = tape
         option_symbol = str(r.get("option_symbol") or "")
         if not option_symbol.endswith(tuple("0123456789")):
             continue
@@ -817,6 +821,10 @@ def load_chain(symbol: str, expiry: str = "") -> Optional[dict]:
         # callers concatenate it unconditionally.
         "other_expiry_rows": [],
         "multiplier": 100,
+        # When the newest contract last printed. The freshness badge reads
+        # this to say whether the chain is live or how far behind it is,
+        # instead of assuming a fixed delay.
+        "as_of": as_of or None,
         "status": "OK",
         "source": SOURCE,
     }

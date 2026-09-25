@@ -106,10 +106,50 @@ def for_quote(price_source: str, session: str) -> dict:
                "close. Any extended-hours print is shown separately.")
 
 
-def for_chain(source: str) -> dict:
-    return stamp(DELAYED, source=source or UW, delay_minutes=15,
-                 detail="Provider chain: quotes, implied volatility and "
-                        "greeks published per contract.")
+def for_chain(source: str, as_of: Optional[str] = None,
+              session: Optional[str] = None) -> dict:
+    """
+    How fresh the option chain actually is.
+
+    Read from the newest contract's last print (``as_of``) rather than a fixed
+    "15 minutes" assumption. When the market is open and that print is within a
+    couple of minutes of now, the chain is live and says so; when it is
+    further behind, the badge names the real gap; when the market is closed,
+    it is the last session's close, not a delay.
+    """
+    src = source or UW
+    now = datetime.now(timezone.utc)
+
+    age_min = None
+    if as_of:
+        try:
+            ts = datetime.fromisoformat(str(as_of).replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            age_min = max(0.0, (now - ts).total_seconds() / 60.0)
+        except (TypeError, ValueError):
+            age_min = None
+
+    if session and session not in ("OPEN", "PRE_MARKET", "AFTER_HOURS"):
+        return stamp(SNAPSHOT, source=src,
+                     detail="The market is closed; this is the last session's "
+                            "chain. It updates live when trading resumes.",
+                     as_of=as_of)
+
+    if age_min is None:
+        # No timestamp to judge by: report the chain without claiming a delay
+        # it may not have.
+        return stamp(DELAYED, source=src,
+                     detail="Provider chain: quotes, implied volatility and "
+                            "greeks published per contract.", as_of=as_of)
+
+    if age_min <= 2.0:
+        return stamp(LIVE, source=src,
+                     detail="Live chain: quotes, implied volatility and greeks "
+                            "published per contract.", as_of=as_of)
+    return stamp(DELAYED, source=src, delay_minutes=round(age_min),
+                 detail=f"Chain last printed about {int(age_min)} minutes ago.",
+                 as_of=as_of)
 
 
 def for_tape(delay_minutes: float = 15.0, plan: Optional[dict] = None) -> dict:

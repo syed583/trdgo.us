@@ -153,9 +153,12 @@ def _fmt_expiry(expiry: str) -> str:
 
 
 def _stamp_chain(payload: dict) -> dict:
-    """Mark a chain with the source that actually served it."""
+    """Mark a chain with its real freshness -- live, delayed, or last close."""
     try:
-        payload["freshness"] = _freshness.for_chain(payload.get("source") or "")
+        from live_market_service import market_clock
+        session = (market_clock() or {}).get("session")
+        payload["freshness"] = _freshness.for_chain(
+            payload.get("source") or "", payload.get("as_of"), session)
     except Exception:  # noqa: BLE001 - a badge must never break a chain
         pass
     return payload
@@ -225,7 +228,6 @@ def _load_chain(
     if od.configured():
         chain = od.load_chain(symbol, expiry)
         if chain and chain.get("rows"):
-            chain["freshness"] = _freshness.for_chain(chain.get("source") or "")
             _stamp_chain(chain)
             cache.put(key, chain)
             return chain
