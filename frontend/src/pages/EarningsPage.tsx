@@ -43,6 +43,7 @@ const SUBTABS: { key: string; label: string; route?: string }[] = [
   { key: 'estimates', label: 'Estimates' },
   { key: 'technical', label: 'Technical' },
   { key: 'options', label: 'Options', route: '/options-flow' },
+  { key: 'volatility', label: 'Volatility', route: '/volatility' },
   { key: 'news', label: 'News', route: '/news' },
   { key: 'ai', label: 'AI Analysis', route: '/ai-insights' },
   { key: 'plan', label: 'Trade Plan' },
