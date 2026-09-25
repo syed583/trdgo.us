@@ -171,11 +171,13 @@ function MarketInsiderTransactions() {
     <Panel title="Largest Insider Transactions" icon={<UserCheck size={13} />}
       right={
         <div className="ins-controls">
-          <button className={`toggle ${byValue ? 'on' : ''}`}
-            onClick={() => setByValue((v) => !v)}
-            title="Sort by dollar size instead of most recent">
-            <span /> Largest first
-          </button>
+          <label className="ins-toggle" title="Sort by dollar size instead of most recent">
+            <button type="button" className={`toggle ${byValue ? 'on' : ''}`}
+              onClick={() => setByValue((v) => !v)} aria-pressed={byValue}>
+              <span />
+            </button>
+            Largest first
+          </label>
           <button className={`mf-chip ${buysOnly ? 'on' : ''}`}
             onClick={() => setBuysOnly((v) => !v)}>Buys only</button>
         </div>
