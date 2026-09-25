@@ -369,6 +369,11 @@ a.index-card { color: inherit; }
 .vol-range {
   display: flex; gap: 4px; margin: 0 0 10px; flex-wrap: wrap;
 }
+.vol-range-top { align-items: center; margin: 2px 0 12px; }
+.vol-range-lbl {
+  font-size: 11px; font-weight: 600; color: var(--text-mute);
+  margin-right: 6px; text-transform: uppercase; letter-spacing: .04em;
+}
 .vol-range-btn {
   font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 999px;
   border: 1px solid var(--border); background: transparent;

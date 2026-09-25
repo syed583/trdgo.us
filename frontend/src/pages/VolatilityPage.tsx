@@ -93,12 +93,39 @@ function sliceByRange(series: any[] | undefined, days: number): any[] {
   return series.filter((r) => r.date && new Date(r.date) >= cutoff);
 }
 
+/** Stats recomputed over the visible window: current values, spread, and the
+ *  high/low across the selected range (not the fixed 52 weeks). */
+function statsForWindow(series: any[]): {
+  iv: number | null; rv: number | null; vrp: number | null; iv_rank: number | null;
+  iv_high: number | null; iv_low: number | null; rv_high: number | null; rv_low: number | null;
+} {
+  const ivs = series.map((r) => r.iv).filter((v) => typeof v === 'number');
+  const rvs = series.map((r) => r.rv).filter((v) => typeof v === 'number');
+  const last = series[series.length - 1] || {};
+  const iv = typeof last.iv === 'number' ? last.iv : null;
+  const rv = typeof last.rv === 'number' ? last.rv : null;
+  return {
+    iv, rv,
+    vrp: iv != null && rv != null ? iv - rv : null,
+    iv_rank: typeof last.iv_rank === 'number' ? last.iv_rank : null,
+    iv_high: ivs.length ? Math.max(...ivs) : null,
+    iv_low: ivs.length ? Math.min(...ivs) : null,
+    rv_high: rvs.length ? Math.max(...rvs) : null,
+    rv_low: rvs.length ? Math.min(...rvs) : null,
+  };
+}
+
 export default function VolatilityPage({ ctx }: { ctx: PageContext }) {
   const symbol = ctx.symbol;
   const vol = useApi<any>((s) => api2.volatility(symbol, s), [symbol]);
   const d = vol.data;
   const [range, setRange] = useState('1Y');
   const ivrv = sliceByRange(d?.iv_rv_series, RANGES.find((r) => r.key === range)?.days ?? 366);
+  // Stats follow the selected window; fall back to the server snapshot when the
+  // series is empty. Implied Move is expiry-based, so it always stays as-is.
+  const ws = ivrv.length ? statsForWindow(ivrv) : (d?.stats || {});
+  const hiLoLabel = range === '1Y' || range === 'ALL' ? '52w'
+    : range; // e.g. "1M", "3M"
 
   return (
     <div className="page">
@@ -114,38 +141,40 @@ export default function VolatilityPage({ ctx }: { ctx: PageContext }) {
           : d.status !== 'OK' ? <Unavailable status={d.status} detail={d.detail} />
             : (
               <>
+                <div className="vol-range vol-range-top">
+                  <span className="vol-range-lbl">Time range</span>
+                  {RANGES.map((r) => (
+                    <button key={r.key}
+                      className={`vol-range-btn ${range === r.key ? 'active' : ''}`}
+                      onClick={() => setRange(r.key)}>
+                      {r.key === 'ALL' ? 'All' : r.key}
+                    </button>
+                  ))}
+                </div>
+
                 <Panel title="Stats" noBody>
                   <div className="vol-stats">
-                    <Stat label="IV Rank" value={d.stats.iv_rank != null ? d.stats.iv_rank.toFixed(1) : '--'} />
-                    <Stat label="Implied Volatility" value={pct(d.stats.iv)} />
-                    <Stat label="Realized Volatility" value={pct(d.stats.rv)} />
+                    <Stat label="IV Rank" value={ws.iv_rank != null ? ws.iv_rank.toFixed(1) : '--'} />
+                    <Stat label="Implied Volatility" value={pct(ws.iv)} />
+                    <Stat label="Realized Volatility" value={pct(ws.rv)} />
                     <Stat label="Variance Risk Premium"
-                      value={pct(d.stats.vrp)}
-                      tone={d.stats.vrp > 0 ? 'up' : d.stats.vrp < 0 ? 'down' : undefined} />
+                      value={pct(ws.vrp)}
+                      tone={(ws.vrp ?? 0) > 0 ? 'up' : (ws.vrp ?? 0) < 0 ? 'down' : undefined} />
                     <Stat label="Implied Move (front)"
                       value={d.stats.implied_move_pct != null
                         ? `±${d.stats.implied_move_pct.toFixed(2)}%${
                           d.stats.implied_move_dollars != null
                             ? ` ($${d.stats.implied_move_dollars.toFixed(2)})` : ''}`
                         : '--'} />
-                    <Stat label="IV 52w High" value={pct(d.stats.iv_high)} />
-                    <Stat label="IV 52w Low" value={pct(d.stats.iv_low)} />
-                    <Stat label="RV 52w High" value={pct(d.stats.rv_high)} />
-                    <Stat label="RV 52w Low" value={pct(d.stats.rv_low)} />
+                    <Stat label={`IV ${hiLoLabel} High`} value={pct(ws.iv_high)} />
+                    <Stat label={`IV ${hiLoLabel} Low`} value={pct(ws.iv_low)} />
+                    <Stat label={`RV ${hiLoLabel} High`} value={pct(ws.rv_high)} />
+                    <Stat label={`RV ${hiLoLabel} Low`} value={pct(ws.rv_low)} />
                   </div>
                 </Panel>
 
                 <div className="two-col">
                   <Panel title="IV vs Realized Vol & IV Rank">
-                    <div className="vol-range">
-                      {RANGES.map((r) => (
-                        <button key={r.key}
-                          className={`vol-range-btn ${range === r.key ? 'active' : ''}`}
-                          onClick={() => setRange(r.key)}>
-                          {r.key === 'ALL' ? 'All' : r.key}
-                        </button>
-                      ))}
-                    </div>
                     {ivrv.length ? (
                       <ResponsiveContainer width="100%" height={300}>
                         <ComposedChart data={ivrv}
