@@ -112,6 +112,9 @@ class AppUser(Base):
     salt = Column(String(64), nullable=False)
     role = Column(String(16), nullable=False, default="user")
     active = Column(Boolean, nullable=False, default=True)
+    # Full access lets a user run analysis and change data. Off by default: a
+    # new account is view-only until the admin grants it from the Users panel.
+    full_access = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
     last_login_at = Column(DateTime(timezone=True), nullable=True)
     last_login_ip = Column(String(64), nullable=True)

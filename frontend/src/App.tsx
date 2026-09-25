@@ -158,9 +158,13 @@ function Shell() {
 
   const me = useApi<any>((s) => (demo ? Promise.resolve({ is_admin: false, authenticated: false }) : api2.me(s)), [demo]);
   const isAdmin = !!me.data?.is_admin;
+  // A signed-in, non-admin account without full access is view-only. While `me`
+  // is still loading we do not know yet, so we do not lock the UI prematurely.
+  const readOnly = !demo && me.data?.authenticated === true
+    && !isAdmin && me.data?.full_access !== true;
 
   const ctx: PageContext = {
-    symbol, demo, onSymbol, indices, strip, quote, search: location.search, readOnly: false,
+    symbol, demo, onSymbol, indices, strip, quote, search: location.search, readOnly,
   };
 
   return (
@@ -181,6 +185,13 @@ function Shell() {
           isAdmin={isAdmin}
           username={me.data?.username}
         />
+
+        {readOnly && (
+          <div className="readonly-banner">
+            View-only account — you can browse everything, but running analysis
+            and making changes are disabled. Ask the administrator for full access.
+          </div>
+        )}
 
         {/* Each page is its own download, fetched the first time it opens. */}
         <Suspense fallback={<div className="page" />}>

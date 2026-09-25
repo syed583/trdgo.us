@@ -51,6 +51,9 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
   const toggle = async (u: string, active: boolean) => {
     await api2.adminSetActive(u, active).catch(() => undefined); refresh();
   };
+  const toggleAccess = async (u: string, full: boolean) => {
+    await api2.adminSetAccess(u, full).catch(() => undefined); refresh();
+  };
   const remove = async (u: string) => {
     if (!window.confirm(`Remove ${u}? They will lose access immediately.`)) return;
     await api2.adminDeleteUser(u).catch(() => undefined); refresh();
@@ -110,7 +113,7 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
                       <table className="tbl">
                         <thead>
                           <tr>
-                            <th>User</th><th>Status</th><th>Last login</th>
+                            <th>User</th><th>Status</th><th>Access</th><th>Last login</th>
                             <th>From IP</th><th className="r">Logins</th><th>Created</th><th></th>
                           </tr>
                         </thead>
@@ -123,11 +126,21 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
                                   {u.active ? 'Active' : 'Disabled'}
                                 </span>
                               </td>
+                              <td>
+                                <span className={`badge ${u.full_access ? 'green' : 'gray'}`}>
+                                  {u.full_access ? 'Full' : 'View-only'}
+                                </span>
+                              </td>
                               <td className="num">{fmt(u.last_login_at)}</td>
                               <td className="num mf-dim">{u.last_login_ip || '—'}</td>
                               <td className="num r">{u.login_count}</td>
                               <td className="num mf-dim">{fmt(u.created_at)}</td>
                               <td className="usr-actions">
+                                <button title={u.full_access ? 'Revoke full access' : 'Give full access'}
+                                  className={u.full_access ? '' : 'primary'}
+                                  onClick={() => toggleAccess(u.username, !u.full_access)}>
+                                  {u.full_access ? 'Make view-only' : 'Give full access'}
+                                </button>
                                 <button title="New password" onClick={() => reset(u.username)}>
                                   <KeyRound size={13} />
                                 </button>

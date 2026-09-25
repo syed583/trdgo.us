@@ -117,6 +117,32 @@ def reset_password(username: str, password: Optional[str] = None) -> dict:
             "detail": "New password; it is not shown again."}
 
 
+def set_full_access(username: str, full: bool) -> dict:
+    """Grant or revoke full access (running analysis and changing data)."""
+    username = (username or "").strip().lower()
+    db = SessionLocal()
+    try:
+        user = db.query(AppUser).filter(AppUser.username == username).first()
+        if not user:
+            return {"status": "NOT_FOUND"}
+        user.full_access = bool(full)
+        db.commit()
+    finally:
+        db.close()
+    return {"status": "OK", "username": username, "full_access": bool(full)}
+
+
+def has_full_access(username: str) -> bool:
+    """True when the account exists, is active, and has been granted full access."""
+    username = (username or "").strip().lower()
+    db = SessionLocal()
+    try:
+        user = db.query(AppUser).filter(AppUser.username == username).first()
+        return bool(user and user.active and user.full_access)
+    finally:
+        db.close()
+
+
 def set_active(username: str, active: bool) -> dict:
     username = (username or "").strip().lower()
     db = SessionLocal()
@@ -189,6 +215,7 @@ def list_users() -> list[dict]:
             "username": u.username,
             "role": u.role,
             "active": u.active,
+            "full_access": bool(u.full_access),
             "created_at": u.created_at.isoformat() if u.created_at else None,
             "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
             "last_login_ip": u.last_login_ip,

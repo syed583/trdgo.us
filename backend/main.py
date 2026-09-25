@@ -132,6 +132,23 @@ def _create_schema() -> None:
     except Exception as exc:  # noqa: BLE001
         print(f"schema: database unavailable, tables not created ({exc})")
 
+    # create_all never alters an existing table, so a column added after the
+    # table first shipped has to be added by hand. app_users predates
+    # full_access; add it where missing so upgraded databases get the column.
+    try:
+        from sqlalchemy import inspect as _inspect, text as _text
+        cols = {c["name"] for c in _inspect(engine).get_columns("app_users")}
+        if "full_access" in cols:
+            pass
+        else:
+            with engine.begin() as conn:
+                conn.execute(_text(
+                    "ALTER TABLE app_users ADD COLUMN full_access "
+                    "BOOLEAN NOT NULL DEFAULT FALSE"))
+            print("schema: added app_users.full_access")
+    except Exception as exc:  # noqa: BLE001 - table may not exist yet; fine
+        print(f"schema: full_access check skipped ({exc})")
+
 
 @app.on_event("startup")
 def _start_edgar_watcher() -> None:
@@ -1073,6 +1090,27 @@ async def _gate(request: Request, call_next):
                     return JSONResponse({"detail": "Authentication required"},
                                         status_code=401)
                 return FileResponse(_LOGIN_PAGE, status_code=401)
+
+            # A non-admin user is view-only until the admin grants full access.
+            # Only actions are gated (writes and the AI analysis stream), so
+            # ordinary viewing never pays for the access lookup; the lookup runs
+            # only on the rare state-changing call.
+            writes = request.method in ("POST", "PUT", "PATCH", "DELETE")
+            runs_ai = path.startswith("/api/analyze")
+            is_data = path.startswith("/api") or path.startswith("/market")
+            if is_data and (writes or runs_ai):
+                user = auth.current_user(request)
+                if user and user.get("role") != "admin":
+                    try:
+                        import user_service
+                        full = user_service.has_full_access(user["username"])
+                    except Exception:  # noqa: BLE001
+                        full = False
+                    if not full:
+                        return JSONResponse(
+                            {"detail": "This account is view-only. Ask the "
+                                       "administrator to grant full access."},
+                            status_code=403)
     return await call_next(request)
 
 
@@ -1087,8 +1125,17 @@ def auth_me(request: Request) -> dict:
     user = auth.current_user(request)
     if not user:
         return {"authenticated": False}
+    is_admin = user["role"] == "admin"
+    full_access = is_admin
+    if not is_admin:
+        try:
+            import user_service
+            full_access = user_service.has_full_access(user["username"])
+        except Exception:  # noqa: BLE001
+            full_access = False
     return {"authenticated": True, "username": user["username"],
-            "role": user["role"], "is_admin": user["role"] == "admin"}
+            "role": user["role"], "is_admin": is_admin,
+            "full_access": full_access}
 
 
 def _client_key(request: Request) -> str:

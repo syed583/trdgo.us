@@ -1383,6 +1383,16 @@ def admin_set_active(request: Request, username: str,
     return user_service.set_active(username, bool(payload.get("active", True)))
 
 
+@router.post("/admin/users/{username}/access")
+def admin_set_access(request: Request, username: str,
+                     payload: dict = Body(default={})) -> dict:
+    """Grant or revoke full access (running analysis and changing data)."""
+    import auth_service as auth
+    auth.require_admin(request)
+    import user_service
+    return user_service.set_full_access(username, bool(payload.get("full", True)))
+
+
 @router.delete("/admin/users/{username}")
 def admin_delete_user(request: Request, username: str) -> dict:
     import auth_service as auth

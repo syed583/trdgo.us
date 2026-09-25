@@ -692,6 +692,8 @@ export const api2 = {
       password ? { password } : undefined),
   adminSetActive: (username: string, active: boolean) =>
     send<any>(`/api/admin/users/${encodeURIComponent(username)}/active`, 'POST', { active }),
+  adminSetAccess: (username: string, full: boolean) =>
+    send<any>(`/api/admin/users/${encodeURIComponent(username)}/access`, 'POST', { full }),
   adminDeleteUser: (username: string) =>
     send<any>(`/api/admin/users/${encodeURIComponent(username)}`, 'DELETE'),
 
