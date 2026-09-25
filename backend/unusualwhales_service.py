@@ -93,6 +93,15 @@ TTL_SETTLED = 30 * 24 * 3600.0   # a finished day cannot change
 # which doubled the wait on every screen that fans out.
 MIN_INTERVAL = 0.06
 
+# The per-minute allowance is huge, but a 429 still fires on a *burst* -- too
+# many requests in flight at once. Several screens fan out in parallel (the
+# news desk alone opens a dozen), and if they all reach the API together they
+# trip that burst limit and the whole app pauses. This semaphore caps how many
+# requests are on the wire simultaneously, however many callers ask, so a
+# parallel screen is smoothed into a steady trickle instead of a spike.
+MAX_INFLIGHT = 3
+_inflight = threading.BoundedSemaphore(MAX_INFLIGHT)
+
 _gate = threading.Lock()
 _last_call = 0.0
 
@@ -203,8 +212,6 @@ def get(path: str, params: Optional[dict] = None) -> dict:
         return {"status": "BAD_REQUEST", "data": None,
                 "detail": "Malformed request path.", "source": SOURCE}
 
-    _space_out()
-
     query = urllib.parse.urlencode(
         {k: v for k, v in (params or {}).items() if v not in (None, "")},
         doseq=True)
@@ -214,16 +221,20 @@ def get(path: str, params: Optional[dict] = None) -> dict:
                  "Accept": "application/json",
                  "User-Agent": "US-Stock-Reader/1.0"})
 
-    try:
-        with _OPENER.open(request, timeout=TIMEOUT) as response:
-            _note_limits(response.headers)
-            body = json.loads(response.read().decode("utf-8", "ignore") or "{}")
-    except urllib.error.HTTPError as exc:
-        return _http_error(exc)
-    except Exception as exc:  # noqa: BLE001
-        _last_status = "PROVIDER_OFFLINE"
-        return {"status": "PROVIDER_OFFLINE", "data": None,
-                "detail": type(exc).__name__, "source": SOURCE}
+    # Only MAX_INFLIGHT requests hold the wire at once; the rest wait here.
+    # Spacing is applied inside the gate so starts stay staggered too.
+    with _inflight:
+        _space_out()
+        try:
+            with _OPENER.open(request, timeout=TIMEOUT) as response:
+                _note_limits(response.headers)
+                body = json.loads(response.read().decode("utf-8", "ignore") or "{}")
+        except urllib.error.HTTPError as exc:
+            return _http_error(exc)
+        except Exception as exc:  # noqa: BLE001
+            _last_status = "PROVIDER_OFFLINE"
+            return {"status": "PROVIDER_OFFLINE", "data": None,
+                    "detail": type(exc).__name__, "source": SOURCE}
 
     _last_status = "OK"
     # Their payloads put the answer under "data"; a few return the object
