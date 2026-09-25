@@ -154,6 +154,47 @@ def _print_row(row: dict) -> dict:
     }
 
 
+def _tape_freshness(trades: list[dict]) -> dict:
+    """
+    How far behind live the tape actually is, from its newest print.
+
+    Read from the data, not hardcoded: during the session a print within a
+    couple of minutes of now is live (no delay badge); further behind, the
+    badge names the real gap, which is the account's OPRA entitlement rather
+    than anything the app does; and when the market is closed it is the last
+    session's tape, not a delay. ``as_of`` is the newest print's time.
+    """
+    import time as _time
+
+    epochs = [t.get("epoch") for t in trades if t.get("epoch")]
+    newest = max(epochs) if epochs else None
+    as_of = None
+    age_min = None
+    if newest:
+        as_of = datetime.fromtimestamp(newest / 1000, timezone.utc).isoformat()
+        age_min = max(0.0, (_time.time() * 1000 - newest) / 60000.0)
+
+    try:
+        from live_market_service import market_clock
+        session = (market_clock() or {}).get("session")
+    except Exception:  # noqa: BLE001
+        session = None
+
+    live_note = ("Live option flow. The side each contract crossed on is "
+                 "counted by the provider, not inferred from the price.")
+
+    if session and session not in ("OPEN", "PRE_MARKET", "AFTER_HOURS"):
+        return {"delay_minutes": 0, "as_of": as_of,
+                "note": ("The market is closed; this is the last session's "
+                         "tape. It prints live when trading resumes.")}
+    if age_min is None or age_min <= 2.0:
+        return {"delay_minutes": 0, "as_of": as_of, "note": live_note}
+    return {"delay_minutes": round(age_min), "as_of": as_of,
+            "note": (f"The tape is about {int(age_min)} minutes behind live -- "
+                     "the account's OPRA data entitlement, not a limit of the "
+                     "app.")}
+
+
 def get_flow(symbol: str) -> dict:
     """The whole per-print picture for one symbol, for the Options Flow page."""
     symbol = (symbol or "").upper().strip()
@@ -196,9 +237,7 @@ def get_flow(symbol: str) -> dict:
         },
         "bullish_premium_share": round(bullish / total * 100, 1) if total else None,
         "ranking_basis": "PREMIUM",
-        "delay_minutes": 0,
-        "note": ("Live option flow. The side each contract crossed on is "
-                 "counted by the provider, not inferred from the price."),
+        **_tape_freshness(trades),
         "status": "OK" if trades else "NO_TRADES",
         "source": SOURCE,
     }

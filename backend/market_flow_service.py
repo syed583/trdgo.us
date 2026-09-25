@@ -185,6 +185,9 @@ def get_tape(limit: int = 40, extra: Optional[list[str]] = None) -> dict:
         "source": SOURCE,
         "detail": ("Contracts trading far above their own normal volume, "
                    "across the whole market."),
+        # Real freshness from the newest print, same as the per-symbol tape:
+        # live during the session, the true gap if behind, last close when shut.
+        **flow._tape_freshness([{"epoch": flow._epoch(x.get("time"))} for x in rows]),
     }
 
 
