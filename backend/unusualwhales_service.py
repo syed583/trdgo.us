@@ -352,8 +352,25 @@ def get_quote(symbol: str) -> Optional[dict]:
 
     bars = get_daily_bars(symbol, "5 D")
     day = bars[-1] if bars else {}
-    previous = bars[-2] if len(bars) > 1 else {}
-    prev_close = _f(previous.get("close"))
+    # Previous close is the close of the last COMPLETED session. Whether that is
+    # bars[-2] or bars[-1] depends on whether today's (still-forming) bar is
+    # present: during and after the session it is, so the previous close is
+    # bars[-2]; before it forms (pre-market) the latest bar is already the last
+    # completed session, so it is bars[-1]. Always using bars[-2] made the
+    # pre-market change compare against two sessions ago.
+    prev_close = None
+    if bars:
+        try:
+            from zoneinfo import ZoneInfo
+            from datetime import datetime as _dt
+            today = _dt.now(ZoneInfo("America/New_York")).date().isoformat()
+        except Exception:  # noqa: BLE001 - tz db missing; degrade gracefully
+            today = ""
+        latest_is_today = str(day.get("date"))[:10] == today
+        if latest_is_today:
+            prev_close = _f(bars[-2].get("close")) if len(bars) > 1 else None
+        else:
+            prev_close = _f(day.get("close"))
     change = change_pct = None
     if prev_close:
         change = round(price - prev_close, 2)

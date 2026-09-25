@@ -687,6 +687,13 @@ export default function CalendarPage({ ctx }: { ctx: PageContext }) {
 
                   <div className="ec-detail-sec">
                     <h4>Analyst forecast</h4>
+                    <p className="ec-sec-note">
+                      This is the <b>Wall Street analyst consensus</b> — how many
+                      firms rate the stock buy, hold or sell, and their price
+                      target. It is other analysts' opinion, not this app's own
+                      call. For this app's AI directional score, use
+                      <b> Analyse</b> below.
+                    </p>
                     {brief.initialLoading
                       ? <div className="ec-note">Loading analyst coverage…</div>
                       : (

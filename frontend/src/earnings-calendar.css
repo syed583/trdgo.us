@@ -323,6 +323,13 @@ tr.ec-row.selected td:first-child { box-shadow: inset 2px 0 0 var(--blue); }
   padding: 2px 0; font-size: 12px; color: var(--text-mute); line-height: 1.6;
 }
 .ec-mute { color: var(--text-mute); }
+.ec-sec-note {
+  margin: 0 0 10px; font-size: 11.5px; line-height: 1.55;
+  color: var(--text-mute);
+  background: var(--panel-2, rgba(127,127,127,.08));
+  border-left: 2px solid var(--border); border-radius: 4px; padding: 7px 9px;
+}
+.ec-sec-note b { color: var(--text); font-weight: 600; }
 
 /* --- analyst forecast ---------------------------------------------------- */
 

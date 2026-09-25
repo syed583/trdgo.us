@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
   ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis,
@@ -74,6 +74,17 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
   const [mode, setMode] =
     useState<'market' | 'symbol' | 'chain' | 'dark' | 'insiders'>('market');
   const [picked, setPicked] = useState<string | null>(null);
+  // The page opens on the market tape, but the moment the operator searches a
+  // ticker they mean "show me THIS name", not the whole market. Switch to the
+  // symbol view on any change of symbol after the first render, so a search
+  // lands on that stock's flow instead of leaving the market tape up.
+  const prevSymbol = useRef(symbol);
+  useEffect(() => {
+    if (symbol !== prevSymbol.current) {
+      prevSymbol.current = symbol;
+      setMode((m) => (m === 'market' ? 'symbol' : m));
+    }
+  }, [symbol]);
   // Filters narrow the tape the operator is already looking at rather than
   // refetching: the session is one query and already in hand, so a round trip
   // to drop rows would cost seconds to show less.
