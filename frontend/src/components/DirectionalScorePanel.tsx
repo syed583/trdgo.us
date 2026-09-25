@@ -5,6 +5,7 @@ import { useApi } from '../hooks/useApi';
 import { HORIZON_COPY, defaultHorizon } from './HorizonSwitch';
 import type { Horizon } from './HorizonSwitch';
 import { Panel, StateBlock } from './common';
+import ParameterWhy from './ParameterWhy';
 
 const GREEN = '#21d07a';
 const RED = '#f2465a';
@@ -36,6 +37,8 @@ interface DirSignal {
   source: string;
   unavailable_reason: string;
   leaning: string | null;
+  weight_reason?: string;
+  score_reason?: string;
 }
 
 interface Directional {
@@ -250,7 +253,8 @@ export default function DirectionalScorePanel({ symbol, horizon }: {
         <div className="hint">{d.note}</div>
       </Panel>
 
-      {open && <ExplainDrawer signal={open} onClose={() => setOpen(null)} />}
+      {open && <ExplainDrawer signal={open} symbol={symbol} horizon={outlook}
+        onClose={() => setOpen(null)} />}
     </>
   );
 }
@@ -322,7 +326,9 @@ function SignalRow({ signal, onOpen }: { signal: DirSignal; onOpen: () => void }
  * that consumed it invites the reader to draw their own conclusion, which is
  * exactly what an explanation is supposed to remove.
  */
-function ExplainDrawer({ signal, onClose }: { signal: DirSignal; onClose: () => void }) {
+function ExplainDrawer({ signal, symbol, horizon, onClose }: {
+  signal: DirSignal; symbol: string; horizon?: string; onClose: () => void;
+}) {
   const colour = !signal.available ? DIM
     : signal.points > 0 ? GREEN : signal.points < 0 ? RED : DIM;
 
@@ -361,6 +367,20 @@ function ExplainDrawer({ signal, onClose }: { signal: DirSignal; onClose: () => 
               <div className="dd-h">How it is scored</div>
               <p>{signal.rule}</p>
             </div>
+            {signal.weight_reason && (
+              <div className="dd-block">
+                <div className="dd-h">Why {signal.weight} points</div>
+                <p>{signal.weight_reason}</p>
+              </div>
+            )}
+            {signal.score_reason && (
+              <div className="dd-block">
+                <div className="dd-h">Why {signal.directional
+                  ? `${signal.points > 0 ? '+' : ''}${signal.points.toFixed(1)}`
+                  : 'this counts'}</div>
+                <p>{signal.score_reason}</p>
+              </div>
+            )}
             <div className="dd-block">
               <div className="dd-h">Figures used</div>
               <table className="tbl dd-table">
@@ -386,6 +406,11 @@ function ExplainDrawer({ signal, onClose }: { signal: DirSignal; onClose: () => 
             </p>
           </div>
         )}
+
+        <div className="dd-block">
+          <ParameterWhy symbol={symbol} parameter={signal.name}
+            label={signal.label} horizon={horizon} />
+        </div>
 
         <div className="dd-source">
           <Info size={10} /> Source: {signal.source || 'unknown'}
