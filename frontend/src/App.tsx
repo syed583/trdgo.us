@@ -182,7 +182,7 @@ function Shell() {
         {/* Each page is its own download, fetched the first time it opens. */}
         <Suspense fallback={<div className="page" />}>
         <Routes>
-          <Route path="/" element={<Navigate to={`/dashboard${location.search}`} replace />} />
+          <Route path="/" element={<Navigate to={`${isAdmin ? '/admin/users' : '/dashboard'}${location.search}`} replace />} />
           <Route path="/dashboard" element={<DashboardPage ctx={ctx} />} />
 
           <Route path="/earnings" element={<Navigate to={`/earnings/${DEFAULT_SYMBOL}${location.search}`} replace />} />

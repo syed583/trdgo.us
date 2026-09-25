@@ -62,7 +62,7 @@ export default function TopBar({
           {/* Route navigation lives in the sidebar only. The header used to
               repeat it as pills, which duplicated the sidebar and was the
               single widest thing in the bar. */}
-          <HeaderNav search={search} />
+          {!isAdmin && <HeaderNav search={search} />}
           <SymbolSearch symbol={symbol} onSymbol={onSymbol} demo={demo} />
           <div className="topbar-spacer" />
         </>

@@ -58,11 +58,11 @@ export default function Sidebar({
   search: string;
   isAdmin?: boolean;
 }) {
-  // Settings (provider status/config) and Users are the admin panel: regular
-  // users see neither the links nor -- via the route guard -- the pages.
+  // The admin is the operator, not a viewer: signed in as admin the sidebar is
+  // just the admin panel -- Users and Settings -- and none of the data pages.
+  // Regular users get every data page and neither admin link.
   const nav = isAdmin
-    ? [...NAV,
-       { to: '/admin/users', label: 'Users', icon: <Users size={S} /> },
+    ? [{ to: '/admin/users', label: 'Users', icon: <Users size={S} /> },
        { to: '/settings', label: 'Settings', icon: <Settings size={S} /> }]
     : NAV;
   const [collapsed, setCollapsed] = React.useState(readCollapsed);
