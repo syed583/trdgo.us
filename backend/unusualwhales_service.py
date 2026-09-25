@@ -102,6 +102,21 @@ MIN_INTERVAL = 0.06
 MAX_INFLIGHT = 3
 _inflight = threading.BoundedSemaphore(MAX_INFLIGHT)
 
+# Single-flight: when many users open the same symbol at once and the cache is
+# cold, without this every one of them fires the same request -- a burst that
+# trips the provider's 429 and burns budget N times for one answer. A per-key
+# lock collapses those into one call the rest read from cache.
+_flight_guard = threading.Lock()
+_flights: dict[str, threading.Lock] = {}
+
+
+def _flight_lock(key: str) -> threading.Lock:
+    with _flight_guard:
+        lock = _flights.get(key)
+        if lock is None:
+            lock = _flights[key] = threading.Lock()
+        return lock
+
 _gate = threading.Lock()
 _last_call = 0.0
 
@@ -284,10 +299,17 @@ def _cached(key: str, path: str, params: Optional[dict] = None,
     hit = cache.get(key, ttl)
     if hit:
         return hit
-    out = get(path, params)
-    if out["status"] == "OK":
-        cache.put(key, out)
-    return out
+    # Collapse a stampede: the first caller fetches, the rest wait here and then
+    # read the cache it just filled -- one provider call for many users.
+    lock = _flight_lock(key)
+    with lock:
+        hit = cache.get(key, ttl)
+        if hit:
+            return hit
+        out = get(path, params)
+        if out["status"] == "OK":
+            cache.put(key, out)
+        return out
 
 
 def _rows(payload: dict) -> list:
