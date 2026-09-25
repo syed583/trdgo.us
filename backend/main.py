@@ -1063,6 +1063,24 @@ async def _gate(request: Request, call_next):
                     return JSONResponse({"detail": "Authentication required"},
                                         status_code=401)
                 return FileResponse(_LOGIN_PAGE, status_code=401)
+
+            # Regular users are view-only: they may open and read every page,
+            # but may not trigger anything that changes data or spends the API
+            # budget. Admin (the operator) is unrestricted. Enforced here in the
+            # gate so a new action endpoint is read-only for users by default.
+            user = auth.current_user(request)
+            if user and user.get("role") != "admin":
+                path = request.url.path
+                is_data = path.startswith("/api") or path.startswith("/market")
+                writes = request.method in ("POST", "PUT", "PATCH", "DELETE")
+                runs_ai = path.startswith("/api/analyze")
+                # Admin-only endpoints already 403 on their own; this covers
+                # every other write and the AI analysis stream.
+                if is_data and (writes or runs_ai):
+                    return JSONResponse(
+                        {"detail": "This is a view-only account. Ask the "
+                                   "administrator for access to run this."},
+                        status_code=403)
     return await call_next(request)
 
 

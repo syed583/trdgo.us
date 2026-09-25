@@ -89,6 +89,9 @@ export interface PageContext {
   strip: ReturnType<typeof useApi<WatchlistPayload>>;
   quote: ReturnType<typeof useApi<any>>;
   search: string;
+  // A regular (non-admin) account is view-only: it can read every page but
+  // cannot run analysis or change anything. Pages use this to disable actions.
+  readOnly: boolean;
 }
 
 function Shell() {
@@ -153,11 +156,14 @@ function Shell() {
     [navigate, location],
   );
 
-  const me = useApi<any>((s) => (demo ? Promise.resolve({ is_admin: false }) : api2.me(s)), [demo]);
+  const me = useApi<any>((s) => (demo ? Promise.resolve({ is_admin: false, authenticated: false }) : api2.me(s)), [demo]);
   const isAdmin = !!me.data?.is_admin;
+  // View-only when signed in as a real, non-admin account. While `me` is still
+  // loading we do not know yet, so we do not lock the UI prematurely.
+  const readOnly = !demo && me.data?.authenticated === true && !isAdmin;
 
   const ctx: PageContext = {
-    symbol, demo, onSymbol, indices, strip, quote, search: location.search,
+    symbol, demo, onSymbol, indices, strip, quote, search: location.search, readOnly,
   };
 
   return (
@@ -178,6 +184,13 @@ function Shell() {
           isAdmin={isAdmin}
           username={me.data?.username}
         />
+
+        {readOnly && (
+          <div className="readonly-banner">
+            View-only account — you can browse everything, but running analysis
+            and making changes are disabled. Ask the administrator for access.
+          </div>
+        )}
 
         {/* Each page is its own download, fetched the first time it opens. */}
         <Suspense fallback={<div className="page" />}>

@@ -127,6 +127,7 @@ export default function InsightsPage({ ctx }: { ctx: PageContext }) {
   }, [result]);
 
   const analyse = (raw: string) => {
+    if (ctx.readOnly) return; // view-only accounts cannot run the analysis
     const next = (raw || '').trim().toUpperCase();
     if (!next) return;
     seenResult.current = false;
@@ -208,7 +209,8 @@ export default function InsightsPage({ ctx }: { ctx: PageContext }) {
   if (phase === 'idle') {
     return (
       <SearchScreen draft={draft} onDraft={setDraft} onAnalyse={analyse}
-        horizon={horizon} onHorizon={setPicked} session={session} />
+        horizon={horizon} onHorizon={setPicked} session={session}
+        readOnly={ctx.readOnly} />
     );
   }
 
@@ -239,10 +241,11 @@ function missingCount(state: Record<string, { status: string }>): number {
 /* ------------------------------------------------------------ 1. search */
 
 function SearchScreen({
-  draft, onDraft, onAnalyse, horizon, onHorizon, session,
+  draft, onDraft, onAnalyse, horizon, onHorizon, session, readOnly,
 }: {
   draft: string; onDraft: (v: string) => void; onAnalyse: (s: string) => void;
   horizon: Horizon; onHorizon: (h: Horizon) => void; session?: string;
+  readOnly?: boolean;
 }) {
   return (
     <div className="an-hero">
@@ -274,17 +277,24 @@ function SearchScreen({
             <X size={14} />
           </button>
         )}
-        <button type="submit" className="an-go" disabled={!draft.trim()}>
+        <button type="submit" className="an-go" disabled={!draft.trim() || readOnly}
+          title={readOnly ? 'View-only account' : undefined}>
           Analyze
         </button>
       </form>
 
-      <div className="an-try">
-        Try:
-        {SUGGESTED.map((s) => (
-          <button key={s} onClick={() => { onDraft(s); onAnalyse(s); }}>{s}</button>
-        ))}
-      </div>
+      {readOnly ? (
+        <div className="an-try" style={{ opacity: 0.7 }}>
+          Running analysis is disabled for view-only accounts.
+        </div>
+      ) : (
+        <div className="an-try">
+          Try:
+          {SUGGESTED.map((s) => (
+            <button key={s} onClick={() => { onDraft(s); onAnalyse(s); }}>{s}</button>
+          ))}
+        </div>
+      )}
 
       <div className="an-stats">
         <div><b>12</b><span>Data Sources</span></div>
