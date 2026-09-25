@@ -352,10 +352,13 @@ function HealthBadge({
   // is answering, which is what the badge was really reporting: whether the
   // numbers on screen are coming from anywhere.
   const live = health.feed === 'OK';
-  // A rate-limit pause is temporary and the screens still serve their held
-  // data, so it is "busy", not "offline". Only a missing key or an actual
-  // outage is offline.
-  const busy = !live && (health.feed === 'RATE_LIMITED' || health.feed === 'UNKNOWN');
+  // If real quotes are flowing, the feed is not offline no matter what the feed
+  // probe said -- the numbers on the screen prove it. A rate-limit pause is
+  // temporary and the screens still serve their held data, so it is "busy",
+  // not "offline". Only a genuine outage (no data at all) is offline.
+  const dataFlowing = health.market_data === 'OK';
+  const busy = !live && (dataFlowing
+    || health.feed === 'RATE_LIMITED' || health.feed === 'UNKNOWN');
   const degraded = live && (
     health.market_data !== 'OK' || health.providers?.news?.status !== 'OK'
   );
