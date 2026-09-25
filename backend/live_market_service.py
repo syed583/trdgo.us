@@ -738,16 +738,16 @@ def _fallback_batch(symbols: list[str]) -> dict:
 
 def _feed_quotes_first() -> bool:
     """
-    Whether to ask the provider before TWS for quotes.
+    Whether to take the provider's quote path.
 
-    TWS leads: it is the live subscription the user already pays for and has
-    no per-request budget, and Unusual Whales now carries bid and ask too, so
-    there is nothing to gain by spending a request first. Set
-    QUOTES_PREFER_PROVIDER=1 to put the provider in front -- worth doing when
-    TWS is not running, because the fallback then answers immediately rather
-    than after a connection attempt.
+    Always, now. This gate existed when TWS was the primary quote source and
+    the provider was a fallback behind it; with TWS removed the provider is
+    the only source, so the provider path -- which handles the session clock
+    and the freshness badge -- must always run. Left as a function (rather
+    than deleted) so the one caller reads the same, and set
+    QUOTES_PREFER_PROVIDER=0 only to force the bare fallback path for a test.
     """
-    return os.getenv("QUOTES_PREFER_PROVIDER", "").strip() in ("1", "true", "yes")
+    return os.getenv("QUOTES_PREFER_PROVIDER", "1").strip() not in ("0", "false", "no")
 
 
 def _quote_providers():
