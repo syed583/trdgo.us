@@ -88,9 +88,12 @@ def read_token(token: Optional[str]) -> Optional[dict]:
     payload, _, _mac = token.rpartition(".")
     parts = payload.split("|")
     if len(parts) != 3:
-        # A pre-upgrade cookie ("expires.mac") -- treat as the admin so an
-        # existing session is not force-logged-out by the format change.
-        return _read_legacy(token)
+        # A pre-upgrade cookie ("expires.mac") carries no username or role.
+        # Granting it admin -- as an earlier version did -- means any stale
+        # session from before the multi-user upgrade silently opens the admin
+        # panel. Reject it instead: the holder logs in again with a real
+        # username and password and gets the role that account actually has.
+        return None
     username, role, stamp = parts
     try:
         expires_at = int(stamp)
@@ -103,21 +106,6 @@ def read_token(token: Optional[str]) -> Optional[dict]:
     if not hmac.compare_digest(token, _sign(payload)):
         return None
     return {"username": username, "role": role}
-
-
-def _read_legacy(token: str) -> Optional[dict]:
-    stamp, _, _mac = token.partition(".")
-    try:
-        expires_at = int(stamp)
-    except ValueError:
-        return None
-    if expires_at < time.time():
-        return None
-    legacy = f"{expires_at}"
-    mac = hmac.new(_secret(), legacy.encode(), hashlib.sha256)
-    if hmac.compare_digest(token, f"{expires_at}.{mac.hexdigest()}"):
-        return {"username": "admin", "role": "admin"}
-    return None
 
 
 def valid_token(token: Optional[str]) -> bool:
