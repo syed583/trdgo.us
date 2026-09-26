@@ -29,6 +29,9 @@ class WatchlistItem(Base):
     symbol = Column(String(16), nullable=False, index=True)
     note = Column(Text, nullable=True)
     sort_order = Column(Integer, nullable=False, default=0)
+    # Whose list this row is on. Each user has their own watchlist; legacy rows
+    # (owner NULL) belong to the admin/owner. Scoped by username, lowercased.
+    owner = Column(String(40), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
 
 

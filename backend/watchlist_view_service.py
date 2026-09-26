@@ -99,16 +99,18 @@ def _earnings_dates(symbols: list[str]) -> dict[str, dict]:
     return out
 
 
-def get_view() -> dict:
+def get_view(owner: Optional[str] = None) -> dict:
     """Rows, headline figures, sector split and the next reports."""
+    # Cache per owner so one user's list is never served to another.
+    ck = f"watchlist_view:{(owner or 'admin').strip().lower()}"
     cached = market.cache.get(
-        "watchlist_view", market.session_ttl(VIEW_TTL_OPEN, VIEW_TTL_CLOSED))
+        ck, market.session_ttl(VIEW_TTL_OPEN, VIEW_TTL_CLOSED))
     if cached:
         return cached
 
     import workspace_service as workspace
 
-    saved = workspace.list_watchlist(with_quotes=False).get("rows") or []
+    saved = workspace.list_watchlist(with_quotes=False, owner=owner).get("rows") or []
     symbols = [r["symbol"].upper() for r in saved]
     if not symbols:
         return {
@@ -208,5 +210,5 @@ def get_view() -> dict:
                    "market cap come from SEC filings; the cap is shares "
                    "outstanding times the live price."),
     }
-    market.cache.put("watchlist_view", result)
+    market.cache.put(ck, result)
     return result

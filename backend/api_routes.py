@@ -1114,27 +1114,35 @@ def scanner_run(
 # ---------------------------------------------------------------------------
 
 
+def _who(request: Request) -> Optional[str]:
+    """The signed-in username, so a watchlist is scoped to its owner."""
+    import auth_service as auth
+    user = auth.current_user(request)
+    return user.get("username") if user else None
+
+
 @router.get("/watchlist/view")
-def watchlist_view() -> dict:
+def watchlist_view(request: Request) -> dict:
     """Watchlist rows with quotes, sector, market cap and next earnings."""
     import watchlist_view_service as wv
 
-    return wv.get_view()
+    return wv.get_view(owner=_who(request))
 
 
 @router.get("/watchlist")
-def watchlist_list() -> dict:
-    return workspace.list_watchlist()
+def watchlist_list(request: Request) -> dict:
+    return workspace.list_watchlist(owner=_who(request))
 
 
 @router.post("/watchlist")
-def watchlist_add(payload: dict = Body(...)) -> dict:
-    return workspace.add_watchlist(payload.get("symbol", ""), payload.get("note"))
+def watchlist_add(request: Request, payload: dict = Body(...)) -> dict:
+    return workspace.add_watchlist(payload.get("symbol", ""), payload.get("note"),
+                                   owner=_who(request))
 
 
 @router.delete("/watchlist/{symbol}")
-def watchlist_remove(symbol: str) -> dict:
-    return workspace.remove_watchlist(symbol)
+def watchlist_remove(request: Request, symbol: str) -> dict:
+    return workspace.remove_watchlist(symbol, owner=_who(request))
 
 
 # ---------------------------------------------------------------------------

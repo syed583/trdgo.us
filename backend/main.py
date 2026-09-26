@@ -149,6 +149,19 @@ def _create_schema() -> None:
     except Exception as exc:  # noqa: BLE001 - table may not exist yet; fine
         print(f"schema: full_access check skipped ({exc})")
 
+    # watchlist_items predates per-user watchlists; add the owner column where
+    # missing so existing databases scope lists by user (NULL = admin's list).
+    try:
+        from sqlalchemy import inspect as _inspect, text as _text
+        cols = {c["name"] for c in _inspect(engine).get_columns("watchlist_items")}
+        if "owner" not in cols:
+            with engine.begin() as conn:
+                conn.execute(_text(
+                    "ALTER TABLE watchlist_items ADD COLUMN owner VARCHAR(40)"))
+            print("schema: added watchlist_items.owner")
+    except Exception as exc:  # noqa: BLE001
+        print(f"schema: owner check skipped ({exc})")
+
 
 @app.on_event("startup")
 def _start_edgar_watcher() -> None:
@@ -1098,7 +1111,11 @@ async def _gate(request: Request, call_next):
             writes = request.method in ("POST", "PUT", "PATCH", "DELETE")
             runs_ai = path.startswith("/api/analyze")
             is_data = path.startswith("/api") or path.startswith("/market")
-            if is_data and (writes or runs_ai):
+            # The watchlist is personal per-user state, not a shared or
+            # API-costly action, so every signed-in user manages their own --
+            # even a view-only account. Everything else stays gated.
+            personal = path.startswith("/api/watchlist")
+            if is_data and (writes or runs_ai) and not personal:
                 user = auth.current_user(request)
                 if user and user.get("role") != "admin":
                     try:

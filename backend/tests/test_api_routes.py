@@ -177,8 +177,8 @@ def test_ticker_strip_ignores_blank_entries(client, monkeypatch):
 def test_watchlist_route_serves_the_persisted_list(client, monkeypatch):
     monkeypatch.setattr(
         api_routes.workspace, "list_watchlist",
-        lambda: {"rows": [{"symbol": "MSFT", "price": 400}], "count": 1,
-                 "status": "OK", "source": "DATABASE"},
+        lambda owner=None: {"rows": [{"symbol": "MSFT", "price": 400}], "count": 1,
+                            "status": "OK", "source": "DATABASE"},
     )
     body = client.get("/api/watchlist").json()
     assert body["source"] == "DATABASE"

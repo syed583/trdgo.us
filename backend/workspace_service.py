@@ -31,12 +31,22 @@ def _f(value) -> Optional[float]:
 # ---------------------------------------------------------------------------
 
 
-def list_watchlist(with_quotes: bool = True) -> dict:
+def _owner(owner: Optional[str]) -> Optional[str]:
+    o = (owner or "").strip().lower()
+    # The admin's own list is the legacy rows stored with owner NULL, so map
+    # "admin" (and no owner) to None; everyone else is scoped by their username.
+    return None if o in ("", "admin") else o
+
+
+def list_watchlist(with_quotes: bool = True, owner: Optional[str] = None) -> dict:
+    who = _owner(owner)
     db = SessionLocal()
     try:
+        q = db.query(WatchlistItem)
+        q = q.filter(WatchlistItem.owner.is_(None)) if who is None \
+            else q.filter(WatchlistItem.owner == who)
         items = (
-            db.query(WatchlistItem)
-            .order_by(WatchlistItem.sort_order.asc(), WatchlistItem.id.asc())
+            q.order_by(WatchlistItem.sort_order.asc(), WatchlistItem.id.asc())
             .all()
         )
         rows = [{
@@ -77,7 +87,9 @@ def list_watchlist(with_quotes: bool = True) -> dict:
     return {"rows": rows, "count": len(rows), "status": "OK", "source": "DATABASE"}
 
 
-def add_watchlist(symbol: str, note: Optional[str] = None) -> dict:
+def add_watchlist(symbol: str, note: Optional[str] = None,
+                  owner: Optional[str] = None) -> dict:
+    who = _owner(owner)
     # A watchlist row is read straight back into a provider URL and a cache
     # key, so an invalid symbol is refused at write time rather than stored
     # and replayed. See input_validation.is_symbol.
@@ -94,13 +106,17 @@ def add_watchlist(symbol: str, note: Optional[str] = None) -> dict:
 
     db = SessionLocal()
     try:
+        owner_filter = (WatchlistItem.owner.is_(None) if who is None
+                        else WatchlistItem.owner == who)
         existing = (db.query(WatchlistItem)
-                    .filter(WatchlistItem.symbol == symbol).first())
+                    .filter(WatchlistItem.symbol == symbol)
+                    .filter(owner_filter).first())
         if existing:
             return {"status": "EXISTS", "symbol": symbol, "id": existing.id}
 
-        highest = db.query(WatchlistItem).count()
-        item = WatchlistItem(symbol=symbol, note=note, sort_order=highest)
+        highest = db.query(WatchlistItem).filter(owner_filter).count()
+        item = WatchlistItem(symbol=symbol, note=note, sort_order=highest,
+                             owner=who)
         db.add(item)
         db.commit()
         db.refresh(item)
@@ -109,12 +125,15 @@ def add_watchlist(symbol: str, note: Optional[str] = None) -> dict:
         db.close()
 
 
-def remove_watchlist(symbol: str) -> dict:
+def remove_watchlist(symbol: str, owner: Optional[str] = None) -> dict:
     symbol = symbol.strip().upper()
+    who = _owner(owner)
     db = SessionLocal()
     try:
-        deleted = (db.query(WatchlistItem)
-                   .filter(WatchlistItem.symbol == symbol).delete())
+        q = db.query(WatchlistItem).filter(WatchlistItem.symbol == symbol)
+        q = q.filter(WatchlistItem.owner.is_(None)) if who is None \
+            else q.filter(WatchlistItem.owner == who)
+        deleted = q.delete()
         db.commit()
         return {"status": "OK" if deleted else "NOT_FOUND", "symbol": symbol}
     finally:
