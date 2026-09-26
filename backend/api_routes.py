@@ -1264,20 +1264,34 @@ def _dashboard_build() -> dict:
 
     def upcoming_earnings() -> dict:
         """
-        This week if anything reports, otherwise the next scheduled events.
+        The next scheduled reports, from today forward.
 
-        A panel headed "Upcoming Earnings" that goes blank for the eleven weeks
-        between reporting seasons is not telling the operator anything. Widen
-        rather than show an empty box.
+        "This week" spans Monday-Sunday, so mid-week it still contains the days
+        already past -- which is wrong under a heading that says "Upcoming".
+        Drop anything before today, and if that empties the week (or it is the
+        off-season), widen to the next scheduled events rather than show a blank.
         """
-        block = calendar.get_calendar("THIS_WEEK", "DATE", None, True, 8)
+        from datetime import datetime as _dt
+        import live_market_service as _market
+        today_iso = _dt.now(_market.EASTERN).date().isoformat()
+
+        def only_future(block: dict, label: Optional[str] = None) -> dict:
+            rows = [r for r in (block.get("rows") or [])
+                    if r.get("date") and r["date"] >= today_iso][:8]
+            out = dict(block)
+            out["rows"] = rows
+            out["count"] = len(rows)
+            if label:
+                out["widened_from"] = "THIS_WEEK"
+                out["range_label"] = label
+            return out
+
+        # Pull a wide slice, then keep only today-forward rows.
+        block = only_future(calendar.get_calendar("THIS_WEEK", "DATE", None, True, 40))
         if block.get("rows"):
             return block
-        wider = calendar.get_calendar("ALL", "DATE", None, True, 8)
-        if wider.get("rows"):
-            wider["widened_from"] = "THIS_WEEK"
-            wider["range_label"] = "Next Scheduled"
-        return wider
+        return only_future(
+            calendar.get_calendar("ALL", "DATE", None, True, 40), "Next Scheduled")
 
     # Six independent blocks. Run one after another they add up to most of the
     # landing screen's load time, and none of them needs another's answer --

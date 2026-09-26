@@ -10,7 +10,7 @@ Production statistics are computed from verified rows only. A seed row can be
 displayed, but it never contributes to a beat rate, an average surprise or a
 score - otherwise a demo fixture would quietly become a trading signal.
 
-Post-earnings moves are measured from real IBKR daily bars: the close-to-close
+Post-earnings moves are measured from real Unusual Whales daily bars: the close-to-close
 change on the first session after the report, matched to the actual reporting
 time (a BMO report moves that same day, an AMC report moves the next).
 """
@@ -122,7 +122,7 @@ def _lifecycle_for(eps_actual, revenue_actual, when: Optional[date],
 
 def _attach_post_earnings_moves(symbol: str, rows: list[dict]) -> tuple[int, str]:
     """
-    Measure the real reaction to each report from IBKR daily bars.
+    Measure the real reaction to each report from Unusual Whales daily bars.
 
     BMO reports move the session they land on; AMC reports move the next
     session. Rows whose date falls outside the available bar history are left
@@ -283,7 +283,7 @@ def get_history(symbol: str, quarters: int = 8) -> dict:
         "moves_status": moves_status,
         "moves_detail": (
             None if moves_status == cfg.OK else
-            "Post-earnings moves could not be measured: the IBKR daily bars "
+            "Post-earnings moves could not be measured: the Unusual Whales daily bars "
             f"were unavailable ({moves_status})."
         ),
         "stats": stats,

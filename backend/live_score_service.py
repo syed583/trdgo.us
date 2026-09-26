@@ -506,10 +506,10 @@ def get_watchlist(symbols: list[str]) -> dict:
         "market": market.market_clock(),
         "score_basis": (
             "Technical composite (trend, momentum, range position, rate of "
-            "change) from live IBKR daily bars."
+            "change) from live Unusual Whales daily bars."
         ),
         "status": "OK",
-        "source": "IBKR+DATABASE",
+        "source": "UNUSUAL_WHALES+DATABASE",
     }
 
     # Only cache a fully-scored row for the normal TTL. If the budget expired
@@ -664,7 +664,7 @@ def get_trdgo_score(symbol: str) -> dict:
         if bars:
             return score_technicals(calculate_technicals(bars)), "OK"
         return _component_unavailable(
-            20, "PROVIDER_OFFLINE", "IBKR historical bars unavailable"), "PROVIDER_OFFLINE"
+            20, "PROVIDER_OFFLINE", "Historical bars unavailable"), "PROVIDER_OFFLINE"
 
     def _fundamentals() -> tuple:
         try:
@@ -720,7 +720,7 @@ def get_trdgo_score(symbol: str) -> dict:
 
     sections = [
         ("technicals", "ibkr_history", _technicals, 20,
-         "IBKR historical bars unavailable"),
+         "Historical bars unavailable"),
         ("fundamentals", "sec", _fundamentals, 20,
          "SEC fundamentals did not answer in time"),
         ("estimates", "estimates", _estimates, 25,
@@ -770,7 +770,7 @@ def get_trdgo_score(symbol: str) -> dict:
         "risk": risk,
         "providers": providers,
         "status": "OK",
-        "source": "IBKR+SEC+DATABASE",
+        "source": "UNUSUAL_WHALES+SEC+DATABASE",
     }
     market.cache.put(key, result)
     return result
@@ -1162,7 +1162,7 @@ def get_earnings_overview(symbol: str, chart_range: str = "6M") -> dict:
         "analysis": analysis,
         "market": market.market_clock(),
         "status": "OK",
-        "source": "IBKR+SEC+DATABASE",
+        "source": "UNUSUAL_WHALES+SEC+DATABASE",
     }
 
     # Say which panels did not arrive in time, so the screen can mark them as
