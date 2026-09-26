@@ -162,6 +162,14 @@ def _create_schema() -> None:
     except Exception as exc:  # noqa: BLE001
         print(f"schema: owner check skipped ({exc})")
 
+    # Load any admin-set provider key override now that the settings table
+    # exists, so a key replaced from the UI survives a restart.
+    try:
+        import unusualwhales_service as _uw
+        _uw.load_key_override()
+    except Exception as exc:  # noqa: BLE001
+        print(f"schema: provider key override not loaded ({exc})")
+
 
 @app.on_event("startup")
 def _start_edgar_watcher() -> None:

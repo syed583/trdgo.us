@@ -146,13 +146,17 @@ _key_loaded = False
 _key_lock = threading.Lock()
 
 
-def _load_key_once() -> None:
+def load_key_override() -> None:
+    """
+    Load the persisted key override from the settings table into memory.
+
+    Called once at startup (see main.py). Deliberately NOT called from api_key(),
+    which is on the hot path -- importing the database there would both add a
+    round trip and, because the database module re-runs load_dotenv on import,
+    quietly repopulate an env var a caller had cleared.
+    """
     global _key_loaded, _key_override
-    if _key_loaded:
-        return
     with _key_lock:
-        if _key_loaded:
-            return
         try:
             from database import SessionLocal
             from models_user import StrategySetting
@@ -160,8 +164,8 @@ def _load_key_once() -> None:
             try:
                 row = (db.query(StrategySetting)
                        .filter(StrategySetting.key == _SETTING_KEY).first())
-                if row and (row.value or "").strip():
-                    _key_override = row.value.strip()
+                _key_override = (row.value.strip()
+                                 if row and (row.value or "").strip() else None)
             finally:
                 db.close()
         except Exception:  # noqa: BLE001 - DB down: fall back to env
@@ -170,7 +174,6 @@ def _load_key_once() -> None:
 
 
 def api_key() -> str:
-    _load_key_once()
     return (_key_override or os.environ.get(ENV_KEY) or "").strip()
 
 
@@ -196,7 +199,6 @@ def set_api_key(new_key: str) -> dict:
     if len(new_key) < 20:
         return {"status": "INVALID", "detail": "That does not look like a valid API key."}
 
-    _load_key_once()
     with _key_lock:
         previous = _key_override
         _key_override = new_key
