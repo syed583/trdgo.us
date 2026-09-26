@@ -365,11 +365,15 @@ def _tone(headline: str) -> tuple[Optional[float], str]:
     text = (headline or "").lower()
     up = sum(1 for word in _POSITIVE if word in text)
     down = sum(1 for word in _NEGATIVE if word in text)
+    # Lowercase buckets, matching news_desk_service, the sentiment counters and
+    # the frontend filter -- which all compare against "positive"/"negative"/
+    # "neutral"/"unscored". Returning uppercase here silently broke the Positive/
+    # Neutral/Negative tabs (they matched nothing) and the sentiment split.
     if not up and not down:
-        return None, "NEUTRAL"
+        return None, "unscored"
     score = round((up - down) / (up + down), 3)
-    return score, ("POSITIVE" if score > 0.2 else
-                   "NEGATIVE" if score < -0.2 else "NEUTRAL")
+    return score, ("positive" if score > 0.2 else
+                   "negative" if score < -0.2 else "neutral")
 
 
 def news(symbol: str = "", limit: int = 20) -> dict:
