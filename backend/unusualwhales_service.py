@@ -91,7 +91,7 @@ TTL_SETTLED = 30 * 24 * 3600.0   # a finished day cannot change
 # and this is the dispatch spacing every multi-call screen waits on, so it is
 # kept as low as stays comfortably clear of the burst limit. It was 0.12s,
 # which doubled the wait on every screen that fans out.
-MIN_INTERVAL = 0.06
+MIN_INTERVAL = 0.04
 
 # The per-minute allowance is huge, but a 429 still fires on a *burst* -- too
 # many requests in flight at once. Several screens fan out in parallel (the
@@ -99,7 +99,7 @@ MIN_INTERVAL = 0.06
 # trip that burst limit and the whole app pauses. This semaphore caps how many
 # requests are on the wire simultaneously, however many callers ask, so a
 # parallel screen is smoothed into a steady trickle instead of a spike.
-MAX_INFLIGHT = 3
+MAX_INFLIGHT = 6
 _inflight = threading.BoundedSemaphore(MAX_INFLIGHT)
 
 # Single-flight: when many users open the same symbol at once and the cache is

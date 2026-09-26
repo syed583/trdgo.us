@@ -171,12 +171,17 @@ def ticker_strip(symbols: Optional[str] = None) -> dict:
 
 @router.get("/score/{symbol}")
 def score(symbol: str) -> dict:
-    return scores.get_trdgo_score(symbol)
+    # SWR: after the first build, serve the held score instantly and refresh in
+    # the background, so a visitor never waits out the periodic recompute.
+    sym = symbol.upper()
+    return swr.serve(f"score:{sym}", lambda: scores.get_trdgo_score(sym), 120)
 
 
 @router.get("/earnings/overview/{symbol}")
 def earnings_overview(symbol: str, range: str = "6M") -> dict:
-    return scores.get_earnings_overview(symbol, chart_range=range)
+    sym = symbol.upper()
+    return swr.serve(f"earnov:{sym}:{range}",
+                     lambda: scores.get_earnings_overview(sym, chart_range=range), 180)
 
 
 # ---------------------------------------------------------------------------
@@ -335,7 +340,10 @@ def directional(symbol: str, horizon: Optional[str] = None) -> dict:
     """
     import directional_score_service as ds
 
-    base = ds.get_directional_score(symbol)
+    # SWR the base read so the panel never blocks on the periodic recompute; the
+    # horizon transform below is cheap and applied to whatever it serves.
+    sym = symbol.upper()
+    base = swr.serve(f"dir:{sym}", lambda: ds.get_directional_score(sym), 120)
     if base.get("status") == "UNKNOWN_SYMBOL":
         return base
     h = (horizon or "").upper()
