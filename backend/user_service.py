@@ -17,6 +17,7 @@ import hashlib
 import hmac
 import re
 import secrets
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -129,18 +130,51 @@ def set_full_access(username: str, full: bool) -> dict:
         db.commit()
     finally:
         db.close()
+    _access_invalidate(username)  # so the change is seen immediately
     return {"status": "OK", "username": username, "full_access": bool(full)}
+
+
+# The full-access check runs on /auth/me and the access gate -- i.e. on the hot
+# path -- and the database can be remote (a query is a round trip). Cache the
+# answer briefly so a page does not pay that round trip every time; a grant or
+# revoke takes effect within _ACCESS_TTL seconds.
+_ACCESS_TTL = 30.0
+_access_cache: dict[str, tuple[float, bool]] = {}
+_access_lock = __import__("threading").Lock()
+
+
+def _access_cached(username: str):
+    with _access_lock:
+        hit = _access_cache.get(username)
+    if hit and (time.time() - hit[0]) < _ACCESS_TTL:
+        return hit[1]
+    return None
+
+
+def _access_store(username: str, value: bool) -> None:
+    with _access_lock:
+        _access_cache[username] = (time.time(), value)
+
+
+def _access_invalidate(username: str) -> None:
+    with _access_lock:
+        _access_cache.pop(username, None)
 
 
 def has_full_access(username: str) -> bool:
     """True when the account exists, is active, and has been granted full access."""
     username = (username or "").strip().lower()
+    cached = _access_cached(username)
+    if cached is not None:
+        return cached
     db = SessionLocal()
     try:
         user = db.query(AppUser).filter(AppUser.username == username).first()
-        return bool(user and user.active and user.full_access)
+        value = bool(user and user.active and user.full_access)
     finally:
         db.close()
+    _access_store(username, value)
+    return value
 
 
 def set_active(username: str, active: bool) -> dict:
@@ -154,6 +188,7 @@ def set_active(username: str, active: bool) -> dict:
         db.commit()
     finally:
         db.close()
+    _access_invalidate(username)
     return {"status": "OK", "username": username, "active": bool(active)}
 
 
