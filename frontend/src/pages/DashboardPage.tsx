@@ -74,11 +74,8 @@ export default function DashboardPage({ ctx }: { ctx: PageContext }) {
                 >
                   <SetupList rows={d.bullish} onOpen={open} pending={d.scoring?.pending} />
                   <div className="hint">
-                    Composite score (−100 to +100): fundamentals, technicals,
-                    estimates, earnings history, options and market environment.
-                    This is a different model from AI Trade&apos;s Top Buyers,
-                    which is a short-horizon directional/flow read (0–100) — so
-                    the two lists will not match.
+                    The directional model&apos;s strongest buys — the same ranking
+                    as AI Trade&apos;s Top Buyers.
                   </div>
                 </Panel>
 

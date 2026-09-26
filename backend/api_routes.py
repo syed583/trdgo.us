@@ -1318,19 +1318,47 @@ def _dashboard_build() -> dict:
         alerts = alerts_job.result()
 
     cards = strip.get("cards", [])
-    ranked = [c for c in cards if c.get("score") is not None]
-    ranked.sort(key=lambda c: c["score"], reverse=True)
 
-    # With a short watchlist the same name would otherwise head both lists.
-    # Split the ranking instead of showing one symbol as both the best and the
-    # worst setup.
-    half = len(ranked) // 2
-    bullish = ranked[:5] if len(ranked) >= 4 else ranked[:max(half, 1)]
-    bearish = (
-        [c for c in reversed(ranked[-5:]) if c not in bullish]
-        if len(ranked) >= 4
-        else [c for c in reversed(ranked[half:]) if c not in bullish]
-    )
+    # Bullish/bearish come from the SAME directional model AI Trade shows, so the
+    # two screens agree. The board carries the score and the call; price, name
+    # and the day's move are filled in from the strip cards. If the board has not
+    # scored yet (cold start), fall back to ranking the composite strip so the
+    # panels are never blank.
+    by_sym = {c.get("symbol"): c for c in cards}
+
+    def _setup_from_board(r: dict) -> dict:
+        base = by_sym.get(r.get("symbol"), {})
+        return {
+            "symbol": r.get("symbol"),
+            "name": base.get("name"),
+            "price": base.get("price"),
+            "change_percent": base.get("change_percent"),
+            "score": r.get("direction_score"),
+            "rating": (r.get("decision") or "").replace("_", " ").title() or None,
+        }
+
+    bullish: list = []
+    bearish: list = []
+    try:
+        import ai_trade_service as _board
+        b = _board.get_board(limit=10)  # cached; never triggers a fresh scan here
+        buyers = [r for r in (b.get("buyers") or []) if r.get("direction_score") is not None]
+        sellers = [r for r in (b.get("sellers") or []) if r.get("direction_score") is not None]
+        bullish = [_setup_from_board(r) for r in buyers[:5]]
+        bearish = [_setup_from_board(r) for r in sellers[:5]]
+    except Exception:  # noqa: BLE001 - fall back to the composite ranking
+        bullish, bearish = [], []
+
+    if not bullish and not bearish:
+        ranked = [c for c in cards if c.get("score") is not None]
+        ranked.sort(key=lambda c: c["score"], reverse=True)
+        half = len(ranked) // 2
+        bullish = ranked[:5] if len(ranked) >= 4 else ranked[:max(half, 1)]
+        bearish = (
+            [c for c in reversed(ranked[-5:]) if c not in bullish]
+            if len(ranked) >= 4
+            else [c for c in reversed(ranked[half:]) if c not in bullish]
+        )
 
     return {
         "providers": provider.get("providers", {}),
