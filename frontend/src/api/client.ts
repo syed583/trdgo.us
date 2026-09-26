@@ -694,6 +694,9 @@ export const api2 = {
     send<any>(`/api/admin/users/${encodeURIComponent(username)}/active`, 'POST', { active }),
   adminSetAccess: (username: string, full: boolean) =>
     send<any>(`/api/admin/users/${encodeURIComponent(username)}/access`, 'POST', { full }),
+  adminProviderKey: (s?: AbortSignal) => request<any>('/api/admin/provider/key', s),
+  adminSetProviderKey: (key: string) =>
+    send<any>('/api/admin/provider/key', 'POST', { key }),
   adminDeleteUser: (username: string) =>
     send<any>(`/api/admin/users/${encodeURIComponent(username)}`, 'DELETE'),
 

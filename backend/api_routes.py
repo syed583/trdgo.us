@@ -1409,6 +1409,41 @@ def admin_set_access(request: Request, username: str,
     return user_service.set_full_access(username, bool(payload.get("full", True)))
 
 
+@router.get("/admin/provider/key")
+def admin_provider_key(request: Request) -> dict:
+    """Masked status of the active provider key. Never returns the key itself."""
+    import auth_service as auth
+    auth.require_admin(request)
+    import unusualwhales_service as uw
+    b = uw.budget()
+    return {
+        "configured": uw.configured(),
+        "fingerprint": uw.key_fingerprint(),   # e.g. "•••• c082b4", never the key
+        "app_left": b.get("app_left"),
+        "app_budget": b.get("app_budget"),
+        "blocked": uw.provider_status().get("blocked", False),
+    }
+
+
+@router.post("/admin/provider/key")
+def admin_set_provider_key(request: Request, payload: dict = Body(...)) -> dict:
+    """
+    Replace the Unusual Whales API key at runtime, then test it once.
+
+    For when a key hits its limit: paste a different provider key and it takes
+    effect immediately, no redeploy. The key is stored and used, never returned.
+    """
+    import auth_service as auth
+    auth.require_admin(request)
+    import unusualwhales_service as uw
+    # set_api_key verifies the candidate live before persisting and rolls back
+    # to the previous key if it does not work, so a bad paste is never kept.
+    res = uw.set_api_key(str(payload.get("key") or ""))
+    if res.get("status") == "OK" and not res.get("detail"):
+        res["detail"] = "Key replaced and verified live."
+    return res
+
+
 @router.delete("/admin/users/{username}")
 def admin_delete_user(request: Request, username: str) -> dict:
     import auth_service as auth

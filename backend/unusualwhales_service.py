@@ -136,8 +136,107 @@ _blocked_until = 0.0
 _last_status: Optional[str] = None
 
 
+# A runtime override for the key, so the admin can swap in a different
+# provider key from the UI when one hits its limit -- no redeploy, no .env edit.
+# Persisted in the settings table and cached in memory (api_key runs on the hot
+# path, and the database can be remote, so it must not be a query every call).
+_SETTING_KEY = "provider.unusualwhales.api_key"
+_key_override: Optional[str] = None
+_key_loaded = False
+_key_lock = threading.Lock()
+
+
+def _load_key_once() -> None:
+    global _key_loaded, _key_override
+    if _key_loaded:
+        return
+    with _key_lock:
+        if _key_loaded:
+            return
+        try:
+            from database import SessionLocal
+            from models_user import StrategySetting
+            db = SessionLocal()
+            try:
+                row = (db.query(StrategySetting)
+                       .filter(StrategySetting.key == _SETTING_KEY).first())
+                if row and (row.value or "").strip():
+                    _key_override = row.value.strip()
+            finally:
+                db.close()
+        except Exception:  # noqa: BLE001 - DB down: fall back to env
+            pass
+        _key_loaded = True
+
+
 def api_key() -> str:
-    return (os.environ.get(ENV_KEY) or "").strip()
+    _load_key_once()
+    return (_key_override or os.environ.get(ENV_KEY) or "").strip()
+
+
+def key_fingerprint() -> str:
+    """A safe, non-reversible hint of the active key -- never the key itself."""
+    k = api_key()
+    if not k:
+        return ""
+    return f"•••• {k[-4:]}" if len(k) >= 4 else "set"
+
+
+def set_api_key(new_key: str) -> dict:
+    """
+    Replace the active provider key at runtime, but only if it actually works.
+
+    The candidate is verified with one live call BEFORE anything is persisted,
+    so a typo can never clobber a working key. On success it is saved and takes
+    over immediately; the rate-limit block and spent counter are reset so the
+    new key starts clean. Write-only: the key is stored and used, never read out.
+    """
+    global _key_override, _key_loaded, _blocked_until
+    new_key = (new_key or "").strip()
+    if len(new_key) < 20:
+        return {"status": "INVALID", "detail": "That does not look like a valid API key."}
+
+    _load_key_once()
+    with _key_lock:
+        previous = _key_override
+        _key_override = new_key
+        _key_loaded = True
+    prev_block, prev_spent = _blocked_until, dict(_spent)
+    _blocked_until = 0.0
+    _spent["day"], _spent["count"] = _today(), 0
+
+    # Verify live before persisting.
+    probe = get("/api/stock/SPY/quote")
+    if probe.get("status") != "OK":
+        # Roll back: the candidate did not work, keep the old key untouched.
+        with _key_lock:
+            _key_override = previous
+        _blocked_until = prev_block
+        _spent.update(prev_spent)
+        return {"status": "REJECTED", "probe_status": probe.get("status"),
+                "detail": ("The provider did not accept that key "
+                           f"({probe.get('status')}). The previous key is unchanged.")}
+
+    try:
+        from database import SessionLocal
+        from models_user import StrategySetting
+        db = SessionLocal()
+        try:
+            row = (db.query(StrategySetting)
+                   .filter(StrategySetting.key == _SETTING_KEY).first())
+            if row:
+                row.value = new_key
+            else:
+                db.add(StrategySetting(key=_SETTING_KEY, value=new_key))
+            db.commit()
+        finally:
+            db.close()
+    except Exception as exc:  # noqa: BLE001 - it works in memory; warn about persistence
+        return {"status": "OK", "works": True, "persisted": False,
+                "fingerprint": key_fingerprint(),
+                "detail": f"Key is active now, but could not be saved for restart: {type(exc).__name__}"}
+    return {"status": "OK", "works": True, "persisted": True,
+            "fingerprint": key_fingerprint()}
 
 
 def configured() -> bool:

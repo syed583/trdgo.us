@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  Bell, BellOff, Check, Plus, RefreshCw, RotateCcw, Save, Trash2, Users,
+  Bell, BellOff, Check, KeyRound, Plus, RefreshCw, RotateCcw, Save, Trash2, Users,
 } from 'lucide-react';
 import { api2 } from '../api/client';
 import type { PageContext } from '../App';
@@ -470,6 +470,68 @@ function Field({
 /* Settings                                                                  */
 /* ========================================================================= */
 
+/**
+ * Replace the Unusual Whales API key at runtime.
+ *
+ * For when a key hits its limit: paste a different provider key and press Enter;
+ * it takes effect immediately, no redeploy. The key is write-only here -- only a
+ * masked fingerprint of the active key is ever shown, never the key itself.
+ */
+function ProviderKeyCard() {
+  const status = useApi<any>((s) => api2.adminProviderKey(s), []);
+  const [key, setKey] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const save = async () => {
+    const k = key.trim();
+    if (!k || busy) return;
+    setBusy(true); setMsg(null);
+    try {
+      const r = await api2.adminSetProviderKey(k);
+      if (r.status === 'OK' && r.works) {
+        setMsg({ ok: true, text: r.detail || 'Key replaced and verified.' });
+        setKey('');
+        status.refresh();
+      } else {
+        setMsg({ ok: false, text: r.detail || 'Could not set the key.' });
+        status.refresh();
+      }
+    } catch (e: any) {
+      setMsg({ ok: false, text: e?.message || 'Request failed.' });
+    } finally { setBusy(false); }
+  };
+
+  const s = status.data || {};
+  return (
+    <Panel title="Unusual Whales API key" icon={<KeyRound size={13} />}>
+      <div className="pk-status">
+        <span>Active key</span>
+        <b>{s.configured ? (s.fingerprint || 'set') : 'Not set'}</b>
+        {s.app_left != null && (
+          <span className="pk-budget">{s.app_left} / {s.app_budget} requests left today</span>
+        )}
+        {s.blocked && <span className="badge red">Rate-limited</span>}
+      </div>
+      <div className="pk-row">
+        <input className="pk-input" type="password" placeholder="Paste a new API key and press Enter"
+          value={key} autoComplete="off" spellCheck={false}
+          onChange={(e) => setKey(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && save()} />
+        <button className="usr-btn primary" onClick={save} disabled={busy || !key.trim()}>
+          {busy ? 'Saving…' : 'Replace key'}
+        </button>
+      </div>
+      {msg && <div className={msg.ok ? 'pk-ok' : 'pk-err'}>{msg.text}</div>}
+      <div className="hint">
+        Use this if the current key hits its limit — paste a different provider
+        key and it takes over immediately, no redeploy. The key is stored and
+        used, never shown back.
+      </div>
+    </Panel>
+  );
+}
+
 export function SettingsPage({ ctx }: { ctx: PageContext }) {
   const health = useApi<any>((s) => api2.health(true, s), []);
   const provs = useApi<any>((s) => api2.providers(s), []);
@@ -507,6 +569,10 @@ export function SettingsPage({ ctx }: { ctx: PageContext }) {
           </button>
         }
       />
+
+      {/* Replace the provider key without a redeploy -- first thing an admin
+          reaches for when a key hits its limit. */}
+      <ProviderKeyCard />
 
       {/* What a provider is for comes before whether its key works: a status
           nobody can interpret is not information. */}
