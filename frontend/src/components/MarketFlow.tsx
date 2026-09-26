@@ -1091,7 +1091,13 @@ function LevelsSections({ levels, tab, flow, baseline, prints }: {
 /** Premium by expiration across the whole tape, calls against puts. */
 export function ExpiryFlow({ expiries }: { expiries: any }) {
   const rows = expiries?.rows || [];
-  const peak = Math.max(1, ...rows.map((r: any) => r.total));
+  // Scale bars to the largest single call/put figure across expiries. The rows
+  // carry calls/puts, not a "total", so keying off r.total gave NaN and every
+  // bar collapsed to no height -- the chart looked empty.
+  const peak = Math.max(
+    1,
+    ...rows.map((r: any) => Math.max(Number(r.calls) || 0, Number(r.puts) || 0)),
+  );
 
   return (
     <Panel title="Options Flow by Expiry" icon={<Layers size={13} />}
@@ -1120,7 +1126,15 @@ export function ExpiryFlow({ expiries }: { expiries: any }) {
               </div>
             ))}
           </div>
-          <div className="hint">{expiries.detail}</div>
+          <div className="hint">
+            <b>What this shows:</b> for each upcoming expiry date, the total call
+            premium (green, up) vs put premium (red, down) traded across the
+            market. Taller bars are the dates traders are crowding into; more
+            green than red means call-heavy (bullish-leaning) positioning for
+            that expiry, more red means put-heavy (hedging or bearish). A big bar
+            on a near date often marks an event — earnings or a macro print —
+            landing in that week. {expiries.detail}
+          </div>
         </>
       )}
     </Panel>

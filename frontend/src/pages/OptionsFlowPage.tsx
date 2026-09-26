@@ -1153,15 +1153,29 @@ function TradeIdeasPanel({ data, demo }: { data: OptionsOverview; demo?: boolean
   const rz = data.risk_zones || {};
   const trades = data.flow.trades || [];
 
-  // A directional idea wants the busiest out-of-the-money strike. Ranking the
-  // whole tape surfaces deep-ITM prints, where "double the premium" is not a
-  // realistic target. Fall back to any strike if nothing OTM traded.
+  // A directional idea wants the busiest out-of-the-money strike -- but a
+  // tradable one. Ranking the whole tape purely by notional surfaces two bad
+  // picks: deep-ITM prints (where "double the premium" is unrealistic) and
+  // long-dated LEAPS. As a trader the setup should sit on a NEAR expiry, so we
+  // prefer contracts inside a near window and only fall back to longer ones if
+  // nothing near traded.
   const spot = data.spot ?? 0;
+  const NEAR_DTE = 45; // ~6 weeks: near-term, still enough time value to trade
+  const dteOf = (t: FlowTrade): number => {
+    const d = new Date(t.expiry);
+    if (Number.isNaN(d.getTime())) return 9999;
+    return Math.round((d.getTime() - Date.now()) / 86400000);
+  };
   const byNotional = (a: FlowTrade, b: FlowTrade) => b.notional - a.notional;
   const calls = trades.filter((t) => t.right === 'C').sort(byNotional);
   const puts = trades.filter((t) => t.right === 'P').sort(byNotional);
-  const topCall = calls.find((t) => t.strike > spot) ?? calls[0];
-  const topPut = puts.find((t) => t.strike < spot) ?? puts[0];
+  // Near-dated OTM first, then any OTM, then any print at all.
+  const pick = (list: FlowTrade[], otm: (t: FlowTrade) => boolean) =>
+    list.find((t) => otm(t) && dteOf(t) >= 0 && dteOf(t) <= NEAR_DTE)
+    ?? list.find(otm)
+    ?? list[0];
+  const topCall = pick(calls, (t) => t.strike > spot);
+  const topPut = pick(puts, (t) => t.strike < spot);
 
   const ideas = useMemo(() => {
     if (tab === 'Directional') {
@@ -1552,6 +1566,17 @@ function RiskZonesPanel({ data }: { data: OptionsOverview }) {
       </div>
       <MaxPainCurve rows={(rz as any).max_pain_curve} maxPain={rz.max_pain} spot={data.spot} />
       <div className="hint">
+        <b>What this shows:</b> price levels where option open interest piles up
+        and tends to act like a magnet or a barrier.
+        <br /><b>Call Wall (resistance)</b> — the strike with the most call open
+        interest above price; rallies often stall here.
+        <br /><b>Put Wall (support)</b> — the strike with the most put open
+        interest below price; dips often hold here.
+        <br /><b>Max Pain</b> — the price where the most options expire worthless;
+        price frequently drifts toward it as expiry nears. Use them as
+        levels to watch, not signals to trade on their own.
+      </div>
+      <div className="hint mf-dim">
         Computed from quoted open interest on the {data.expiry_label} expiry —
         the walls are the largest-OI strikes, max pain the strike minimising
         aggregate intrinsic payout. Not a dealer-positioning model.

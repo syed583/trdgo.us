@@ -57,6 +57,9 @@ def _lock_for(symbol: str) -> threading.Lock:
     with _compute_guard:
         lock = _compute_locks.get(symbol)
         if lock is None:
+            # Bound the map (safe to clear: a holder keeps its own reference).
+            if len(_compute_locks) >= 4096:
+                _compute_locks.clear()
             lock = _compute_locks[symbol] = threading.Lock()
         return lock
 

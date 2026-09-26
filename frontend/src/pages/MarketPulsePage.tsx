@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Activity, Gauge, Globe, Layers, RefreshCw, TrendingDown, TrendingUp,
+  Activity, ChevronRight, Gauge, Globe, Info, Layers, RefreshCw,
+  TrendingDown, TrendingUp,
 } from 'lucide-react';
 import { api2 } from '../api/client';
 import type { PageContext } from '../App';
@@ -21,6 +22,43 @@ import { ErrorState, Loading } from './shared';
 function pct(value: number | null | undefined): string {
   if (value == null) return '--';
   return `${value > 0 ? '+' : ''}${value.toFixed(2)}%`;
+}
+
+const INDEX_TERMS: { term: string; body: string }[] = [
+  { term: 'S&P 500',
+    body: 'The 500 largest US companies, weighted by size. The single number most people mean by "the market" — it tracks how big-company US stocks are doing overall. The level (e.g. 5,600) is the index value; the percent beside it is today’s move.' },
+  { term: 'Nasdaq',
+    body: 'A tech-heavy index — think Apple, Microsoft, Nvidia. It usually swings more than the S&P because technology stocks move faster in both directions.' },
+  { term: 'Dow Jones',
+    body: '30 large, established American companies. Older and narrower than the S&P; a rough read on blue-chip industrials.' },
+  { term: 'The level vs the percent',
+    body: 'The big number is where the index is right now. The green/red percent is how much it has moved today — green is up, red is down. Watching the percent tells you the day’s direction at a glance.' },
+  { term: 'Why it matters',
+    body: 'When the indices are green, most stocks are generally rising with them, and vice-versa. It is the backdrop your individual names trade against — a strong stock on a red day is genuinely strong.' },
+];
+
+/** Collapsible plain-English explainer for the index row. */
+function IndicesExplainer() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`mo-explain ${open ? 'open' : ''}`}>
+      <button className="mo-explain-head" onClick={() => setOpen((v) => !v)}>
+        <Info size={13} />
+        What do these numbers mean?
+        <ChevronRight size={14} className="mo-explain-caret" />
+      </button>
+      {open && (
+        <div className="mo-explain-body">
+          {INDEX_TERMS.map((t) => (
+            <div className="mo-term" key={t.term}>
+              <b>{t.term}</b>
+              <span>{t.body}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** An index card: level, move, and whether it is the index or a stand-in. */
@@ -217,6 +255,8 @@ export default function MarketPulsePage({ ctx }: { ctx: PageContext }) {
           <IndexCard row={row} key={row.label} />
         ))}
       </div>
+
+      <IndicesExplainer />
 
       <div className="mo-grid">
         <Panel title="Sector Performance" icon={<Layers size={13} />}>

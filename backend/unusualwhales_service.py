@@ -110,10 +110,20 @@ _flight_guard = threading.Lock()
 _flights: dict[str, threading.Lock] = {}
 
 
+_FLIGHTS_MAX = 4096
+
+
 def _flight_lock(key: str) -> threading.Lock:
     with _flight_guard:
         lock = _flights.get(key)
         if lock is None:
+            # Bound the map so a long-running server that sees thousands of
+            # distinct symbols does not accumulate locks forever. A thread that
+            # already holds a lock keeps its own reference, so clearing here is
+            # safe -- at worst two callers briefly race one key right after a
+            # clear, which costs one extra call, never correctness.
+            if len(_flights) >= _FLIGHTS_MAX:
+                _flights.clear()
             lock = _flights[key] = threading.Lock()
         return lock
 

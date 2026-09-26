@@ -263,6 +263,16 @@ export default function VolatilityPage({ ctx }: { ctx: PageContext }) {
                       <span><i style={{ background: IV }} /> Implied Vol by expiry</span>
                       <span><i style={{ background: MOVE }} /> Implied Move %</span>
                     </div>
+                    <div className="hint">
+                      <b>What this shows:</b> the implied volatility and the expected
+                      ± move the options market is pricing for each expiry, from the
+                      nearest date on the left to further out on the right. A curve
+                      that <b>rises</b> to the right means bigger moves are expected the
+                      further ahead you look — often an event (like earnings) sitting
+                      in a later expiry. A curve that <b>falls</b> to the right means the
+                      market expects most of the action soon and calmer conditions
+                      later. It is a size, not a direction.
+                    </div>
                   </Panel>
                 </div>
 
