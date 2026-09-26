@@ -1349,6 +1349,8 @@ def _dashboard_build() -> dict:
     except Exception:  # noqa: BLE001 - fall back to the composite ranking
         bullish, bearish = [], []
 
+    setups_source = "directional" if (bullish or bearish) else "composite"
+
     if not bullish and not bearish:
         ranked = [c for c in cards if c.get("score") is not None]
         ranked.sort(key=lambda c: c["score"], reverse=True)
@@ -1367,6 +1369,7 @@ def _dashboard_build() -> dict:
         "overview": market_block,
         "bullish": bullish,
         "bearish": bearish,
+        "setups_source": setups_source,
         "earnings": calendar_block,
         "watchlist": watch,
         "alerts": alerts,

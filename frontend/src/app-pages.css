@@ -71,6 +71,12 @@
 .ov-card.clickable { cursor: pointer; }
 .ov-card.clickable:hover { border-color: var(--border-2); background: var(--panel-2); }
 .ov-label { font-size: 12px; color: var(--text-dim); font-weight: 600; }
+.ov-proxy {
+  margin-left: 6px; font-style: normal; font-size: 9.5px; font-weight: 700;
+  letter-spacing: .04em; padding: 1px 5px; border-radius: 5px;
+  background: var(--panel-2, rgba(127,127,127,.14)); color: var(--text-mute);
+  vertical-align: middle;
+}
 .ov-sub { color: var(--text-mute); font-weight: 500; }
 .ov-price { font-size: 21px; font-weight: 800; letter-spacing: -.6px; }
 .ov-chg { font-size: 13px; font-weight: 650; margin-bottom: 4px; }

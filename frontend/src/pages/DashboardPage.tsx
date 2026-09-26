@@ -51,7 +51,14 @@ export default function DashboardPage({ ctx }: { ctx: PageContext }) {
                     {(d.overview?.indices || []).map((i: any) => (
                       <button key={i.symbol} className="dash-idx-card"
                         onClick={() => open(i.symbol)}>
-                        <div className="ov-label">{i.label}</div>
+                        <div className="ov-label">
+                          {i.label}
+                          {i.is_proxy && (
+                            <em className="ov-proxy" title={`${i.symbol} ETF — the feed carries no raw index level; the % move tracks the index, the price is the ETF's`}>
+                              {i.symbol}
+                            </em>
+                          )}
+                        </div>
                         <div className="ov-price">{money(i.price)}</div>
                         <div className={`ov-chg ${tone(i.change_percent)}`}>
                           {signedPct(i.change_percent)}
@@ -74,8 +81,9 @@ export default function DashboardPage({ ctx }: { ctx: PageContext }) {
                 >
                   <SetupList rows={d.bullish} onOpen={open} pending={d.scoring?.pending} />
                   <div className="hint">
-                    The directional model&apos;s strongest buys — the same ranking
-                    as AI Trade&apos;s Top Buyers.
+                    {d.setups_source === 'directional'
+                      ? 'The directional model’s strongest buys — the same ranking as AI Trade’s Top Buyers.'
+                      : 'Composite score (fundamentals, technicals, estimates, earnings, options). The directional ranking loads once AI Trade has scored.'}
                   </div>
                 </Panel>
 

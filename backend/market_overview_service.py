@@ -14,10 +14,14 @@ import live_market_service as market
 from technical_service import calculate_technicals
 
 INDICES = [
-    {"symbol": "SPY", "label": "S&P 500", "note": "SPDR S&P 500 ETF"},
-    {"symbol": "QQQ", "label": "Nasdaq 100", "note": "Invesco QQQ Trust"},
-    {"symbol": "DIA", "label": "Dow Jones", "note": "SPDR Dow Jones ETF"},
-    {"symbol": "IWM", "label": "Russell 2000", "note": "iShares Russell 2000"},
+    # The feed carries no raw index level (SPX/NDX/DJI/RUT return nothing), only
+    # the tracking ETF. So each row IS the ETF -- flagged as a proxy so the UI
+    # shows the ETF ticker and never presents the ETF's price as the index level.
+    # The percent move tracks the index closely; the dollar level does not.
+    {"symbol": "SPY", "label": "S&P 500", "note": "SPDR S&P 500 ETF (proxy)", "is_proxy": True},
+    {"symbol": "QQQ", "label": "Nasdaq 100", "note": "Invesco QQQ Trust (proxy)", "is_proxy": True},
+    {"symbol": "DIA", "label": "Dow Jones", "note": "SPDR Dow Jones ETF (proxy)", "is_proxy": True},
+    {"symbol": "IWM", "label": "Russell 2000", "note": "iShares Russell 2000 (proxy)", "is_proxy": True},
 ]
 
 SECTORS = [
@@ -82,6 +86,7 @@ def _card(spec: dict, row: dict) -> dict:
         "symbol": spec["symbol"],
         "label": spec["label"],
         "note": spec.get("note"),
+        "is_proxy": spec.get("is_proxy", False),
         "price": row.get("price"),
         "change": row.get("change"),
         "change_percent": row.get("change_percent"),
