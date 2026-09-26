@@ -1090,8 +1090,26 @@ def budget() -> dict:
 
 
 def provider_status() -> dict:
-    status = ("PROVIDER_NOT_CONFIGURED" if not configured()
-              else _last_status or "UNKNOWN")
+    # Report real availability, not just the last call's outcome. A single
+    # transient failure (a timeout, or a one-off probe) must NOT make the whole
+    # provider read as offline -- that is misleading and, cached, sticks. The
+    # provider is available when it is configured, has budget, and is not in a
+    # rate-limit pause. Only a persistent, meaningful problem (no key, spent
+    # budget, an active block, or an entitlement gap) is reported as such.
+    b = budget()
+    blocked = time.time() < _blocked_until
+    if not configured():
+        status = "PROVIDER_NOT_CONFIGURED"
+    elif b.get("app_left") == 0:
+        status = "RATE_LIMITED"
+    elif blocked:
+        status = "RATE_LIMITED"
+    elif _last_status == "ENTITLEMENT_REQUIRED":
+        status = "ENTITLEMENT_REQUIRED"
+    else:
+        # Configured, has budget, not blocked -- available. Transient last-call
+        # errors (PROVIDER_OFFLINE/BAD_REQUEST/UNKNOWN) do not override this.
+        status = "OK"
     return {"provider": "Unusual Whales", "configured": configured(),
-            "status": status, "env_var": ENV_KEY,
+            "status": status, "blocked": blocked, "env_var": ENV_KEY,
             "signup": "https://unusualwhales.com/api", **budget()}
