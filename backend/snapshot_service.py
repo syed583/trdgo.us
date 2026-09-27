@@ -161,7 +161,13 @@ def fill_forward_returns(limit: int = 200) -> dict:
     filled = 0
 
     try:
-        cutoff = _today() - timedelta(days=max(HORIZONS) + 10)
+        # Process a snapshot as soon as the SHORTEST horizon is measurable, not
+        # only after the longest. min(HORIZONS)=5 sessions ~= 7 calendar days;
+        # each horizon then fills when it has enough bars, and the row is marked
+        # complete only once the longest horizon lands (so it keeps retrying for
+        # the 10- and 20-day figures on later runs). The old cutoff of
+        # max(HORIZONS)+10 days meant nothing filled for a month.
+        cutoff = _today() - timedelta(days=min(HORIZONS) + 2)
         rows = (session.query(ScoreSnapshot)
                 .filter(ScoreSnapshot.forward_filled_at.is_(None))
                 .filter(ScoreSnapshot.snapshot_date <= cutoff)
@@ -169,7 +175,7 @@ def fill_forward_returns(limit: int = 200) -> dict:
                 .limit(limit).all())
         if not rows:
             return {"status": "NOTHING_DUE", "filled": 0,
-                    "detail": (f"No snapshot is older than {max(HORIZONS)} "
+                    "detail": (f"No snapshot is older than {min(HORIZONS)} "
                                f"sessions yet.")}
 
         by_symbol: dict[str, list] = {}

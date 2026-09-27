@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Info, Target } from 'lucide-react';
+import { ChevronRight, Info, Target } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
@@ -16,6 +16,40 @@ import { Panel } from '../components/common';
  */
 
 const HORIZONS = ['ALL', 'TODAY', 'TOMORROW', 'SWING'] as const;
+
+const TERMS: { term: string; body: string }[] = [
+  { term: 'What this page is',
+    body: 'A track record for the app’s own model. Every call it makes is stored, then graded once its horizon has passed, so you can see whether the score actually predicts — not just what it claims.' },
+  { term: 'Hit rate',
+    body: 'How often a call was right — meaning the stock beat SPY in the called direction over the call’s horizon, measured from the price at the moment of the call. 50% is a coin flip; above 50% is real skill.' },
+  { term: 'Avg excess vs SPY',
+    body: 'The average out- (or under-) performance versus SPY per call. Hit rate says how often; this says by how much.' },
+  { term: 'Calibration',
+    body: 'The key test: do higher scores actually win more? A trustworthy score climbs down the table — the 70–100 band should beat the 40–60 band. If they hit the same, the number is not measuring anything and the model needs re-tuning.' },
+  { term: 'Edge vs base rate',
+    body: 'For each parameter: its hit rate minus how often the stock rose at all (the base rate). A parameter that matches the base rate has no edge, however good its raw hit rate looks. Positive edge = it carries real predictive weight.' },
+  { term: 'Why some cells are empty',
+    body: 'Grading needs time to pass after a call. Parameter edge is measured a few sessions after each snapshot, so it fills in as the app runs — a young install shows thin numbers until enough calls have been judged.' },
+];
+
+function Explainer() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`mp-explain ${open ? 'open' : ''}`}>
+      <button className="mp-explain-head" onClick={() => setOpen((v) => !v)}>
+        <Info size={13} /> What is this page?
+        <ChevronRight size={14} className="mp-explain-caret" />
+      </button>
+      {open && (
+        <div className="mp-explain-body">
+          {TERMS.map((t) => (
+            <div className="mp-term" key={t.term}><b>{t.term}</b><span>{t.body}</span></div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function pct(v: number | null | undefined): string {
   return typeof v === 'number' ? `${v.toFixed(1)}%` : '—';
@@ -43,7 +77,7 @@ export default function ModelPerformancePage({ ctx }: { ctx: PageContext }) {
   const [horizon, setHorizon] = useState<typeof HORIZONS[number]>('ALL');
   const card = useApi<any>((s) => api2.callScorecard(
     horizon === 'ALL' ? undefined : horizon, 90, s), [horizon]);
-  const edge = useApi<any>((s) => api2.paramEdge(s), []);
+  const edge = useApi<any>((s) => api2.paramEdge(5, s), []);
 
   const d = card.data;
   const scoreBands: [string, any][] = d?.by_score ? Object.entries(d.by_score) : [];
@@ -54,6 +88,8 @@ export default function ModelPerformancePage({ ctx }: { ctx: PageContext }) {
     <div className="page">
       <PageHead title="Model Performance"
         subtitle="Does the score actually predict? Hit rate, calibration and per-parameter edge — all measured from the app's own past calls." />
+
+      <Explainer />
 
       <div className="mp-range">
         <span className="mp-range-lbl">Horizon</span>
@@ -170,7 +206,7 @@ export default function ModelPerformancePage({ ctx }: { ctx: PageContext }) {
               </div>
 
               {/* Parameter edge */}
-              <Panel title="Which parameters carry edge" noBody>
+              <Panel title={`Which parameters carry edge${edge.data?.horizon_days ? ` — over ${edge.data.horizon_days} sessions` : ''}`} noBody>
                 {edge.initialLoading ? <Loading />
                   : edge.data?.status !== 'OK' ? (
                     <div className="mp-empty">
@@ -205,7 +241,7 @@ export default function ModelPerformancePage({ ctx }: { ctx: PageContext }) {
                                 </td>
                                 <td className="num r">{p.avg_return_when_followed_pct != null
                                   ? `${p.avg_return_when_followed_pct > 0 ? '+' : ''}${p.avg_return_when_followed_pct}%` : '—'}</td>
-                                <td className="num r">{p.observations ?? '—'}</td>
+                                <td className="num r">{p.calls ?? '—'}</td>
                               </tr>
                             ))}
                           </tbody>
