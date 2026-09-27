@@ -14,6 +14,7 @@ import TopBar from './components/TopBar';
 const EarningsPage = lazy(() => import('./pages/EarningsPage'));
 const OptionsFlowPage = lazy(() => import('./pages/OptionsFlowPage'));
 const VolatilityPage = lazy(() => import('./pages/VolatilityPage'));
+const ModelPerformancePage = lazy(() => import('./pages/ModelPerformancePage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
@@ -212,6 +213,7 @@ function Shell() {
 
           <Route path="/volatility" element={<Navigate to={`/volatility/${DEFAULT_SYMBOL}${location.search}`} replace />} />
           <Route path="/volatility/:symbol" element={<VolatilityPage ctx={ctx} />} />
+          <Route path="/model-performance" element={<ModelPerformancePage ctx={ctx} />} />
           {/* The chain lives inside the options page now. Old links still
               work: they land on the same symbol's options screen. */}
           <Route path="/options-chain" element={<Navigate to={`/options-flow/${DEFAULT_SYMBOL}${location.search}`} replace />} />

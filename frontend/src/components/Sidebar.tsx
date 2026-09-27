@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom';
 import {
   Activity, BarChart3, Brain, CalendarDays, LineChart, Users,
   LayoutDashboard, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
-  Settings, Sparkles, Star, TrendingUp, X,
+  Settings, Sparkles, Star, Target, TrendingUp, X,
 } from 'lucide-react';
 import { BrandLockup, BRAND_QUOTE_EARNINGS } from './Brand';
 
@@ -27,6 +27,7 @@ interface NavEntry {
 const NAV: NavEntry[] = [
   { to: '/ai-insights', label: 'Analysis', icon: <Brain size={S} /> },
   { to: '/ai-trade', label: 'AI Trade', icon: <Sparkles size={S} /> },
+  { to: '/model-performance', label: 'Model Performance', icon: <Target size={S} /> },
   { to: '/dashboard', label: 'Overview', icon: <LayoutDashboard size={S} /> },
   { to: '/earnings-calendar', label: 'Earnings Calendar', icon: <CalendarDays size={S} /> },
   { to: '/earnings', label: 'Earnings Analysis', icon: <BarChart3 size={S} /> },

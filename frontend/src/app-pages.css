@@ -529,3 +529,31 @@ a.index-card { color: inherit; }
 .tv-vol { color: var(--text-mute); }
 .tv-ema { display: inline-flex; align-items: center; gap: 4px; }
 .tv-ema i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
+
+/* Model Performance page */
+.mp-range { display: flex; align-items: center; gap: 4px; margin: 2px 0 12px; flex-wrap: wrap; }
+.mp-range-lbl { font-size: 11px; font-weight: 600; color: var(--text-mute);
+  margin-right: 6px; text-transform: uppercase; letter-spacing: .04em; }
+.mp-range-btn { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 999px;
+  border: 1px solid var(--border); background: transparent; color: var(--text-mute); cursor: pointer; }
+.mp-range-btn:hover { color: var(--text); }
+.mp-range-btn.active { background: var(--blue-2, #2563eb); color: #fff; border-color: transparent; }
+.mp-head { display: grid; grid-template-columns: repeat(3, 1fr); }
+.mp-head-cell { display: flex; flex-direction: column; gap: 2px; padding: 14px 16px;
+  border-right: 1px solid var(--border); }
+.mp-head-cell:last-child { border-right: 0; }
+.mp-k { font-size: 11px; color: var(--text-mute); font-weight: 600; }
+.mp-v { font-size: 26px; font-weight: 800; letter-spacing: -.5px; }
+.mp-sub { font-size: 11px; color: var(--text-mute); }
+.mp-warn { display: flex; align-items: center; gap: 8px; padding: 8px 14px 12px;
+  font-size: 12px; color: var(--amber); }
+.mp-cell { display: flex; align-items: center; gap: 8px; }
+.mp-bar { position: relative; flex: 1; min-width: 70px; height: 7px; border-radius: 4px;
+  background: var(--panel-2, rgba(127,127,127,.14)); overflow: hidden; }
+.mp-bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
+.mp-bar-mid { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px;
+  background: var(--text-mute); opacity: .5; }
+.mp-thin { font-style: normal; font-size: 10px; color: var(--text-mute); }
+.mp-empty { padding: 16px; font-size: 12.5px; color: var(--text-mute); }
+@media (max-width: 560px) { .mp-head { grid-template-columns: 1fr; }
+  .mp-head-cell { border-right: 0; border-bottom: 1px solid var(--border); } }

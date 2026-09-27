@@ -565,6 +565,9 @@ export const api2 = {
     request<any>(
       `/api/calls/scorecard?days=${days}`
       + (horizon ? `&horizon=${encodeURIComponent(horizon)}` : ''), s),
+  callsHistory: (limit = 50, s?: AbortSignal) =>
+    request<any>(`/api/calls/history?limit=${limit}`, s),
+  paramEdge: (s?: AbortSignal) => request<any>('/api/snapshots/evaluate', s),
   directional: (symbol: string, horizon?: string, s?: AbortSignal) =>
     request<any>(`/api/directional/${encodeURIComponent(symbol)}`
       + (horizon ? `?horizon=${encodeURIComponent(horizon)}` : ''), s),
