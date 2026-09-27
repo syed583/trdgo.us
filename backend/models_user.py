@@ -23,7 +23,12 @@ def _utcnow() -> datetime:
 
 class WatchlistItem(Base):
     __tablename__ = "watchlist_items"
-    __table_args__ = (UniqueConstraint("symbol", name="uq_watchlist_symbol"),)
+    # Unique per owner, not globally: with per-user watchlists two people must
+    # be able to track the same symbol. A global unique on symbol alone blocked
+    # the second user from adding any name someone else already had.
+    __table_args__ = (
+        UniqueConstraint("owner", "symbol", name="uq_watchlist_owner_symbol"),
+    )
 
     id = Column(Integer, primary_key=True)
     symbol = Column(String(16), nullable=False, index=True)

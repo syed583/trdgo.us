@@ -38,6 +38,20 @@ def _owner(owner: Optional[str]) -> Optional[str]:
     return None if o in ("", "admin") else o
 
 
+def _invalidate_watchlist_view(owner: Optional[str]) -> None:
+    """
+    Forget the cached watchlist-view for this owner after a change.
+
+    The board reads /api/watchlist/view, which is cached per user; without this,
+    an add or remove succeeds in the database but the screen keeps showing the
+    stale list until the TTL expires -- which reads as "nothing happened".
+    """
+    try:
+        market.cache.drop(f"watchlist_view:{(owner or 'admin').strip().lower()}")
+    except Exception:  # noqa: BLE001 - a cache miss on drop is harmless
+        pass
+
+
 def list_watchlist(with_quotes: bool = True, owner: Optional[str] = None) -> dict:
     who = _owner(owner)
     db = SessionLocal()
@@ -120,6 +134,7 @@ def add_watchlist(symbol: str, note: Optional[str] = None,
         db.add(item)
         db.commit()
         db.refresh(item)
+        _invalidate_watchlist_view(owner)
         return {"status": "OK", "symbol": symbol, "id": item.id}
     finally:
         db.close()
@@ -135,6 +150,7 @@ def remove_watchlist(symbol: str, owner: Optional[str] = None) -> dict:
             else q.filter(WatchlistItem.owner == who)
         deleted = q.delete()
         db.commit()
+        _invalidate_watchlist_view(owner)
         return {"status": "OK" if deleted else "NOT_FOUND", "symbol": symbol}
     finally:
         db.close()

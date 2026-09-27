@@ -162,6 +162,26 @@ def _create_schema() -> None:
     except Exception as exc:  # noqa: BLE001
         print(f"schema: owner check skipped ({exc})")
 
+    # watchlist_items used to be unique on symbol alone; per-user watchlists need
+    # it unique per (owner, symbol) so two users can track the same name. Swap the
+    # constraint where the old one still exists.
+    try:
+        from sqlalchemy import inspect as _inspect, text as _text
+        insp = _inspect(engine)
+        uniques = {u["name"] for u in insp.get_unique_constraints("watchlist_items")}
+        if "uq_watchlist_owner_symbol" not in uniques:
+            with engine.begin() as conn:
+                if "uq_watchlist_symbol" in uniques:
+                    conn.execute(_text(
+                        "ALTER TABLE watchlist_items "
+                        "DROP CONSTRAINT uq_watchlist_symbol"))
+                conn.execute(_text(
+                    "ALTER TABLE watchlist_items ADD CONSTRAINT "
+                    "uq_watchlist_owner_symbol UNIQUE (owner, symbol)"))
+            print("schema: watchlist unique constraint -> (owner, symbol)")
+    except Exception as exc:  # noqa: BLE001
+        print(f"schema: watchlist constraint swap skipped ({exc})")
+
     # Load any admin-set provider key override now that the settings table
     # exists, so a key replaced from the UI survives a restart.
     try:

@@ -123,6 +123,11 @@ class _TTLCache:
         with self._lock:
             self._data.clear()
 
+    def drop(self, key: str) -> None:
+        """Forget one entry, so the next read rebuilds it."""
+        with self._lock:
+            self._data.pop(key, None)
+
     def purge(self, token: str, keep: tuple[str, ...] = ()) -> int:
         """
         Drop every entry belonging to one symbol. Returns how many went.
