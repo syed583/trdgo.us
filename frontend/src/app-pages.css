@@ -514,3 +514,18 @@ a.index-card { color: inherit; }
 }
 .usr-actions button:hover { background: var(--panel-3); color: var(--text); }
 .usr-actions button.danger:hover { color: var(--red); border-color: var(--red); }
+
+/* Trading chart (lightweight-charts) */
+.tv-wrap { position: relative; width: 100%; }
+.tv-chart { width: 100%; }
+.tv-legend {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;
+  padding: 6px 4px 10px; font-size: 11.5px; color: var(--text-mute);
+}
+.tv-legend b { color: var(--text); font-weight: 600; }
+.tv-when { font-weight: 700; color: var(--text); }
+.tv-up { color: var(--green) !important; }
+.tv-dn { color: var(--red) !important; }
+.tv-vol { color: var(--text-mute); }
+.tv-ema { display: inline-flex; align-items: center; gap: 4px; }
+.tv-ema i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
