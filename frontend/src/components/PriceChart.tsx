@@ -95,6 +95,9 @@ export default function PriceChart({
         textColor: text,
         fontFamily: 'Inter, system-ui, sans-serif',
         fontSize: 11,
+        // Hide the TradingView attribution logo (allowed: the library is
+        // open-source/Apache-2.0, not the paid widget).
+        attributionLogo: false,
       },
       grid: { vertLines: { color: grid }, horzLines: { color: grid } },
       rightPriceScale: { borderColor: grid, scaleMargins: { top: 0.08, bottom: 0.28 } },
