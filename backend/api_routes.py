@@ -158,15 +158,27 @@ def ticker_strip(symbols: Optional[str] = None) -> dict:
     Defaults to the standard basket; the persisted watchlist takes over once
     the operator has saved symbols of their own.
     """
+    # Serve-stale: scoring 10 symbols (quotes, bars, composites, DB) is seconds
+    # cold, and the strip sits on every page's top bar -- so a cold or expired
+    # strip used to block every screen. Hold the last build and refresh it in the
+    # background. Everything that touches the database (resolving the default
+    # symbol list from the saved watchlist) runs INSIDE the cached build, so a
+    # served request makes no query at all.
     if symbols:
         requested = validate.clean_symbols(symbols, limit=10)
-    else:
+        reqs = requested[:10]
+        return swr.serve("strip:" + ",".join(reqs),
+                         lambda: scores.get_watchlist(reqs), 120)
+
+    def build_default() -> dict:
         saved = [r["symbol"] for r in
                  workspace.list_watchlist(with_quotes=False)["rows"]]
         # Saved symbols lead, but a one-name watchlist should not leave the
         # strip almost empty - top it up from the default basket.
         requested = saved + [s for s in DEFAULT_STRIP if s not in saved]
-    return scores.get_watchlist(requested[:10])
+        return scores.get_watchlist(requested[:10])
+
+    return swr.serve("strip:default", build_default, 120)
 
 
 @router.get("/score/{symbol}")

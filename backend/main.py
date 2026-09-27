@@ -252,7 +252,10 @@ def _start_slow_screen_warmer() -> None:
                    r.flow_market_tape, r.flow_market_unusual,
                    r.flow_market_intraday, r.flow_market_sectors,
                    r.flow_market_comparison, r.flow_market_expiries,
-                   r.news_desk, r.earnings_calendar_context)
+                   r.news_desk, r.earnings_calendar_context,
+                   # The strip is on every page's top bar; pre-build it so the
+                   # first visitor does not wait out its cold scoring.
+                   lambda: r.ticker_strip(None))
 
         # Built together rather than one after another: each waits mostly on
         # the provider, so the first build of all eleven screens finishes in
