@@ -130,6 +130,38 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
     [symbol, demo],
   );
 
+  // Per-ticker options flow, so the symbol view can show THIS name's call/put
+  // premium rather than the market-wide aggregate. Only fetched in symbol mode.
+  const symbolFlow = useApi<any>(
+    (s) => (mode === 'symbol' && !demo ? api2.stockFlow(symbol, s) : Promise.resolve(null)),
+    [mode, symbol, demo],
+  );
+
+  // Roll the ticker's flow up into the same shape FlowSummary renders, so a
+  // searched name shows its own call premium, put premium, net and call share.
+  const symbolSummary = useMemo(() => {
+    const trades = symbolFlow.data?.trades || [];
+    if (!trades.length) return null;
+    let call = 0; let put = 0;
+    for (const t of trades) {
+      const p = Number(t.premium ?? t.notional ?? 0) || 0;
+      if (t.right === 'C') call += p;
+      else if (t.right === 'P') put += p;
+    }
+    const total = call + put;
+    const share = total ? call / total : 0.5;
+    return {
+      status: 'OK',
+      call_premium: call,
+      put_premium: put,
+      net_premium: call - put,
+      call_premium_share: total ? Math.round(share * 100) : null,
+      // A plain string sentiment (never an object) so it renders safely.
+      sentiment: share > 0.55 ? 'Bullish' : share < 0.45 ? 'Bearish' : 'Neutral',
+      session: symbolFlow.data?.session_date,
+    };
+  }, [symbolFlow.data]);
+
   const d = overview.data;
 
   return (
@@ -294,6 +326,18 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
           <Panel title="Options Flow"><StateBlock status={d.status} error={d.error} /></Panel>
         ) : (
           <>
+            {symbolSummary && (
+              <FlowSummary
+                summary={symbolSummary}
+                comparison={null}
+                intraday={null}
+                unusualCount={symbolFlow.data?.unusual_listed
+                  ?? (Array.isArray(symbolFlow.data?.unusual) ? symbolFlow.data.unusual.length : null)}
+                loading={symbolFlow.loading}
+                onRefresh={() => symbolFlow.refresh()}
+              />
+            )}
+
             {shows('tiles') && <Tiles data={d} />}
 
             {(shows('scatter') || shows('strikes') || shows('metrics')) && (

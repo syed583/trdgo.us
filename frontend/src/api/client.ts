@@ -571,6 +571,8 @@ export const api2 = {
     request<any>(`/api/snapshots/evaluate?horizon=${horizon}`, s),
   peers: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/peers/${encodeURIComponent(symbol)}`, s),
+  stockFlow: (symbol: string, s?: AbortSignal) =>
+    request<any>(`/api/options/flow/${encodeURIComponent(symbol)}?limit=200`, s),
   directional: (symbol: string, horizon?: string, s?: AbortSignal) =>
     request<any>(`/api/directional/${encodeURIComponent(symbol)}`
       + (horizon ? `?horizon=${encodeURIComponent(horizon)}` : ''), s),
