@@ -43,55 +43,6 @@ export function DarkPoolTab({ symbol }: { symbol: string }) {
 
   return (
     <div className="dp">
-      <Panel title="Off-Exchange Prints" icon={<Moon size={13} />} noBody
-        right={r?.status === 'OK'
-          ? <span className="badge gray">{r.blocks} blocks</span> : undefined}>
-        <div className="dp-tiles">
-          <Tile label="PRINTS SHOWN" value={r ? num(r.count, 0) : '--'}
-            sub="largest first" />
-          <Tile label="BLOCK PREMIUM"
-            value={r?.block_premium ? compactMoney(r.block_premium, 1) : '--'}
-            sub="prints over $1M" />
-          <Tile label="TOTAL PRINTED"
-            value={r?.total_premium ? compactMoney(r.total_premium, 1) : '--'}
-            sub="this window" />
-        </div>
-        {recent.initialLoading ? (
-          <p className="dp-note">Reading the off-exchange tape…</p>
-        ) : r?.status !== 'OK' ? (
-          <p className="dp-note">{r?.detail || 'No dark-pool prints available.'}</p>
-        ) : (
-          <div className="dp-table-wrap">
-            <table className="dp-table">
-              <thead>
-                <tr>
-                  <th>Time</th><th>Ticker</th><th className="r">Size</th>
-                  <th className="r">Price</th><th className="r">Value</th>
-                  <th>In spread</th><th className="r">% of day</th>
-                </tr>
-              </thead>
-              <tbody>
-                {r.rows.map((p: any, i: number) => (
-                  <tr key={`${p.symbol}-${p.time}-${i}`}
-                    className={p.block ? 'dp-block' : undefined}>
-                    <td className="dp-dim">{p.time_label}</td>
-                    <td><b>{p.symbol}</b></td>
-                    <td className="r">{num(p.size, 0)}</td>
-                    <td className="r">{money(p.price)}</td>
-                    <td className="r"><b>{compactMoney(p.premium, 2)}</b></td>
-                    <td className="dp-dim">{p.spread_position || '--'}</td>
-                    <td className="r dp-dim">
-                      {p.share_of_day == null ? '--' : `${p.share_of_day}%`}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <p className="dp-foot">{r?.detail}</p>
-      </Panel>
-
       <div className="dp-two">
         <Panel title={`${symbol} Off-Exchange`} icon={<Moon size={13} />}>
           {mine.initialLoading ? (
@@ -150,6 +101,55 @@ export function DarkPoolTab({ symbol }: { symbol: string }) {
           )}
         </Panel>
       </div>
+
+      <Panel title="Off-Exchange Prints" icon={<Moon size={13} />} noBody
+        right={r?.status === 'OK'
+          ? <span className="badge gray">{r.blocks} blocks</span> : undefined}>
+        <div className="dp-tiles">
+          <Tile label="PRINTS SHOWN" value={r ? num(r.count, 0) : '--'}
+            sub="largest first" />
+          <Tile label="BLOCK PREMIUM"
+            value={r?.block_premium ? compactMoney(r.block_premium, 1) : '--'}
+            sub="prints over $1M" />
+          <Tile label="TOTAL PRINTED"
+            value={r?.total_premium ? compactMoney(r.total_premium, 1) : '--'}
+            sub="this window" />
+        </div>
+        {recent.initialLoading ? (
+          <p className="dp-note">Reading the off-exchange tape…</p>
+        ) : r?.status !== 'OK' ? (
+          <p className="dp-note">{r?.detail || 'No dark-pool prints available.'}</p>
+        ) : (
+          <div className="dp-table-wrap">
+            <table className="dp-table">
+              <thead>
+                <tr>
+                  <th>Time</th><th>Ticker</th><th className="r">Size</th>
+                  <th className="r">Price</th><th className="r">Value</th>
+                  <th>In spread</th><th className="r">% of day</th>
+                </tr>
+              </thead>
+              <tbody>
+                {r.rows.map((p: any, i: number) => (
+                  <tr key={`${p.symbol}-${p.time}-${i}`}
+                    className={p.block ? 'dp-block' : undefined}>
+                    <td className="dp-dim">{p.time_label}</td>
+                    <td><b>{p.symbol}</b></td>
+                    <td className="r">{num(p.size, 0)}</td>
+                    <td className="r">{money(p.price)}</td>
+                    <td className="r"><b>{compactMoney(p.premium, 2)}</b></td>
+                    <td className="dp-dim">{p.spread_position || '--'}</td>
+                    <td className="r dp-dim">
+                      {p.share_of_day == null ? '--' : `${p.share_of_day}%`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="dp-foot">{r?.detail}</p>
+      </Panel>
     </div>
   );
 }
