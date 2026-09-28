@@ -425,16 +425,19 @@ def evaluate_pending(limit: int = 200) -> dict:
     return {"judged": judged, "skipped": skipped}
 
 
-def scorecard(horizon: Optional[str] = None, days: int = 30) -> dict:
+def scorecard(horizon: Optional[str] = None, days: int = 30,
+              symbol: Optional[str] = None) -> dict:
     """
     How often the calls were right, and by how much, over a window.
 
     Split by decision and by score band, because an overall hit rate hides the
     one question that matters for tuning: do higher scores actually do
     better? If a score of 80 is right no more often than a score of 60, the
-    number on the screen is not measuring anything.
+    number on the screen is not measuring anything. Pass ``symbol`` to see one
+    stock's own track record instead of the whole book.
     """
     _ensure_table()
+    symbol = (symbol or "").upper().strip() or None
     since = datetime.now(timezone.utc) - timedelta(days=max(1, days))
     db = SessionLocal()
     try:
@@ -442,11 +445,15 @@ def scorecard(horizon: Optional[str] = None, days: int = 30) -> dict:
                                        TradeCall.correct.isnot(None))
         if horizon:
             q = q.filter(TradeCall.horizon == horizon)
+        if symbol:
+            q = q.filter(TradeCall.symbol == symbol)
         rows = q.all()
         pq = db.query(TradeCall).filter(TradeCall.made_at >= since,
                                         TradeCall.evaluated_at.is_(None))
         if horizon:
             pq = pq.filter(TradeCall.horizon == horizon)
+        if symbol:
+            pq = pq.filter(TradeCall.symbol == symbol)
         pending = pq.count()
     finally:
         db.close()
@@ -475,6 +482,7 @@ def scorecard(horizon: Optional[str] = None, days: int = 30) -> dict:
     return {
         "status": "OK",
         "horizon": horizon or "ALL",
+        "symbol": symbol,
         "days": days,
         "overall": overall,
         "by_decision": by_decision,

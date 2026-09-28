@@ -71,7 +71,7 @@ const OPTIONS_ROUTES = [
 
 /** Sections that carry a symbol in the URL. */
 const SYMBOL_SECTIONS =
-  /^\/(earnings|options-flow|options-chain|volatility|news|ai-insights|peers|dark-pool)(\/|$)/;
+  /^\/(earnings|options-flow|options-chain|volatility|news|ai-insights|peers|dark-pool|model-performance)(\/|$)/;
 
 /**
  * The same sections, capturing the ticker itself.
@@ -83,7 +83,7 @@ const SYMBOL_SECTIONS =
  * ticker card changed the address bar while every panel kept showing NVDA.
  */
 const SYMBOL_IN_PATH =
-  /^\/(?:earnings|options-flow|options-chain|volatility|news|ai-insights|peers|dark-pool)\/([A-Za-z0-9.\-]+)/;
+  /^\/(?:earnings|options-flow|options-chain|volatility|news|ai-insights|peers|dark-pool|model-performance)\/([A-Za-z0-9.\-]+)/;
 
 export interface PageContext {
   symbol: string;
@@ -173,7 +173,7 @@ function Shell() {
 
   return (
     <div className="app">
-      <Sidebar optionsMode={optionsMode} search={location.search} isAdmin={isAdmin} />
+      <Sidebar optionsMode={optionsMode} search={location.search} isAdmin={isAdmin} symbol={symbol} />
 
       <div className="app-main">
         <TopBar
@@ -217,6 +217,7 @@ function Shell() {
           <Route path="/volatility" element={<Navigate to={`/volatility/${DEFAULT_SYMBOL}${location.search}`} replace />} />
           <Route path="/volatility/:symbol" element={<VolatilityPage ctx={ctx} />} />
           <Route path="/model-performance" element={<ModelPerformancePage ctx={ctx} />} />
+          <Route path="/model-performance/:symbol" element={<ModelPerformancePage ctx={ctx} />} />
           <Route path="/peers" element={<Navigate to={`/peers/${DEFAULT_SYMBOL}${location.search}`} replace />} />
           <Route path="/peers/:symbol" element={<PeersPage ctx={ctx} />} />
           <Route path="/dark-pool" element={<Navigate to={`/dark-pool/${DEFAULT_SYMBOL}${location.search}`} replace />} />

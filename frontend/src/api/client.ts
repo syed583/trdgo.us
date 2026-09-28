@@ -561,10 +561,11 @@ export const api2 = {
       + (horizon ? `?horizon=${encodeURIComponent(horizon)}` : ''), s),
   aiTradeBoard: (horizon: string = 'SWING', s?: AbortSignal) =>
     request<any>(`/api/ai-trade/board?horizon=${encodeURIComponent(horizon)}`, s),
-  callScorecard: (horizon?: string, days = 30, s?: AbortSignal) =>
+  callScorecard: (horizon?: string, days = 30, symbol?: string, s?: AbortSignal) =>
     request<any>(
       `/api/calls/scorecard?days=${days}`
-      + (horizon ? `&horizon=${encodeURIComponent(horizon)}` : ''), s),
+      + (horizon ? `&horizon=${encodeURIComponent(horizon)}` : '')
+      + (symbol ? `&symbol=${encodeURIComponent(symbol)}` : ''), s),
   callsHistory: (limit = 50, s?: AbortSignal) =>
     request<any>(`/api/calls/history?limit=${limit}`, s),
   paramEdge: (horizon = 5, s?: AbortSignal) =>

@@ -17,7 +17,7 @@ import { Panel } from './common';
  * hit rate built on four calls as if it meant something.
  */
 export default function Scorecard({ horizon }: { horizon: string }) {
-  const card = useApi<any>((s) => api2.callScorecard(horizon, 30, s), [horizon],
+  const card = useApi<any>((s) => api2.callScorecard(horizon, 30, undefined, s), [horizon],
     { refreshMs: 300000 });
   const d = card.data;
 

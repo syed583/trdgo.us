@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronRight, Info, Target } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api2 } from '../api/client';
@@ -74,9 +75,15 @@ function HitBar({ value }: { value: number | null | undefined }) {
 }
 
 export default function ModelPerformancePage({ ctx }: { ctx: PageContext }) {
+  const navigate = useNavigate();
+  const { symbol: routeSymbol } = useParams();
+  // A ticker in the URL scopes the track record to that one stock; without it,
+  // the whole book. Searching a ticker lands here as /model-performance/SYM.
+  const scopeSym = (routeSymbol || '').toUpperCase() || null;
   const [horizon, setHorizon] = useState<typeof HORIZONS[number]>('ALL');
   const card = useApi<any>((s) => api2.callScorecard(
-    horizon === 'ALL' ? undefined : horizon, 90, s), [horizon]);
+    horizon === 'ALL' ? undefined : horizon, 90, scopeSym || undefined, s),
+    [horizon, scopeSym]);
   const edge = useApi<any>((s) => api2.paramEdge(5, s), []);
 
   const d = card.data;
@@ -86,8 +93,19 @@ export default function ModelPerformancePage({ ctx }: { ctx: PageContext }) {
 
   return (
     <div className="page">
-      <PageHead title="Model Performance"
-        subtitle="Does the score actually predict? Hit rate, calibration and per-parameter edge — all measured from the app's own past calls." />
+      <PageHead title={scopeSym ? `Model Performance · ${scopeSym}` : 'Model Performance'}
+        subtitle={scopeSym
+          ? `${scopeSym}'s own track record — how the model's calls on this stock have played out.`
+          : "Does the score actually predict? Hit rate, calibration and per-parameter edge — all measured from the app's own past calls."} />
+
+      <div className="mp-scope">
+        <button className={`mp-range-btn ${!scopeSym ? 'active' : ''}`}
+          onClick={() => navigate(`/model-performance${ctx.search}`)}>All stocks</button>
+        {scopeSym && <button className="mp-range-btn active">{scopeSym}</button>}
+        {!scopeSym && (
+          <span className="mp-scope-hint">Search a ticker to see just that stock's record.</span>
+        )}
+      </div>
 
       <Explainer />
 

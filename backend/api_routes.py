@@ -465,11 +465,13 @@ def analyze_stream(symbol: str, refresh: bool = False,
 
 
 @router.get("/calls/scorecard")
-def calls_scorecard(horizon: Optional[str] = None, days: int = 30) -> dict:
+def calls_scorecard(horizon: Optional[str] = None, days: int = 30,
+                    symbol: Optional[str] = None) -> dict:
     """How often stored calls were right, by decision and by score band."""
     import calls_service
 
-    return calls_service.scorecard((horizon or "").upper() or None, days)
+    return calls_service.scorecard((horizon or "").upper() or None, days,
+                                   (symbol or "").upper() or None)
 
 
 @router.post("/calls/evaluate")

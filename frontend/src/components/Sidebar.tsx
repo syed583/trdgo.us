@@ -53,14 +53,24 @@ function readCollapsed(): boolean {
   }
 }
 
+// Sections whose URL carries the active ticker. Linking to these with the
+// current symbol keeps the stock you're viewing when you switch sections,
+// instead of snapping back to the default.
+const SYMBOL_SECTIONS = new Set([
+  '/earnings', '/options-flow', '/volatility', '/news',
+  '/ai-insights', '/peers', '/dark-pool',
+]);
+
 export default function Sidebar({
   optionsMode,
   search,
   isAdmin,
+  symbol,
 }: {
   optionsMode: boolean;
   search: string;
   isAdmin?: boolean;
+  symbol?: string;
 }) {
   // The admin is the operator, not a viewer: signed in as admin the sidebar is
   // just the admin panel -- Users and Settings -- and none of the data pages.
@@ -145,7 +155,8 @@ export default function Sidebar({
         {nav.map((item) => (
           <NavLink
             key={item.to + item.label}
-            to={`${item.to}${search}`}
+            to={(SYMBOL_SECTIONS.has(item.to) && symbol
+              ? `${item.to}/${symbol}` : item.to) + search}
             className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
             end={item.to === '/dashboard'}
             // Collapsed to icons only, the label has to survive as a tooltip.
