@@ -95,13 +95,16 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
 
   const marketSummary = useApi<any>(
     (s) => (mode === 'market' && !demo
-      ? api2.flowMarketSummary(s) : Promise.resolve(null)), [mode, demo]);
+      ? api2.flowMarketSummary(s) : Promise.resolve(null)), [mode, demo],
+    { refreshMs: 45000 });
   const marketTape = useApi<any>(
     (s) => (mode === 'market' && !demo
-      ? api2.flowMarketTape(50, s) : Promise.resolve(null)), [mode, demo]);
+      ? api2.flowMarketTape(50, s) : Promise.resolve(null)), [mode, demo],
+    { refreshMs: 45000 });
   const marketUnusual = useApi<any>(
     (s) => (mode === 'market' && !demo
-      ? api2.flowMarketUnusual(15, s) : Promise.resolve(null)), [mode, demo]);
+      ? api2.flowMarketUnusual(15, s) : Promise.resolve(null)), [mode, demo],
+    { refreshMs: 45000 });
   const marketSectors = useApi<any>(
     (s) => (mode === 'market' && !demo
       ? api2.flowMarketSectors(s) : Promise.resolve(null)), [mode, demo]);
@@ -139,6 +142,7 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
     (s) => ((mode === 'symbol' || (mode === 'market' && scoped)) && !demo
       ? api2.stockFlow(scopeSym, s) : Promise.resolve(null)),
     [mode, scoped, scopeSym, demo],
+    { refreshMs: 45000 },
   );
 
   // The searched ticker's own unusual prints, shaped for UnusualTable, so a

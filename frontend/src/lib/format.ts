@@ -19,6 +19,7 @@ export function num(value: number | null | undefined, digits = 2): string {
   });
 }
 
+
 export function money(value: number | null | undefined, digits = 2): string {
   if (!isNum(value)) return DASH;
   return `$${num(value, digits)}`;

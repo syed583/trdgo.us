@@ -8,7 +8,7 @@ import {
 import { api, api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import { Panel } from './common';
-import { compactMoney, money, num, signedPct } from '../lib/format';
+import { compactMoney, money, num, signedPct, strike } from '../lib/format';
 
 /**
  * Market-wide options flow: the whole watched tape rather than one symbol.
@@ -313,7 +313,7 @@ export function FlowTape({
                       {r.type.toUpperCase()}
                     </span>
                   </td>
-                  <td className="num r">{num(r.strike, 0)}</td>
+                  <td className="num r">{strike(r.strike)}</td>
                   <td className="num">{r.expiry}</td>
                   <td className="num r">{r.dte ?? '--'}</td>
                   <td className="num r">{money(r.spot)}</td>
@@ -391,7 +391,7 @@ export function UnusualTable({ unusual, onPick, ticker }: {
                       {r.type.toUpperCase()}
                     </span>
                   </td>
-                  <td className="num r">{num(r.strike, 0)}</td>
+                  <td className="num r">{strike(r.strike)}</td>
                   <td className="num">{r.expiry}</td>
                   <td className="num r mf-hot">{r.volume_oi}x</td>
                   <td className="num r"><b>{premium(r.premium)}</b></td>
@@ -770,7 +770,7 @@ function FlowSignals({ rows, baseline, levels }: {
       kind: biggest.right === 'C' ? 'bull' : 'bear',
       title: 'Largest block',
       detail: `${contracts(biggest.contracts)} contracts at `
-        + `${num(biggest.strike, 0)} ${biggest.expiry} — ${premium(biggest.premium)}.`,
+        + `${strike(biggest.strike)} ${biggest.expiry} — ${premium(biggest.premium)}.`,
       at: biggest.time,
     });
   }
@@ -1087,7 +1087,7 @@ function LevelsSections({ levels, tab, flow, baseline, prints }: {
                 <div className="mf-note">
                   Largest concentrations:{' '}
                   {g.concentrations.slice(0, 3).map(
-                    (c: any) => `${num(c.strike, 0)} (${exposure(c.gex)})`).join(' · ')}
+                    (c: any) => `${strike(c.strike)} (${exposure(c.gex)})`).join(' · ')}
                 </div>
               )}
               <div className="mf-note">{g.regime_detail}</div>
@@ -1382,7 +1382,7 @@ export function TickerDetail({ symbol, tape, summary, onClose, onOpen }: {
                   {r.type.toUpperCase()}
                 </span>
                 <span className="mf-print-body">
-                  <b>{num(r.strike, 0)} · {r.expiry}</b>
+                  <b>{strike(r.strike)} · {r.expiry}</b>
                   <i>
                     {contracts(r.contracts)} @ {num(r.price ?? r.premium / (r.contracts * 100))}
                     {r.delta != null && ` · Δ ${num(r.delta)}`}
