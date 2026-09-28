@@ -109,7 +109,7 @@ export default function WhyCall({ call, compact = false }: {
       )}
 
       <p className="why-foot">
-        Saved {when(call.made_at)} · #{call.id} · {call.horizon.toLowerCase()}
+        {call.id ? `Saved ${when(call.made_at)} · #${call.id} · ` : ''}{call.horizon.toLowerCase()}
         {call.outcome?.evaluated_at && call.outcome.correct != null && (
           <> · <b className={call.outcome.correct ? 'pos' : 'neg'}>
             {call.outcome.correct ? 'Right' : 'Wrong'}
@@ -168,6 +168,10 @@ function PlainEnglish({ call }: { call: StoredCall }) {
       setBusy(false);
     }
   };
+
+  // No stored id yet (the call is still being written) -- the explanation
+  // request needs one, so offer it only once the call exists.
+  if (!text && !call.id) return null;
 
   if (!text) {
     return (

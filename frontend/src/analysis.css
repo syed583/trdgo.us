@@ -586,3 +586,15 @@
 .ep-from { display: inline-block; margin-left: 5px; font-style: normal;
   font-size: 8.5px; letter-spacing: .3px; padding: 1px 4px; border-radius: 3px;
   background: rgba(37,99,235,.12); color: #2563eb; cursor: help; }
+
+/* How stale the shown price is, when it is not a live regular-session trade. */
+.an-price-fresh {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--text-mute);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}

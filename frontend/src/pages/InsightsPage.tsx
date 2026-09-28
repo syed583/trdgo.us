@@ -543,6 +543,20 @@ function LivePrice({ symbol }: { symbol: string }) {
   );
 
   const q = quote.data;
+  const fresh = q?.freshness || null;
+  // How old the shown price is, in human terms -- so a weekend close reads
+  // "2 days ago" rather than looking like a live quote.
+  const ageLabel = (() => {
+    const iso = fresh?.as_of;
+    if (!iso || fresh?.kind === 'LIVE') return null;
+    const ms = Date.now() - new Date(iso).getTime();
+    if (!(ms > 0)) return null;
+    const mins = Math.round(ms / 60000);
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 48) return `${hrs}h ago`;
+    return `${Math.round(hrs / 24)}d ago`;
+  })();
   // Two different numbers, and conflating them is how a screen lies: `price`
   // is the last regular-session trade, `extended` is the pre- or post-market
   // book, quoted against the regular close. Both are shown, each labelled.
@@ -584,6 +598,12 @@ function LivePrice({ symbol }: { symbol: string }) {
           </em>
         </span>
       )}
+
+      {fresh && fresh.kind !== 'LIVE' && (ageLabel || fresh.label) && (
+        <span className="an-price-fresh" title={fresh.detail || ''}>
+          {fresh.label || 'Delayed'}{ageLabel ? ` · ${ageLabel}` : ''}
+        </span>
+      )}
     </span>
   );
 }
@@ -615,36 +635,85 @@ const TABS: [string, string][] = [
  * the saved call rather than re-deriving reasons here, so the explanation on
  * screen is exactly the one the scorecard will later judge.
  */
-function StoredWhy({ symbol, horizon }: { symbol: string; horizon: Horizon }) {
+function StoredWhy({ symbol, horizon, result }: {
+  symbol: string; horizon: Horizon; result: any;
+}) {
+  // The "Why" panel is built from the SAME live result the Score gauge shows,
+  // so the two can never disagree. Previously it fetched the latest stored
+  // call of any origin, which could be a newer background board scan with a
+  // different score/confidence than the analysis on screen -- the app then
+  // showed two numbers for one verdict. We still fetch the analysis-origin
+  // stored call, but only to enrich: its id (for "Explain in plain English"),
+  // any saved explanation, and its outcome once graded.
   const [found, setFound] = useState(false);
   const opened = useRef(Date.now());
   const call = useApi<any>(
-    (sig) => api2.callLatest(symbol, horizon, sig),
+    (sig) => api2.callLatest(symbol, horizon, sig, 'analysis'),
     [symbol, horizon],
     { refreshMs: found ? undefined : 2500 },
   );
-  const row = call.data?.call;
-  const fresh = !!row?.made_at
-    && new Date(row.made_at).getTime() >= opened.current - 120000;
+  const stored = call.data?.call;
+  // Only trust the stored call as this run's when it is fresh AND its score
+  // matches the result on screen; otherwise it is a different run and we take
+  // nothing numeric from it.
+  const sameRun = !!stored?.made_at
+    && new Date(stored.made_at).getTime() >= opened.current - 120000
+    && stored.direction_score != null && result.direction_score != null
+    && Math.abs(stored.direction_score - result.direction_score) < 0.5;
 
   useEffect(() => {
-    if (fresh) setFound(true);
-  }, [fresh]);
-  // Give up asking after twenty seconds; a call that has not been stored by
-  // then is not coming, and polling for ever would be the bug.
+    if (sameRun) setFound(true);
+  }, [sameRun]);
   useEffect(() => {
     const t = setTimeout(() => setFound(true), 20000);
     return () => clearTimeout(t);
   }, []);
 
-  if (!fresh) {
-    return (
-      <div className="an-why-wait">
-        {found ? 'This call could not be saved.' : 'Saving this call…'}
-      </div>
-    );
-  }
-  return <div className="an-why"><WhyCall call={row} /></div>;
+  const built = buildWhyFromResult(symbol, horizon, result, sameRun ? stored : null);
+  return <div className="an-why"><WhyCall call={built} /></div>;
+}
+
+/**
+ * Assemble a WhyCall-shaped object from the live analysis result, so the
+ * header figures and the toward/against split are exactly the numbers the
+ * Score gauge is drawn from. The stored call, when it is the same run, lends
+ * its id (for the explanation request), any saved explanation and its outcome.
+ */
+function buildWhyFromResult(symbol: string, horizon: Horizon, result: any,
+                            stored: any): any {
+  const sigs: any[] = result.signals || [];
+  const dir = sigs.filter((x) => x.directional && x.available && x.points != null);
+  const item = (x: any) => ({
+    label: x.label, points: x.points, points_label: x.points_label, detail: x.detail,
+  });
+  const toward = dir.filter((x) => x.points > 0)
+    .sort((a, b) => b.points - a.points).map(item);
+  const against = dir.filter((x) => x.points < 0)
+    .sort((a, b) => a.points - b.points).map(item);
+  const missing = sigs.filter((x) => !x.available).map((x) => x.label);
+  return {
+    id: stored?.id ?? 0,
+    symbol,
+    horizon,
+    origin: 'analysis',
+    made_at: stored?.made_at ?? new Date().toISOString(),
+    target_date: stored?.target_date ?? null,
+    decision: result.decision,
+    direction_score: result.direction_score,
+    confidence: result.confidence,
+    agreement_pct: result.agreement_pct,
+    coverage_pct: result.coverage_pct,
+    price_at_call: stored?.price_at_call ?? null,
+    model_version: stored?.model_version ?? null,
+    why: {
+      for: toward,
+      against,
+      missing,
+      blocked: result.blocked_reasons || [],
+      explanation: stored?.why?.explanation ?? null,
+    },
+    outcome: stored?.outcome,
+  };
 }
 
 function ResultScreen({
@@ -688,7 +757,7 @@ function ResultScreen({
         </span>
       </div>
 
-      <StoredWhy symbol={symbol} horizon={horizon} />
+      <StoredWhy symbol={symbol} horizon={horizon} result={result} />
 
       <div className="an-result-top">
         <Panel title="Score" noBody>

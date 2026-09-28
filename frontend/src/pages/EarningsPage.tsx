@@ -302,8 +302,8 @@ function DateStrip({
                 <div className="ic-label">
                   {ix.label}
                   {ix.is_proxy && (
-                    <span className="proxy-tag" title={`Index not subscribed; showing ${ix.instrument} tracker`}>
-                      {ix.instrument}
+                    <span className="proxy-tag" title={`Shows the ${ix.instrument} ETF: the % move tracks the ${ix.label} index, but the dollar figure is the ETF's own price, not the index level.`}>
+                      {ix.instrument} ETF
                     </span>
                   )}
                 </div>

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { RefreshCw, Search } from 'lucide-react';
 import { api2 } from '../api/client';
 import { safeHref } from '../lib/format';
 import type { PageContext } from '../App';
@@ -10,12 +10,32 @@ import { ErrorState, Loading, PageHead, StatusChip, Unavailable } from './shared
 export default function NewsPage({ ctx }: { ctx: PageContext }) {
   const { symbol } = ctx;
   const [openId, setOpenId] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<'All' | 'Positive' | 'Neutral' | 'Negative' | 'No score'>('All');
 
-  const news = useApi<any>((s) => api2.news(symbol, 25, s), [symbol]);
+  const news = useApi<any>((s) => api2.news(symbol, 40, s), [symbol]);
   const sentiment = useApi<any>((s) => api2.sentiment(symbol, s), [symbol]);
 
-  const items: any[] = news.data?.items || [];
+  const allItems: any[] = news.data?.items || [];
   const sent = sentiment.data;
+
+  // Search across this stock's own headlines, and filter by the same tone
+  // buckets the sentiment panel counts -- so a reader can pull up just the
+  // positive or just the negative news on the name they are looking at.
+  const items = useMemo(() => {
+    let rows = allItems;
+    if (filter !== 'All') {
+      const want = filter === 'No score' ? 'unscored' : filter.toLowerCase();
+      rows = rows.filter((n) => (n.sentiment || 'unscored') === want);
+    }
+    const needle = query.trim().toLowerCase();
+    if (needle) {
+      rows = rows.filter((n) => String(n.headline || '').toLowerCase().includes(needle));
+    }
+    return rows;
+  }, [allItems, filter, query]);
+
+  const FILTERS = ['All', 'Positive', 'Neutral', 'Negative', 'No score'] as const;
 
   return (
     <div className="page">
@@ -30,6 +50,19 @@ export default function NewsPage({ ctx }: { ctx: PageContext }) {
         }
       />
 
+      <div className="nd-controls">
+        <span className="nd-search">
+          <Search size={12} color="var(--text-mute)" />
+          <input value={query} placeholder={`Search ${symbol} headlines`}
+            onChange={(e) => setQuery(e.target.value)} />
+        </span>
+        {FILTERS.map((f) => (
+          <button key={f} className={`nd-pill ${filter === f ? 'active' : ''}`}
+            onClick={() => setFilter(f)}>{f}</button>
+        ))}
+        <span className="nd-count">{items.length} shown</span>
+      </div>
+
       <div className="news-grid">
         <Panel
           title={`Headlines (${items.length})`}
@@ -39,23 +72,30 @@ export default function NewsPage({ ctx }: { ctx: PageContext }) {
           {news.error ? <ErrorState error={news.error} />
             : news.initialLoading ? <Loading />
               : !items.length ? (
-                <Unavailable
-                  status={news.data?.status}
-                  detail={news.data?.detail}
-                  required={news.data?.status === 'PROVIDER_NOT_CONFIGURED'
-                    ? 'A market data key (UNUSUAL_WHALES_API_KEY)'
-                    : undefined}
-                />
+                allItems.length ? (
+                  <div className="nd-empty">No {symbol} headline matches that filter.</div>
+                ) : (
+                  <Unavailable
+                    status={news.data?.status}
+                    detail={news.data?.detail}
+                    required={news.data?.status === 'PROVIDER_NOT_CONFIGURED'
+                      ? 'A market data key (UNUSUAL_WHALES_API_KEY)'
+                      : undefined}
+                  />
+                )
               ) : (
                 <div className="news-list">
-                  {items.map((n) => (
-                    <NewsItem
-                      key={n.article_id}
-                      item={n}
-                      open={openId === n.article_id}
-                      onToggle={() => setOpenId(openId === n.article_id ? null : n.article_id)}
-                    />
-                  ))}
+                  {items.map((n) => {
+                    const id = String(n.id ?? n.article_id ?? n.headline);
+                    return (
+                      <NewsItem
+                        key={id}
+                        item={n}
+                        open={openId === id}
+                        onToggle={() => setOpenId(openId === id ? null : id)}
+                      />
+                    );
+                  })}
                 </div>
               )}
         </Panel>
@@ -147,7 +187,10 @@ function NewsItem({
           }) : '--'}
         </span>
         <span className="news-title">{item.headline}</span>
-        <span className="news-prov">{item.provider_code}</span>
+        {item.sentiment && item.sentiment !== 'unscored' && (
+          <span className={`nd-badge ${item.sentiment}`}>{item.sentiment}</span>
+        )}
+        <span className="news-prov">{item.provider_code || item.provider}</span>
       </button>
 
       {open && (

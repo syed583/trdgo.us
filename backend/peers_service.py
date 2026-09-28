@@ -50,6 +50,43 @@ SECTOR_MAP = {
 }
 
 
+# Industry peer groups -- finer than the GICS sector above. A car company should
+# line up against other car companies, not against the whole discretionary
+# sector, so these list the real competitor set. Peers here need not be in the
+# scored UNIVERSE: their price, change, RS and IV are fetched on demand, and a
+# name with no app score simply shows "--" for it.
+PEER_GROUPS = {
+    "Semiconductors": ["NVDA", "AMD", "AVGO", "INTC", "MU", "QCOM", "TXN", "ARM", "SMCI"],
+    "Software & Internet": ["MSFT", "GOOGL", "META", "ORCL", "CRM", "ADBE", "NOW", "SAP"],
+    "Consumer Electronics": ["AAPL", "SONY", "DELL", "HPQ"],
+    "Autos & EV": ["TSLA", "F", "GM", "RIVN", "LCID", "NIO", "STLA"],
+    "E-commerce & Retail": ["AMZN", "BABA", "MELI", "SHOP", "EBAY"],
+    "Streaming & Media": ["NFLX", "DIS", "WBD", "PARA", "CMCSA"],
+    "Apparel & Footwear": ["NKE", "LULU", "ADDYY", "UAA", "SKX"],
+    "Home Improvement": ["HD", "LOW", "FND", "WSM"],
+    "Banks": ["JPM", "BAC", "GS", "WFC", "C", "MS", "USB"],
+    "Payments": ["V", "MA", "AXP", "PYPL", "COF"],
+    "Energy": ["XOM", "CVX", "COP", "OXY", "SLB", "EOG"],
+    "Pharma & Health": ["UNH", "LLY", "JNJ", "PFE", "MRK", "ABBV", "BMY"],
+    "Retail Staples": ["WMT", "COST", "TGT", "KR", "DG"],
+    "Industrials": ["CAT", "BA", "GE", "HON", "UPS", "DE", "RTX"],
+    "Index ETF": ["SPY", "QQQ", "DIA", "IWM"],
+}
+
+# Reverse lookup: symbol -> its industry group name.
+_SYMBOL_GROUP = {sym: name for name, members in PEER_GROUPS.items()
+                 for sym in members}
+
+
+def _peer_group(symbol: str) -> Optional[tuple[str, list[str]]]:
+    """The symbol's industry group name and its co-members, if curated."""
+    name = _SYMBOL_GROUP.get(symbol)
+    if not name:
+        return None
+    members = [s for s in PEER_GROUPS[name] if s != symbol]
+    return name, members
+
+
 def _sector(symbol: str) -> Optional[str]:
     if symbol in SECTOR_MAP:
         return SECTOR_MAP[symbol]
@@ -128,17 +165,23 @@ def get_peers(symbol: str) -> dict:
     if not symbol:
         return {"status": "INVALID_SYMBOL"}
 
-    sector = _sector(symbol)
-    # Peer pool: universe names sharing the sector. Fall back to the whole
-    # universe when the sector is unknown or too thin to compare against.
-    pool = [s for s in UNIVERSE if s != symbol]
-    if sector:
-        db_sec = _sectors_for(pool)
-        same = [s for s in pool
-                if (SECTOR_MAP.get(s) or db_sec.get(s)) == sector]
-        peers = same[:MAX_PEERS] if len(same) >= 2 else pool[:MAX_PEERS]
+    # 1) Curated industry group -- the real competitor set (autos vs autos),
+    #    even for peers outside the scored universe.
+    grp = _peer_group(symbol)
+    if grp:
+        sector, peers = grp[0], grp[1][:MAX_PEERS]
     else:
-        peers = pool[:MAX_PEERS]
+        # 2) Fall back to the GICS sector over the scored universe, then to the
+        #    universe at large when the sector is unknown or too thin.
+        sector = _sector(symbol)
+        pool = [s for s in UNIVERSE if s != symbol]
+        if sector:
+            db_sec = _sectors_for(pool)
+            same = [s for s in pool
+                    if (SECTOR_MAP.get(s) or db_sec.get(s)) == sector]
+            peers = same[:MAX_PEERS] if len(same) >= 2 else pool[:MAX_PEERS]
+        else:
+            peers = pool[:MAX_PEERS]
 
     all_syms = [symbol] + peers
 
@@ -180,8 +223,10 @@ def get_peers(symbol: str) -> dict:
         rows = list(pool_ex.map(row, all_syms))
 
     # Rank by score (highest first); unscored sink to the bottom.
-    rows.sort(key=lambda r: (r["score"] if r["score"] is not None else -1e9),
-              reverse=True)
+    rows.sort(key=lambda r: (
+        r["score"] if r["score"] is not None else -1e9,
+        r["rs_1m"] if r["rs_1m"] is not None else -1e9),
+        reverse=True)
     subject = next((r for r in rows if r["is_subject"]), None)
     rank = next((i + 1 for i, r in enumerate(rows) if r["is_subject"]), None)
 

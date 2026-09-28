@@ -555,10 +555,14 @@ export const api2 = {
 
   explainCall: (callId: number) =>
     send<any>(`/api/calls/${callId}/explain`, 'POST'),
-  callLatest: (symbol: string, horizon?: string, s?: AbortSignal) =>
-    request<any>(
-      `/api/calls/latest/${encodeURIComponent(symbol)}`
-      + (horizon ? `?horizon=${encodeURIComponent(horizon)}` : ''), s),
+  callLatest: (symbol: string, horizon?: string, s?: AbortSignal, origin?: string) => {
+    const qs = new URLSearchParams();
+    if (horizon) qs.set('horizon', horizon);
+    if (origin) qs.set('origin', origin);
+    const q = qs.toString();
+    return request<any>(
+      `/api/calls/latest/${encodeURIComponent(symbol)}${q ? `?${q}` : ''}`, s);
+  },
   aiTradeBoard: (horizon: string = 'SWING', s?: AbortSignal) =>
     request<any>(`/api/ai-trade/board?horizon=${encodeURIComponent(horizon)}`, s),
   callScorecard: (horizon?: string, days = 30, symbol?: string, s?: AbortSignal) =>

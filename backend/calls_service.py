@@ -242,13 +242,19 @@ def serialise(row: TradeCall, with_parameters: bool = False) -> dict:
     return out
 
 
-def latest(symbol: str, horizon: Optional[str] = None) -> Optional[dict]:
+def latest(symbol: str, horizon: Optional[str] = None,
+           origin: Optional[str] = None) -> Optional[dict]:
     _ensure_table()
     db = SessionLocal()
     try:
         q = db.query(TradeCall).filter(TradeCall.symbol == (symbol or "").upper())
         if horizon:
             q = q.filter(TradeCall.horizon == horizon)
+        # An explicit analysis run and the background board scan both store
+        # calls; filtering by origin lets the Analysis screen fetch the very
+        # call it produced, not a newer board scan with different numbers.
+        if origin:
+            q = q.filter(TradeCall.origin == origin)
         row = q.order_by(TradeCall.made_at.desc()).first()
         return serialise(row, with_parameters=True) if row else None
     finally:

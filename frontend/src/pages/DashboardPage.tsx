@@ -54,8 +54,8 @@ export default function DashboardPage({ ctx }: { ctx: PageContext }) {
                         <div className="ov-label">
                           {i.label}
                           {i.is_proxy && (
-                            <em className="ov-proxy" title={`${i.symbol} ETF — the feed carries no raw index level; the % move tracks the index, the price is the ETF's`}>
-                              {i.symbol}
+                            <em className="ov-proxy" title={`Shows the ${i.symbol} ETF: the % move tracks the ${i.label} index, but the dollar figure is the ETF's own price, not the index level (the data feed carries no raw index level).`}>
+                              {i.symbol} ETF
                             </em>
                           )}
                         </div>

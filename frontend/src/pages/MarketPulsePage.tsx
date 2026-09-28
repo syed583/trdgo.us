@@ -69,8 +69,8 @@ function IndexCard({ row }: { row: any }) {
       <span className="mo-index-label">
         {row.label}
         {row.is_proxy && (
-          <em title={`Tracking ETF ${row.symbol}, not the index itself`}>
-            {row.symbol}
+          <em title={`Shows the ${row.symbol} ETF: the % move tracks the ${row.label} index, but the dollar figure is the ETF's own price, not the index level.`}>
+            {row.symbol} ETF
           </em>
         )}
       </span>

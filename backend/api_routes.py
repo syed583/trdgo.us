@@ -492,11 +492,13 @@ def calls_history(symbol: Optional[str] = None, horizon: Optional[str] = None,
 
 
 @router.get("/calls/latest/{symbol}")
-def calls_latest(symbol: str, horizon: Optional[str] = None) -> dict:
+def calls_latest(symbol: str, horizon: Optional[str] = None,
+                 origin: Optional[str] = None) -> dict:
     """The most recent stored call for a symbol, with why it was made."""
     import calls_service
 
-    row = calls_service.latest(symbol, (horizon or "").upper() or None)
+    row = calls_service.latest(symbol, (horizon or "").upper() or None,
+                               (origin or "").strip() or None)
     return ({"status": "OK", "call": row} if row
             else {"status": "NO_DATA", "call": None})
 
