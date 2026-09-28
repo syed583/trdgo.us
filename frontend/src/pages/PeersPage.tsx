@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users } from 'lucide-react';
+import { ChevronRight, Info, Users } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
@@ -15,6 +15,40 @@ import { money, signedPct } from '../lib/format';
  * strength vs SPY -- against its sector peers, so its reading has a group to
  * stand against instead of hanging in isolation.
  */
+
+const TERMS: { term: string; body: string }[] = [
+  { term: 'What peer comparison is',
+    body: 'A stock read against the others in its own sector, not in isolation. A score of 64 means little on its own; next to its peers it tells you whether the name is leading its group or lagging it — which is how the move usually plays out.' },
+  { term: 'Sector peers',
+    body: 'The other names in the same sector (e.g. NVDA sits with AMD, AVGO, INTC, MU, QCOM). They face the same demand, rates and headlines, so they are the fair yardstick for one another.' },
+  { term: 'Score',
+    body: 'The app’s directional read, 0–100. Above 60 leans bullish, below 40 bearish. The rank line tells you where this name sits in its sector by this score.' },
+  { term: 'Relative strength (RS vs SPY)',
+    body: 'How much the stock has out- or under-performed the S&P 500 over about a month, in points. Positive = stronger than the market; the sector’s RS leaders are the names money is rotating into.' },
+  { term: 'IV rank',
+    body: 'Where the stock’s implied volatility sits within its own past year, 0–100. High = options are pricing unusually large moves (rich premium); low = calm. Useful for comparing which peer the options market expects to move most.' },
+  { term: 'How to use it',
+    body: 'Look for a name that leads on score AND relative strength — that is a peer confirming its own group. A high score but negative RS is a laggard the model likes; treat it with more caution. Click any row to pivot the whole comparison to that stock.' },
+];
+
+function Explainer() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`mp-explain ${open ? 'open' : ''}`}>
+      <button className="mp-explain-head" onClick={() => setOpen((v) => !v)}>
+        <Info size={13} /> What is peer comparison?
+        <ChevronRight size={14} className="mp-explain-caret" />
+      </button>
+      {open && (
+        <div className="mp-explain-body">
+          {TERMS.map((t) => (
+            <div className="mp-term" key={t.term}><b>{t.term}</b><span>{t.body}</span></div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function scoreColor(v: number | null | undefined): string {
   if (typeof v !== 'number') return 'var(--text-mute)';
@@ -48,6 +82,8 @@ export default function PeersPage({ ctx }: { ctx: PageContext }) {
     <div className="page">
       <PageHead title={`Peers · ${symbol}`}
         subtitle="How this name stacks up against its sector — score, today's move, IV rank and relative strength vs SPY." />
+
+      <Explainer />
 
       {peers.error ? <ErrorState error={peers.error} />
         : peers.initialLoading || !d ? <Loading />
