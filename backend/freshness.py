@@ -133,9 +133,13 @@ def for_chain(source: str, as_of: Optional[str] = None,
         except (TypeError, ValueError):
             age_min = None
 
-    if session and session not in ("OPEN", "PRE_MARKET", "AFTER_HOURS"):
+    # Options only trade in the regular session. Outside it -- pre-market,
+    # after-hours, weekend, holiday -- the chain is simply the last session's
+    # close, not a "delayed" live feed. Only judge freshness by age when the
+    # market is actually OPEN; otherwise it is a snapshot of the last close.
+    if session and session != "OPEN":
         return stamp(SNAPSHOT, source=src,
-                     detail="The market is closed; this is the last session's "
+                     detail="Options are closed; this is the last session's "
                             "chain. It updates live when trading resumes.",
                      as_of=as_of)
 
@@ -146,7 +150,7 @@ def for_chain(source: str, as_of: Optional[str] = None,
                      detail="Provider chain: quotes, implied volatility and "
                             "greeks published per contract.", as_of=as_of)
 
-    if age_min <= 2.0:
+    if age_min <= 3.0:  # absorbs the app's own short chain cache during hours
         return stamp(LIVE, source=src,
                      detail="Live chain: quotes, implied volatility and greeks "
                             "published per contract.", as_of=as_of)
