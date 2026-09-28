@@ -141,6 +141,26 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
     [mode, scoped, scopeSym, demo],
   );
 
+  // The searched ticker's own unusual prints, shaped for UnusualTable, so a
+  // scoped view shows THAT name's unusual activity rather than the market's
+  // top-15 filtered down (which would miss a name that is unusual but not the
+  // loudest in the whole market).
+  const scopedUnusual = useMemo(() => {
+    const sf: any = symbolFlow.data;
+    if (!sf) return null;
+    const rows = (sf.unusual || []).map((r: any) => ({
+      symbol: r.symbol, type: r.type || (r.right === 'P' ? 'PUT' : 'CALL'),
+      right: r.right, strike: r.strike, expiry: r.expiry,
+      volume_oi: r.volume_oi ?? r.ratio, premium: r.premium,
+    }));
+    return {
+      status: sf.status === 'OK' || rows.length ? 'OK' : (sf.status || 'NO_DATA'),
+      count: rows.length, rows,
+      detail: rows.length ? undefined
+        : (sf.note || 'No unusual options activity for this ticker this session.'),
+    };
+  }, [symbolFlow.data]);
+
   // Roll the ticker's flow up into the same shape FlowSummary renders, so a
   // searched name shows its own call premium, put premium, net and call share.
   const symbolSummary = useMemo(() => {
@@ -317,7 +337,10 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
 
           <div className="mf-bottom">
             <ExpiryFlow expiries={marketExpiries.data} />
-            <UnusualTable unusual={marketUnusual.data} onPick={setPicked} />
+            <UnusualTable
+              unusual={scoped ? scopedUnusual : marketUnusual.data}
+              onPick={setPicked}
+              ticker={scoped ? scopeSym : ''} />
             <SectorFlow sectors={marketSectors.data} />
           </div>
         </div>

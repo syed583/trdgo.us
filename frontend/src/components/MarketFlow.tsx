@@ -346,18 +346,30 @@ export function FlowTape({
 }
 
 /** Contracts trading well above their own open interest. */
-export function UnusualTable({ unusual, onPick }: {
-  unusual: any; onPick: (symbol: string) => void;
+export function UnusualTable({ unusual, onPick, ticker }: {
+  unusual: any; onPick: (symbol: string) => void; ticker?: string;
 }) {
+  // When a ticker is searched, the unusual list scopes to it too -- otherwise
+  // checking "Unusual only" on one name still showed the whole market's
+  // unusual activity beneath it.
+  const needle = (ticker || '').trim().toUpperCase();
+  const rows: any[] = (unusual?.rows || []).filter(
+    (r: any) => !needle || String(r.symbol || '').toUpperCase().includes(needle));
   return (
-    <Panel title="Top Unusual Options Activity"
+    <Panel title={needle ? `Unusual Options Activity · ${needle}` : 'Top Unusual Options Activity'}
       icon={<AlertTriangle size={13} />} noBody
-      right={unusual?.count
-        ? <span className="badge amber">{unusual.count} contracts</span>
+      right={rows.length
+        ? <span className="badge amber">{rows.length} contracts</span>
         : undefined}>
       {!unusual || unusual.status !== 'OK' ? (
         <div className="mf-note">
           {unusual?.detail || 'No unusual activity detected this session.'}
+        </div>
+      ) : !rows.length ? (
+        <div className="mf-note">
+          {needle
+            ? `No unusual options activity for ${needle} this session.`
+            : 'No unusual activity detected this session.'}
         </div>
       ) : (
         <div className="tbl-scroll" style={{ maxHeight: 300 }}>
@@ -370,7 +382,7 @@ export function UnusualTable({ unusual, onPick }: {
               </tr>
             </thead>
             <tbody>
-              {unusual.rows.map((r: any, i: number) => (
+              {rows.map((r: any, i: number) => (
                 <tr key={`${r.symbol}-${r.strike}-${r.expiry}-${i}`}
                   className="clickable" onClick={() => onPick(r.symbol)}>
                   <td><b className="mf-ticker">{r.symbol}</b></td>
