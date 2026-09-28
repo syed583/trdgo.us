@@ -69,9 +69,12 @@ ENV_KEY = "UNUSUAL_WHALES_API_KEY"
 TIMEOUT = 30.0
 
 # Their published self-serve tier is 500 requests a minute and 80,000 a day.
-# The app's own ceiling sits well under it: nothing here should be able to
-# spend a subscription on a loop nobody asked for.
-APP_DAILY_BUDGET = 20000
+# The app's own ceiling sits under that with a safety buffer: 60k leaves ~20k of
+# the account's daily allowance untouched while giving the app 3x the old 20k,
+# which the score warmers + per-symbol screens (peers, dark pool, flow) burn
+# through faster than the old cap allowed. The burst/concurrency guards still
+# prevent 429s; this only bounds a runaway.
+APP_DAILY_BUDGET = 60000
 
 # How long an answer stays good. Split by how fast the underlying thing
 # actually moves rather than by how fast we could ask again.
