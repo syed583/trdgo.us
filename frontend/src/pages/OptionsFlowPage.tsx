@@ -312,6 +312,21 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
         </div>
       ) : (
       <div className="page">
+        {/* This name's own call/put/net premium -- shown above everything and
+            independent of the chain, so it appears even when the chain is
+            unavailable (e.g. market closed) as long as the flow is there. */}
+        {symbolSummary && (
+          <FlowSummary
+            summary={symbolSummary}
+            comparison={null}
+            intraday={null}
+            unusualCount={symbolFlow.data?.unusual_listed
+              ?? (Array.isArray(symbolFlow.data?.unusual) ? symbolFlow.data.unusual.length : null)}
+            loading={symbolFlow.loading}
+            onRefresh={() => symbolFlow.refresh()}
+          />
+        )}
+
         {overview.error ? (
           <Panel title="Options Flow"><StateBlock error={overview.error} /></Panel>
         ) : overview.initialLoading || !d ? (
@@ -326,17 +341,6 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
           <Panel title="Options Flow"><StateBlock status={d.status} error={d.error} /></Panel>
         ) : (
           <>
-            {symbolSummary && (
-              <FlowSummary
-                summary={symbolSummary}
-                comparison={null}
-                intraday={null}
-                unusualCount={symbolFlow.data?.unusual_listed
-                  ?? (Array.isArray(symbolFlow.data?.unusual) ? symbolFlow.data.unusual.length : null)}
-                loading={symbolFlow.loading}
-                onRefresh={() => symbolFlow.refresh()}
-              />
-            )}
 
             {shows('tiles') && <Tiles data={d} />}
 
