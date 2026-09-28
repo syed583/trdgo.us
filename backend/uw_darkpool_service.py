@@ -150,9 +150,12 @@ def symbol_prints(symbol: str, limit: int = 50) -> dict:
                                 if day_volume else None),
         "largest": rows[0] if rows else None,
         "blocks": len([r for r in rows if r["block"]]),
-        "detail": ("The most recent off-exchange prints for this symbol. "
-                   "The share of volume is a floor: this is the latest "
-                   "window of prints, not the whole session."),
+        "detail": (("The most recent off-exchange prints for this symbol. "
+                    "The share of volume is a floor: this is the latest "
+                    "window of prints, not the whole session.") if rows
+                   else (f"No recent off-exchange (dark pool) prints for {symbol}. "
+                         "Thinly-traded names often have little or no dark-pool "
+                         "activity.")),
         "source": SOURCE,
     }
 
