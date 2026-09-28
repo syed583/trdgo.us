@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom';
 import {
   Activity, BarChart3, Brain, CalendarDays, LineChart, Users,
   LayoutDashboard, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
-  Scale, Settings, Sparkles, Star, Target, TrendingUp, X,
+  Scale, Settings, Sparkles, Star, Target, TrendingUp, UserCog, Waves, X,
 } from 'lucide-react';
 import { BrandLockup, BRAND_QUOTE_EARNINGS } from './Brand';
 
@@ -37,6 +37,8 @@ const NAV: NavEntry[] = [
   { to: '/market', label: 'Market Overview', icon: <TrendingUp size={S} /> },
   { to: '/watchlist', label: 'Watchlist', icon: <Star size={S} /> },
   { to: '/news', label: 'News & Sentiment', icon: <Newspaper size={S} /> },
+  { to: '/dark-pool', label: 'Dark Pool', icon: <Waves size={S} /> },
+  { to: '/market-insiders', label: 'Market Insiders', icon: <UserCog size={S} /> },
 ];
 
 const COLLAPSE_KEY = 'usr.sidebar.collapsed';

@@ -208,8 +208,9 @@ export function FlowSummary({
       </div>
       <div className="mf-session">
         <span>
-          Session {summary.session} · {summary.symbols_covered} of{' '}
-          {summary.symbols_requested} watched tickers had prints
+          {summary.scope
+            ? `Session ${summary.session} · ${summary.scope} only`
+            : `Session ${summary.session} · ${summary.symbols_covered} of ${summary.symbols_requested} watched tickers had prints`}
           {c && ` · change vs ${c.previous_session}`}
         </span>
         <button className="ghost-btn" onClick={onRefresh}>

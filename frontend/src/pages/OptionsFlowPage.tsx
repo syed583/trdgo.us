@@ -19,7 +19,7 @@ import {
 const DEMO_EARNINGS_DATE = DEMO_EARNINGS.earnings;
 import type { FlowTrade, OptionsOverview } from '../api/client';
 import { useApi } from '../hooks/useApi';
-import { DarkPoolTab, MarketInsidersTab } from '../components/DarkPool';
+
 import OptionChainPage from './OptionChainPage';
 import {
   EMPTY_FILTERS, ExpiryFlow, FlowFilters, FlowSummary, FlowTape, SectorFlow,
@@ -72,24 +72,26 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
   // a default -- so the URL cannot distinguish an intentional ticker from that
   // default, and defaulting to the tape is the honest reading of a bare click.
   const [mode, setMode] =
-    useState<'market' | 'symbol' | 'chain' | 'dark' | 'insiders'>('market');
+    useState<'market' | 'symbol' | 'chain'>('market');
   const [picked, setPicked] = useState<string | null>(null);
-  // The page opens on the market tape, but the moment the operator searches a
-  // ticker they mean "show me THIS name", not the whole market. Switch to the
-  // symbol view on any change of symbol after the first render, so a search
-  // lands on that stock's flow instead of leaving the market tape up.
-  const prevSymbol = useRef(symbol);
-  useEffect(() => {
-    if (symbol !== prevSymbol.current) {
-      prevSymbol.current = symbol;
-      setMode((m) => (m === 'market' ? 'symbol' : m));
-    }
-  }, [symbol]);
   // Filters narrow the tape the operator is already looking at rather than
   // refetching: the session is one query and already in hand, so a round trip
   // to drop rows would cost seconds to show less.
   const [filters, setFilters] = useState<FlowFilterState>(EMPTY_FILTERS);
   const [filtersOpen, setFiltersOpen] = useState(true);
+
+  // The page opens on the whole market, but the moment the operator searches a
+  // ticker they mean "show me THIS name". Scope the market view to it -- the
+  // tape filters to the ticker and the premium summary switches to the ticker's
+  // own numbers. Clearing the ticker filter (or the chip) shows all again.
+  const prevSymbol = useRef(symbol);
+  useEffect(() => {
+    if (symbol !== prevSymbol.current) {
+      prevSymbol.current = symbol;
+      setFilters((f) => ({ ...f, ticker: symbol }));
+    }
+  }, [symbol]);
+  const scoped = !!filters.ticker;
 
   const marketSummary = useApi<any>(
     (s) => (mode === 'market' && !demo
@@ -132,9 +134,11 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
 
   // Per-ticker options flow, so the symbol view can show THIS name's call/put
   // premium rather than the market-wide aggregate. Only fetched in symbol mode.
+  const scopeSym = (filters.ticker || symbol || '').toUpperCase();
   const symbolFlow = useApi<any>(
-    (s) => (mode === 'symbol' && !demo ? api2.stockFlow(symbol, s) : Promise.resolve(null)),
-    [mode, symbol, demo],
+    (s) => ((mode === 'symbol' || (mode === 'market' && scoped)) && !demo
+      ? api2.stockFlow(scopeSym, s) : Promise.resolve(null)),
+    [mode, scoped, scopeSym, demo],
   );
 
   // Roll the ticker's flow up into the same shape FlowSummary renders, so a
@@ -159,6 +163,7 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
       // A plain string sentiment (never an object) so it renders safely.
       sentiment: share > 0.55 ? 'Bullish' : share < 0.45 ? 'Bearish' : 'Neutral',
       session: symbolFlow.data?.session_date,
+      scope: scopeSym,
     };
   }, [symbolFlow.data]);
 
@@ -180,14 +185,8 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
           <button role="tab" aria-selected={mode === 'chain'}
             className={`mf-mode-btn ${mode === 'chain' ? 'active' : ''}`}
             onClick={() => setMode('chain')}>Option Chain</button>
-          {/* Neither of these is an options reading, which is why each gets
-              its own tab rather than another panel on the tape. */}
-          <button role="tab" aria-selected={mode === 'dark'}
-            className={`mf-mode-btn ${mode === 'dark' ? 'active' : ''}`}
-            onClick={() => setMode('dark')}>Dark Pool</button>
-          <button role="tab" aria-selected={mode === 'insiders'}
-            className={`mf-mode-btn ${mode === 'insiders' ? 'active' : ''}`}
-            onClick={() => setMode('insiders')}>Market Insiders</button>
+          {/* Dark Pool and Market Insiders moved out to their own sidebar
+              sections -- neither is an options reading. */}
         </div>
         <div className="opt-tabs" role="tablist"
           style={mode === 'symbol' ? undefined : { display: 'none' }}>
@@ -231,10 +230,6 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
           </div>
           <OptionChainPage ctx={ctx} embedded />
         </div>
-      ) : mode === 'dark' ? (
-        <DarkPoolTab symbol={symbol} />
-      ) : mode === 'insiders' ? (
-        <MarketInsidersTab />
       ) : mode === 'market' ? (
         <div className="page">
           <div className="mf-head">
@@ -266,17 +261,33 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
             </div>
           </div>
 
+          {scoped && (
+            <div className="mf-scope">
+              Showing <b>{scopeSym}</b> only
+              <button className="mf-scope-clear"
+                onClick={() => setFilters((f) => ({ ...f, ticker: '' }))}>
+                Show all
+              </button>
+            </div>
+          )}
+
           {filtersOpen && (
             <FlowFilters filters={filters} onChange={setFilters} />
           )}
 
+          {/* When a ticker is searched, the summary shows THAT ticker's premium
+              (from its own flow); otherwise the market-wide aggregate. */}
           <FlowSummary
-            summary={marketSummary.data}
-            comparison={marketComparison.data}
-            intraday={marketIntraday.data}
-            unusualCount={marketUnusual.data?.count ?? null}
-            loading={marketSummary.loading || marketTape.loading}
+            summary={scoped && symbolSummary ? symbolSummary : marketSummary.data}
+            comparison={scoped ? null : marketComparison.data}
+            intraday={scoped ? null : marketIntraday.data}
+            unusualCount={scoped
+              ? (symbolFlow.data?.unusual_listed
+                ?? (Array.isArray(symbolFlow.data?.unusual) ? symbolFlow.data.unusual.length : null))
+              : (marketUnusual.data?.count ?? null)}
+            loading={scoped ? symbolFlow.loading : (marketSummary.loading || marketTape.loading)}
             onRefresh={() => {
+              if (scoped) { symbolFlow.refresh(); return; }
               marketSummary.refresh(); marketTape.refresh();
               marketUnusual.refresh(); marketSectors.refresh();
               marketComparison.refresh(); marketExpiries.refresh();

@@ -16,6 +16,8 @@ const OptionsFlowPage = lazy(() => import('./pages/OptionsFlowPage'));
 const VolatilityPage = lazy(() => import('./pages/VolatilityPage'));
 const ModelPerformancePage = lazy(() => import('./pages/ModelPerformancePage'));
 const PeersPage = lazy(() => import('./pages/PeersPage'));
+const DarkPoolPage = lazy(() => import('./pages/DarkPoolPage'));
+const MarketInsidersPage = lazy(() => import('./pages/MarketInsidersPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
@@ -69,7 +71,7 @@ const OPTIONS_ROUTES = [
 
 /** Sections that carry a symbol in the URL. */
 const SYMBOL_SECTIONS =
-  /^\/(earnings|options-flow|options-chain|volatility|news|ai-insights|peers)(\/|$)/;
+  /^\/(earnings|options-flow|options-chain|volatility|news|ai-insights|peers|dark-pool)(\/|$)/;
 
 /**
  * The same sections, capturing the ticker itself.
@@ -81,7 +83,7 @@ const SYMBOL_SECTIONS =
  * ticker card changed the address bar while every panel kept showing NVDA.
  */
 const SYMBOL_IN_PATH =
-  /^\/(?:earnings|options-flow|options-chain|volatility|news|ai-insights|peers)\/([A-Za-z0-9.\-]+)/;
+  /^\/(?:earnings|options-flow|options-chain|volatility|news|ai-insights|peers|dark-pool)\/([A-Za-z0-9.\-]+)/;
 
 export interface PageContext {
   symbol: string;
@@ -217,6 +219,9 @@ function Shell() {
           <Route path="/model-performance" element={<ModelPerformancePage ctx={ctx} />} />
           <Route path="/peers" element={<Navigate to={`/peers/${DEFAULT_SYMBOL}${location.search}`} replace />} />
           <Route path="/peers/:symbol" element={<PeersPage ctx={ctx} />} />
+          <Route path="/dark-pool" element={<Navigate to={`/dark-pool/${DEFAULT_SYMBOL}${location.search}`} replace />} />
+          <Route path="/dark-pool/:symbol" element={<DarkPoolPage ctx={ctx} />} />
+          <Route path="/market-insiders" element={<MarketInsidersPage ctx={ctx} />} />
           {/* The chain lives inside the options page now. Old links still
               work: they land on the same symbol's options screen. */}
           <Route path="/options-chain" element={<Navigate to={`/options-flow/${DEFAULT_SYMBOL}${location.search}`} replace />} />
