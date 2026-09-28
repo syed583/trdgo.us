@@ -724,7 +724,7 @@ def flow_market_summary() -> dict:
     """Call/put premium, net premium and sentiment across the watched tape."""
     import market_flow_service as mflow
 
-    return swr.serve("flow:summary", mflow.get_summary, 240)
+    return swr.serve("flow:summary", mflow.get_summary, market.session_ttl(240, 1800))
 
 
 @router.get("/flow/market/tape")
@@ -732,7 +732,7 @@ def flow_market_tape(limit: int = 40) -> dict:
     """The largest prints of the session across every watched ticker."""
     import market_flow_service as mflow
 
-    return swr.serve(f"flow:tape:{limit}", lambda: mflow.get_tape(limit=limit), 120)
+    return swr.serve(f"flow:tape:{limit}", lambda: mflow.get_tape(limit=limit), market.session_ttl(120, 1800))
 
 
 @router.get("/flow/market/unusual")
@@ -740,7 +740,7 @@ def flow_market_unusual(limit: int = 15) -> dict:
     """Contracts trading well above their own open interest."""
     import market_flow_service as mflow
 
-    return swr.serve(f"flow:unusual:{limit}", lambda: mflow.get_unusual(limit=limit), 240)
+    return swr.serve(f"flow:unusual:{limit}", lambda: mflow.get_unusual(limit=limit), market.session_ttl(240, 1800))
 
 
 @router.get("/flow/market/comparison")

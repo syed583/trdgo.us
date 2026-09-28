@@ -115,8 +115,22 @@ export function useApi<T>(
 
   useEffect(() => {
     if (!refreshMs || !enabled) return;
-    const id = window.setInterval(() => setTick((t) => t + 1), refreshMs);
-    return () => window.clearInterval(id);
+    // Don't poll a tab nobody is looking at: a background Options Flow page
+    // ticking every couple of minutes quietly burned the provider's request
+    // budget and tripped its rate limit. Skip ticks while hidden, and take one
+    // fresh read on the way back so the screen is current when refocused.
+    const id = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      setTick((t) => t + 1);
+    }, refreshMs);
+    const onVisible = () => {
+      if (typeof document !== 'undefined' && !document.hidden) setTick((t) => t + 1);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [refreshMs, enabled]);
 
   return { data, loading, initialLoading, error, refresh, lastUpdated };
