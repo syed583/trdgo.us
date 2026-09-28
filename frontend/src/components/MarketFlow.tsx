@@ -10,6 +10,17 @@ import { useApi } from '../hooks/useApi';
 import { Panel } from './common';
 import { compactMoney, money, num, signedPct, strike } from '../lib/format';
 
+/** A tape print's timestamp as day + clock, e.g. "Sep 28, 12:10 PM". */
+function tapeTime(iso: string | null | undefined): string {
+  if (!iso) return '--';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  return d.toLocaleString('en-US', {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  });
+}
+
+
 /**
  * Market-wide options flow: the whole watched tape rather than one symbol.
  *
@@ -293,7 +304,7 @@ export function FlowTape({
           <table className="tbl mf-tape">
             <thead>
               <tr>
-                <th>Time</th><th>Ticker</th><th>Type</th>
+                <th>Date / Time</th><th>Ticker</th><th>Type</th>
                 <th className="r">Strike</th><th>Expiry</th><th className="r">DTE</th>
                 <th className="r">Spot</th><th className="r">Bid/Ask</th>
                 <th className="r">Volume</th><th className="r">OI</th>
@@ -306,7 +317,7 @@ export function FlowTape({
                 <tr key={`${r.symbol}-${r.time}-${r.strike}-${i}`}
                   className={`clickable ${picked === r.symbol ? 'mf-picked' : ''}`}
                   onClick={() => onPick(r.symbol)}>
-                  <td className="num">{r.time}</td>
+                  <td className="num mf-time">{tapeTime(r.time)}</td>
                   <td><b className="mf-ticker">{r.symbol}</b></td>
                   <td>
                     <span className={`badge ${r.right === 'C' ? 'green' : 'red'}`}>

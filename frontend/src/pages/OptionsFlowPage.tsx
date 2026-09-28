@@ -105,7 +105,7 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
     { refreshMs: 120000 });
   const marketUnusual = useApi<any>(
     (s) => (mode === 'market' && !demo
-      ? api2.flowMarketUnusual(15, s) : Promise.resolve(null)), [mode, demo]);
+      ? api2.flowMarketUnusual(50, s) : Promise.resolve(null)), [mode, demo]);
   const marketSectors = useApi<any>(
     (s) => (mode === 'market' && !demo
       ? api2.flowMarketSectors(s) : Promise.resolve(null)), [mode, demo]);
