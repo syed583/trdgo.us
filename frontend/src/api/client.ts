@@ -569,6 +569,8 @@ export const api2 = {
     request<any>(`/api/calls/history?limit=${limit}`, s),
   paramEdge: (horizon = 5, s?: AbortSignal) =>
     request<any>(`/api/snapshots/evaluate?horizon=${horizon}`, s),
+  peers: (symbol: string, s?: AbortSignal) =>
+    request<any>(`/api/peers/${encodeURIComponent(symbol)}`, s),
   directional: (symbol: string, horizon?: string, s?: AbortSignal) =>
     request<any>(`/api/directional/${encodeURIComponent(symbol)}`
       + (horizon ? `?horizon=${encodeURIComponent(horizon)}` : ''), s),

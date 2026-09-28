@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom';
 import {
   Activity, BarChart3, Brain, CalendarDays, LineChart, Users,
   LayoutDashboard, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
-  Settings, Sparkles, Star, Target, TrendingUp, X,
+  Scale, Settings, Sparkles, Star, Target, TrendingUp, X,
 } from 'lucide-react';
 import { BrandLockup, BRAND_QUOTE_EARNINGS } from './Brand';
 
@@ -31,6 +31,7 @@ const NAV: NavEntry[] = [
   { to: '/dashboard', label: 'Overview', icon: <LayoutDashboard size={S} /> },
   { to: '/earnings-calendar', label: 'Earnings Calendar', icon: <CalendarDays size={S} /> },
   { to: '/earnings', label: 'Earnings Analysis', icon: <BarChart3 size={S} /> },
+  { to: '/peers', label: 'Peer Comparison', icon: <Scale size={S} /> },
   { to: '/options-flow', label: 'Options', icon: <Activity size={S} /> },
   { to: '/volatility', label: 'Volatility', icon: <LineChart size={S} /> },
   { to: '/market', label: 'Market Overview', icon: <TrendingUp size={S} /> },

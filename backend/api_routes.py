@@ -341,6 +341,14 @@ def providers(request: Request) -> dict:
     return {"providers": matrix, "status": "OK"}
 
 
+@router.get("/peers/{symbol}")
+def peers(symbol: str) -> dict:
+    """A stock vs its sector peers: score, move, IV rank, relative strength."""
+    sym = validate.clean_symbol(symbol)
+    import peers_service
+    return swr.serve(f"peers:{sym}", lambda: peers_service.get_peers(sym), 120)
+
+
 @router.get("/directional/{symbol}")
 def directional(symbol: str, horizon: Optional[str] = None) -> dict:
     """

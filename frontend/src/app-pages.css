@@ -573,3 +573,21 @@ a.index-card { color: inherit; }
 .mp-term { display: flex; flex-direction: column; gap: 3px; padding-top: 10px; }
 .mp-term b { font-size: 12.5px; color: var(--text); }
 .mp-term span { font-size: 12px; line-height: 1.5; color: var(--text-dim); }
+
+/* Peer comparison page */
+.pr-summary { padding: 12px 14px; font-size: 13px; color: var(--text-dim); }
+.pr-summary b { color: var(--text); }
+.pr-rank { color: var(--blue); font-weight: 700; }
+.pr-spy { color: var(--text-mute); }
+.pr-name { font-size: 11px; color: var(--text-mute); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; max-width: 160px; }
+.pr-you { font-style: normal; font-size: 10px; font-weight: 700; color: var(--blue);
+  background: var(--blue-bg, rgba(59,130,246,.12)); padding: 1px 5px; border-radius: 5px; }
+.pr-subject { background: var(--blue-bg, rgba(59,130,246,.08)); }
+.pr-subject:hover { background: var(--blue-bg, rgba(59,130,246,.14)); }
+.pr-cell { display: flex; align-items: center; gap: 8px; }
+.pr-bar { position: relative; flex: 1; min-width: 60px; height: 7px; border-radius: 4px;
+  background: var(--panel-2, rgba(127,127,127,.14)); overflow: hidden; }
+.pr-bar-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
+.pr-bar-mid { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px;
+  background: var(--text-mute); opacity: .5; }
