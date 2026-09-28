@@ -20,6 +20,8 @@ change of source rather than a rewrite of the pages above it.
 
 from __future__ import annotations
 
+import re
+
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -346,25 +348,52 @@ def _negative(recommendation) -> bool:
 # Words that carry a direction in a headline. Deliberately small: this is a
 # keyword estimate and is labelled as one, never as a provider's sentiment
 # model, because the difference matters to anyone reading the number.
-_POSITIVE = ("beats", "beat", "raises", "raised", "upgrade", "upgrades",
-             "surges", "soars", "jumps", "record", "wins", "approval",
-             "outperform", "rally", "strong", "tops", "boosts", "gains",
-             "climbs", "rises", "higher", "buyback", "repurchase", "dividend "
-             "increase", "expands", "partnership", "launches", "secures",
-             "deal", "acquires", "growth", "profit", "bullish", "optimistic",
-             "hikes", "accelerates", "breakthrough", "demand")
-_NEGATIVE = ("misses", "miss", "cuts", "cut", "downgrade", "downgrades",
-             "falls", "plunges", "sinks", "probe", "lawsuit", "recall",
-             "warns", "weak", "halts", "delays", "slumps", "drops", "lower",
-             "loss", "losses", "layoffs", "investigation", "subpoena",
-             "fraud", "bearish", "slowdown", "shortfall", "bankruptcy",
-             "resigns", "steps down", "blocked", "banned", "fine", "tumbles")
-
+_POSITIVE = (
+    "beats", "beat", "raises", "raised", "raise", "upgrade", "upgrades",
+    "upgraded", "surges", "surge", "soars", "soar", "jumps", "jump", "record",
+    "records", "wins", "win", "won", "approval", "approves", "approved",
+    "outperform", "outperforms", "rally", "rallies", "strong", "strength",
+    "tops", "top", "boosts", "boost", "gains", "gain", "gained", "climbs",
+    "climb", "rises", "rise", "rose", "higher", "buyback", "buybacks",
+    "repurchase", "dividend", "increase", "increases", "increased", "expands",
+    "expand", "expansion", "partnership", "partner", "launches", "launch",
+    "secures", "secure", "deal", "deals", "acquires", "acquire",
+    "acquisition", "growth", "grows", "grew", "profit", "profits",
+    "profitable", "bullish", "optimistic", "hikes", "hike", "accelerates",
+    "accelerate", "breakthrough", "demand", "beat", "positive", "gains",
+    "upbeat", "rebound", "rebounds", "recovery", "recovers", "milestone",
+    "award", "awarded", "contract", "orders", "backlog", "guidance",
+    "raises guidance", "buy", "overweight", "outperform", "bull", "topped",
+    "exceeds", "exceed", "exceeded", "beats estimates", "upside", "soaring",
+    "jumping", "soared", "climbing", "rising", "surging", "highs", "high",
+    "all-time", "leads", "leap", "leaps", "advances", "advance", "up",
+)
+_NEGATIVE = (
+    "misses", "miss", "missed", "cuts", "cut", "downgrade", "downgrades",
+    "downgraded", "falls", "fall", "fell", "plunges", "plunge", "sinks",
+    "sink", "sank", "probe", "lawsuit", "lawsuits", "recall", "recalls",
+    "warns", "warn", "warning", "weak", "weakness", "halts", "halt", "delays",
+    "delay", "delayed", "slumps", "slump", "drops", "drop", "dropped",
+    "lower", "loss", "losses", "layoffs", "layoff", "investigation",
+    "investigates", "subpoena", "fraud", "bearish", "slowdown", "shortfall",
+    "bankruptcy", "resigns", "resign", "steps down", "blocked", "block",
+    "banned", "ban", "fine", "fined", "tumbles", "tumble", "slides", "slide",
+    "slid", "sells off", "selloff", "sell-off", "crash", "crashes", "worse",
+    "concerns", "concern", "risk", "risks", "underperform", "sell", "bear",
+    "declines", "decline", "declined", "sued", "sues", "penalty", "penalties",
+    "default", "defaults", "cutting", "cutbacks", "disappoints",
+    "disappointing", "disappoint", "sinking", "plunging", "falling", "lows",
+    "low", "slashes", "slash", "slashed", "curbs", "curb", "scandal", "down",
+)
 
 def _tone(headline: str) -> tuple[Optional[float], str]:
     text = (headline or "").lower()
-    up = sum(1 for word in _POSITIVE if word in text)
-    down = sum(1 for word in _NEGATIVE if word in text)
+    # Whole-word matching, not substring: "ban" must not fire on "bank", nor
+    # "up" on "startup". Single words are checked against the tokenised
+    # headline; multi-word cues ("steps down") are matched as a phrase.
+    tokens = set(re.findall(r"[a-z][a-z'-]+", text))
+    up = sum(1 for w in _POSITIVE if (w in text if " " in w else w in tokens))
+    down = sum(1 for w in _NEGATIVE if (w in text if " " in w else w in tokens))
     # Lowercase buckets, matching news_desk_service, the sentiment counters and
     # the frontend filter -- which all compare against "positive"/"negative"/
     # "neutral"/"unscored". Returning uppercase here silently broke the Positive/

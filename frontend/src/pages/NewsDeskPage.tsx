@@ -22,7 +22,7 @@ import { ErrorState, Loading } from './shared';
  * a reader would otherwise assume completeness.
  */
 
-const FILTERS = ['All', 'Positive', 'Neutral', 'Negative'] as const;
+const FILTERS = ['All', 'Positive', 'Neutral', 'Negative', 'No score'] as const;
 type Filter = typeof FILTERS[number];
 
 /** A half-dial for the aggregate sentiment reading. */
@@ -89,7 +89,10 @@ export default function NewsDeskPage({ ctx }: { ctx: PageContext }) {
 
   const articles = useMemo(() => {
     let rows: any[] = d?.articles || [];
-    if (filter !== 'All') rows = rows.filter((a) => a.sentiment === filter.toLowerCase());
+    if (filter !== 'All') {
+      const want = filter === 'No score' ? 'unscored' : filter.toLowerCase();
+      rows = rows.filter((a) => (a.sentiment || 'unscored') === want);
+    }
     const needle = query.trim().toLowerCase();
     if (needle) {
       rows = rows.filter((a) => (
