@@ -35,14 +35,14 @@ const TERMS: { term: string; body: string }[] = [
     body: 'How much a stock moves, not which way. High volatility means big swings up or down; low means it drifts.' },
   { term: 'Implied Volatility (IV)',
     body: 'The movement the options market is pricing in for the future. It is baked into option prices — higher IV means options are more expensive because bigger moves are expected.' },
-  { term: 'Realized Volatility (RV)',
+  { term: 'Volatility of Stock',
     body: 'How much the stock has actually moved recently. This is history, measured from real price changes.' },
-  { term: 'IV vs RV',
-    body: 'The heart of it. When IV sits above RV, options are “rich” — the market is charging for more movement than the stock has delivered, which tends to favour option sellers. When IV is below RV, options look cheap.' },
+  { term: 'IV vs Volatility of Stock',
+    body: 'The heart of it. When IV sits above the stock’s own volatility, options are “rich” — the market is charging for more movement than the stock has delivered, which tends to favour option sellers. When IV is below it, options look cheap.' },
   { term: 'IV Rank',
     body: 'Where today’s IV sits against its own past year, 0 to 100. IV Rank 80 means IV is near its yearly high; 20 means near its low. It answers “is this stock’s IV high for it?”, which a raw IV number cannot.' },
   { term: 'Variance Risk Premium (VRP)',
-    body: 'IV minus RV. A positive VRP is the cushion option sellers are paid for taking on risk; a negative one means realized movement is outrunning what options priced.' },
+    body: 'IV minus the stock’s own volatility. A positive VRP is the cushion option sellers are paid for taking on risk; a negative one means the stock’s real movement is outrunning what options priced.' },
   { term: 'Implied Move',
     body: 'The ± dollar and percent move the options market expects by a given expiry. ±0.91% ($3.05) means options are pricing roughly a three-dollar swing by that date, in either direction.' },
   { term: 'Term Structure',
@@ -160,20 +160,20 @@ export default function VolatilityPage({ ctx }: { ctx: PageContext }) {
                   <div className="vol-stats">
                     <Stat label="IV Rank" value={ws.iv_rank != null ? ws.iv_rank.toFixed(1) : '--'} />
                     <Stat label="Implied Volatility" value={pct(ws.iv)} />
-                    <Stat label="Realized Volatility" value={pct(ws.rv)} />
+                    <Stat label="Volatility of Stock" value={pct(ws.rv)} />
                     <Stat label="Variance Risk Premium"
                       value={pct(ws.vrp)}
                       tone={(ws.vrp ?? 0) > 0 ? 'up' : (ws.vrp ?? 0) < 0 ? 'down' : undefined} />
                     <Stat label="Implied Move (front)"
-                      value={d.stats.implied_move_pct != null
+                      value={d.stats?.implied_move_pct != null
                         ? `±${d.stats.implied_move_pct.toFixed(2)}%${
                           d.stats.implied_move_dollars != null
                             ? ` ($${d.stats.implied_move_dollars.toFixed(2)})` : ''}`
                         : '--'} />
                     <Stat label={`IV ${hiLoLabel} High`} value={pct(ws.iv_high)} />
                     <Stat label={`IV ${hiLoLabel} Low`} value={pct(ws.iv_low)} />
-                    <Stat label={`RV ${hiLoLabel} High`} value={pct(ws.rv_high)} />
-                    <Stat label={`RV ${hiLoLabel} Low`} value={pct(ws.rv_low)} />
+                    <Stat label={`Vol of Stock ${hiLoLabel} High`} value={pct(ws.rv_high)} />
+                    <Stat label={`Vol of Stock ${hiLoLabel} Low`} value={pct(ws.rv_low)} />
                   </div>
                 </Panel>
 
@@ -186,7 +186,7 @@ export default function VolatilityPage({ ctx }: { ctx: PageContext }) {
                             {m.days === 1 ? '1 day' : `${m.days} days`}
                           </span>
                           <span className="vol-near-v">
-                            ±{m.move_pct.toFixed(2)}%
+                            {m.move_pct != null ? `±${m.move_pct.toFixed(2)}%` : '--'}
                           </span>
                           {m.move_dollars != null && (
                             <span className="vol-near-d">±${m.move_dollars.toFixed(2)}</span>
@@ -202,7 +202,7 @@ export default function VolatilityPage({ ctx }: { ctx: PageContext }) {
                 )}
 
                 <div className="two-col">
-                  <Panel title="IV vs Realized Vol & IV Rank">
+                  <Panel title="IV vs Volatility of Stock & IV Rank">
                     {ivrv.length ? (
                       <ResponsiveContainer width="100%" height={300}>
                         <ComposedChart data={ivrv}
@@ -219,7 +219,7 @@ export default function VolatilityPage({ ctx }: { ctx: PageContext }) {
                             formatter={(v: any, n: any) => [n === 'IV Rank' ? Number(v).toFixed(1) : `${Number(v).toFixed(1)}%`, n]} />
                           <Line yAxisId="v" dataKey="iv" name="Implied Vol" stroke={IV}
                             dot={false} strokeWidth={1.6} isAnimationActive={false} connectNulls />
-                          <Line yAxisId="v" dataKey="rv" name="Realized Vol" stroke={RV}
+                          <Line yAxisId="v" dataKey="rv" name="Volatility of Stock" stroke={RV}
                             dot={false} strokeWidth={1.6} isAnimationActive={false} connectNulls />
                           <Line yAxisId="r" dataKey="iv_rank" name="IV Rank" stroke={RANK}
                             dot={false} strokeWidth={1.2} strokeDasharray="3 3"
@@ -229,7 +229,7 @@ export default function VolatilityPage({ ctx }: { ctx: PageContext }) {
                     ) : <Unavailable status="NO_DATA" compact />}
                     <div className="vol-legend">
                       <span><i style={{ background: IV }} /> Implied Vol</span>
-                      <span><i style={{ background: RV }} /> Realized Vol</span>
+                      <span><i style={{ background: RV }} /> Volatility of Stock</span>
                       <span><i style={{ background: RANK }} /> IV Rank (right)</span>
                     </div>
                   </Panel>
