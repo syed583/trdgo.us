@@ -3,18 +3,20 @@
    ========================================================================== */
 
 :root {
-  --bg: #070b14;
-  --bg-2: #0a0f1c;
-  --sidebar: #0a0f1b;
-  --panel: #0d1424;
-  --panel-2: #111a2c;
-  --panel-3: #162034;
-  --border: #1b2438;
-  --border-2: #232f49;
+  /* Neutral black/charcoal to match the Trdgo.us logo's plate (not the old
+     navy). Kept just off pure black so panels lift off the page by tone. */
+  --bg: #0b0c0e;
+  --bg-2: #101114;
+  --sidebar: #0e0f12;
+  --panel: #16171b;
+  --panel-2: #1d1e23;
+  --panel-3: #24262c;
+  --border: #2a2c33;
+  --border-2: #35373f;
 
-  --text: #e6ebf5;
-  --text-dim: #8892a8;
-  --text-mute: #5b6580;
+  --text: #ededf0;
+  --text-dim: #9a9ca4;
+  --text-mute: #696b74;
 
   --green: #21d07a;
   --green-2: #17b76a;
@@ -58,18 +60,20 @@
    -------------------------------------------------------------------------- */
 
 :root[data-theme="light"] {
-  --bg: #f4f6fa;
+  /* Clean neutral white/grey to match the logo's white field and near-black
+     wordmark (the old tokens carried a faint blue tint). */
+  --bg: #f5f5f4;
   --bg-2: #ffffff;
   --sidebar: #ffffff;
   --panel: #ffffff;
-  --panel-2: #eef1f7;
-  --panel-3: #e4e9f2;
-  --border: #dde3ed;
-  --border-2: #c8d1e0;
+  --panel-2: #f0f0ee;
+  --panel-3: #e6e6e3;
+  --border: #e2e2de;
+  --border-2: #d0d0cb;
 
-  --text: #101725;
-  --text-dim: #5a6478;
-  --text-mute: #8a93a6;
+  --text: #17181b;
+  --text-dim: #5f6067;
+  --text-mute: #8a8b91;
 
   --green: #0f9d58;
   --green-2: #0c8148;
