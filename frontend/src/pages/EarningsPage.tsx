@@ -996,7 +996,7 @@ function ActionPlanPanel({
   const decision = String(final.decision || 'WAIT').replace(/_/g, ' ');
 
   return (
-    <Panel title="Tradgo.US Action Plan" icon={<Target size={12} />} noBody className="action-panel">
+    <Panel title="Trdgo.us Action Plan" icon={<Target size={12} />} noBody className="action-panel">
       <div className="action-body">
         <div className="action-icon"><Target size={15} /></div>
         <div className="action-line">

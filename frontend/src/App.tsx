@@ -267,7 +267,7 @@ function NotFound() {
   return (
     <div className="soon">
       <h2>Page not found</h2>
-      <p>That route does not exist in Tradgo.US.</p>
+      <p>That route does not exist in Trdgo.us.</p>
       <button className="ghost-btn" onClick={() => navigate('/dashboard')}>
         Back to dashboard
       </button>

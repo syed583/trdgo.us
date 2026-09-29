@@ -172,7 +172,7 @@ export default function Sidebar({
         {!collapsed && (
           <div className="sidebar-quote">
             {BRAND_QUOTE_EARNINGS}
-            <b>— Tradgo.US</b>
+            <b>— Trdgo.us</b>
           </div>
         )}
       </div>

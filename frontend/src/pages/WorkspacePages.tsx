@@ -27,7 +27,7 @@ export function AlertsPage({ ctx }: { ctx: PageContext }) {
   const evaluated = useApi<any>((s) => api2.alertsEvaluate(s), []);
   const rows: any[] = evaluated.data?.rows || [];
   const kinds: Record<string, string> = evaluated.data?.kinds || {
-    PRICE: 'Last price', SCORE: 'Tradgo.US direction score',
+    PRICE: 'Last price', SCORE: 'Trdgo.us direction score',
     CONFIDENCE: 'Confidence score', EXPECTED_MOVE: 'Expected move %',
     CHANGE_PERCENT: 'Daily change %',
   };
@@ -362,7 +362,7 @@ export function StrategyPage({ ctx }: { ctx: PageContext }) {
     <div className="page">
       <PageHead
         title="Strategy"
-        subtitle="Personal Tradgo.US configuration. Editing these values changes your gates and risk settings — it cannot place an order."
+        subtitle="Personal Trdgo.us configuration. Editing these values changes your gates and risk settings — it cannot place an order."
         right={
           <div style={{ display: 'flex', gap: 6 }}>
             <button className="ghost-btn" disabled={!dirty || saving} onClick={save}>
@@ -730,7 +730,7 @@ export function CommunityPage({ ctx }: { ctx: PageContext }) {
           <Users size={30} />
           <span className="state-title">Not part of the personal edition</span>
           <span style={{ maxWidth: 480 }}>
-            Tradgo.US is currently a single-operator tool. Shared watchlists,
+            Trdgo.us is currently a single-operator tool. Shared watchlists,
             published setups and discussion would need accounts, moderation and
             hosting, none of which exist yet — so rather than ship a hollow
             page, this section is explicitly deferred.

@@ -1,5 +1,5 @@
 /**
- * Typed client for the Tradgo.US backend.
+ * Typed client for the Trdgo.us backend.
  *
  * Every payload carries `status` and `source`. `status !== 'OK'` means the
  * provider could not supply the data - the UI shows that state rather than a
@@ -420,7 +420,7 @@ async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
   } catch (err) {
     if ((err as Error).name === 'AbortError') throw err;
     throw new ApiError(
-      `Cannot reach the Tradgo.US backend at ${API_BASE_URL}. Is it running?`,
+      `Cannot reach the Trdgo.us backend at ${API_BASE_URL}. Is it running?`,
     );
   }
 
