@@ -22,6 +22,11 @@ from typing import Any, Callable
 
 import singleflight
 
+try:
+    import db_cache
+except Exception:  # noqa: BLE001 - the DB tier is optional; SWR works without it
+    db_cache = None  # type: ignore
+
 # How long a first-ever request waits before giving up on the build. The work
 # carries on, so the next request finds it finished.
 FIRST_WAIT = 90.0
@@ -41,6 +46,13 @@ def _run(key: str, fn: Callable[[], Any]) -> Any:
     value = fn()
     with _lock:
         _values[key] = (time.time(), value)
+    # Persist good answers to the shared DB tier so a restart -- or the other
+    # server -- can serve this without paying the provider again.
+    if db_cache is not None:
+        try:
+            db_cache.put(key, value)
+        except Exception:  # noqa: BLE001 - persistence is best-effort
+            pass
     return value
 
 
@@ -118,6 +130,23 @@ def serve(key: str, fn: Callable[[], Any], fresh_for: float) -> Any:
         if now - at >= fresh_for:
             _refresh(key)
         return value
+
+    # Cold in this process: before paying the provider, look in the shared DB
+    # tier. After a restart (or on the second server), the last good answer is
+    # usually there -- serve it at once and only refresh in the background if it
+    # has gone stale, instead of blocking on an upstream build.
+    if db_cache is not None:
+        try:
+            stored = db_cache.get(key)
+        except Exception:  # noqa: BLE001
+            stored = None
+        if stored is not None:
+            at, value = stored
+            with _lock:
+                _values[key] = (at, value)
+            if now - at >= fresh_for:
+                _refresh(key)
+            return value
 
     value, done = singleflight.call(f"swr:{key}", lambda: _run(key, fn), FIRST_WAIT)
     if done and value is not None:
