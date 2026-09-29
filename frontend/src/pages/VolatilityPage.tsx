@@ -81,7 +81,6 @@ const RANGES: { key: string; label: string; days: number }[] = [
   { key: '3M', label: '3 Months', days: 93 },
   { key: '6M', label: '6 Months', days: 186 },
   { key: '1Y', label: '1 Year', days: 366 },
-  { key: 'ALL', label: 'All', days: 100000 },
 ];
 
 function sliceByRange(series: any[] | undefined, days: number): any[] {
