@@ -74,7 +74,7 @@ TIMEOUT = 30.0
 # which the score warmers + per-symbol screens (peers, dark pool, flow) burn
 # through faster than the old cap allowed. The burst/concurrency guards still
 # prevent 429s; this only bounds a runaway.
-APP_DAILY_BUDGET = 60000
+APP_DAILY_BUDGET = 78000
 
 # How long an answer stays good. Split by how fast the underlying thing
 # actually moves rather than by how fast we could ask again.
@@ -249,7 +249,15 @@ def configured() -> bool:
 
 
 def _today() -> str:
-    return time.strftime("%Y-%m-%d")
+    # US-Eastern date: the provider's daily quota resets on the ET calendar, so
+    # the app's own counter must roll over on the same day boundary rather than
+    # the server's local one (which can be hours off).
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+    except Exception:  # noqa: BLE001 - fall back to local time if tz data missing
+        return time.strftime("%Y-%m-%d")
 
 
 def _seconds(value) -> Optional[int]:
