@@ -132,9 +132,16 @@ def serve(key: str, fn: Callable[[], Any], fresh_for: float) -> Any:
         return value
 
     # Cold in this process: before paying the provider, look in the shared DB
-    # tier. After a restart (or on the second server), the last good answer is
-    # usually there -- serve it at once and only refresh in the background if it
-    # has gone stale, instead of blocking on an upstream build.
+    # tier. After a restart (or on the second server) the last good answer is
+    # usually there.
+    #
+    # But only serve it *instantly* when it is still within its freshness
+    # window. A stale DB copy is NOT served as-is: a live buy/sell signal
+    # checked while the market is open must not be answered from an old snapshot
+    # (e.g. one left in the DB from before a restart). When the copy is stale we
+    # build fresh -- hitting the provider -- and only fall back to the stale copy
+    # if that build cannot finish in time, which still beats a blank screen.
+    stored_stale: Any = None
     if db_cache is not None:
         try:
             stored = db_cache.get(key)
@@ -142,15 +149,19 @@ def serve(key: str, fn: Callable[[], Any], fresh_for: float) -> Any:
             stored = None
         if stored is not None:
             at, value = stored
-            with _lock:
-                _values[key] = (at, value)
-            if now - at >= fresh_for:
-                _refresh(key)
-            return value
+            if now - at < fresh_for:
+                # Genuinely fresh: serve without paying the provider.
+                with _lock:
+                    _values[key] = (at, value)
+                return value
+            # Stale: keep it only as a last-resort fallback below.
+            stored_stale = value
 
     value, done = singleflight.call(f"swr:{key}", lambda: _run(key, fn), FIRST_WAIT)
     if done and value is not None:
         return value
+    if stored_stale is not None:
+        return stored_stale
     return {"status": "LOADING", "detail": "Still building; try again shortly."}
 
 
