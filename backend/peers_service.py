@@ -14,6 +14,7 @@ from the board and strip.
 from __future__ import annotations
 
 import math
+import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
@@ -273,6 +274,23 @@ def get_peers(symbol: str) -> dict:
 
     all_syms = [symbol] + peers
 
+    # Real company names for every row in one batch (SEC-backed, cached), so the
+    # table shows "Goldman Sachs" rather than repeating the ticker as its name.
+    names: dict[str, str] = {}
+    try:
+        import company_profile_service as cp
+        profs = cp.get_profiles(all_syms) or {}
+        names = {k: (v.get("company_name") or "") for k, v in profs.items()}
+    except Exception:  # noqa: BLE001 - fall back to the ticker if EDGAR is quiet
+        names = {}
+
+    def _label(sym: str) -> str:
+        raw = names.get(sym) or _name(sym) or sym
+        # SEC names carry a state-of-incorporation tail like " /DE/" or "\MN\";
+        # trim it so the table reads "Wells Fargo & Company", not "…/MN".
+        cleaned = re.sub(r"\s*[\\/][A-Z]{2}[\\/]?\s*$", "", raw).strip()
+        return cleaned or raw
+
     # SPY baseline for relative strength, fetched once.
     try:
         spy_bars = market.get_chart("SPY", "3M").get("bars") or []
@@ -297,7 +315,7 @@ def get_peers(symbol: str) -> dict:
             rs = None
         return {
             "symbol": sym,
-            "name": _name(sym) or sym,
+            "name": _label(sym),
             "is_subject": sym == symbol,
             "score": _score(sym),
             "price": q.get("price"),
