@@ -360,10 +360,13 @@ def directional(symbol: str, horizon: Optional[str] = None) -> dict:
     """
     import directional_score_service as ds
 
-    # SWR the base read so the panel never blocks on the periodic recompute; the
-    # horizon transform below is cheap and applied to whatever it serves.
+    # Read the model's own shared cache directly rather than through a second SWR
+    # layer. The Analysis (Insights) page also calls get_directional_score, which
+    # caches under "directional:{sym}"; a separate "dir:{sym}" SWR copy here held
+    # a snapshot from a different moment, so the two screens showed different
+    # scores/decisions for the same stock. One cache = one number on both pages.
     sym = symbol.upper()
-    base = swr.serve(f"dir:{sym}", lambda: ds.get_directional_score(sym), 120)
+    base = ds.get_directional_score(sym)
     if base.get("status") == "UNKNOWN_SYMBOL":
         return base
     h = (horizon or "").upper()
