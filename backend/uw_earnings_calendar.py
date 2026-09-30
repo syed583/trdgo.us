@@ -127,9 +127,24 @@ def _for_date(when: str) -> list[dict]:
                          ttl=TTL_SETTLED if settled else TTL_LIVE)
         if out["status"] != "OK":
             continue
-        rows.extend(_row(r, when) for r in uw._rows(out)
-                    if str(r.get("country_code") or "US") == "US")
+        rows.extend(_row(r, when) for r in uw._rows(out) if _us_listed(r))
     return rows
+
+
+def _us_listed(r: dict) -> bool:
+    """
+    Whether a reporting company belongs on the US earnings calendar.
+
+    ``country_code`` is the country of *incorporation*, not of listing -- so a
+    US-listed name incorporated abroad (Accenture is Irish, and many S&P 500
+    members are) was wrongly dropped by a plain country_code == "US" test. Keep
+    US-incorporated names, and also any name that is in the S&P 500 or carries
+    US-listed options, which a foreign-exchange-only company does not.
+    """
+    cc = str(r.get("country_code") or "US").upper()
+    if cc == "US":
+        return True
+    return bool(r.get("is_s_p_500") or r.get("has_options"))
 
 
 def calendar(start: Optional[str] = None, end: Optional[str] = None,
