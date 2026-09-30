@@ -87,6 +87,71 @@ def _peer_group(symbol: str) -> Optional[tuple[str, list[str]]]:
     return name, members
 
 
+# Map an SEC industry/sector description (SIC text) to one of the curated peer
+# groups above, by keyword. This lets a stock outside the curated lists -- a
+# small or newly-listed name -- still line up against the large-cap group in its
+# real industry (a small chipmaker vs the big chipmakers) instead of falling
+# back to the mega-cap default. Order matters: the first keyword found wins, so
+# the more specific terms come first.
+_INDUSTRY_KEYWORDS: list[tuple[str, str]] = [
+    ("semiconductor", "Semiconductors"),
+    ("software", "Software & Internet"),
+    ("internet", "Software & Internet"),
+    ("computer", "Software & Internet"),
+    ("data processing", "Software & Internet"),
+    ("information technolog", "Software & Internet"),
+    ("motor vehicle", "Autos & EV"),
+    ("auto", "Autos & EV"),
+    ("bank", "Banks"),
+    ("finance", "Banks"),
+    ("insurance", "Banks"),
+    ("pharmaceutic", "Pharma & Health"),
+    ("biolog", "Pharma & Health"),
+    ("medic", "Pharma & Health"),
+    ("health", "Pharma & Health"),
+    ("drug", "Pharma & Health"),
+    ("petroleum", "Energy"),
+    ("oil", "Energy"),
+    ("gas", "Energy"),
+    ("energy", "Energy"),
+    ("apparel", "Apparel & Footwear"),
+    ("footwear", "Apparel & Footwear"),
+    ("shoe", "Apparel & Footwear"),
+    ("retail", "Retail Staples"),
+    ("grocery", "Retail Staples"),
+    ("food", "Retail Staples"),
+    ("media", "Streaming & Media"),
+    ("broadcast", "Streaming & Media"),
+    ("entertainment", "Streaming & Media"),
+    ("electronic", "Consumer Electronics"),
+]
+
+
+def _group_from_industry(symbol: str) -> Optional[tuple[str, list[str], str]]:
+    """
+    Route an uncurated symbol to a peer group by its SEC industry.
+
+    Returns (group_name, peer_members, industry_label) or None when the industry
+    is unknown or maps to no curated group -- in which case the caller says so
+    rather than inventing peers.
+    """
+    try:
+        import company_profile_service as cp
+        prof = (cp.get_profiles([symbol]) or {}).get(symbol) or {}
+    except Exception:  # noqa: BLE001
+        prof = {}
+    industry = (prof.get("industry") or "")
+    sector = (prof.get("sector") or "")
+    hay = f"{industry} {sector}".lower()
+    if not hay.strip():
+        return None
+    for keyword, group in _INDUSTRY_KEYWORDS:
+        if keyword in hay:
+            members = [x for x in PEER_GROUPS[group] if x != symbol]
+            return group, members[:MAX_PEERS], (industry or sector)
+    return None
+
+
 def _sector(symbol: str) -> Optional[str]:
     if symbol in SECTOR_MAP:
         return SECTOR_MAP[symbol]
@@ -168,20 +233,43 @@ def get_peers(symbol: str) -> dict:
     # 1) Curated industry group -- the real competitor set (autos vs autos),
     #    even for peers outside the scored universe.
     grp = _peer_group(symbol)
+    industry_note = None
     if grp:
         sector, peers = grp[0], grp[1][:MAX_PEERS]
     else:
-        # 2) Fall back to the GICS sector over the scored universe, then to the
-        #    universe at large when the sector is unknown or too thin.
-        sector = _sector(symbol)
-        pool = [s for s in UNIVERSE if s != symbol]
-        if sector:
-            db_sec = _sectors_for(pool)
-            same = [s for s in pool
-                    if (SECTOR_MAP.get(s) or db_sec.get(s)) == sector]
-            peers = same[:MAX_PEERS] if len(same) >= 2 else pool[:MAX_PEERS]
+        # 2) Not curated: route by the stock's real SEC industry to the matching
+        #    large-cap group (a small chipmaker against the big chipmakers).
+        by_ind = _group_from_industry(symbol)
+        if by_ind:
+            sector, peers, industry = by_ind
+            industry_note = industry
         else:
-            peers = pool[:MAX_PEERS]
+            # 3) Last resort: the GICS sector over the scored universe. Only used
+            #    when it yields a real peer set -- we do NOT dump an unclassified
+            #    stock into the mega-cap default, which compared, say, a small
+            #    fintech against Apple and Nvidia.
+            sector = _sector(symbol)
+            pool = [s for s in UNIVERSE if s != symbol]
+            same = []
+            if sector:
+                db_sec = _sectors_for(pool)
+                same = [s for s in pool
+                        if (SECTOR_MAP.get(s) or db_sec.get(s)) == sector]
+            if len(same) >= 2:
+                peers = same[:MAX_PEERS]
+            else:
+                # Nothing sensible to compare against -- say so plainly rather
+                # than inventing an unrelated peer group.
+                return {
+                    "status": "NO_PEER_GROUP",
+                    "symbol": symbol,
+                    "sector": sector or "Unclassified",
+                    "rows": [],
+                    "detail": (
+                        f"No peer group is configured for {symbol}. Peer "
+                        "comparison covers large-cap names by industry, and this "
+                        "stock does not map to a tracked group yet."),
+                }
 
     all_syms = [symbol] + peers
 
@@ -239,8 +327,12 @@ def get_peers(symbol: str) -> dict:
         "of": len(rows),
         "spy_return_1m_pct": round(spy_ret, 2) if spy_ret is not None else None,
         "rows": rows,
-        "detail": ("Peers are the scored-universe names in the same sector. "
-                   "Score is the directional read (0-100); RS is relative "
-                   "strength vs SPY over ~1 month; IV rank is where implied "
-                   "vol sits in its own year."),
+        "detail": (
+            (f"{symbol} maps to no curated group, so it is compared against the "
+             f"large-cap {sector} names by its industry ({industry_note}). "
+             if industry_note else
+             "Peers are the tracked large-cap names in the same group. ")
+            + "Score is the directional read (0-100); RS is relative strength vs "
+              "SPY over ~1 month; IV rank is where implied vol sits in its own "
+              "year."),
     }
