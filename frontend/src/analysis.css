@@ -598,3 +598,7 @@
   border: 1px solid var(--border);
   white-space: nowrap;
 }
+
+/* Clickable parameter rows in the Category Breakdown (open the "why" drawer). */
+.ac-part-click { cursor: pointer; border-radius: 4px; }
+.ac-part-click:hover { background: var(--panel-2); }

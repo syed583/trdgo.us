@@ -15,8 +15,8 @@ const GREEN = '#21d07a';
 const RED = '#f2465a';
 const AMBER = '#f5a524';
 
-export default function CategoryBreakdown({ categories, signals }: {
-  categories?: any[]; signals?: any[];
+export default function CategoryBreakdown({ categories, signals, onSelect }: {
+  categories?: any[]; signals?: any[]; onSelect?: (signal: any) => void;
 }) {
   if (!categories?.length) return null;
   const byName: Record<string, any> = Object.fromEntries(
@@ -77,7 +77,14 @@ export default function CategoryBreakdown({ categories, signals }: {
                   .filter((s: any) => (s.weight || 0) > 0)
                   .sort((a: any, b: any) => (b.weight || 0) - (a.weight || 0))
                   .map((s: any) => (
-                    <div className="ac-part" key={s.name}>
+                    <div
+                      className={`ac-part ${onSelect ? 'ac-part-click' : ''}`}
+                      key={s.name}
+                      role={onSelect ? 'button' : undefined}
+                      tabIndex={onSelect ? 0 : undefined}
+                      onClick={onSelect ? () => onSelect(s) : undefined}
+                      title={onSelect ? 'Show why this parameter scored this way' : undefined}
+                    >
                       <span>{s.label}<em>{s.weight}pt</em></span>
                       <b className={!s.available ? 'dim'
                         : (s.points || 0) > 0 ? 'pos'

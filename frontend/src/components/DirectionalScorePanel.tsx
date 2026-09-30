@@ -238,7 +238,8 @@ export default function DirectionalScorePanel({ symbol, horizon }: {
 
       {/* The same grouped roll-up the Analysis page shows, so both screens read
           the model the same way. */}
-      <CategoryBreakdown categories={d.categories} signals={d.signals} />
+      <CategoryBreakdown categories={d.categories} signals={d.signals}
+        onSelect={(s) => setOpen(s as DirSignal)} />
 
       {open && <ExplainDrawer signal={open} symbol={symbol} horizon={outlook}
         onClose={() => setOpen(null)} />}
