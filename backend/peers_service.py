@@ -205,7 +205,15 @@ def _iv_rank(symbol: str) -> Optional[float]:
 
 
 def _score(symbol: str) -> Optional[float]:
-    """The directional score (0-100) from cache, else the composite's."""
+    """
+    The directional score (0-100) for a peer.
+
+    Prefer a warm cached score; if none exists -- which is the case for peers
+    outside the app's scored universe, e.g. the smaller banks -- compute it on
+    demand so every row shows a score rather than a blank. The result is cached
+    by the scoring service, and the whole peer table is itself cached, so this
+    is paid once per group rather than on every view.
+    """
     cached = market.cache.get(f"directional:{symbol}", 3600.0)
     if cached and cached.get("direction_score") is not None:
         return round(cached["direction_score"], 1)
@@ -213,6 +221,13 @@ def _score(symbol: str) -> Optional[float]:
     final = scoring.get_cached_score(symbol)
     if final and final.get("direction_score") is not None:
         return round(final["direction_score"], 1)
+    try:
+        import directional_score_service as ds
+        computed = ds.get_directional_score(symbol)
+        if computed and computed.get("direction_score") is not None:
+            return round(computed["direction_score"], 1)
+    except Exception:  # noqa: BLE001 - a peer without a score just shows "--"
+        pass
     return None
 
 
