@@ -180,28 +180,9 @@ export default function DirectionalScorePanel({ symbol, horizon }: {
             </div>
           </div>
 
-          <div className="comp-list">
-            <div className="dir-section first">
-              Market &amp; price
-              <span className="dir-note">
-                {' '}— {marketTotal} points, {marketMeasured} measured
-                {sizingTotal > 0 && `, of which ${sizingTotal} size only`}
-              </span>
-            </div>
-            {market.map((s) => (
-              <SignalRow key={s.name} signal={s} onOpen={() => setOpen(s)} />
-            ))}
-
-            <div className="dir-section">
-              Company &amp; ownership
-              <span className="dir-note">
-                {' '}— {companyTotal} points, {companyMeasured} measured
-              </span>
-            </div>
-            {company.map((s) => (
-              <SignalRow key={s.name} signal={s} onOpen={() => setOpen(s)} />
-            ))}
-          </div>
+          {/* The per-parameter detail now lives in the Category Breakdown
+              below, grouped as the model is weighted -- the flat list here was
+              the same numbers a second time. */}
         </div>
 
         {/* When the reading is not solid enough to act on, that comes first
