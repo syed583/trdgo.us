@@ -207,12 +207,12 @@ export function FlowSummary({
           icon={<Zap size={13} />}
           value={unusualCount == null ? '--' : contracts(unusualCount)}
           sub="Volume above open interest" />
-        <div className="mf-tile">
-          <span className="mf-tile-label">Flow sentiment</span>
+        <div className="mf-tile" title="Money-weighted: the lean of call vs put premium (dollars), not contract counts.">
+          <span className="mf-tile-label">Premium sentiment</span>
           <SentimentGauge lean={lean} share={summary.call_premium_share} />
           <span className="mf-tile-foot">
             <span className="mf-tile-sub">
-              {contracts(summary.prints)} prints
+              money-weighted · {contracts(summary.prints)} prints
             </span>
           </span>
         </div>

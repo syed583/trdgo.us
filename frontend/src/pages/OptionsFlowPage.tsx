@@ -576,7 +576,7 @@ function Tiles({ data }: { data: OptionsOverview }) {
       />
 
       <div className="sentiment-tile">
-        <div className="st-title">Options Flow Sentiment</div>
+        <div className="st-title">Volume sentiment (0–100)</div>
         <div className="st-body">
           <SentimentGauge score={s.score} size={126} />
           <div className="sent-right">
@@ -585,6 +585,10 @@ function Tiles({ data }: { data: OptionsOverview }) {
               <b>{s.score ?? DASH}</b>/100
             </div>
           </div>
+        </div>
+        <div className="hint" style={{ padding: '2px 2px 0' }}>
+          From contract volume, put/call ratio and open interest — count-based,
+          not the premium (money) sentiment in the summary above.
         </div>
       </div>
     </div>
