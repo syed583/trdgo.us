@@ -207,6 +207,27 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
     };
   }, [symbolFlow.data]);
 
+  // The searched ticker's own prints, shaped for the tape, so the "Live Options
+  // Flow" list shows THAT name's flow instead of the market top-50 filtered down
+  // to a name that is not in it (which showed "0 of 50 prints").
+  const scopedTape = useMemo(() => {
+    const sf: any = symbolFlow.data;
+    if (!sf) return null;
+    const rows = (sf.trades || []).map((t: any) => ({
+      ...t,
+      type: t.type || (t.right === 'P' ? 'PUT' : 'CALL'),
+      volume_oi: t.volume_oi ?? t.ratio ?? null,
+    }));
+    return {
+      status: rows.length ? 'OK' : (sf.status || 'NO_DATA'),
+      rows,
+      freshness: sf.freshness || null,
+      session: sf.session_date,
+      detail: rows.length ? undefined
+        : (sf.note || 'No options prints for this ticker this session.'),
+    };
+  }, [symbolFlow.data]);
+
   // Roll the ticker's flow up into the same shape FlowSummary renders, so a
   // searched name shows its own call premium, put premium, net and call share.
   const symbolSummary = useMemo(() => {
@@ -369,17 +390,17 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
             }}
           />
 
-          {marketTape.initialLoading ? (
+          {(scoped ? symbolFlow.initialLoading : marketTape.initialLoading) ? (
             <Panel title="Live Options Flow">
               <StateBlock loading />
               <div className="hint" style={{ textAlign: 'center' }}>
-                Aggregating every watched ticker for the session. The first
-                pass takes a moment; later reads are cached.
+                {scoped ? `Loading ${scopeSym}'s options flow…`
+                  : 'Aggregating every watched ticker for the session. The first pass takes a moment; later reads are cached.'}
               </div>
             </Panel>
           ) : (
             <div className="mf-split">
-              <FlowTape tape={marketTape.data} picked={picked}
+              <FlowTape tape={scoped ? scopedTape : marketTape.data} picked={picked}
                 onPick={setPicked} filters={filters} filtersOpen={filtersOpen}
                 onToggleFilters={() => setFiltersOpen((v) => !v)} />
               <TickerDetail symbol={picked} tape={marketTape.data}
