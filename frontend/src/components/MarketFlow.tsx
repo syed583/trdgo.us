@@ -291,6 +291,10 @@ export function FlowTape({
         </div>
       )}
     >
+      <div className="mf-cap">
+        Every notable options print of the session, newest first — the full
+        feed. The <b>Unusual</b> panel below is the standout slice of this.
+      </div>
       {!tape || tape.status !== 'OK' ? (
         <div className="mf-note">
           {tape?.detail || 'No tape available for this session.'}
@@ -372,6 +376,10 @@ export function UnusualTable({ unusual, onPick, ticker }: {
       right={rows.length
         ? <span className="badge amber">{rows.length} contracts</span>
         : undefined}>
+      <div className="mf-cap">
+        The standout slice of the live feed: contracts trading above their open
+        interest (new positions being opened), ranked by how unusual.
+      </div>
       {!unusual || unusual.status !== 'OK' ? (
         <div className="mf-note">
           {unusual?.detail || 'No unusual activity detected this session.'}
