@@ -157,7 +157,16 @@ def serve(key: str, fn: Callable[[], Any], fresh_for: float) -> Any:
             # Stale: keep it only as a last-resort fallback below.
             stored_stale = value
 
-    value, done = singleflight.call(f"swr:{key}", lambda: _run(key, fn), FIRST_WAIT)
+    # A cold build that raises must not become an HTTP 500 on the screen -- the
+    # app speaks in status payloads, so a failed build returns one too (falling
+    # back to a stale copy first if we have one).
+    try:
+        value, done = singleflight.call(f"swr:{key}", lambda: _run(key, fn), FIRST_WAIT)
+    except Exception:  # noqa: BLE001
+        if stored_stale is not None:
+            return stored_stale
+        return {"status": "DATA_UNAVAILABLE",
+                "detail": "This data could not be built right now. Try again shortly."}
     if done and value is not None:
         return value
     if stored_stale is not None:
