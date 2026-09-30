@@ -212,11 +212,12 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
   const symbolSummary = useMemo(() => {
     const trades = symbolFlow.data?.trades || [];
     if (!trades.length) return null;
-    let call = 0; let put = 0;
+    let call = 0; let put = 0; let callVol = 0; let putVol = 0;
     for (const t of trades) {
       const p = Number(t.premium ?? t.notional ?? 0) || 0;
-      if (t.right === 'C') call += p;
-      else if (t.right === 'P') put += p;
+      const v = Number(t.volume ?? t.contracts ?? 0) || 0;
+      if (t.right === 'C') { call += p; callVol += v; }
+      else if (t.right === 'P') { put += p; putVol += v; }
     }
     const total = call + put;
     const share = total ? call / total : 0.5;
@@ -225,6 +226,11 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
       call_premium: call,
       put_premium: put,
       net_premium: call - put,
+      call_volume: callVol,
+      put_volume: putVol,
+      // Call/put ratio by contract volume (matches the market summary tile).
+      call_put_ratio: putVol ? Math.round((callVol / putVol) * 1000) / 1000 : null,
+      prints: trades.length,
       call_premium_share: total ? Math.round(share * 100) : null,
       // A plain string sentiment (never an object) so it renders safely.
       sentiment: share > 0.55 ? 'Bullish' : share < 0.45 ? 'Bearish' : 'Neutral',

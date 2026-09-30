@@ -674,7 +674,13 @@ def institutional_ingest_run(payload: dict = Body(default={})) -> dict:
 
 @router.get("/options/overview/{symbol}")
 def options_overview(symbol: str) -> dict:
-    return opt_analytics.get_overview(symbol)
+    # Was recomputed (~2-4s) on every load, which made the Options page feel
+    # slow. Serve-stale so a repeat view is instant and the refresh happens
+    # behind it; short window while the market is open, long when it is shut.
+    sym = symbol.upper()
+    return swr.serve(f"optov:{sym}",
+                     lambda: opt_analytics.get_overview(sym),
+                     market.session_ttl(60, 900))
 
 
 @router.get("/options/chain/{symbol}")
