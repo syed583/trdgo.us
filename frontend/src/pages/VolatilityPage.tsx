@@ -121,7 +121,9 @@ function statsForWindow(series: any[]): {
 export default function VolatilityPage({ ctx }: { ctx: PageContext }) {
   const symbol = ctx.symbol;
   const vol = useApi<any>((s) => api2.volatility(symbol, s), [symbol]);
-  const d = vol.data;
+  // Ignore a previous symbol's response still held during navigation.
+  const d = (vol.data && String(vol.data.symbol || '').toUpperCase()
+    === String(symbol || '').toUpperCase()) ? vol.data : null;
   const [range, setRange] = useState('1Y');
   const ivrv = sliceByRange(d?.iv_rv_series, RANGES.find((r) => r.key === range)?.days ?? 366);
   // Stats follow the selected window; fall back to the server snapshot when the

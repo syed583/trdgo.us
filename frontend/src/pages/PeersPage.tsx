@@ -76,7 +76,12 @@ export default function PeersPage({ ctx }: { ctx: PageContext }) {
   const symbol = ctx.symbol;
   const navigate = useNavigate();
   const peers = useApi<any>((s) => api2.peers(symbol, s), [symbol]);
-  const d = peers.data;
+  // Only trust data that belongs to the symbol on screen. While navigating from
+  // one name to another, useApi keeps the previous response until the new fetch
+  // lands -- without this guard the page showed the old stock's peers under the
+  // new stock's title (e.g. SF's table on the JPM page).
+  const d = (peers.data && String(peers.data.symbol || '').toUpperCase()
+    === String(symbol || '').toUpperCase()) ? peers.data : null;
 
   return (
     <div className="page">

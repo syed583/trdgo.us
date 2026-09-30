@@ -86,7 +86,10 @@ export default function ModelPerformancePage({ ctx }: { ctx: PageContext }) {
     [horizon, scopeSym]);
   const edge = useApi<any>((s) => api2.paramEdge(5, s), []);
 
-  const d = card.data;
+  // While navigating between symbols useApi holds the prior response; only
+  // trust data whose scope matches the symbol on screen.
+  const d = (card.data && (!scopeSym
+    || String(card.data.symbol || '').toUpperCase() === scopeSym)) ? card.data : null;
   const scoreBands: [string, any][] = d?.by_score ? Object.entries(d.by_score) : [];
   const decisions: [string, any][] = d?.by_decision ? Object.entries(d.by_decision) : [];
   const params: any[] = edge.data?.parameters || [];
