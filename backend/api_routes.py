@@ -369,14 +369,27 @@ def directional(symbol: str, horizon: Optional[str] = None) -> dict:
     base = ds.get_directional_score(sym)
     if base.get("status") == "UNKNOWN_SYMBOL":
         return base
+
+    def _with_categories(payload: dict) -> dict:
+        # The grouped category roll-up the Analysis page shows, computed from the
+        # same signals, so the Earnings Analysis panel can render the identical
+        # MARKET & PRICE / COMPANY & OWNERSHIP breakdown.
+        try:
+            import analysis_stream_service as ass
+            payload = {**payload,
+                       "categories": ass.categorise(payload.get("signals") or [])}
+        except Exception:  # noqa: BLE001 - the flat list still renders without it
+            pass
+        return payload
+
     h = (horizon or "").upper()
     if h in ("TODAY", "TOMORROW"):
         import horizon_model
 
-        return horizon_model.score_horizon(symbol, h, base=base)
+        return _with_categories(horizon_model.score_horizon(symbol, h, base=base))
     if h == "SWING":
-        return {**base, "horizon": "SWING"}
-    return base
+        return _with_categories({**base, "horizon": "SWING"})
+    return _with_categories(base)
 
 
 @router.get("/events/{symbol}")

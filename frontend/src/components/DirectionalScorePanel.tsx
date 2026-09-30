@@ -6,6 +6,7 @@ import { HORIZON_COPY, defaultHorizon } from './HorizonSwitch';
 import type { Horizon } from './HorizonSwitch';
 import { Panel, StateBlock } from './common';
 import ParameterWhy from './ParameterWhy';
+import CategoryBreakdown from './CategoryBreakdown';
 
 const GREEN = '#21d07a';
 const RED = '#f2465a';
@@ -58,6 +59,7 @@ interface Directional {
   volatility_context?: { parameters: DirSignal[]; notes: string[] };
   reasons?: string[];
   note?: string;
+  categories?: any[];
   status: string;
 }
 
@@ -252,6 +254,10 @@ export default function DirectionalScorePanel({ symbol, horizon }: {
 
         <div className="hint">{d.note}</div>
       </Panel>
+
+      {/* The same grouped roll-up the Analysis page shows, so both screens read
+          the model the same way. */}
+      <CategoryBreakdown categories={d.categories} signals={d.signals} />
 
       {open && <ExplainDrawer signal={open} symbol={symbol} horizon={outlook}
         onClose={() => setOpen(null)} />}
