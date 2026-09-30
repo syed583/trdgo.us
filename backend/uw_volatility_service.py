@@ -79,6 +79,21 @@ def _iv_rv_series(symbol: str) -> list[dict]:
     rank_by_date = {str(r.get("date"))[:10]: uw._f(r.get("iv_rank_1y"))
                     for r in ranks if r.get("date")}
 
+    # The stock's own closing price by date, so the chart can plot price against
+    # the vol lines -- a vol spike reads very differently on a stock that was
+    # falling than on one that was breaking out.
+    price_by_date: dict[str, float] = {}
+    try:
+        import live_market_service as market
+        bars = market.get_chart(symbol, "1Y").get("bars") or []
+        for b in bars:
+            day = str(b.get("t") or b.get("label") or "")[:10]
+            close = b.get("close")
+            if day and close is not None:
+                price_by_date[day] = round(float(close), 2)
+    except Exception:  # noqa: BLE001 - price overlay is optional
+        price_by_date = {}
+
     series = []
     for r in realized:
         date = str(r.get("date"))[:10]
@@ -91,6 +106,7 @@ def _iv_rv_series(symbol: str) -> list[dict]:
             "iv_rank": (round(rank_by_date[date], 2)
                         if date in rank_by_date and rank_by_date[date] is not None
                         else None),
+            "price": price_by_date.get(date),
         })
     series.sort(key=lambda x: x["date"])
     return series

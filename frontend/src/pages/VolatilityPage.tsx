@@ -14,6 +14,7 @@ const IV = '#a855f7';       // implied — purple, matching the provider
 const RV = '#e0b341';       // realized — amber
 const RANK = '#21d07a';     // IV rank — green
 const MOVE = '#3b82f6';     // implied move — blue
+const PRICE = '#5b6580';    // stock price — slate, kept neutral behind the vol lines
 
 function pct(v: number | null | undefined): string {
   return typeof v === 'number' ? `${v.toFixed(1)}%` : '--';
@@ -215,9 +216,16 @@ export default function VolatilityPage({ ctx }: { ctx: PageContext }) {
                             width={40} tickFormatter={(v) => `${v}%`} />
                           <YAxis yAxisId="r" orientation="right" domain={[0, 100]}
                             tick={{ fontSize: 10, fill: 'var(--text-mute)' }} width={30} />
+                          {/* Price rides its own hidden scale so its dollar
+                              level never distorts the volatility axis. */}
+                          <YAxis yAxisId="p" hide domain={['auto', 'auto']} />
                           <Tooltip
                             contentStyle={{ background: 'var(--panel)', border: '1px solid var(--border)', fontSize: 12 }}
-                            formatter={(v: any, n: any) => [n === 'IV Rank' ? Number(v).toFixed(1) : `${Number(v).toFixed(1)}%`, n]} />
+                            formatter={(v: any, n: any) => [n === 'IV Rank' ? Number(v).toFixed(1)
+                              : n === 'Price' ? `$${Number(v).toFixed(2)}`
+                                : `${Number(v).toFixed(1)}%`, n]} />
+                          <Line yAxisId="p" dataKey="price" name="Price" stroke={PRICE}
+                            dot={false} strokeWidth={1.6} isAnimationActive={false} connectNulls />
                           <Line yAxisId="v" dataKey="iv" name="Implied Vol" stroke={IV}
                             dot={false} strokeWidth={1.6} isAnimationActive={false} connectNulls />
                           <Line yAxisId="v" dataKey="rv" name="Volatility of Stock" stroke={RV}
@@ -229,6 +237,7 @@ export default function VolatilityPage({ ctx }: { ctx: PageContext }) {
                       </ResponsiveContainer>
                     ) : <Unavailable status="NO_DATA" compact />}
                     <div className="vol-legend">
+                      <span><i style={{ background: PRICE }} /> Price</span>
                       <span><i style={{ background: IV }} /> Implied Vol</span>
                       <span><i style={{ background: RV }} /> Volatility of Stock</span>
                       <span><i style={{ background: RANK }} /> IV Rank (right)</span>
