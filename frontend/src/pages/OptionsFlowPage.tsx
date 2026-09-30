@@ -6,7 +6,8 @@ import {
 } from 'recharts';
 import {
   Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, CheckCircle2,
-  Filter, Info, Lightbulb, Shield, Sparkles, Target, TrendingDown, TrendingUp,
+  ChevronRight, Filter, Info, Lightbulb, Shield, Sparkles, Target,
+  TrendingDown, TrendingUp,
 } from 'lucide-react';
 import Freshness from '../components/Freshness';
 import { NavLink } from 'react-router-dom';
@@ -62,6 +63,47 @@ const AMBER = '#f0a92b';
 
 type FlowFilter = 'All' | 'Sweeps' | 'Blocks' | 'Buys' | 'Sells';
 type StrikeMode = 'volume' | 'open_interest' | 'delta_exposure';
+
+
+const FLOW_TERMS: { term: string; body: string }[] = [
+  { term: 'Live Options Flow (the tape)',
+    body: 'Every notable options print of the session, newest first — the complete feed of trades as they cross. This is the raw activity; the panels below summarise and filter it.' },
+  { term: 'Top Unusual Options Activity',
+    body: 'The standout slice of that same feed: contracts whose volume today is above their open interest — new positions being opened, not routine trading — ranked by how unusual. It is a filtered, sorted view of the tape, not a separate data set.' },
+  { term: 'Vol / OI',
+    body: 'Volume traded today divided by open interest (contracts that existed before the bell). Above 1 means more changed hands today than were already open — fresh positioning. The higher, the more unusual.' },
+  { term: 'Premium',
+    body: 'The dollars that crossed on a print — contracts × price × 100. Big premium is big money committed, which is what makes a print worth noticing.' },
+  { term: 'Call vs Put',
+    body: 'A call is a bet the stock rises; a put a bet it falls (or a hedge). Heavy call premium leans bullish, heavy put premium bearish — but a put can also be protection, so read it with the tape.' },
+  { term: 'Sweep vs Block',
+    body: 'A sweep is one order filled across several exchanges at once — urgency, often a directional bet. A block is a single large negotiated trade, often institutional. Both are flagged in the Signal column.' },
+  { term: 'Delayed by the data plan',
+    body: 'OPRA prints arrive on the data-plan delay; the badge at the top says how far behind the tape is. Outside market hours it shows the last completed session.' },
+];
+
+function FlowExplainer() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`vol-explain ${open ? 'open' : ''}`}>
+      <button className="vol-explain-head" onClick={() => setOpen((v) => !v)}>
+        <Info size={13} />
+        What is options flow?
+        <ChevronRight size={14} className="vol-explain-caret" />
+      </button>
+      {open && (
+        <div className="vol-explain-body">
+          {FLOW_TERMS.map((t) => (
+            <div className="vol-term" key={t.term}>
+              <b>{t.term}</b>
+              <span>{t.body}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
   const { symbol, demo } = ctx;
@@ -284,6 +326,8 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
               )}
             </div>
           </div>
+
+          <FlowExplainer />
 
           {scoped && (
             <div className="mf-scope">
