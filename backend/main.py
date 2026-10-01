@@ -253,6 +253,13 @@ def _start_slow_screen_warmer() -> None:
                    r.flow_market_intraday, r.flow_market_sectors,
                    r.flow_market_comparison, r.flow_market_expiries,
                    r.news_desk, r.earnings_calendar_context,
+                   # Market Tide and the full stock list are their own screens;
+                   # both are one provider call, so cheap to pre-build.
+                   r.market_tide, r.stocks_all,
+                   # The default symbol's own pages (Overview is the app's
+                   # landing) so the first visitor does not watch them compute.
+                   lambda: r.ticker_overview("NVDA"),
+                   lambda: r.directional("NVDA"),
                    # The strip is on every page's top bar; pre-build it so the
                    # first visitor does not wait out its cold scoring.
                    lambda: r.ticker_strip(None))
