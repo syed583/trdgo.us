@@ -47,7 +47,7 @@ function MarketTide() {
                     stroke="var(--green)" dot={false} strokeWidth={1.6} isAnimationActive={false} connectNulls />
                   <Line yAxisId="prem" dataKey="net_put_premium" name="Net put premium"
                     stroke="var(--red)" dot={false} strokeWidth={1.6} isAnimationActive={false} connectNulls />
-                  <Line yAxisId="spy" dataKey="spy_price" name="SPY"
+                  <Line yAxisId="spy" dataKey="spy_price" name="SPY (ETF)"
                     stroke="var(--gold, #e0a45c)" dot={false} strokeWidth={1.4}
                     strokeDasharray="4 2" isAnimationActive={false} connectNulls />
                 </ComposedChart>

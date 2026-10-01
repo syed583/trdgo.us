@@ -73,7 +73,8 @@ def get_market_tide() -> dict:
         "date": date,
         "series": out,
         "detail": ("Market-wide net call (green) and net put (red) premium by the "
-                   "minute, with SPY price. Rising net-call / falling net-put "
-                   "premium leans bullish."),
+                   "minute, with the SPY ETF price (gold). SPY trades near 1/10 of "
+                   "the S&P 500 index level (e.g. SPY ~767 = S&P ~7,670). Rising "
+                   "net-call / falling net-put premium leans bullish."),
         "source": "UNUSUAL_WHALES",
     }
