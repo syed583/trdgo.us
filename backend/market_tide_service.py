@@ -60,12 +60,16 @@ def get_market_tide() -> dict:
     for r in rows:
         ts = str(r.get("timestamp") or "")
         hm = ts[11:16] if len(ts) >= 16 else ts
+        spy = spy_price(ts)
+        # SPY tracks the S&P 500 at ~1/10; scale it so the overlay reads in index
+        # points (e.g. 7,670) to match what people see quoted for the S&P 500.
         out.append({
             "time": hm,
             "net_call_premium": _f(r.get("net_call_premium")),
             "net_put_premium": _f(r.get("net_put_premium")),
             "net_volume": _f(r.get("net_volume")),
-            "spy_price": spy_price(ts),
+            "spy_price": spy,
+            "sp500": round(spy * 10, 2) if spy is not None else None,
         })
     date = str(rows[0].get("date") or "")
     return {
@@ -73,8 +77,7 @@ def get_market_tide() -> dict:
         "date": date,
         "series": out,
         "detail": ("Market-wide net call (green) and net put (red) premium by the "
-                   "minute, with the SPY ETF price (gold). SPY trades near 1/10 of "
-                   "the S&P 500 index level (e.g. SPY ~767 = S&P ~7,670). Rising "
-                   "net-call / falling net-put premium leans bullish."),
+                   "minute, with the S&P 500 level (gold), derived from SPY x10. "
+                   "Rising net-call / falling net-put premium leans bullish."),
         "source": "UNUSUAL_WHALES",
     }

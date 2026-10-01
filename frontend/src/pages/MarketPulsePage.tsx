@@ -38,16 +38,18 @@ function MarketTide() {
                   <YAxis yAxisId="prem" tick={{ fontSize: 10, fill: 'var(--text-mute)' }} width={50}
                     tickFormatter={(v) => compactMoney(v)} />
                   <YAxis yAxisId="spy" orientation="right" domain={['auto', 'auto']}
-                    tick={{ fontSize: 10, fill: 'var(--text-mute)' }} width={48}
-                    tickFormatter={(v) => `$${Number(v).toFixed(0)}`} />
+                    tick={{ fontSize: 10, fill: 'var(--text-mute)' }} width={52}
+                    tickFormatter={(v) => Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 })} />
                   <Tooltip
                     contentStyle={{ background: 'var(--panel)', border: '1px solid var(--border)', fontSize: 12 }}
-                    formatter={(v: any, n: any) => [n === 'SPY' ? `$${Number(v).toFixed(2)}` : compactMoney(Number(v)), n]} />
+                    formatter={(v: any, n: any) => [n === 'S&P 500'
+                      ? Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 })
+                      : compactMoney(Number(v)), n]} />
                   <Line yAxisId="prem" dataKey="net_call_premium" name="Net call premium"
                     stroke="var(--green)" dot={false} strokeWidth={1.6} isAnimationActive={false} connectNulls />
                   <Line yAxisId="prem" dataKey="net_put_premium" name="Net put premium"
                     stroke="var(--red)" dot={false} strokeWidth={1.6} isAnimationActive={false} connectNulls />
-                  <Line yAxisId="spy" dataKey="spy_price" name="SPY (ETF)"
+                  <Line yAxisId="spy" dataKey="sp500" name="S&P 500"
                     stroke="var(--gold, #e0a45c)" dot={false} strokeWidth={1.4}
                     strokeDasharray="4 2" isAnimationActive={false} connectNulls />
                 </ComposedChart>
