@@ -392,6 +392,16 @@ def directional(symbol: str, horizon: Optional[str] = None) -> dict:
     return _with_categories(base)
 
 
+@router.get("/overview/{symbol}")
+def ticker_overview(symbol: str) -> dict:
+    """The one-page ticker overview: key stats, performance, analysts, insiders."""
+    sym = validate.clean_symbol(symbol)
+    import ticker_overview_service as ov
+
+    return swr.serve(f"overview:{sym}", lambda: ov.get_overview(sym),
+                     market.session_ttl(60, 900))
+
+
 @router.get("/events/{symbol}")
 def event_radar(symbol: str) -> dict:
     """Analyst actions, news tone and earnings proximity for one symbol."""

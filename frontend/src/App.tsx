@@ -20,6 +20,7 @@ const DarkPoolPage = lazy(() => import('./pages/DarkPoolPage'));
 const MarketInsidersPage = lazy(() => import('./pages/MarketInsidersPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const OverviewPage = lazy(() => import('./pages/OverviewPage'));
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
 const ScannerPage = lazy(() => import('./pages/ScannerPage'));
 const WatchlistBoardPage = lazy(() => import('./pages/WatchlistBoardPage'));
@@ -201,7 +202,7 @@ function Shell() {
         <Suspense fallback={<div className="page" />}>
         <Routes>
           <Route path="/" element={<Navigate to={`${isAdmin ? '/admin/users' : '/dashboard'}${location.search}`} replace />} />
-          <Route path="/dashboard" element={<DashboardPage ctx={ctx} />} />
+          <Route path="/dashboard" element={<OverviewPage ctx={ctx} />} />
 
           <Route path="/earnings" element={<Navigate to={`/earnings/${DEFAULT_SYMBOL}${location.search}`} replace />} />
           <Route path="/earnings/:symbol" element={<EarningsPage ctx={ctx} />} />
