@@ -624,6 +624,7 @@ export const api2 = {
     request<any>(`/api/symbols/validate/${encodeURIComponent(symbol)}`, s),
 
   marketOverview: (s?: AbortSignal) => request<any>('/api/market/overview', s),
+  marketTide: (s?: AbortSignal) => request<any>('/api/market/tide', s),
   marketPulse: (s?: AbortSignal) => request<any>('/api/market/pulse', s),
 
   earningsCalendar: (

@@ -1,15 +1,63 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Activity, ChevronRight, Gauge, Globe, Info, Layers, RefreshCw,
+  CartesianGrid, ComposedChart, Line, ResponsiveContainer,
+  Tooltip, XAxis, YAxis,
+} from 'recharts';
+import {
+  Activity, ChevronRight, Gauge, Globe, Info, Layers, RefreshCw, Waves,
   TrendingDown, TrendingUp,
 } from 'lucide-react';
 import { api2 } from '../api/client';
 import type { PageContext } from '../App';
 import { useApi } from '../hooks/useApi';
 import { Panel } from '../components/common';
-import { money, num, signedPct, tone } from '../lib/format';
+import { compactMoney, money, num, signedPct, tone } from '../lib/format';
 import { ErrorState, Loading } from './shared';
+
+/**
+ * Market Tide: market-wide net call vs net put premium through the session,
+ * with SPY price overlaid. Rising net-call / falling net-put premium leans
+ * bullish; sharp reversals in the lines tend to mark turns in SPY.
+ */
+function MarketTide() {
+  const tide = useApi<any>((s) => api2.marketTide(s), [], { refreshMs: 120000 });
+  const d = tide.data;
+  const series: any[] = d?.series || [];
+  return (
+    <Panel title={<span><Waves size={13} /> Market Tide</span>} noBody
+      right={d?.date ? <span className="mo-live"><i />{d.date}</span> : undefined}>
+      {tide.initialLoading ? <Loading />
+        : !series.length ? <div className="mo-note">{d?.detail || 'Market tide unavailable.'}</div>
+          : (
+            <>
+              <ResponsiveContainer width="100%" height={300}>
+                <ComposedChart data={series} margin={{ top: 8, right: 8, bottom: 4, left: 2 }}>
+                  <CartesianGrid stroke="var(--border-2)" vertical={false} />
+                  <XAxis dataKey="time" tick={{ fontSize: 10, fill: 'var(--text-mute)' }} minTickGap={52} />
+                  <YAxis yAxisId="prem" tick={{ fontSize: 10, fill: 'var(--text-mute)' }} width={50}
+                    tickFormatter={(v) => compactMoney(v)} />
+                  <YAxis yAxisId="spy" orientation="right" domain={['auto', 'auto']}
+                    tick={{ fontSize: 10, fill: 'var(--text-mute)' }} width={48}
+                    tickFormatter={(v) => `$${Number(v).toFixed(0)}`} />
+                  <Tooltip
+                    contentStyle={{ background: 'var(--panel)', border: '1px solid var(--border)', fontSize: 12 }}
+                    formatter={(v: any, n: any) => [n === 'SPY' ? `$${Number(v).toFixed(2)}` : compactMoney(Number(v)), n]} />
+                  <Line yAxisId="prem" dataKey="net_call_premium" name="Net call premium"
+                    stroke="var(--green)" dot={false} strokeWidth={1.6} isAnimationActive={false} connectNulls />
+                  <Line yAxisId="prem" dataKey="net_put_premium" name="Net put premium"
+                    stroke="var(--red)" dot={false} strokeWidth={1.6} isAnimationActive={false} connectNulls />
+                  <Line yAxisId="spy" dataKey="spy_price" name="SPY"
+                    stroke="var(--gold, #e0a45c)" dot={false} strokeWidth={1.4}
+                    strokeDasharray="4 2" isAnimationActive={false} connectNulls />
+                </ComposedChart>
+              </ResponsiveContainer>
+              <div className="hint">{d?.detail}</div>
+            </>
+          )}
+    </Panel>
+  );
+}
 
 /**
  * Market Overview.
@@ -257,6 +305,8 @@ export default function MarketPulsePage({ ctx }: { ctx: PageContext }) {
       </div>
 
       <IndicesExplainer />
+
+      <MarketTide />
 
       <div className="mo-grid">
         <Panel title="Sector Performance" icon={<Layers size={13} />}>

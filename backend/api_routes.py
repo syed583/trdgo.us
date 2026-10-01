@@ -136,6 +136,15 @@ def market_pulse() -> dict:
     return swr.serve("pulse", pulse.get_pulse, 180)
 
 
+@router.get("/market/tide")
+def market_tide() -> dict:
+    """Market-wide net call/put premium through the session, with SPY price."""
+    import market_tide_service as tide
+
+    return swr.serve("market_tide", tide.get_market_tide,
+                     market.session_ttl(60, 1800))
+
+
 @router.get("/market/overview")
 def market_overview() -> dict:
     # Stale-while-revalidate: the Market Overview build fans out to every
