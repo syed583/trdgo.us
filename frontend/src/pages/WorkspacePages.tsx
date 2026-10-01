@@ -513,24 +513,42 @@ function ProviderKeyCard() {
           : s.configured ? <span className="badge green">Active</span> : null}
       </div>
 
-      {s.app_budget != null && (() => {
-        const used = s.used_by_this_app ?? Math.max(0, (s.app_budget || 0) - (s.app_left || 0));
-        const pct = s.app_budget ? Math.min(100, Math.round(used / s.app_budget * 100)) : 0;
+      {(() => {
+        const used = s.used_by_this_app ?? 0;
+        const minute = s.plan_minute_remaining != null
+          ? ` · ${Number(s.plan_minute_remaining).toLocaleString()} left this minute`
+          : '';
+        // A real daily ceiling only exists when the provider sends one. Without
+        // it (an uncapped plan, or headers not yet seen) there is no "X of Y" to
+        // honestly show -- the 10,000,000 is just an internal safety backstop,
+        // not the plan's limit -- so the card shows the day's usage and says so.
+        if (!s.daily_limit_known) {
+          return (
+            <div className="pk-credits">
+              <div className="pk-credits-row">
+                <span>API requests used today</span>
+                <b>{used.toLocaleString()}</b>
+              </div>
+              <div className="pk-credits-foot">
+                No daily cap on this plan — the provider reports no daily limit.
+                Resets 8 PM ET.{minute}
+              </div>
+            </div>
+          );
+        }
+        const limit = s.app_budget || 0;
+        const pct = limit ? Math.min(100, Math.round(used / limit * 100)) : 0;
         const barCol = pct >= 90 ? 'var(--red)' : pct >= 70 ? 'var(--amber)' : 'var(--green)';
         return (
           <div className="pk-credits">
             <div className="pk-credits-row">
               <span>Daily API credits used</span>
-              <b>{used.toLocaleString()} / {s.app_budget.toLocaleString()}
+              <b>{used.toLocaleString()} / {limit.toLocaleString()}
                 <em> ({s.app_left?.toLocaleString()} left)</em></b>
             </div>
             <div className="pk-bar"><i style={{ width: `${pct}%`, background: barCol }} /></div>
             <div className="pk-credits-foot">
-              {s.daily_limit_source === 'provider'
-                ? 'Live from the provider; resets 8 PM ET.'
-                : 'App estimate (provider usage headers not seen yet); resets 8 PM ET.'}
-              {s.plan_minute_remaining != null
-                && ` · ${Number(s.plan_minute_remaining).toLocaleString()} left this minute`}
+              Live from the provider; resets 8 PM ET.{minute}
             </div>
           </div>
         );

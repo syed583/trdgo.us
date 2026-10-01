@@ -1565,6 +1565,7 @@ def admin_provider_key(request: Request) -> dict:
         "app_budget": b.get("app_budget"),
         "used_by_this_app": b.get("used_by_this_app"),
         "daily_limit_source": b.get("daily_limit_source"),
+        "daily_limit_known": b.get("daily_limit_known"),
         "plan_minute_remaining": b.get("plan_minute_remaining"),
         "minute_reset_ms": b.get("minute_reset_ms"),
         "day": b.get("day"),

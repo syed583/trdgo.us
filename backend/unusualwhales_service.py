@@ -95,6 +95,12 @@ TTL_SETTLED = 30 * 24 * 3600.0   # a finished day cannot change
 # which doubled the wait on every screen that fans out.
 MIN_INTERVAL = 0.04
 
+# The ceiling on proactive spacing. When the per-minute allowance runs low the
+# dispatcher glides toward the window reset (see _space_out), but it never waits
+# more than this between calls -- a genuine stall is the hard _pause's job, not
+# this one's, so screens never freeze waiting on the pacer.
+MAX_PACE = 1.5
+
 # The per-minute allowance is huge, but a 429 still fires on a *burst* -- too
 # many requests in flight at once. Several screens fan out in parallel (the
 # news desk alone opens a dozen), and if they all reach the API together they
@@ -315,12 +321,33 @@ def _pause(seconds: float) -> None:
     _blocked_until = max(_blocked_until, time.time() + max(1.0, seconds))
 
 
+def _pace_interval() -> float:
+    """
+    How far apart to dispatch right now, from the provider's own allowance.
+
+    When plenty of the per-minute window is left this is MIN_INTERVAL -- full
+    speed. As the remaining count falls, the gap widens to spread what is left
+    across the time until the window resets, so a fan-out of screens glides
+    toward the reset instead of firing into a 429 and pausing the whole app.
+    It is plan-agnostic: an uncapped plan reports a huge ``remaining`` and never
+    slows; a tighter real cap paces itself without any hard-coded number.
+    """
+    rem = _limits.get("remaining")
+    reset_ms = _limits.get("reset")
+    if rem is None or not reset_ms or rem <= 1:
+        return MIN_INTERVAL
+    # Keep ~15% headroom so a little parallel overshoot still lands inside the
+    # window rather than on its edge.
+    pace = (reset_ms / 1000.0) / (rem * 0.85)
+    return max(MIN_INTERVAL, min(pace, MAX_PACE))
+
+
 def _space_out() -> None:
-    """Keep at least MIN_INTERVAL between calls, however many threads ask."""
+    """Keep a provider-aware gap between calls, however many threads ask."""
     global _last_call
 
     with _gate:
-        wait = MIN_INTERVAL - (time.time() - _last_call)
+        wait = _pace_interval() - (time.time() - _last_call)
         if wait > 0:
             time.sleep(wait)
         _last_call = time.time()
@@ -1147,6 +1174,10 @@ def budget() -> dict:
         "app_budget": limit,
         "app_left": max(0, limit - used),
         "daily_limit_source": "provider" if dl else "app_default",
+        # Whether a real daily ceiling is known. The provider sends no daily
+        # headers for an uncapped plan, so ``app_budget`` is only an internal
+        # safety backstop then, not a limit to show the user as "X / 10,000,000".
+        "daily_limit_known": bool(dl),
         "plan_minute_remaining": _limits["remaining"],
         "minute_reset_ms": _limits.get("reset"),
         "blocked": time.time() < _blocked_until,

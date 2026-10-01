@@ -203,19 +203,24 @@ function Shell() {
         )}
 
         {(() => {
-          // Provider-busy alert: when the data feed is rate-limited, blocked or
-          // out of daily budget, tell the user plainly to wait rather than
-          // letting searches silently return "--".
+          // Provider-busy alert: only for a stall the user would actually feel.
+          // A plan with a per-minute cap (and the unlimited daily plan still has
+          // one) brushes that cap in normal bursts and the backend backs off for
+          // a second or two -- held data keeps serving and it clears before a
+          // read finishes. Flashing a full-width red banner for a 1s pause reads
+          // as an outage when nothing is wrong; the small "LIVE · BUSY" chip in
+          // the header already carries that. So the banner waits for a sustained
+          // block or the daily budget actually running out.
           const feed: any = (health.data as any)?.providers?.feed;
           if (!feed) return null;
-          const busy = feed.blocked === true
-            || feed.status === 'RATE_LIMITED'
-            || feed.status === 'BUDGET_EXHAUSTED'
+          const outOfBudget = feed.status === 'BUDGET_EXHAUSTED'
             || (typeof feed.app_left === 'number' && feed.app_left <= 0);
-          if (!busy) return null;
+          const stalled = (feed.blocked === true || feed.status === 'RATE_LIMITED')
+            && (feed.blocked_for_seconds ?? 0) >= 4;
+          if (!outOfBudget && !stalled) return null;
           const wait = feed.blocked_for_seconds
             ? ` Retrying in about ${Math.ceil(feed.blocked_for_seconds)}s.` : '';
-          const why = feed.status === 'BUDGET_EXHAUSTED' || feed.app_left <= 0
+          const why = outOfBudget
             ? "today's data limit is reached"
             : 'the data provider is busy (rate limit)';
           return (
