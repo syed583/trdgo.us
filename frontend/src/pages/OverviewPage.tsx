@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer,
+  Bar, CartesianGrid, Cell, ComposedChart, Line, ResponsiveContainer,
   Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { TrendingDown, TrendingUp } from 'lucide-react';
@@ -233,6 +233,41 @@ function History({ h }: { h: any }) {
   );
 }
 
+function DailyGEX({ g }: { g: any }) {
+  const series: any[] = g?.series || [];
+  if (!series.length) return <Unavailable status={g?.status} detail="No gamma-exposure history." compact />;
+  return (
+    <>
+      <ResponsiveContainer width="100%" height={260}>
+        <ComposedChart data={series} margin={{ top: 8, right: 8, bottom: 4, left: -6 }}>
+          <CartesianGrid stroke="var(--border-2)" vertical={false} />
+          <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--text-mute)' }} minTickGap={48}
+            tickFormatter={(v) => String(v).slice(5)} />
+          <YAxis yAxisId="g" tick={{ fontSize: 10, fill: 'var(--text-mute)' }} width={44}
+            tickFormatter={(v) => compact(v, 0)} />
+          <YAxis yAxisId="p" orientation="right" domain={['auto', 'auto']}
+            tick={{ fontSize: 10, fill: 'var(--text-mute)' }} width={48}
+            tickFormatter={(v) => `$${Number(v).toFixed(0)}`} />
+          <Tooltip
+            contentStyle={{ background: 'var(--panel)', border: '1px solid var(--border)', fontSize: 12 }}
+            formatter={(v: any, n: any) => [n === 'Price' ? `$${Number(v).toFixed(2)}` : compact(Number(v), 0), n]} />
+          <Bar yAxisId="g" dataKey="net_gamma" name="Net gamma" isAnimationActive={false}>
+            {series.map((s, i) => (
+              <Cell key={i} fill={(s.net_gamma ?? 0) >= 0 ? 'var(--green)' : 'var(--red)'} />
+            ))}
+          </Bar>
+          <Line yAxisId="p" dataKey="price" name="Price" stroke="var(--gold, #e0a45c)"
+            dot={false} strokeWidth={1.6} isAnimationActive={false} connectNulls />
+        </ComposedChart>
+      </ResponsiveContainer>
+      <div className="hint">
+        Net dealer gamma by day (green = positive, red = negative) with price.
+        Positive gamma dampens moves; negative gamma tends to amplify them.
+      </div>
+    </>
+  );
+}
+
 export default function OverviewPage({ ctx }: { ctx: PageContext }) {
   const symbol = ctx.symbol;
   const ov = useApi<any>((s) => api.tickerOverview(symbol, s), [symbol]);
@@ -270,13 +305,13 @@ export default function OverviewPage({ ctx }: { ctx: PageContext }) {
                 <Performance p={d.performance} symbol={symbol} />
               </Panel>
               <Panel title="Historical Data" noBody><History h={d.history} /></Panel>
+              <Panel title="Daily GEX — Net Gamma" noBody><DailyGEX g={d.gex} /></Panel>
               <div className="two-col">
                 <Panel title="Analyst Actions" noBody><Analysts a={d.analysts} /></Panel>
                 <Panel title="Insider Activity" noBody><Insiders ins={d.insiders} /></Panel>
               </div>
               <div className="hint" style={{ padding: '2px 4px' }}>
-                Data from Unusual Whales and SEC filings. Daily GEX chart coming
-                in a later phase.
+                Data from Unusual Whales and SEC filings.
               </div>
             </>
           )}

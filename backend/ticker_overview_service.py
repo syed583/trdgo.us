@@ -264,6 +264,42 @@ def _history(symbol: str, days: int = 20) -> dict:
     return {"status": "OK" if rows else "NO_DATA", "rows": rows}
 
 
+def _gex(symbol: str, days: int = 120) -> dict:
+    """Daily net gamma exposure (call + put) with the closing price by date."""
+    import unusualwhales_service as uw
+    try:
+        rows = uw._rows(uw.get(f"/api/stock/{symbol}/greek-exposure", {}))
+    except Exception:  # noqa: BLE001
+        rows = []
+    price_by_date: dict[str, float] = {}
+    try:
+        for b in uw._rows(uw.candles(symbol, size="1d", limit=days + 10)):
+            d = str(b.get("date"))[:10]
+            c = _f(b.get("close"))
+            if d and c is not None:
+                price_by_date[d] = c
+    except Exception:  # noqa: BLE001
+        pass
+
+    out = []
+    for r in rows:
+        d = str(r.get("date"))[:10]
+        cg = _f(r.get("call_gamma"))
+        pg = _f(r.get("put_gamma"))
+        if d is None or (cg is None and pg is None):
+            continue
+        out.append({
+            "date": d,
+            "call_gamma": round(cg) if cg is not None else None,
+            "put_gamma": round(pg) if pg is not None else None,
+            "net_gamma": round((cg or 0) + (pg or 0)),
+            "price": price_by_date.get(d),
+        })
+    out.sort(key=lambda x: x["date"])
+    out = out[-days:]
+    return {"status": "OK" if out else "NO_DATA", "series": out}
+
+
 def get_overview(symbol: str) -> dict:
     symbol = (symbol or "").upper().strip()
     if not symbol:
@@ -276,12 +312,14 @@ def get_overview(symbol: str) -> dict:
         f_ins = pool.submit(_insiders, symbol)
         f_intra = pool.submit(_intraday, symbol)
         f_hist = pool.submit(_history, symbol)
+        f_gex = pool.submit(_gex, symbol)
         stats = f_stats.result()
         perf = f_perf.result()
         analysts = f_an.result()
         insiders = f_ins.result()
         intraday = f_intra.result()
         history = f_hist.result()
+        gex = f_gex.result()
 
     return {
         "symbol": symbol,
@@ -292,5 +330,6 @@ def get_overview(symbol: str) -> dict:
         "insiders": insiders,
         "intraday": intraday,
         "history": history,
+        "gex": gex,
         "source": "UNUSUAL_WHALES + SEC",
     }
