@@ -53,7 +53,9 @@ INDEX_CARDS = [
     {"label": "Nasdaq 100", "index": "NDX", "proxy": "QQQ", "mult": 41.0},
     {"label": "Dow Jones", "index": None, "proxy": "DIA", "mult": 100.0},
     {"label": "Russell 2000", "index": None, "proxy": "IWM", "mult": 10.0},
-    {"label": "VIX", "index": "VIX", "proxy": None, "mult": 1.0},
+    # No spot VIX quote from the feed; VIXY (VIX short-term futures ETF) moves
+    # with volatility and sits in the VIX's range, shown as a proxy, not scaled.
+    {"label": "VIX", "index": "VIX", "proxy": "VIXY", "mult": 1.0},
 ]
 
 SECTOR_ETFS = [
@@ -243,13 +245,14 @@ def _build_pulse() -> dict:
         # "7,633" (the S&P 500) rather than "763" (SPY). Percent change is the
         # same either way; only the absolute level is scaled.
         mult = card.get("mult") or 1.0
-        if proxy and mult != 1.0:
-            if row.get("price") is not None:
-                row["price"] = round(row["price"] * mult, 2)
-            if row.get("change") is not None:
-                row["change"] = round(row["change"] * mult, 2)
-            row["index_scaled"] = True
-            row["instrument"] = chosen  # the ETF the level was derived from
+        if proxy:
+            row["instrument"] = chosen  # the ETF this row was derived from
+            if mult != 1.0:
+                if row.get("price") is not None:
+                    row["price"] = round(row["price"] * mult, 2)
+                if row.get("change") is not None:
+                    row["change"] = round(row["change"] * mult, 2)
+                row["index_scaled"] = True
         indices.append(row)
 
     # --- sectors -----------------------------------------------------------

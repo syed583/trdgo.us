@@ -118,8 +118,10 @@ function IndexCard({ row }: { row: any }) {
     <div className="mo-index">
       <span className="mo-index-label">
         {row.label}
-        {row.index_scaled && (
-          <em title={`Index level derived from the ${row.instrument} ETF (ETF price x its index divisor). The feed carries no raw index quote; the % move is exact, the level is a close approximation.`}>
+        {row.is_proxy && row.instrument && (
+          <em title={row.index_scaled
+            ? `Index level derived from the ${row.instrument} ETF (ETF price x its index divisor). The feed carries no raw index quote; the % move is exact, the level is a close approximation.`
+            : `No spot ${row.label} quote from the feed; showing ${row.instrument} (a VIX-futures ETF) as a proxy — it moves with volatility but is not the VIX index level.`}>
             via {row.instrument}
           </em>
         )}
