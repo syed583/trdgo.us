@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Activity, AlertTriangle, ArrowRight, Check, Download, Layers, PhoneCall,
+  Activity, AlertTriangle, ArrowRight, Check, Download, Info, Layers, PhoneCall,
   Plus, RefreshCw, RotateCcw, Scale, Search, SlidersHorizontal,
   TrendingDown, TrendingUp, Wallet, X, Zap,
 } from 'lucide-react';
@@ -207,8 +207,16 @@ export function FlowSummary({
           icon={<Zap size={13} />}
           value={unusualCount == null ? '--' : contracts(unusualCount)}
           sub="Volume above open interest" />
-        <div className="mf-tile" title="Money-weighted: the lean of call vs put premium (dollars), not contract counts.">
-          <span className="mf-tile-label">Premium sentiment</span>
+        <div className="mf-tile">
+          <span className="mf-tile-label">
+            Premium sentiment
+            <span className="mf-tip"
+              title={'MONEY-WEIGHTED — the lean of call vs put PREMIUM (dollars = contracts x price x 100).\n\n'
+                + 'Example (MU): calls got ~82% of the premium dollars -> Bullish here. A few big-dollar call trades can drive this.\n\n'
+                + 'This can differ from "Volume sentiment" (count-based): if the money is bullish but volume is neutral, a few large players are betting bullish while the broad crowd is balanced -- a concentrated bet.'}>
+              <Info size={11} />
+            </span>
+          </span>
           <SentimentGauge lean={lean} share={summary.call_premium_share} />
           <span className="mf-tile-foot">
             <span className="mf-tile-sub">

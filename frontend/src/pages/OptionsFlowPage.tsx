@@ -603,7 +603,15 @@ function Tiles({ data }: { data: OptionsOverview }) {
       />
 
       <div className="sentiment-tile">
-        <div className="st-title">Volume sentiment (0–100)</div>
+        <div className="st-title">
+          Volume sentiment (0–100)
+          <span className="mf-tip"
+            title={'COUNT-BASED — built from how many CONTRACTS traded, the put/call ratio and open interest (every contract counts equally). 50 = neutral.\n\n'
+              + 'Example (MU): ~216k call vs ~135k put contracts (P/C 0.62) -> ~45, Neutral.\n\n'
+              + 'This can differ from "Premium sentiment" (money-weighted): if volume is neutral but premium is bullish, the broad crowd is balanced while a few big-dollar trades lean bullish. Premium = how much money bets each way; Volume = how many traders do.'}>
+            <Info size={11} />
+          </span>
+        </div>
         <div className="st-body">
           <SentimentGauge score={s.score} size={126} />
           <div className="sent-right">

@@ -721,3 +721,12 @@ tr.mf-picked td:first-child { box-shadow: inset 2px 0 0 var(--blue); }
   border-bottom: 1px solid var(--border);
 }
 .mf-cap b { color: var(--text-dim); font-weight: 600; }
+
+/* Small inline "?" info icon on a tile label (money vs volume sentiment, etc). */
+.mf-tip {
+  margin-left: 5px;
+  vertical-align: -1px;
+  color: var(--text-mute);
+  cursor: help;
+}
+.mf-tip:hover { color: var(--gold, var(--blue)); }
