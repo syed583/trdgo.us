@@ -68,13 +68,12 @@ _OPENER = urllib.request.build_opener(_NoRedirect)
 ENV_KEY = "UNUSUAL_WHALES_API_KEY"
 TIMEOUT = 30.0
 
-# Their published self-serve tier is 500 requests a minute and 80,000 a day.
-# The app's own ceiling sits under that with a safety buffer: 60k leaves ~20k of
-# the account's daily allowance untouched while giving the app 3x the old 20k,
-# which the score warmers + per-symbol screens (peers, dark pool, flow) burn
-# through faster than the old cap allowed. The burst/concurrency guards still
-# prevent 429s; this only bounds a runaway.
-APP_DAILY_BUDGET = 78000
+# The real daily limit is read from the provider's x-uw-token-req-limit header
+# and is authoritative (see _spend / budget). This constant is only the
+# pre-header fallback and a runaway guard. On the Pro / unlimited plan there is
+# no meaningful daily cap, so this is set very high; the per-minute backoff
+# (from x-uw-req-per-minute-*) still prevents 429 bursts.
+APP_DAILY_BUDGET = 10_000_000
 
 # How long an answer stays good. Split by how fast the underlying thing
 # actually moves rather than by how fast we could ask again.
