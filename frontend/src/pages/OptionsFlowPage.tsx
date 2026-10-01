@@ -421,6 +421,7 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
         </div>
       ) : (
       <div className="page">
+        <FlowExplainer />
         {/* This name's own call/put/net premium -- shown above everything and
             independent of the chain, so it appears even when the chain is
             unavailable (e.g. market closed) as long as the flow is there. */}
