@@ -509,8 +509,19 @@ def get_flow(symbol: str, chain: Optional[dict] = None, limit: int = 40) -> dict
     return uwflow.get_flow(symbol)
 
 
-def get_market_flow(limit: int = 200) -> dict:
-    """The market-wide flow tape, for the Live Flow default (all tickers)."""
+def get_market_flow(limit: int = 200, ticker: str = "") -> dict:
+    """The flow tape for the Live Flow view: market-wide, or one ticker."""
     import uw_flow_service as uwflow
 
-    return uwflow.get_market_flow(limit=limit)
+    return uwflow.get_market_flow(limit=limit, ticker=ticker)
+
+
+def get_symbol_tape(symbol: str, limit: int = 200) -> dict:
+    """
+    One ticker's live tape for the Options Flow screen -- the ticker-filtered
+    alert feed, which returns far more prints (up to 500) than the 50-row
+    flow-recent source ``get_flow`` keeps for the scorer.
+    """
+    import uw_flow_service as uwflow
+
+    return uwflow.get_market_flow(limit=limit, ticker=symbol)

@@ -785,10 +785,11 @@ def flow_market_summary() -> dict:
 
 
 @router.get("/flow/market/tape")
-def flow_market_tape(limit: int = 40) -> dict:
-    """The largest prints of the session across every watched ticker."""
+def flow_market_tape(limit: int = 200) -> dict:
+    """Notable prints of the session across every watched ticker, newest first."""
     import market_flow_service as mflow
 
+    limit = max(1, min(limit, 500))
     return swr.serve(f"flow:tape:{limit}", lambda: mflow.get_tape(limit=limit), market.session_ttl(4, 1800))
 
 
@@ -1104,15 +1105,40 @@ def flow_baseline(symbol: str, sessions: int = 20) -> dict:
 
 
 @router.get("/options/flow/{symbol}")
-def options_flow(symbol: str, limit: int = 40) -> dict:
-    return options.get_flow(symbol, limit=limit)
+def options_flow(symbol: str, limit: int = 200) -> dict:
+    """
+    One ticker's flow for the Options Flow screen. The tape comes from the
+    ticker-filtered alert feed (up to 500 prints, vs the 50-row flow-recent
+    cap), with the unusual list and premium pressure kept from get_flow.
+    """
+    def build() -> dict:
+        rich = options.get_symbol_tape(symbol, limit=limit)
+        base = options.get_flow(symbol)
+        # The rich ticker-filtered tape is the primary source (up to 500 prints).
+        # When it answers, keep it even if get_flow was momentarily rate-limited,
+        # and borrow the unusual list / pressure from get_flow when those are
+        # present. Fall back to get_flow wholesale only if the rich tape is empty.
+        if rich.get("status") == "OK" and rich.get("trades"):
+            out = dict(rich)
+            out["all_count"] = len(rich["trades"])
+            out["ranking_basis"] = "TIME"
+            for k in ("unusual", "unusual_listed", "unusual_capped", "pressure",
+                      "bullish_premium_share", "blocks", "sweeps"):
+                if base.get(k) is not None:
+                    out[k] = base[k]
+            return out
+        return base
+
+    return swr.serve(f"options:flow:{symbol.upper()}:{limit}", build,
+                     market.session_ttl(4, 600))
 
 
 @router.get("/options/flow")
 def options_flow_market(limit: int = 200) -> dict:
     """Market-wide flow tape (all tickers) for the Live Flow default view."""
-    return swr.serve("options:marketflow",
-                     lambda: options.get_market_flow(limit=limit), 20)
+    return swr.serve(f"options:marketflow:{limit}",
+                     lambda: options.get_market_flow(limit=limit),
+                     market.session_ttl(4, 600))
 
 
 @router.get("/options/contract/{occ}")

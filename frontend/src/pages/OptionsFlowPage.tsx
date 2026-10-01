@@ -142,7 +142,7 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
       ? api2.flowMarketSummary(s) : Promise.resolve(null)), [mode, demo]);
   const marketTape = useApi<any>(
     (s) => (mode === 'market' && !demo
-      ? api2.flowMarketTape(50, s) : Promise.resolve(null)), [mode, demo],
+      ? api2.flowMarketTape(200, s) : Promise.resolve(null)), [mode, demo],
     // The tape is the one panel meant to read live -- new prints as they cross,
     // the way Unusual Whales shows it -- so it ticks every few seconds. The
     // backend caches it for about as long, and the provider-paced dispatcher

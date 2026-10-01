@@ -188,11 +188,15 @@ def test_watchlist_route_serves_the_persisted_list(client, monkeypatch):
 def test_flow_route_forwards_the_limit(client, monkeypatch):
     seen = {}
 
-    def fake(symbol, limit):
+    def fake_tape(symbol, limit=200):
         seen["args"] = (symbol, limit)
-        return {"trades": [], "status": "OK"}
+        return {"trades": [{"symbol": symbol}], "status": "OK"}
 
-    monkeypatch.setattr(api_routes.options, "get_flow", fake)
+    # The per-ticker tape now comes from the ticker-filtered alert feed, which
+    # is where the limit is forwarded; get_flow supplies only the unusual list.
+    monkeypatch.setattr(api_routes.options, "get_symbol_tape", fake_tape)
+    monkeypatch.setattr(api_routes.options, "get_flow",
+                        lambda symbol: {"unusual": [], "status": "OK"})
     client.get("/api/options/flow/NVDA?limit=5")
     assert seen["args"] == ("NVDA", 5)
 

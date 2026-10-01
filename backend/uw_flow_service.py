@@ -443,13 +443,14 @@ def _alert_row(row: dict) -> dict:
     }
 
 
-def get_market_flow(limit: int = 200) -> dict:
+def get_market_flow(limit: int = 200, ticker: str = "") -> dict:
     """
-    The market-wide flow tape: the alert feed across every name, in the shape
-    the Options Flow screen renders. This backs the Live Flow default view;
-    the per-ticker view stays on ``get_flow``.
+    The flow tape in the shape the Options Flow screen renders. Without a ticker
+    it is the market-wide alert feed (the Live Flow default); with ``ticker`` it
+    is that name's alerts, which returns far more prints than ``get_flow``'s
+    50-row flow-recent source.
     """
-    out = uw.market_flow_alerts(limit=limit)
+    out = uw.market_flow_alerts(limit=limit, ticker=ticker)
     if out.get("status") != "OK":
         return {"status": out.get("status", "NO_DATA"),
                 "detail": out.get("detail"), "trades": [], "source": SOURCE}
@@ -466,8 +467,8 @@ def get_market_flow(limit: int = 200) -> dict:
     total = sum(t["premium"] or 0 for t in trades) or 0.0
 
     return {
-        "symbol": None,
-        "scope": "MARKET",
+        "symbol": (ticker or "").upper() or None,
+        "scope": "SYMBOL" if ticker else "MARKET",
         "session_date": (trades[0]["time"] or "")[:10] if trades else None,
         "trades": trades,
         "blocks": blocks,

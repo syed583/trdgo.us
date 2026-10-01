@@ -751,15 +751,22 @@ def flow_alerts(symbol: str, limit: int = 50) -> dict:
                    ttl=TTL_TAPE)
 
 
-def market_flow_alerts(limit: int = 200) -> dict:
+def market_flow_alerts(limit: int = 200, ticker: str = "") -> dict:
     """
-    The market-wide flow-alert tape: the trades worth looking at across every
-    name, in one request. This is the feed Unusual Whales' Live Flow shows by
-    default -- a row per alert, each a different ticker -- and it carries the
-    full column set (NBBO, greeks, sweep/floor/leg flags, earnings) per row.
+    The flow-alert tape: the trades worth looking at, in one request. Without a
+    ticker it is the market-wide feed Unusual Whales' Live Flow shows by default
+    (a row per alert, each a different name); with ``ticker`` it is that one
+    name's alerts, which returns far more than the 50-row ``flow-recent`` cap.
+    Each row carries the full column set (NBBO, greeks, sweep/floor/leg flags,
+    earnings). The provider serves up to 500 rows per request.
     """
-    return _cached(f"uw:mktflowalerts:{limit}",
-                   "/api/option-trades/flow-alerts", {"limit": limit},
+    ticker = (ticker or "").upper().strip()
+    limit = max(1, min(int(limit or 200), 500))
+    params = {"limit": limit}
+    if ticker:
+        params["ticker_symbol"] = ticker
+    return _cached(f"uw:mktflowalerts:{ticker}:{limit}",
+                   "/api/option-trades/flow-alerts", params,
                    ttl=_flow_live_ttl())
 
 
