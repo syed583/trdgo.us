@@ -259,6 +259,14 @@ def get_metrics(
 
     atm_ivs = [r["iv"] for r in (atm_call, atm_put) if r and r.get("iv")]
     atm_iv = round(sum(atm_ivs) / len(atm_ivs) * 100, 2) if atm_ivs else None
+    # Locally solved IV is unusable on near-dated chains: a 0-DTE ATM leg has
+    # almost no extrinsic value, so Black-Scholes inverts to hundreds of vol
+    # points (1846% on NVDA's 0-DTE). The skew component below already discards
+    # out-of-band wing IVs for the same reason; headline IV needs the same
+    # guard, so anything outside a plausible equity band is dropped and the
+    # provider's constant-maturity IV is used instead.
+    if atm_iv is not None and not (0.0 < atm_iv <= 300.0):
+        atm_iv = None
 
     call25 = _nearest_delta(rows, "C", 0.25)
     put25 = _nearest_delta(rows, "P", 0.25)

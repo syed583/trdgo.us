@@ -445,6 +445,46 @@ def _provider_live_price(symbol: str, reference_close: float,
     }
 
 
+# Cash-settled index roots have no tradable quote on the feed; their level is
+# carried by the market-pulse cards (S&P 500 via SPY, etc.). Searching one of
+# these should still show a price rather than a blank "--".
+_INDEX_QUOTE_ROOTS = {
+    "SPX": "S&P 500", "SPXW": "S&P 500",
+    "NDX": "Nasdaq 100", "NDXP": "Nasdaq 100",
+    "RUT": "Russell 2000", "RUTW": "Russell 2000",
+    "DJX": "Dow Jones",
+    "VIX": "VIX", "VIXW": "VIX",
+}
+
+
+def _index_quote(symbol: str) -> Optional[dict]:
+    """A quote for a cash-settled index, from the market-pulse index level."""
+    label = _INDEX_QUOTE_ROOTS.get(symbol.upper())
+    if not label:
+        return None
+    try:
+        import market_pulse_service as mp
+        for i in mp.get_topbar().get("indices", []):
+            if i.get("label") == label and i.get("price") is not None:
+                via = i.get("via") or i.get("instrument")
+                return {
+                    "symbol": symbol.upper(),
+                    "name": label,
+                    "tags": ["INDEX"],
+                    "price": i.get("price"),
+                    "change_percent": i.get("change_percent"),
+                    "change": None,
+                    "status": "OK",
+                    "price_source": "INDEX_LEVEL",
+                    "instrument": via,
+                    "detail": (f"{label} index level"
+                               + (f", tracked via {via}" if via else "")),
+                }
+    except Exception:  # noqa: BLE001 - fall through to the normal path
+        return None
+    return None
+
+
 def get_quote(symbol: str, ttl: Optional[float] = None,
               live_timeout: float = LIVE_PRICE_BUDGET_REQUEST) -> dict:
     symbol = symbol.upper()
@@ -452,6 +492,11 @@ def get_quote(symbol: str, ttl: Optional[float] = None,
     cached = cache.get(key, ttl if ttl is not None else session_ttl(5.0, 300.0))
     if cached:
         return cached
+
+    index_quote = _index_quote(symbol)
+    if index_quote:
+        cache.put(key, index_quote)
+        return index_quote
 
     # The provider first when preferred: it is real time and
     # answers in ~0.3s. The TWS path qualifies the contract, pulls five days of

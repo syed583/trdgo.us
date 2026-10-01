@@ -59,6 +59,60 @@ function contracts(value: number | null | undefined): string {
   return Math.round(value).toLocaleString();
 }
 
+/** Sentiment as a title-cased label, whatever case the feed sent. */
+function sentLabel(s: string | null | undefined): string {
+  const t = String(s || '').toUpperCase();
+  if (t === 'BULLISH') return 'Bullish';
+  if (t === 'BEARISH') return 'Bearish';
+  return 'Neutral';
+}
+
+/**
+ * Where a fill landed in the contract's spread, as the bar Unusual Whales
+ * draws: full to the right is a lift at the ask (aggressive buy), empty is a
+ * hit on the bid (aggressive sell), the middle is a mid print.
+ */
+function FillBar({ pct }: { pct: number | null | undefined }) {
+  if (pct == null) return <span className="mf-dim">--</span>;
+  const clamped = Math.max(0, Math.min(1, pct));
+  const color = pct >= 0.55 ? '#22a06b' : pct <= 0.45 ? '#e08a00' : '#8a94a6';
+  return (
+    <span className="mf-fillbar" title={`Fill at ${Math.round(pct * 100)}% of the bid-ask spread`}>
+      <span style={{ width: `${clamped * 100}%`, background: color }} />
+    </span>
+  );
+}
+
+/** The chain's ask-vs-bid split as UW's two-tone percentage bar. */
+function ChainBar({ askPct }: { askPct: number | null | undefined }) {
+  if (askPct == null) return <span className="mf-dim">--</span>;
+  const a = Math.max(0, Math.min(100, askPct));
+  return (
+    <span className="mf-chainbar" title={`${Math.round(a)}% ask-side`}>
+      <span className="mf-chainbar-track">
+        <span className="mf-chainbar-ask" style={{ width: `${a}%` }} />
+      </span>
+      <span className="mf-chainbar-pct">{Math.round(a)}%</span>
+    </span>
+  );
+}
+
+/** Sweep / floor / earnings chips, the way the UW tape flags a print. */
+function FlagChips({ r }: { r: any }) {
+  const chips: { t: string; bg: string }[] = [];
+  if (r.sweep) chips.push({ t: 'SWEEP', bg: '#c026d3' });
+  if (r.floor) chips.push({ t: 'FLOOR', bg: '#7c3aed' });
+  if (r.earnings_soon) chips.push({ t: 'ER', bg: '#d97706' });
+  if (!chips.length) return <span className="mf-dim">--</span>;
+  return (
+    <>
+      {chips.map((c) => (
+        <span key={c.t} className="mf-flagchip" style={{ background: c.bg }}>{c.t}</span>
+      ))}
+    </>
+  );
+}
+
 /**
  * A tile's session shape.
  *
@@ -242,12 +296,66 @@ export function FlowSummary({
 }
 
 /** The live tape: largest prints of the session, every ticker. */
+/**
+ * The headline strip Unusual Whales runs across the top of its flow screens:
+ * the index levels, VIX, market breadth and the week's earnings counts. It
+ * shows what this app actually measures -- no fabricated VVIX or crypto quote,
+ * no invented 52-week-high count -- so a cell is present only when it is real.
+ */
+export function MarketTopBar() {
+  const bar = useApi<any>((s) => api2.marketTopbar(s), [], { refreshMs: 60000 });
+  const d = bar.data;
+  if (!d || d.status !== 'OK' || !(d.indices || []).length) return null;
+
+  const pct = (v: number | null | undefined) =>
+    v == null ? '' : `${v > 0 ? '+' : ''}${v.toFixed(2)}%`;
+
+  return (
+    <div className="mf-topbar">
+      {(d.indices || []).map((i: any) => (
+        <div className="mf-topbar-cell" key={i.label} title={i.via ? `via ${i.via}` : ''}>
+          <span className="mf-topbar-label">{i.label}</span>
+          <span className="mf-topbar-val">
+            {money(i.price)}
+            <span className={`mf-topbar-chg ${(i.change_percent ?? 0) >= 0 ? 'up' : 'down'}`}>
+              {pct(i.change_percent)}
+            </span>
+          </span>
+        </div>
+      ))}
+      {d.breadth?.advancing != null && (
+        <div className="mf-topbar-cell">
+          <span className="mf-topbar-label">Advancers / Decliners</span>
+          <span className="mf-topbar-val">
+            <span className="up">{contracts(d.breadth.advancing)}</span>
+            {' / '}
+            <span className="down">{contracts(d.breadth.declining)}</span>
+          </span>
+        </div>
+      )}
+      {d.earnings_this_week != null && (
+        <div className="mf-topbar-cell">
+          <span className="mf-topbar-label">Earnings · This wk</span>
+          <span className="mf-topbar-val">{d.earnings_this_week}</span>
+        </div>
+      )}
+      {d.earnings_next_week != null && (
+        <div className="mf-topbar-cell">
+          <span className="mf-topbar-label">Earnings · Next wk</span>
+          <span className="mf-topbar-val">{d.earnings_next_week}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function FlowTape({
-  tape, picked, onPick, filters, onToggleFilters, filtersOpen,
+  tape, picked, onPick, filters, onToggleFilters, filtersOpen, onContract,
 }: {
   tape: any; picked: string | null; onPick: (symbol: string) => void;
   filters: FlowFilterState;
   onToggleFilters: () => void; filtersOpen: boolean;
+  onContract?: (occ: string) => void;
 }) {
   const rows = useMemo(
     () => applyFilters(tape?.rows || [], filters), [tape, filters]);
@@ -316,27 +424,42 @@ export function FlowTape({
           <table className="tbl mf-tape">
             <thead>
               <tr>
-                <th>Date / Time</th><th>Ticker</th><th>Type</th>
+                <th>Date / Time</th><th>Ticker</th><th>Side</th><th>Type</th>
                 <th className="r">Strike</th><th>Expiry</th><th className="r">DTE</th>
-                <th className="r">Spot</th><th className="r">Bid/Ask</th>
+                <th className="r">Stock</th><th className="r">Bid/Ask</th>
+                <th>Fill</th><th className="r">Size</th><th className="r">Premium</th>
                 <th className="r">Volume</th><th className="r">OI</th>
-                <th className="r">Vol/OI</th><th className="r">Premium</th>
-                <th className="r">IV</th><th>Side</th><th>Signal</th>
+                <th className="r">Vol/OI</th><th>Chain</th>
+                <th className="r">IV</th><th className="r">&Delta;</th>
+                <th>Legs</th><th>Flags</th><th>Sentiment</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => (
+              {rows.map((r, i) => {
+                const sent = sentLabel(r.sentiment);
+                const ivPct = r.iv_pct != null ? r.iv_pct
+                  : (r.iv != null ? (r.iv <= 5 ? r.iv * 100 : r.iv) : null);
+                return (
                 <tr key={`${r.symbol}-${r.time}-${r.strike}-${i}`}
                   className={`clickable ${picked === r.symbol ? 'mf-picked' : ''}`}
                   onClick={() => onPick(r.symbol)}>
                   <td className="num mf-time">{tapeTime(r.time)}</td>
                   <td><b className="mf-ticker">{r.symbol}</b></td>
+                  <td className="mf-dim" style={{ textTransform: 'capitalize' }}>{r.side}</td>
                   <td>
                     <span className={`badge ${r.right === 'C' ? 'green' : 'red'}`}>
-                      {r.type.toUpperCase()}
+                      {String(r.type || '').toUpperCase()}
                     </span>
                   </td>
-                  <td className="num r">{strike(r.strike)}</td>
+                  <td className="num r">
+                    {onContract && r.option_symbol ? (
+                      <button className="mf-contract-link"
+                        title="Open contract detail"
+                        onClick={(e) => { e.stopPropagation(); onContract(r.option_symbol); }}>
+                        {strike(r.strike)}
+                      </button>
+                    ) : strike(r.strike)}
+                  </td>
                   <td className="num">{r.expiry}</td>
                   <td className="num r">{r.dte ?? '--'}</td>
                   <td className="num r">{money(r.spot)}</td>
@@ -344,21 +467,27 @@ export function FlowTape({
                     {r.bid != null && r.ask != null
                       ? `${num(r.bid)} / ${num(r.ask)}` : '--'}
                   </td>
+                  <td><FillBar pct={r.fill_pct} /></td>
+                  <td className="num r">{contracts(r.size)}</td>
+                  <td className="num r"><b>{premium(r.premium)}</b></td>
                   <td className="num r">{contracts(r.volume)}</td>
                   <td className="num r mf-dim">{contracts(r.open_interest)}</td>
                   <td className={`num r ${(r.volume_oi ?? 0) >= 2 ? 'mf-hot' : ''}`}>
-                    {r.volume_oi != null ? `${r.volume_oi}x` : '--'}
+                    {r.volume_oi != null ? `${Number(r.volume_oi).toFixed(1)}x` : '--'}
                   </td>
-                  <td className="num r"><b>{premium(r.premium)}</b></td>
-                  <td className="num r mf-dim">{r.iv != null ? `${r.iv}%` : '--'}</td>
-                  <td className="mf-dim">{r.side}</td>
+                  <td><ChainBar askPct={r.chain_ask_pct} /></td>
+                  <td className="num r mf-dim">{ivPct != null ? `${Math.round(ivPct)}%` : '--'}</td>
+                  <td className="num r mf-dim">{r.delta != null ? r.delta.toFixed(2) : '--'}</td>
+                  <td className="mf-dim">{r.legs || '--'}</td>
+                  <td><FlagChips r={r} /></td>
                   <td>
-                    <span className={`badge ${r.sentiment === 'Bullish' ? 'green' : 'red'}`}>
-                      {r.sentiment}
+                    <span className={`badge ${sent === 'Bullish' ? 'green' : sent === 'Bearish' ? 'red' : ''}`}>
+                      {sent}
                     </span>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -334,11 +334,22 @@ def _provider_iv_history(symbol: str) -> Optional[dict]:
                                {"timeframe": "1m"}))
     hv = num((realised[-1] if realised else {}).get("realized_volatility"))
 
-    # These arrive as fractions (0.46), not percentages.
+    # Volatility readings arrive as fractions (0.46), not percentages.
     def as_pct(value):
         if value is None:
             return None
         return round(value * 100, 2) if abs(value) <= 5 else round(value, 2)
+
+    # IV rank and percentile already arrive on a 0-100 scale (3.3154 = 3.3%),
+    # not as a 0-1 fraction -- the same figure /volatility/stats returns raw.
+    # Running them through as_pct multiplied a legitimate single-digit rank by
+    # 100 (3.32 -> 332), so they are only scaled when they read like a true
+    # fraction (<= 1) and otherwise clamped into the band they live in.
+    def as_rank(value):
+        if value is None:
+            return None
+        scaled = round(value * 100, 2) if abs(value) <= 1 else round(value, 2)
+        return max(0.0, min(100.0, scaled))
 
     # A whole year of IV, for the chart the caller may want to draw.
     series = [{"date": r.get("date"), "iv": as_pct(num(r.get("volatility")))}
@@ -351,8 +362,8 @@ def _provider_iv_history(symbol: str) -> Optional[dict]:
                       default=None),
         "iv_high": max((p["iv"] for p in series if p["iv"] is not None),
                        default=None),
-        "iv_rank": as_pct(rank),
-        "iv_percentile": as_pct(pct),
+        "iv_rank": as_rank(rank),
+        "iv_percentile": as_rank(pct),
         "hv": as_pct(hv),
         "rv20": None,
         "rv30": None,
@@ -496,3 +507,10 @@ def get_flow(symbol: str, chain: Optional[dict] = None, limit: int = 40) -> dict
     import uw_flow_service as uwflow
 
     return uwflow.get_flow(symbol)
+
+
+def get_market_flow(limit: int = 200) -> dict:
+    """The market-wide flow tape, for the Live Flow default (all tickers)."""
+    import uw_flow_service as uwflow
+
+    return uwflow.get_market_flow(limit=limit)

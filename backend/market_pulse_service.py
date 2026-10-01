@@ -408,3 +408,60 @@ def _sentiment(advancing: int, measured: int, vix: Optional[dict],
                    "options readings -- not the CNN Fear & Greed Index, which "
                    "is a different series with different inputs."),
     }
+
+
+def get_topbar() -> dict:
+    """
+    The strip Unusual Whales runs across the top of its flow screens: the
+    headline index levels, volatility, market breadth and how many names
+    report earnings this week and next.
+
+    Everything here is what this app actually measures. There is no native VVIX
+    or crypto quote in the equity feed, and no market-wide 52-week high/low
+    count, so those UW cells are left out rather than faked -- the bar shows
+    the real S&P 500, Nasdaq, Dow, Russell 2000 and VIX, the advancer/decliner
+    breadth, and the two earnings counts.
+    """
+    pulse = get_pulse()
+    by_label = {i.get("label"): i for i in (pulse.get("indices") or [])}
+
+    def card(label: str) -> Optional[dict]:
+        row = by_label.get(label)
+        if not row:
+            return None
+        return {
+            "label": label,
+            "price": row.get("price"),
+            "change_percent": row.get("change_percent") or row.get("change_pct"),
+            "instrument": row.get("instrument"),
+            "via": row.get("proxy") or row.get("via"),
+        }
+
+    indices = [c for c in (card("S&P 500"), card("Nasdaq 100"), card("Nasdaq"),
+                           card("Dow Jones"), card("Russell 2000"), card("VIX"))
+               if c]
+
+    breadth = pulse.get("breadth") or {}
+
+    def earnings_count(range_key: str) -> Optional[int]:
+        try:
+            import earnings_calendar_service as cal
+            out = cal.get_calendar(range_key=range_key, with_quotes=False,
+                                   limit=500)
+            return out.get("count")
+        except Exception:  # noqa: BLE001 - the bar renders without it
+            return None
+
+    return {
+        "status": "OK" if indices else (pulse.get("status") or "NO_DATA"),
+        "indices": indices,
+        "breadth": {
+            "advancing": breadth.get("advancing"),
+            "declining": breadth.get("declining"),
+            "measured": breadth.get("measured"),
+        },
+        "earnings_this_week": earnings_count("THIS_WEEK"),
+        "earnings_next_week": earnings_count("NEXT_WEEK"),
+        "session": (pulse.get("market") or {}).get("session"),
+        "source": pulse.get("source"),
+    }

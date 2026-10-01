@@ -145,49 +145,37 @@ def get_summary(extra: Optional[list[str]] = None) -> dict:
 
 
 def get_tape(limit: int = 40, extra: Optional[list[str]] = None) -> dict:
-    """The largest unusual option prints in the market right now."""
-    tape = uw.tape_rows(limit=max(limit, 10))
-    if tape["status"] != "OK":
-        return {"status": tape["status"], "rows": [], "count": 0,
-                "detail": tape.get("detail"), "source": SOURCE}
+    """
+    The market-wide flow tape -- every notable print across the whole market,
+    newest first.
 
-    rows = []
-    for r in tape["rows"][:limit]:
-        rows.append({
-            "symbol": r["symbol"],
-            "right": r["right"],
-            "type": "CALL" if r["right"] == "C" else "PUT",
-            "strike": r["strike"],
-            "expiry": r["expiry"],
-            "expiry_label": r["expiry"],
-            "dte": _dte(r["expiry"]),
-            "spot": r.get("stock_price"),
-            "contracts": r["volume"],
-            "volume": r["volume"],
-            "open_interest": r["open_interest"],
-            "volume_oi": r["ratio"],
-            "premium": r["premium"],
-            "iv": r["iv"],
-            "delta": r.get("delta"),
-            "gamma": r.get("gamma"),
-            "side": r["side"],
-            "sentiment": flow._sentiment(r),
-            "time": r.get("last_fill"),
-        })
+    This now draws on the flow-alert feed (``/option-trades/flow-alerts``),
+    the same one Unusual Whales' Live Flow shows: a row per alert, each
+    carrying the full column set -- the underlying price, the contract's NBBO
+    and where the fill sat in it, size, the chain's bid/ask split, the greeks,
+    the leg count and the sweep/floor/earnings flags. The older unusual-volume
+    scan behind this served none of those columns, so the tape rendered half
+    empty beside the per-ticker view.
+    """
+    feed = flow.get_market_flow(limit=max(limit, 10))
+    if feed.get("status") != "OK":
+        return {"status": feed.get("status", "NO_DATA"), "rows": [], "count": 0,
+                "detail": feed.get("detail"), "source": SOURCE}
 
+    rows = (feed.get("trades") or [])[:limit]
     return {
         "status": "OK",
-        "session": (rows[0]["time"] or "")[:10] if rows and rows[0].get("time") else None,
+        "session": feed.get("session_date"),
         "rows": rows, "count": len(rows),
         "min_contracts": None,
         "universe": "Every optionable symbol",
         "symbols_unavailable": [],
         "source": SOURCE,
-        "detail": ("Contracts trading far above their own normal volume, "
-                   "across the whole market."),
-        # Real freshness from the newest print, same as the per-symbol tape:
-        # live during the session, the true gap if behind, last close when shut.
-        **flow._tape_freshness([{"epoch": flow._epoch(x.get("time"))} for x in rows]),
+        "detail": ("Every notable options print across the market, newest "
+                   "first, from the live flow-alert feed."),
+        "delay_minutes": feed.get("delay_minutes"),
+        "as_of": feed.get("as_of"),
+        "note": feed.get("note"),
     }
 
 

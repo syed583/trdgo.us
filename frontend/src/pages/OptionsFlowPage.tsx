@@ -23,10 +23,11 @@ import { useApi } from '../hooks/useApi';
 
 import OptionChainPage from './OptionChainPage';
 import {
-  EMPTY_FILTERS, ExpiryFlow, FlowFilters, FlowSummary, FlowTape, SectorFlow,
-  TickerDetail, UnusualTable,
+  EMPTY_FILTERS, ExpiryFlow, FlowFilters, FlowSummary, FlowTape, MarketTopBar,
+  SectorFlow, TickerDetail, UnusualTable,
 } from '../components/MarketFlow';
 import type { FlowFilterState } from '../components/MarketFlow';
+import { ContractModal } from '../components/ContractModal';
 import { Donut, MiniRing, Panel, SentimentGauge, StateBlock } from '../components/common';
 import { StatusChip } from './shared';
 import {
@@ -116,6 +117,7 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
   const [mode, setMode] =
     useState<'market' | 'symbol' | 'chain'>('market');
   const [picked, setPicked] = useState<string | null>(null);
+  const [contract, setContract] = useState<string | null>(null);
   // Filters narrow the tape the operator is already looking at rather than
   // refetching: the session is one query and already in hand, so a round trip
   // to drop rows would cost seconds to show less.
@@ -264,6 +266,8 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
 
   return (
     <>
+      {contract && <ContractModal occ={contract} onClose={() => setContract(null)} />}
+      {!demo && <MarketTopBar />}
       <div className="opt-tabbar">
         {/* One row for the whole section: the market tape, this symbol's
             flow, and its chain. They share a symbol and a provider call, so
@@ -402,7 +406,8 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
             <div className="mf-split">
               <FlowTape tape={scoped ? scopedTape : marketTape.data} picked={picked}
                 onPick={setPicked} filters={filters} filtersOpen={filtersOpen}
-                onToggleFilters={() => setFiltersOpen((v) => !v)} />
+                onToggleFilters={() => setFiltersOpen((v) => !v)}
+                onContract={setContract} />
               <TickerDetail symbol={picked} tape={marketTape.data}
                 summary={marketSummary.data}
                 onClose={() => setPicked(null)}

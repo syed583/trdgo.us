@@ -303,6 +303,15 @@ def get_levels(symbol: str, expiry: Optional[str] = None) -> dict:
         }
 
     spot = _num(chain.get("spot"))
+    if spot is None:
+        # Cash-settled index chains (SPX, SPXW, NDX, RUT ...) carry no underlying
+        # price, which left gamma/GEX, the gamma flip and every level distance
+        # blank. The quote service now resolves the index level, so the whole
+        # structure panel computes for an index the same as for a stock.
+        try:
+            spot = _num((market.get_quote(symbol) or {}).get("price"))
+        except Exception:  # noqa: BLE001 - fall through with no spot
+            spot = None
     oi = _oi_structure(rows, spot)
     gamma = _gamma_profile(rows, spot)
     max_pain = _max_pain(rows)

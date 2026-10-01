@@ -23,7 +23,7 @@ be rewritten around a new vocabulary.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Optional
 
 import unusualwhales_service as uw
@@ -108,6 +108,49 @@ def _sentiment(row: dict) -> str:
     return "BULLISH" if bullish else "BEARISH"
 
 
+def _dte(expiry: Optional[str]) -> Optional[int]:
+    """Calendar days to expiry, for the DTE column."""
+    if not expiry:
+        return None
+    try:
+        exp = date.fromisoformat(str(expiry)[:10])
+    except (TypeError, ValueError):
+        return None
+    return (exp - datetime.now(timezone.utc).date()).days
+
+
+def _earnings_soon(row: dict) -> bool:
+    """
+    Whether this name reports earnings inside a week -- the EARNINGS THIS WEEK
+    tag UW paints on the tape. ``er_time`` is the session-relative flag the
+    feed sets; ``next_earnings_date`` is the fallback when that is absent.
+    """
+    er = str(row.get("er_time") or "").lower()
+    if er in ("premarket", "postmarket", "pre-market", "post-market"):
+        return True
+    nxt = row.get("next_earnings_date")
+    if nxt:
+        try:
+            days = (date.fromisoformat(str(nxt)[:10])
+                    - datetime.now(timezone.utc).date()).days
+            return 0 <= days <= 7
+        except (TypeError, ValueError):
+            return False
+    return False
+
+
+def _fill_pct(price: Optional[float], bid: Optional[float],
+              ask: Optional[float]) -> Optional[float]:
+    """
+    Where the fill landed in the spread, 0 (at bid) to 1 (at ask) -- the
+    Fill-vs-Spread bar. A print above the ask reads >1 (aggressive buy);
+    below the bid, <0 (aggressive sell). Clamped for the bar, raw kept apart.
+    """
+    if price is None or bid is None or ask is None or ask <= bid:
+        return None
+    return round((price - bid) / (ask - bid), 3)
+
+
 def _print_row(row: dict) -> dict:
     """
     One executed print, as they classified it.
@@ -116,8 +159,15 @@ def _print_row(row: dict) -> dict:
     which side of the spread the order crossed, and whether that reads
     bullish or bearish on that contract. Taking theirs removes the step
     where a fill at the midpoint got rounded into a direction.
+
+    Every column the Unusual Whales tape shows is carried through here: the
+    underlying price, the contract's NBBO and where the fill sat in it, the
+    chain's bid/ask/mid volume split, the greeks, days to expiry and the
+    earnings flag. The feed returns all of it per print; the screen decides
+    which columns to render.
     """
     tags = [str(t).lower() for t in (row.get("tags") or [])]
+    flags = [str(t).lower() for t in (row.get("report_flags") or [])]
     size = _f(row.get("size")) or 0.0
     price = _f(row.get("price")) or 0.0
     right = (str(row.get("option_type") or "")[:1]
@@ -125,12 +175,29 @@ def _print_row(row: dict) -> dict:
     side = ("ask" if "ask_side" in tags else "bid" if "bid_side" in tags
             else "mid")
     premium = _f(row.get("premium")) or (size * price * 100.0)
+
+    bid = _f(row.get("nbbo_bid"))
+    ask = _f(row.get("nbbo_ask"))
+    ask_vol = _f(row.get("ask_vol")) or 0.0
+    bid_vol = _f(row.get("bid_vol")) or 0.0
+    mid_vol = _f(row.get("mid_vol")) or 0.0
+    no_side_vol = _f(row.get("no_side_vol")) or 0.0
+    chain_total = ask_vol + bid_vol + mid_vol + no_side_vol
+
+    is_sweep = "sweep" in tags or "sweep" in flags
+    is_floor = "floor" in tags or "floor" in flags
+    # Leg count is per order, and the per-print tape only reveals it through
+    # the OPRA report flags -- ``multi_vol`` is the chain's multileg total, not
+    # this print's, so leaning on it marked almost every single-leg print ML.
+    is_multi = "multileg" in flags or "multi_leg" in flags or "spread" in flags
+
     return {
         "symbol": row.get("underlying_symbol"),
         "option_symbol": row.get("option_chain_id"),
         "right": "P" if right == "P" else "C",
         "strike": _f(row.get("strike")),
         "expiry": row.get("expiry"),
+        "dte": _dte(row.get("expiry")),
         "volume": _f(row.get("volume")),
         "open_interest": _f(row.get("open_interest")),
         "size": size,
@@ -138,9 +205,41 @@ def _print_row(row: dict) -> dict:
         "notional": round(premium, 2),
         "premium": round(premium, 2),
         "iv": _f(row.get("implied_volatility")),
+        "iv_pct": (round(_f(row.get("implied_volatility")) * 100, 1)
+                   if _f(row.get("implied_volatility")) is not None else None),
+        # Underlying and the contract's own quote, for the Stock / Bid-Ask /
+        # Spot / Fill-vs-Spread columns. ``spot`` carries the underlying price
+        # under the name the tape table already reads.
+        "underlying_price": _f(row.get("underlying_price")),
+        "spot": _f(row.get("underlying_price")),
+        "volume_oi": (round((_f(row.get("volume")) or 0)
+                            / (_f(row.get("open_interest")) or 1), 2)
+                      if _f(row.get("open_interest")) else None),
+        "bid": bid,
+        "ask": ask,
+        "fill_pct": _fill_pct(price, bid, ask),
+        # The chain's volume split so the screen can draw UW's Chain Bid/Ask
+        # percentage bar without re-deriving it.
+        "chain_ask_pct": (round(ask_vol / chain_total * 100, 1)
+                          if chain_total else None),
+        "chain_bid_pct": (round(bid_vol / chain_total * 100, 1)
+                          if chain_total else None),
+        "chain_mid_pct": (round(mid_vol / chain_total * 100, 1)
+                          if chain_total else None),
+        # Greeks, straight from the feed's solve.
+        "delta": _f(row.get("delta")),
+        "gamma": _f(row.get("gamma")),
+        "theta": _f(row.get("theta")),
+        "vega": _f(row.get("vega")),
+        "rho": _f(row.get("rho")),
         "side": side,
-        "sweep": "sweep" in tags,
-        "kind": ("SWEEP" if "sweep" in tags
+        "sweep": is_sweep,
+        "floor": is_floor,
+        "legs": "ML" if is_multi else "SL",
+        "exchange": row.get("exchange"),
+        "flags": flags,
+        "earnings_soon": _earnings_soon(row),
+        "kind": ("SWEEP" if is_sweep
                  else "BLOCK" if premium >= BLOCK_PREMIUM else "PRINT"),
         "sentiment": ("BULLISH" if "bullish" in tags
                       else "BEARISH" if "bearish" in tags else "NEUTRAL"),
@@ -235,6 +334,140 @@ def get_flow(symbol: str) -> dict:
             "status": "OK" if total else "NO_DATA",
             "source": SOURCE,
         },
+        "bullish_premium_share": round(bullish / total * 100, 1) if total else None,
+        "ranking_basis": "PREMIUM",
+        **_tape_freshness(trades),
+        "status": "OK" if trades else "NO_TRADES",
+        "source": SOURCE,
+    }
+
+
+def _alert_row(row: dict) -> dict:
+    """
+    One market-wide flow alert, mapped into the same shape ``_print_row``
+    produces. The flow-alerts feed names a few fields differently from the
+    per-stock tape (``total_size``/``total_premium``, ``has_sweep``, a single
+    ``option_chain`` OCC symbol), and reports the side as a bid/ask premium
+    split rather than a per-print tag, so the side is read from whichever
+    premium dominated the alert.
+    """
+    occ = str(row.get("option_chain") or "")
+    right = uw._right_from_symbol(occ).upper()
+    if right not in ("C", "P"):
+        right = "C" if str(row.get("type") or "").lower().startswith("c") else "P"
+    size = _f(row.get("total_size")) or 0.0
+    price = _f(row.get("price")) or 0.0
+    premium = _f(row.get("total_premium")) or (size * price * 100.0)
+    bid = _f(row.get("bid"))
+    ask = _f(row.get("ask"))
+
+    ask_prem = _f(row.get("total_ask_side_prem")) or 0.0
+    bid_prem = _f(row.get("total_bid_side_prem")) or 0.0
+    if ask_prem > bid_prem:
+        side = "ask"
+    elif bid_prem > ask_prem:
+        side = "bid"
+    else:
+        side = "mid"
+    side_total = ask_prem + bid_prem
+    if side == "mid":
+        sentiment = "NEUTRAL"
+    else:
+        bullish = (right == "C") == (side == "ask")
+        sentiment = "BULLISH" if bullish else "BEARISH"
+
+    is_sweep = bool(row.get("has_sweep"))
+    is_floor = bool(row.get("has_floor"))
+    is_multi = bool(row.get("has_multileg")) and not row.get("has_singleleg")
+
+    return {
+        "symbol": row.get("ticker"),
+        "option_symbol": occ or None,
+        "right": right,
+        "strike": _f(row.get("strike")),
+        "expiry": row.get("expiry"),
+        "dte": _dte(row.get("expiry")),
+        "volume": _f(row.get("volume")),
+        "open_interest": _f(row.get("open_interest")),
+        "size": size,
+        "price": price,
+        "notional": round(premium, 2),
+        "premium": round(premium, 2),
+        "iv": _f(row.get("iv")) or _f(row.get("iv_end")),
+        "iv_pct": (round((_f(row.get("iv")) or _f(row.get("iv_end"))) * 100, 1)
+                   if (_f(row.get("iv")) or _f(row.get("iv_end"))) is not None else None),
+        "underlying_price": _f(row.get("underlying_price")),
+        "spot": _f(row.get("underlying_price")),
+        "bid": bid,
+        "ask": ask,
+        "fill_pct": _fill_pct(price, bid, ask),
+        # The alert's bid/ask premium split, expressed as the same percentage
+        # bar the per-print tape draws from volume.
+        "chain_ask_pct": (round(ask_prem / side_total * 100, 1)
+                          if side_total else None),
+        "chain_bid_pct": (round(bid_prem / side_total * 100, 1)
+                          if side_total else None),
+        "chain_mid_pct": None,
+        "delta": _f(row.get("delta")),
+        "gamma": _f(row.get("gamma")),
+        "theta": _f(row.get("theta")),
+        "vega": _f(row.get("vega")),
+        "rho": _f(row.get("rho")),
+        "volume_oi_ratio": _f(row.get("volume_oi_ratio")),
+        "volume_oi": (_f(row.get("volume_oi_ratio"))
+                      if _f(row.get("volume_oi_ratio")) is not None
+                      else (round((_f(row.get("volume")) or 0)
+                                  / (_f(row.get("open_interest")) or 1), 2)
+                            if _f(row.get("open_interest")) else None)),
+        "side": side,
+        "sweep": is_sweep,
+        "floor": is_floor,
+        "legs": "ML" if is_multi else "SL",
+        "exchange": None,
+        "flags": [],
+        "sector": row.get("sector"),
+        "earnings_soon": _earnings_soon(row),
+        "kind": ("SWEEP" if is_sweep
+                 else "BLOCK" if premium >= BLOCK_PREMIUM else "PRINT"),
+        "sentiment": sentiment,
+        "tags": [t for t in (side + "_side", sentiment.lower()) if t],
+        "type": "CALL" if right != "P" else "PUT",
+        "contracts": size,
+        "expiry_label": row.get("expiry"),
+        "time": row.get("created_at") or row.get("start_time"),
+        "timestamp": row.get("created_at") or row.get("start_time"),
+        "epoch": _epoch(row.get("created_at") or row.get("start_time")),
+    }
+
+
+def get_market_flow(limit: int = 200) -> dict:
+    """
+    The market-wide flow tape: the alert feed across every name, in the shape
+    the Options Flow screen renders. This backs the Live Flow default view;
+    the per-ticker view stays on ``get_flow``.
+    """
+    out = uw.market_flow_alerts(limit=limit)
+    if out.get("status") != "OK":
+        return {"status": out.get("status", "NO_DATA"),
+                "detail": out.get("detail"), "trades": [], "source": SOURCE}
+
+    trades = sorted((_alert_row(r) for r in uw._rows(out)),
+                    key=lambda t: -(t["premium"] or 0))
+    sweeps = sum(1 for t in trades if t["kind"] == "SWEEP")
+    blocks = sum(1 for t in trades if t["kind"] == "BLOCK")
+    bullish = sum(t["premium"] or 0 for t in trades
+                  if t["sentiment"] == "BULLISH")
+    total = sum(t["premium"] or 0 for t in trades) or 0.0
+
+    return {
+        "symbol": None,
+        "scope": "MARKET",
+        "session_date": (trades[0]["time"] or "")[:10] if trades else None,
+        "trades": trades,
+        "blocks": blocks,
+        "sweeps": sweeps,
+        "all_count": len(trades),
+        "classified": True,
         "bullish_premium_share": round(bullish / total * 100, 1) if total else None,
         "ranking_basis": "PREMIUM",
         **_tape_freshness(trades),

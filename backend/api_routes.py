@@ -136,6 +136,14 @@ def market_pulse() -> dict:
     return swr.serve("pulse", pulse.get_pulse, 180)
 
 
+@router.get("/market/topbar")
+def market_topbar() -> dict:
+    """The headline index/breadth/earnings strip for the flow screens."""
+    import market_pulse_service as pulse
+
+    return swr.serve("market_topbar", pulse.get_topbar, 60)
+
+
 @router.get("/stocks/all")
 def stocks_all() -> dict:
     """Every optionable name the screener tracks, with a live price, in one call."""
@@ -1098,6 +1106,22 @@ def flow_baseline(symbol: str, sessions: int = 20) -> dict:
 @router.get("/options/flow/{symbol}")
 def options_flow(symbol: str, limit: int = 40) -> dict:
     return options.get_flow(symbol, limit=limit)
+
+
+@router.get("/options/flow")
+def options_flow_market(limit: int = 200) -> dict:
+    """Market-wide flow tape (all tickers) for the Live Flow default view."""
+    return swr.serve("options:marketflow",
+                     lambda: options.get_market_flow(limit=limit), 20)
+
+
+@router.get("/options/contract/{occ}")
+def options_contract(occ: str) -> dict:
+    """Per-contract detail (summary, time & sales, volume, analysis, history)."""
+    import contract_detail_service as cd
+
+    return swr.serve(f"contract:{occ.upper()}",
+                     lambda: cd.get_contract(occ), market.session_ttl(20, 300))
 
 
 # ---------------------------------------------------------------------------
