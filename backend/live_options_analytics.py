@@ -600,8 +600,12 @@ def get_sentiment(chain: dict, flow: dict, metrics: dict,
 
     trades = flow.get("trades", []) if flow else []
     if trades:
-        bull = sum(t["notional"] for t in trades if t["sentiment"] == "Bullish")
-        total = sum(t["notional"] for t in trades)
+        # The flow tape marks sentiment in upper case ("BULLISH"/"BEARISH");
+        # comparing to "Bullish" never matched, so this component read 0 for
+        # every name and pulled the whole score down. Match case-insensitively.
+        bull = sum((t.get("notional") or 0) for t in trades
+                   if str(t.get("sentiment") or "").upper() == "BULLISH")
+        total = sum((t.get("notional") or 0) for t in trades)
         if total:
             signals.append(("Bullish premium on the tape", bull / total * 100.0, 0.35))
 
