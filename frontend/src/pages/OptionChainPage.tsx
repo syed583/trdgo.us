@@ -8,7 +8,10 @@ import Freshness from '../components/Freshness';
 import { compact, money, num, pct } from '../lib/format';
 import { ErrorState, Loading, PageHead, StatusChip, Unavailable } from './shared';
 
-type View = 'quotes' | 'greeks';
+type View = 'all' | 'quotes' | 'greeks';
+
+// Columns shown in the combined "All" view, mirrored on each side (UW-style).
+const ALL_COLS = 10;
 
 const CONTRACT_TERMS: { term: string; body: string }[] = [
   { term: 'Reading a contract — e.g. "NET 102C 3/08/2024"',
@@ -57,7 +60,7 @@ export default function OptionChainPage({
 }: { ctx: PageContext; embedded?: boolean }) {
   const { symbol } = ctx;
   const [expiry, setExpiry] = useState<string | undefined>(undefined);
-  const [view, setView] = useState<View>('quotes');
+  const [view, setView] = useState<View>('all');
 
   // Poll at the pace the source can actually change.
   //
@@ -120,6 +123,8 @@ export default function OptionChainPage({
               </select>
             </label>
             <div className="seg">
+              <button className={view === 'all' ? 'active' : ''}
+                onClick={() => setView('all')}>All</button>
               <button className={view === 'quotes' ? 'active' : ''}
                 onClick={() => setView('quotes')}>Quotes</button>
               <button className={view === 'greeks' ? 'active' : ''}
@@ -156,12 +161,22 @@ export default function OptionChainPage({
                   <table className="tbl chain-tbl">
                     <thead>
                       <tr>
-                        <th colSpan={view === 'quotes' ? 6 : 5} className="chain-side calls">CALLS</th>
+                        <th colSpan={view === 'all' ? ALL_COLS : view === 'quotes' ? 6 : 5}
+                          className="chain-side calls">CALLS</th>
                         <th className="chain-strike-head">Strike</th>
-                        <th colSpan={view === 'quotes' ? 6 : 5} className="chain-side puts">PUTS</th>
+                        <th colSpan={view === 'all' ? ALL_COLS : view === 'quotes' ? 6 : 5}
+                          className="chain-side puts">PUTS</th>
                       </tr>
                       <tr>
-                        {view === 'quotes' ? (
+                        {view === 'all' ? (
+                          <>
+                            <th className="r">Delta</th><th className="r">Gamma</th>
+                            <th className="r">Theta</th><th className="r">Vega</th><th className="r">IV</th>
+                            <th className="r">Bid</th><th className="r">Ask</th>
+                            <th className="r" title="Last traded price">Last</th>
+                            <th className="r">Vol</th><th className="r">OI</th>
+                          </>
+                        ) : view === 'quotes' ? (
                           <>
                             <th className="r">OI</th><th className="r">Vol</th>
                             <th className="r" title="Last traded price">Last</th>
@@ -174,7 +189,15 @@ export default function OptionChainPage({
                           </>
                         )}
                         <th />
-                        {view === 'quotes' ? (
+                        {view === 'all' ? (
+                          <>
+                            <th className="r">OI</th><th className="r">Vol</th>
+                            <th className="r" title="Last traded price">Last</th>
+                            <th className="r">Bid</th><th className="r">Ask</th><th className="r">IV</th>
+                            <th className="r">Theta</th><th className="r">Vega</th>
+                            <th className="r">Gamma</th><th className="r">Delta</th>
+                          </>
+                        ) : view === 'quotes' ? (
                           <>
                             <th className="r">IV</th><th className="r">Bid</th><th className="r">Ask</th>
                             <th className="r" title="Last traded price">Last</th>
@@ -191,7 +214,20 @@ export default function OptionChainPage({
                     <tbody>
                       {strikes.map((row) => (
                         <tr key={row.strike} className={row.atm ? 'atm-row' : ''}>
-                          {view === 'quotes' ? (
+                          {view === 'all' ? (
+                            <>
+                              <Cell v={num(row.call?.delta, 3)} itm={row.call?.itm} />
+                              <Cell v={num(row.call?.gamma, 4)} itm={row.call?.itm} />
+                              <Cell v={num(row.call?.theta, 3)} itm={row.call?.itm} />
+                              <Cell v={num(row.call?.vega, 3)} itm={row.call?.itm} />
+                              <Cell v={pct(row.call?.iv, 1)} itm={row.call?.itm} />
+                              <Tick key="a-cb" v={quote(row.call?.bid)} raw={row.call?.bid} itm={row.call?.itm} />
+                              <Tick key="a-ca" v={quote(row.call?.ask)} raw={row.call?.ask} itm={row.call?.itm} />
+                              <Tick key="a-cl" v={quote(row.call?.last)} raw={row.call?.last} itm={row.call?.itm} strong />
+                              <Tick key="a-cv" v={compact(row.call?.volume, 0)} raw={row.call?.volume} itm={row.call?.itm} />
+                              <Cell v={compact(row.call?.open_interest, 0)} itm={row.call?.itm} />
+                            </>
+                          ) : view === 'quotes' ? (
                             <>
                               <Cell v={compact(row.call?.open_interest, 0)} itm={row.call?.itm} />
                               <Tick key="q-cv" v={compact(row.call?.volume, 0)} raw={row.call?.volume} itm={row.call?.itm} />
@@ -212,7 +248,20 @@ export default function OptionChainPage({
 
                           <td className="chain-strike">{row.strike}</td>
 
-                          {view === 'quotes' ? (
+                          {view === 'all' ? (
+                            <>
+                              <Cell v={compact(row.put?.open_interest, 0)} itm={row.put?.itm} />
+                              <Tick key="a-pv" v={compact(row.put?.volume, 0)} raw={row.put?.volume} itm={row.put?.itm} />
+                              <Tick key="a-pl" v={quote(row.put?.last)} raw={row.put?.last} itm={row.put?.itm} strong />
+                              <Tick key="a-pb" v={quote(row.put?.bid)} raw={row.put?.bid} itm={row.put?.itm} />
+                              <Tick key="a-pa" v={quote(row.put?.ask)} raw={row.put?.ask} itm={row.put?.itm} />
+                              <Cell v={pct(row.put?.iv, 1)} itm={row.put?.itm} />
+                              <Cell v={num(row.put?.theta, 3)} itm={row.put?.itm} />
+                              <Cell v={num(row.put?.vega, 3)} itm={row.put?.itm} />
+                              <Cell v={num(row.put?.gamma, 4)} itm={row.put?.itm} />
+                              <Cell v={num(row.put?.delta, 3)} itm={row.put?.itm} />
+                            </>
+                          ) : view === 'quotes' ? (
                             <>
                               <Cell v={pct(row.put?.iv, 1)} itm={row.put?.itm} />
                               <Tick key="q-pb" v={quote(row.put?.bid)} raw={row.put?.bid} itm={row.put?.itm} />
