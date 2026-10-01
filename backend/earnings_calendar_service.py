@@ -431,10 +431,9 @@ def get_calendar(
         "range_label": label,
         "empty_window": empty_window,
         "empty_detail": (
-            f"No earnings scheduled in {label.lower()} for the "
-            f"{source.get('companies_tracked', 0)} companies covered by "
-            f"{source.get('source', 'the calendar provider').title()}. "
-            "Try a wider range."
+            f"No companies are scheduled to report {label.lower()}. "
+            "That window is simply empty on the calendar — pick a wider range "
+            "or another day to see upcoming reports."
             if empty_window else None
         ),
         "start": start.isoformat() if start else None,

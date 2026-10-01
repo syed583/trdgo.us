@@ -436,13 +436,23 @@ export default function CalendarPage({ ctx }: { ctx: PageContext }) {
           {data.error ? <ErrorState error={data.error} />
             : data.initialLoading ? <Loading />
               : !rows.length ? (
-                <Unavailable
-                  status={d?.empty_window ? 'NO_DATA' : source?.status}
-                  detail={day
-                    ? 'No companies report on the selected day. Clear the day to see the whole range.'
-                    : (d?.empty_detail || source?.detail)}
-                  required={source?.required_provider}
-                />
+                (d?.empty_window || day) ? (
+                  <div className="state">
+                    <CalendarDays size={18} color="var(--text-mute)" />
+                    <span className="state-title">No reports scheduled</span>
+                    <span style={{ maxWidth: 460 }}>
+                      {day
+                        ? 'No companies report on the selected day. Clear the day to see the whole range.'
+                        : (d?.empty_detail || 'Nothing on the calendar for this window.')}
+                    </span>
+                  </div>
+                ) : (
+                  <Unavailable
+                    status={source?.status}
+                    detail={source?.detail}
+                    required={source?.required_provider}
+                  />
+                )
               ) : (
                 <div className="tbl-scroll" style={{ maxHeight: 560 }}>
                   <table className="tbl">
