@@ -118,9 +118,9 @@ function IndexCard({ row }: { row: any }) {
     <div className="mo-index">
       <span className="mo-index-label">
         {row.label}
-        {row.is_proxy && (
-          <em title={`Shows the ${row.symbol} ETF: the % move tracks the ${row.label} index, but the dollar figure is the ETF's own price, not the index level.`}>
-            {row.symbol} ETF
+        {row.index_scaled && (
+          <em title={`Index level derived from the ${row.instrument} ETF (ETF price x its index divisor). The feed carries no raw index quote; the % move is exact, the level is a close approximation.`}>
+            via {row.instrument}
           </em>
         )}
       </span>
@@ -128,7 +128,11 @@ function IndexCard({ row }: { row: any }) {
         <b className="mo-index-value mute">--</b>
       ) : (
         <>
-          <b className="mo-index-value">{num(row.price, 2)}</b>
+          <b className="mo-index-value">
+            {row.index_scaled
+              ? Number(row.price).toLocaleString('en-US', { maximumFractionDigits: 0 })
+              : num(row.price, 2)}
+          </b>
           <span className={`mo-index-change ${dir}`}>
             {row.change != null
               && `${row.change > 0 ? '▲' : '▼'} ${Math.abs(row.change).toFixed(2)} `}

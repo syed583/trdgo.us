@@ -45,11 +45,15 @@ PULSE_WAIT = 8.0
 # Index cards. ``index`` is the real index symbol where a provider carries it;
 # ``proxy`` is the ETF used when it does not.
 INDEX_CARDS = [
-    {"label": "S&P 500", "index": "SPX", "proxy": "SPY"},
-    {"label": "Nasdaq 100", "index": "NDX", "proxy": "QQQ"},
-    {"label": "Dow Jones", "index": None, "proxy": "DIA"},
-    {"label": "Russell 2000", "index": None, "proxy": "IWM"},
-    {"label": "VIX", "index": "VIX", "proxy": None},
+    # ``mult`` converts the tracking ETF's price to the index level it tracks
+    # (SPY = S&P 500 / 10, QQQ = Nasdaq-100 / 41, DIA = Dow / 100, IWM =
+    # Russell 2000 / 10). The feed carries no raw index quote, so when a card
+    # falls back to its ETF we scale it up to read in index points.
+    {"label": "S&P 500", "index": "SPX", "proxy": "SPY", "mult": 10.0},
+    {"label": "Nasdaq 100", "index": "NDX", "proxy": "QQQ", "mult": 41.0},
+    {"label": "Dow Jones", "index": None, "proxy": "DIA", "mult": 100.0},
+    {"label": "Russell 2000", "index": None, "proxy": "IWM", "mult": 10.0},
+    {"label": "VIX", "index": "VIX", "proxy": None, "mult": 1.0},
 ]
 
 SECTOR_ETFS = [
@@ -233,8 +237,20 @@ def _build_pulse() -> dict:
                             "change_percent": None, "is_proxy": False,
                             "status": "NO_DATA"})
             continue
-        indices.append(_row(card["label"], chosen, quotes, is_proxy=proxy,
-                            proxy_for=("index" if proxy else None)))
+        row = _row(card["label"], chosen, quotes, is_proxy=proxy,
+                   proxy_for=("index" if proxy else None))
+        # Scale the ETF price up to the index level it tracks, so the card reads
+        # "7,633" (the S&P 500) rather than "763" (SPY). Percent change is the
+        # same either way; only the absolute level is scaled.
+        mult = card.get("mult") or 1.0
+        if proxy and mult != 1.0:
+            if row.get("price") is not None:
+                row["price"] = round(row["price"] * mult, 2)
+            if row.get("change") is not None:
+                row["change"] = round(row["change"] * mult, 2)
+            row["index_scaled"] = True
+            row["instrument"] = chosen  # the ETF the level was derived from
+        indices.append(row)
 
     # --- sectors -----------------------------------------------------------
     sectors = [_row(s["label"], s["symbol"], quotes) for s in SECTOR_ETFS]
