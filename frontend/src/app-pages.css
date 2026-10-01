@@ -621,3 +621,20 @@ a.index-card { color: inherit; }
 .pk-bar { height: 8px; background: var(--panel-3); border-radius: 999px; overflow: hidden; margin: 7px 0 6px; }
 .pk-bar i { display: block; height: 100%; border-radius: 999px; }
 .pk-credits-foot { font-size: 11px; color: var(--text-mute); }
+
+/* Overview — Latest News list (live per-ticker headlines) */
+.ov-news { display: flex; flex-direction: column; max-height: 300px; overflow-y: auto; }
+.ov-news-row {
+  display: block; padding: 9px 12px; border-bottom: 1px solid var(--border);
+  text-decoration: none; color: inherit;
+}
+.ov-news-row:last-child { border-bottom: none; }
+a.ov-news-row:hover { background: var(--panel-2, rgba(0,0,0,0.03)); }
+.ov-news-head { font-size: 12.5px; font-weight: 600; line-height: 1.4; }
+.ov-news-meta {
+  display: flex; gap: 6px; align-items: center; margin-top: 4px;
+  font-size: 10.5px; color: var(--text-mute);
+}
+.ov-news-tone { font-weight: 700; }
+.ov-news-tone.pos { color: var(--green); }
+.ov-news-tone.neg { color: var(--red); }

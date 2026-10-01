@@ -143,10 +143,12 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
   const marketTape = useApi<any>(
     (s) => (mode === 'market' && !demo
       ? api2.flowMarketTape(50, s) : Promise.resolve(null)), [mode, demo],
-    // Only the tape ticks, and only while the market is open. The backend
-    // caches it, and refreshing more than one live panel on a schedule is what
-    // burned through the request budget and tripped the provider's rate limit.
-    { refreshMs: 120000 });
+    // The tape is the one panel meant to read live -- new prints as they cross,
+    // the way Unusual Whales shows it -- so it ticks every few seconds. The
+    // backend caches it for about as long, and the provider-paced dispatcher
+    // keeps the extra polls from bursting the per-minute limit. useApi already
+    // pauses this while the tab is hidden and catches up when it returns.
+    { refreshMs: 4000 });
   const marketUnusual = useApi<any>(
     (s) => (mode === 'market' && !demo
       ? api2.flowMarketUnusual(50, s) : Promise.resolve(null)), [mode, demo]);
@@ -187,6 +189,8 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
     (s) => ((mode === 'symbol' || (mode === 'market' && scoped)) && !demo
       ? api2.stockFlow(scopeSym, s) : Promise.resolve(null)),
     [mode, scoped, scopeSym, demo],
+    // A searched ticker's tape should tick live too, like the market view.
+    { refreshMs: 5000 },
   );
 
   // The searched ticker's own unusual prints, shaped for UnusualTable, so a

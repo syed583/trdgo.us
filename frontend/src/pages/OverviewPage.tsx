@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import { TrendingDown, TrendingUp } from 'lucide-react';
 import type { PageContext } from '../App';
-import { api } from '../api/client';
+import { api, api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import { PageHead, Loading, ErrorState, Unavailable } from './shared';
 import { Panel } from '../components/common';
@@ -268,6 +268,53 @@ function DailyGEX({ g }: { g: any }) {
   );
 }
 
+function toneClass(sent: any): string {
+  const t = String(sent?.label ?? sent ?? '').toUpperCase();
+  if (t.includes('BULL') || t === 'POSITIVE') return 'pos';
+  if (t.includes('BEAR') || t === 'NEGATIVE') return 'neg';
+  return '';
+}
+
+/**
+ * The ticker's own headlines, refreshed on their own so they land as they
+ * publish -- the "latest news" column Unusual Whales runs beside the chart.
+ */
+function LatestNews({ symbol }: { symbol: string }) {
+  const news = useApi<any>((s) => api2.news(symbol, 12, s), [symbol],
+    { refreshMs: 60000 });
+  const items: any[] = news.data?.items || [];
+  if (news.initialLoading) return <div className="hint" style={{ padding: 12 }}>Loading headlines…</div>;
+  if (!items.length) {
+    return <div className="hint" style={{ padding: 12 }}>
+      {news.data?.detail || `No recent headlines for ${symbol}.`}
+    </div>;
+  }
+  return (
+    <div className="ov-news">
+      {items.map((n, i) => {
+        const body = (
+          <>
+            <div className="ov-news-head">{n.headline}</div>
+            <div className="ov-news-meta">
+              <span className={`ov-news-tone ${toneClass(n.sentiment)}`}>
+                {n.sentiment?.label || n.sentiment || 'Neutral'}
+              </span>
+              <span>{n.provider || 'News'}</span>
+              <span>· {n.time_label || ''}</span>
+            </div>
+          </>
+        );
+        return n.url ? (
+          <a key={n.id || i} className="ov-news-row" href={n.url}
+            target="_blank" rel="noopener noreferrer">{body}</a>
+        ) : (
+          <div key={n.id || i} className="ov-news-row">{body}</div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function OverviewPage({ ctx }: { ctx: PageContext }) {
   const symbol = ctx.symbol;
   const ov = useApi<any>((s) => api.tickerOverview(symbol, s), [symbol]);
@@ -300,7 +347,10 @@ export default function OverviewPage({ ctx }: { ctx: PageContext }) {
               <Panel title="Options Flow — Intraday" noBody>
                 <IntradayFlow d={d.intraday} />
               </Panel>
-              <Panel title="Key Stats" noBody><KeyStats s={ks} /></Panel>
+              <div className="two-col">
+                <Panel title="Key Stats" noBody><KeyStats s={ks} /></Panel>
+                <Panel title="Latest News" noBody><LatestNews symbol={symbol} /></Panel>
+              </div>
               <Panel title="Performance vs Index ETFs" noBody>
                 <Performance p={d.performance} symbol={symbol} />
               </Panel>

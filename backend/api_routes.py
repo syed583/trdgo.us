@@ -789,7 +789,7 @@ def flow_market_tape(limit: int = 40) -> dict:
     """The largest prints of the session across every watched ticker."""
     import market_flow_service as mflow
 
-    return swr.serve(f"flow:tape:{limit}", lambda: mflow.get_tape(limit=limit), market.session_ttl(120, 1800))
+    return swr.serve(f"flow:tape:{limit}", lambda: mflow.get_tape(limit=limit), market.session_ttl(4, 1800))
 
 
 @router.get("/flow/market/unusual")

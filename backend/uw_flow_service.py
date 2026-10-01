@@ -308,8 +308,11 @@ def get_flow(symbol: str) -> dict:
 
     # The tape is every print; the unusual list is the contracts whose day is
     # abnormal for them. Two different questions, kept apart on the screen.
+    # Newest first, so the tape reads live -- a fresh print lands at the top as
+    # it crosses rather than being ranked by size and buried under the day's
+    # giants. (The premium totals below do not depend on order.)
     trades = sorted((_print_row(r) for r in uw._rows(prints)),
-                    key=lambda t: -(t["premium"] or 0))
+                    key=lambda t: -(t["epoch"] or 0))
     unusual = [_trade(r) for r in tape.get("rows") or []]
     sweeps = [t for t in trades if t["kind"] == "SWEEP"]
     blocks = [t for t in trades if t["kind"] == "BLOCK"]
@@ -335,7 +338,7 @@ def get_flow(symbol: str) -> dict:
             "source": SOURCE,
         },
         "bullish_premium_share": round(bullish / total * 100, 1) if total else None,
-        "ranking_basis": "PREMIUM",
+        "ranking_basis": "TIME",
         **_tape_freshness(trades),
         "status": "OK" if trades else "NO_TRADES",
         "source": SOURCE,
@@ -451,8 +454,11 @@ def get_market_flow(limit: int = 200) -> dict:
         return {"status": out.get("status", "NO_DATA"),
                 "detail": out.get("detail"), "trades": [], "source": SOURCE}
 
+    # Newest first, so the tape reads live -- a print appears at the top the
+    # moment it crosses, the way Unusual Whales' Live Flow shows it -- rather
+    # than ranked by size, which would bury a fresh print below the day's giants.
     trades = sorted((_alert_row(r) for r in uw._rows(out)),
-                    key=lambda t: -(t["premium"] or 0))
+                    key=lambda t: -(t["epoch"] or 0))
     sweeps = sum(1 for t in trades if t["kind"] == "SWEEP")
     blocks = sum(1 for t in trades if t["kind"] == "BLOCK")
     bullish = sum(t["premium"] or 0 for t in trades
@@ -469,7 +475,7 @@ def get_market_flow(limit: int = 200) -> dict:
         "all_count": len(trades),
         "classified": True,
         "bullish_premium_share": round(bullish / total * 100, 1) if total else None,
-        "ranking_basis": "PREMIUM",
+        "ranking_basis": "TIME",
         **_tape_freshness(trades),
         "status": "OK" if trades else "NO_TRADES",
         "source": SOURCE,

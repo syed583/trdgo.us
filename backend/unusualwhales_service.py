@@ -78,6 +78,23 @@ APP_DAILY_BUDGET = 10_000_000
 # How long an answer stays good. Split by how fast the underlying thing
 # actually moves rather than by how fast we could ask again.
 TTL_TAPE = 60.0            # the options tape, while the market is open
+# The live flow tape is meant to read like Unusual Whales' -- new prints
+# appearing as they cross, not a minute behind. While the market trades it is
+# cached for only a few seconds so each poll returns fresh prints; out of hours
+# it holds the last session's tape for much longer, since nothing new prints.
+TTL_FLOW_LIVE_OPEN = 4.0
+TTL_FLOW_LIVE_CLOSED = 300.0
+
+
+def _flow_live_ttl() -> float:
+    """A few seconds while the market trades, long when it is shut."""
+    try:
+        session = (_market_clock() or {}).get("session")
+    except Exception:  # noqa: BLE001
+        session = None
+    return (TTL_FLOW_LIVE_OPEN
+            if session in ("OPEN", "PRE_MARKET", "AFTER_HOURS")
+            else TTL_FLOW_LIVE_CLOSED)
 TTL_QUOTE = 15.0
 TTL_INTRADAY = 120.0
 TTL_DAILY = 6 * 3600.0     # earnings, dividends, fundamentals, ownership
@@ -743,7 +760,7 @@ def market_flow_alerts(limit: int = 200) -> dict:
     """
     return _cached(f"uw:mktflowalerts:{limit}",
                    "/api/option-trades/flow-alerts", {"limit": limit},
-                   ttl=TTL_TAPE)
+                   ttl=_flow_live_ttl())
 
 
 def unusual_activity(symbol: str = "", min_premium: int = 50000,
@@ -925,7 +942,7 @@ def stock_flow(symbol: str, limit: int = 100) -> dict:
     symbol = (symbol or "").upper().strip()
     return _cached("uw:flowrecent:%s:%d" % (symbol, limit),
                    "/api/stock/%s/flow-recent" % symbol, {"limit": limit},
-                   ttl=TTL_TAPE)
+                   ttl=_flow_live_ttl())
 
 
 def flow_per_expiry(symbol: str) -> dict:
