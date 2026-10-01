@@ -184,20 +184,104 @@ def _insiders(symbol: str) -> dict:
         return {"status": "DATA_UNAVAILABLE", "transactions": []}
 
 
+def _intraday(symbol: str) -> dict:
+    """Minute-by-minute call/put volume and cumulative net premium."""
+    try:
+        import unusualwhales_service as uw
+        rows = uw._rows(uw.net_premium_ticks(symbol))
+    except Exception:  # noqa: BLE001
+        rows = []
+    out = []
+    cum = 0.0
+    for r in rows:
+        ncp = _f(r.get("net_call_premium")) or 0.0
+        npp = _f(r.get("net_put_premium")) or 0.0
+        cum += ncp + npp
+        t = str(r.get("tape_time") or "")
+        hm = t[11:16] if len(t) >= 16 else t
+        out.append({
+            "time": hm,
+            "call_volume": _f(r.get("call_volume")),
+            "put_volume": _f(r.get("put_volume")),
+            "net_premium": round(cum),
+        })
+    return {"status": "OK" if out else "NO_DATA", "series": out}
+
+
+def _history(symbol: str, days: int = 20) -> dict:
+    """Daily OHLC, % change and volume, with IV rank merged in by date."""
+    import unusualwhales_service as uw
+    try:
+        bars = uw._rows(uw.candles(symbol, size="1d", limit=days + 5))
+    except Exception:  # noqa: BLE001
+        bars = []
+    ivr_by_date: dict[str, float] = {}
+    try:
+        for r in uw._rows(uw.iv_rank(symbol)):
+            d = str(r.get("date"))[:10]
+            v = _f(r.get("iv_rank_1y"))
+            if d and v is not None:
+                ivr_by_date[d] = round(v, 1)
+    except Exception:  # noqa: BLE001
+        pass
+
+    # The feed can return more than one row per date (regular + extended). Keep
+    # one per date: the regular session, else the row with the most volume.
+    best: dict[str, dict] = {}
+    for b in bars:
+        d = str(b.get("date"))[:10]
+        if not d:
+            continue
+        cur = best.get(d)
+        if cur is None:
+            best[d] = b
+            continue
+        if str(b.get("market_time")) == "r" and str(cur.get("market_time")) != "r":
+            best[d] = b
+        elif (_f(b.get("volume")) or 0) > (_f(cur.get("volume")) or 0) \
+                and str(cur.get("market_time")) != "r":
+            best[d] = b
+    bars = list(best.values())
+
+    rows = []
+    prev_close: Optional[float] = None
+    # Oldest first so % change reads against the prior session, then newest first.
+    bars = sorted(bars, key=lambda b: str(b.get("date")))
+    for b in bars:
+        close = _f(b.get("close"))
+        date = str(b.get("date"))[:10]
+        chg = ((close - prev_close) / prev_close * 100) if (close and prev_close) else None
+        rows.append({
+            "date": date,
+            "open": _f(b.get("open")), "high": _f(b.get("high")),
+            "low": _f(b.get("low")), "close": close,
+            "change_pct": round(chg, 2) if chg is not None else None,
+            "volume": _f(b.get("volume")) or _f(b.get("total_volume")),
+            "ivr": ivr_by_date.get(date),
+        })
+        prev_close = close
+    rows = list(reversed(rows))[:days]
+    return {"status": "OK" if rows else "NO_DATA", "rows": rows}
+
+
 def get_overview(symbol: str) -> dict:
     symbol = (symbol or "").upper().strip()
     if not symbol:
         return {"status": "INVALID_SYMBOL"}
 
-    with ThreadPoolExecutor(max_workers=4, thread_name_prefix="overview") as pool:
+    with ThreadPoolExecutor(max_workers=6, thread_name_prefix="overview") as pool:
         f_stats = pool.submit(_key_stats, symbol)
         f_perf = pool.submit(_performance, symbol)
         f_an = pool.submit(_analysts, symbol)
         f_ins = pool.submit(_insiders, symbol)
+        f_intra = pool.submit(_intraday, symbol)
+        f_hist = pool.submit(_history, symbol)
         stats = f_stats.result()
         perf = f_perf.result()
         analysts = f_an.result()
         insiders = f_ins.result()
+        intraday = f_intra.result()
+        history = f_hist.result()
 
     return {
         "symbol": symbol,
@@ -206,5 +290,7 @@ def get_overview(symbol: str) -> dict:
         "performance": perf,
         "analysts": analysts,
         "insiders": insiders,
+        "intraday": intraday,
+        "history": history,
         "source": "UNUSUAL_WHALES + SEC",
     }

@@ -1,4 +1,8 @@
 import React from 'react';
+import {
+  Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer,
+  Tooltip, XAxis, YAxis,
+} from 'recharts';
 import { TrendingDown, TrendingUp } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api } from '../api/client';
@@ -165,6 +169,70 @@ function Insiders({ ins }: { ins: any }) {
   );
 }
 
+function IntradayFlow({ d }: { d: any }) {
+  const series: any[] = d?.series || [];
+  if (!series.length) return <Unavailable status={d?.status} detail="No intraday options flow yet." compact />;
+  return (
+    <>
+      <ResponsiveContainer width="100%" height={260}>
+        <ComposedChart data={series} margin={{ top: 8, right: 8, bottom: 4, left: -6 }}>
+          <CartesianGrid stroke="var(--border-2)" vertical={false} />
+          <XAxis dataKey="time" tick={{ fontSize: 10, fill: 'var(--text-mute)' }} minTickGap={48} />
+          <YAxis yAxisId="v" tick={{ fontSize: 10, fill: 'var(--text-mute)' }} width={44}
+            tickFormatter={(v) => compact(v, 0)} />
+          <YAxis yAxisId="p" orientation="right" tick={{ fontSize: 10, fill: 'var(--text-mute)' }}
+            width={48} tickFormatter={(v) => compactMoney(v)} />
+          <Tooltip
+            contentStyle={{ background: 'var(--panel)', border: '1px solid var(--border)', fontSize: 12 }}
+            formatter={(v: any, n: any) => [n === 'Net premium' ? compactMoney(Number(v)) : compact(Number(v), 0), n]} />
+          <Bar yAxisId="v" dataKey="call_volume" name="Call vol" fill="var(--green)" isAnimationActive={false} />
+          <Bar yAxisId="v" dataKey="put_volume" name="Put vol" fill="var(--red)" isAnimationActive={false} />
+          <Line yAxisId="p" dataKey="net_premium" name="Net premium" stroke="var(--gold, #e0a45c)"
+            dot={false} strokeWidth={1.6} isAnimationActive={false} />
+        </ComposedChart>
+      </ResponsiveContainer>
+      <div className="hint">
+        Per-minute call (green) vs put (red) volume, with cumulative net premium
+        (line). Net premium rising = money flowing into calls on the day.
+      </div>
+    </>
+  );
+}
+
+function History({ h }: { h: any }) {
+  const rows: any[] = h?.rows || [];
+  if (!rows.length) return <Unavailable status={h?.status} compact />;
+  return (
+    <div className="table-wrap" style={{ maxHeight: 420, overflowY: 'auto' }}>
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th>Date</th><th className="r">Open</th><th className="r">High</th>
+            <th className="r">Low</th><th className="r">Close</th>
+            <th className="r">% Chg</th><th className="r">Volume</th><th className="r">IV Rank</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.date}>
+              <td className="num">{r.date}</td>
+              <td className="num r">{money(r.open)}</td>
+              <td className="num r">{money(r.high)}</td>
+              <td className="num r">{money(r.low)}</td>
+              <td className="num r"><b>{money(r.close)}</b></td>
+              <td className="num r" style={{ color: tone(r.change_pct) }}>
+                {r.change_pct != null ? `${r.change_pct > 0 ? '+' : ''}${r.change_pct}%` : '--'}
+              </td>
+              <td className="num r">{compact(r.volume)}</td>
+              <td className="num r">{r.ivr != null ? r.ivr.toFixed(0) : '--'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function OverviewPage({ ctx }: { ctx: PageContext }) {
   const symbol = ctx.symbol;
   const ov = useApi<any>((s) => api.tickerOverview(symbol, s), [symbol]);
@@ -194,17 +262,21 @@ export default function OverviewPage({ ctx }: { ctx: PageContext }) {
         : ov.initialLoading || !d ? <Loading />
           : (
             <>
+              <Panel title="Options Flow — Intraday" noBody>
+                <IntradayFlow d={d.intraday} />
+              </Panel>
               <Panel title="Key Stats" noBody><KeyStats s={ks} /></Panel>
               <Panel title="Performance vs Index ETFs" noBody>
                 <Performance p={d.performance} symbol={symbol} />
               </Panel>
+              <Panel title="Historical Data" noBody><History h={d.history} /></Panel>
               <div className="two-col">
                 <Panel title="Analyst Actions" noBody><Analysts a={d.analysts} /></Panel>
                 <Panel title="Insider Activity" noBody><Insiders ins={d.insiders} /></Panel>
               </div>
               <div className="hint" style={{ padding: '2px 4px' }}>
-                More panels coming: intraday options-volume chart, historical table
-                and daily GEX. Data from Unusual Whales and SEC filings.
+                Data from Unusual Whales and SEC filings. Daily GEX chart coming
+                in a later phase.
               </div>
             </>
           )}
