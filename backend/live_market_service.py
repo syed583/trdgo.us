@@ -522,7 +522,54 @@ def get_quote(symbol: str, ttl: Optional[float] = None,
     if fallback:
         cache.put(key, fallback)
         return fallback
+
+    # Last resort for names the quote feed does not carry (small / thin caps like
+    # RELL): build a quote from the daily candles. It is the last completed
+    # session's close, not a live print -- flagged as a snapshot so the screen
+    # can say so -- but it means a real price instead of "--".
+    candle = _candle_quote(symbol)
+    if candle:
+        cache.put(key, candle)
+        return candle
     return _offline_quote(symbol, "The feed did not return a quote.")
+
+
+def _candle_quote(symbol: str) -> Optional[dict]:
+    """A quote derived from the most recent daily candles, when none is live."""
+    try:
+        import freshness
+        import unusualwhales_service as uw
+        rows = uw._rows(uw.candles(symbol, size="1d", limit=5))
+    except Exception:  # noqa: BLE001
+        return None
+    bars = [r for r in rows if num(r.get("close")) is not None]
+    if not bars:
+        return None
+    bars.sort(key=lambda r: str(r.get("date") or r.get("start_time") or ""))
+    last = bars[-1]
+    prev = bars[-2] if len(bars) > 1 else None
+    close = num(last.get("close"))
+    prev_close = num(prev.get("close")) if prev else num(last.get("open"))
+    change = (close - prev_close) if (close is not None and prev_close) else None
+    chg_pct = (change / prev_close * 100) if (change is not None and prev_close) else None
+    return {
+        "symbol": symbol, "name": symbol, "tags": [],
+        "price": close,
+        "change": round(change, 2) if change is not None else None,
+        "change_percent": round(chg_pct, 2) if chg_pct is not None else None,
+        "previous_close": prev_close,
+        "bid": None, "ask": None,
+        "open": num(last.get("open")), "high": num(last.get("high")),
+        "low": num(last.get("low")), "close": close,
+        "volume": num(last.get("volume")) or num(last.get("total_volume")),
+        "market": market_clock(),
+        "status": "OK",
+        "source": "UNUSUAL_WHALES",
+        "price_source": "PROVIDER_SNAPSHOT",
+        "price_stale_reason": "Derived from the last daily close; the quote feed does not carry this symbol.",
+        "freshness": freshness.for_quote("PROVIDER_SNAPSHOT",
+                                         (market_clock() or {}).get("session") or ""),
+    }
 
 
 def _offline_quote(symbol: str, error: str) -> dict:
