@@ -72,7 +72,7 @@ const OPTIONS_ROUTES = [
 
 /** Sections that carry a symbol in the URL. */
 const SYMBOL_SECTIONS =
-  /^\/(earnings|options-flow|options-chain|volatility|news|ai-insights|peers|dark-pool|model-performance)(\/|$)/;
+  /^\/(earnings|options-flow|options-chain|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)(\/|$)/;
 
 /**
  * The same sections, capturing the ticker itself.
@@ -84,7 +84,7 @@ const SYMBOL_SECTIONS =
  * ticker card changed the address bar while every panel kept showing NVDA.
  */
 const SYMBOL_IN_PATH =
-  /^\/(?:earnings|options-flow|options-chain|volatility|news|ai-insights|peers|dark-pool|model-performance)\/([A-Za-z0-9.\-]+)/;
+  /^\/(?:earnings|options-flow|options-chain|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)\/([A-Za-z0-9.\-]+)/;
 
 export interface PageContext {
   symbol: string;
@@ -203,6 +203,7 @@ function Shell() {
         <Routes>
           <Route path="/" element={<Navigate to={`${isAdmin ? '/admin/users' : '/dashboard'}${location.search}`} replace />} />
           <Route path="/dashboard" element={<OverviewPage ctx={ctx} />} />
+          <Route path="/dashboard/:symbol" element={<OverviewPage ctx={ctx} />} />
 
           <Route path="/earnings" element={<Navigate to={`/earnings/${DEFAULT_SYMBOL}${location.search}`} replace />} />
           <Route path="/earnings/:symbol" element={<EarningsPage ctx={ctx} />} />

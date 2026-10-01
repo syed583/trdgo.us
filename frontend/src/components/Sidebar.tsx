@@ -58,7 +58,7 @@ function readCollapsed(): boolean {
 // instead of snapping back to the default.
 const SYMBOL_SECTIONS = new Set([
   '/earnings', '/options-flow', '/volatility', '/news',
-  '/ai-insights', '/peers', '/dark-pool',
+  '/ai-insights', '/peers', '/dark-pool', '/dashboard', '/model-performance',
 ]);
 
 export default function Sidebar({
