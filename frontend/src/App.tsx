@@ -156,7 +156,10 @@ function Shell() {
       const clean = next.trim().toUpperCase();
       if (!clean) return;
       const match = location.pathname.match(SYMBOL_SECTIONS);
-      const section = match ? match[1] : 'earnings';
+      // Searching from a section that carries a ticker keeps you in it; from
+      // anywhere else (Stocks list, Market Overview, Watchlist, admin…) open
+      // the stock's Overview rather than defaulting to Earnings Analysis.
+      const section = match ? match[1] : 'dashboard';
       navigate(`/${section}/${clean}${location.search}`);
     },
     [navigate, location],
