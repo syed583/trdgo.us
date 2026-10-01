@@ -625,6 +625,7 @@ export const api2 = {
 
   marketOverview: (s?: AbortSignal) => request<any>('/api/market/overview', s),
   marketTide: (s?: AbortSignal) => request<any>('/api/market/tide', s),
+  stocksAll: (s?: AbortSignal) => request<any>('/api/stocks/all', s),
   marketPulse: (s?: AbortSignal) => request<any>('/api/market/pulse', s),
 
   earningsCalendar: (

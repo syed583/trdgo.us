@@ -21,6 +21,7 @@ const MarketInsidersPage = lazy(() => import('./pages/MarketInsidersPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const OverviewPage = lazy(() => import('./pages/OverviewPage'));
+const StocksPage = lazy(() => import('./pages/StocksPage'));
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
 const ScannerPage = lazy(() => import('./pages/ScannerPage'));
 const WatchlistBoardPage = lazy(() => import('./pages/WatchlistBoardPage'));
@@ -198,12 +199,37 @@ function Shell() {
           </div>
         )}
 
+        {(() => {
+          // Provider-busy alert: when the data feed is rate-limited, blocked or
+          // out of daily budget, tell the user plainly to wait rather than
+          // letting searches silently return "--".
+          const feed: any = (health.data as any)?.providers?.feed;
+          if (!feed) return null;
+          const busy = feed.blocked === true
+            || feed.status === 'RATE_LIMITED'
+            || feed.status === 'BUDGET_EXHAUSTED'
+            || (typeof feed.app_left === 'number' && feed.app_left <= 0);
+          if (!busy) return null;
+          const wait = feed.blocked_for_seconds
+            ? ` Retrying in about ${Math.ceil(feed.blocked_for_seconds)}s.` : '';
+          const why = feed.status === 'BUDGET_EXHAUSTED' || feed.app_left <= 0
+            ? "today's data limit is reached"
+            : 'the data provider is busy (rate limit)';
+          return (
+            <div className="feed-banner" role="alert">
+              ⚠ Live data is paused — {why}. Prices and new searches may be
+              delayed or show “--”; please wait a moment and try again.{wait}
+            </div>
+          );
+        })()}
+
         {/* Each page is its own download, fetched the first time it opens. */}
         <Suspense fallback={<div className="page" />}>
         <Routes>
           <Route path="/" element={<Navigate to={`${isAdmin ? '/admin/users' : '/dashboard'}${location.search}`} replace />} />
           <Route path="/dashboard" element={<OverviewPage ctx={ctx} />} />
           <Route path="/dashboard/:symbol" element={<OverviewPage ctx={ctx} />} />
+          <Route path="/stocks" element={<StocksPage ctx={ctx} />} />
 
           <Route path="/earnings" element={<Navigate to={`/earnings/${DEFAULT_SYMBOL}${location.search}`} replace />} />
           <Route path="/earnings/:symbol" element={<EarningsPage ctx={ctx} />} />

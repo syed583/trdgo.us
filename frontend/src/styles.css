@@ -2187,3 +2187,20 @@ select.mini {
   .pu-fresh { display: none; }
   .pu-body { padding-left: 16px; }
 }
+
+/* Provider-busy / rate-limit alert banner. */
+.feed-banner {
+  padding: 8px 16px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: #8a1f1f;
+  background: #fde4e4;
+  border-bottom: 1px solid #f3b4b4;
+}
+:root[data-theme="dark"] .feed-banner,
+:root:not([data-theme="light"]) .feed-banner {
+  color: #f3a6a6;
+  background: #2c1616;
+  border-bottom-color: #4a2020;
+}

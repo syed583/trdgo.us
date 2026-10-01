@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import {
   Activity, BarChart3, Brain, CalendarDays, LineChart, Users,
-  LayoutDashboard, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
+  LayoutDashboard, ListOrdered, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
   Scale, Settings, Sparkles, Star, Target, TrendingUp, UserCog, Waves, X,
 } from 'lucide-react';
 import { BrandLockup, BRAND_QUOTE_EARNINGS } from './Brand';
@@ -29,6 +29,7 @@ const NAV: NavEntry[] = [
   { to: '/ai-trade', label: 'AI Trade', icon: <Sparkles size={S} /> },
   { to: '/model-performance', label: 'Model Performance', icon: <Target size={S} /> },
   { to: '/dashboard', label: 'Overview', icon: <LayoutDashboard size={S} /> },
+  { to: '/stocks', label: 'Stocks', icon: <ListOrdered size={S} /> },
   { to: '/earnings-calendar', label: 'Earnings Calendar', icon: <CalendarDays size={S} /> },
   { to: '/earnings', label: 'Earnings Analysis', icon: <BarChart3 size={S} /> },
   { to: '/peers', label: 'Peer Comparison', icon: <Scale size={S} /> },

@@ -136,6 +136,14 @@ def market_pulse() -> dict:
     return swr.serve("pulse", pulse.get_pulse, 180)
 
 
+@router.get("/stocks/all")
+def stocks_all() -> dict:
+    """Every optionable name the screener tracks, with a live price, in one call."""
+    import screener_service as sc
+
+    return swr.serve("stocks_all", sc.get_all_stocks, market.session_ttl(60, 900))
+
+
 @router.get("/market/tide")
 def market_tide() -> dict:
     """Market-wide net call/put premium through the session, with SPY price."""
