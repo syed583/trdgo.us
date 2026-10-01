@@ -133,7 +133,8 @@ def _flight_lock(key: str) -> threading.Lock:
 _gate = threading.Lock()
 _last_call = 0.0
 
-_limits: dict = {"remaining": None, "reset": None}
+_limits: dict = {"remaining": None, "reset": None,
+                 "daily_count": None, "daily_limit": None}
 _spent: dict = {"day": None, "count": 0}
 _blocked_until = 0.0
 _last_status: Optional[str] = None
@@ -253,9 +254,13 @@ def _today() -> str:
     # the app's own counter must roll over on the same day boundary rather than
     # the server's local one (which can be hours off).
     try:
-        from datetime import datetime
+        from datetime import datetime, timedelta
         from zoneinfo import ZoneInfo
-        return datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+        # The provider's daily quota resets at 8 PM ET, not midnight. Shift the
+        # clock forward 4 hours so our fallback counter's "day" flips at 8 PM ET
+        # too -- matching when the real count resets.
+        et = datetime.now(ZoneInfo("America/New_York")) + timedelta(hours=4)
+        return et.strftime("%Y-%m-%d")
     except Exception:  # noqa: BLE001 - fall back to local time if tz data missing
         return time.strftime("%Y-%m-%d")
 
@@ -285,6 +290,25 @@ def _note_limits(headers) -> None:
         if value is not None:
             _limits["reset"] = value
             break
+    # The real daily usage and limit, straight from the provider -- authoritative
+    # over our own counter and the APP_DAILY_BUDGET guess.
+    for name in ("x-uw-daily-req-count", "X-RateLimit-Daily-Used"):
+        value = _seconds(headers.get(name))
+        if value is not None:
+            _limits["daily_count"] = value
+            break
+    for name in ("x-uw-token-req-limit", "X-RateLimit-Daily-Limit"):
+        value = _seconds(headers.get(name))
+        if value is not None:
+            _limits["daily_limit"] = value
+            break
+    # Proactive per-minute backoff: when almost nothing is left this minute,
+    # wait out the window the header reports (it is in milliseconds) rather than
+    # firing into a 429.
+    rem = _limits.get("remaining")
+    reset_ms = _limits.get("reset")
+    if rem is not None and rem <= 1 and reset_ms:
+        _pause(min(reset_ms / 1000.0 + 0.25, 65.0))
 
 
 def _pause(seconds: float) -> None:
@@ -304,10 +328,19 @@ def _space_out() -> None:
 
 
 def _spend() -> bool:
-    """Count one request against the app's own daily ceiling."""
+    """Count one request against the provider's real daily ceiling."""
     if _spent["day"] != _today():
         _spent["day"], _spent["count"] = _today(), 0
-    if _spent["count"] >= APP_DAILY_BUDGET:
+    # The provider's own headers are authoritative once seen: stop at the real
+    # daily limit rather than our guessed APP_DAILY_BUDGET.
+    dl = _limits.get("daily_limit")
+    dc = _limits.get("daily_count")
+    if dl and dc is not None and dc >= dl:
+        return False
+    # Pre-flight ceiling before/without headers: the real limit if we know it,
+    # otherwise the conservative fallback.
+    cap = dl or APP_DAILY_BUDGET
+    if _spent["count"] >= cap:
         return False
     _spent["count"] += 1
     return True
@@ -1091,12 +1124,20 @@ def fundamentals(symbol: str) -> dict:
 
 def budget() -> dict:
     """What is left, for the settings screen. Never the token."""
+    # Prefer the provider's own figures (from response headers); fall back to our
+    # counter and the configured ceiling before any header has been seen.
+    dl = _limits.get("daily_limit")
+    dc = _limits.get("daily_count")
+    limit = dl or APP_DAILY_BUDGET
+    used = dc if dc is not None else _spent["count"]
     return {
         "day": _spent["day"],
-        "used_by_this_app": _spent["count"],
-        "app_budget": APP_DAILY_BUDGET,
-        "app_left": max(0, APP_DAILY_BUDGET - _spent["count"]),
+        "used_by_this_app": used,
+        "app_budget": limit,
+        "app_left": max(0, limit - used),
+        "daily_limit_source": "provider" if dl else "app_default",
         "plan_minute_remaining": _limits["remaining"],
+        "minute_reset_ms": _limits.get("reset"),
         "blocked": time.time() < _blocked_until,
         "blocked_for_seconds": max(0, round(_blocked_until - time.time())),
     }
