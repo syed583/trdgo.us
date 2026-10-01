@@ -22,11 +22,27 @@ def _f(v: Any) -> Optional[float]:
 
 def get_market_tide() -> dict:
     import unusualwhales_service as uw
+    from datetime import date, timedelta
 
-    try:
-        rows = uw._rows(uw.get("/api/market/market-tide", {"interval_5m": "false"}))
-    except Exception:  # noqa: BLE001
-        rows = []
+    def _fetch(params: dict) -> list:
+        try:
+            return uw._rows(uw.get("/api/market/market-tide", params))
+        except Exception:  # noqa: BLE001
+            return []
+
+    # Today's session first. Before the open (or on a brief empty response) today
+    # has no ticks yet, so fall back through recent sessions rather than showing
+    # "not available".
+    rows = _fetch({"interval_5m": "false"})
+    if not rows:
+        d = date.today()
+        for _ in range(5):
+            d -= timedelta(days=1)
+            if d.weekday() >= 5:  # skip Sat/Sun
+                continue
+            rows = _fetch({"interval_5m": "false", "date": d.isoformat()})
+            if rows:
+                break
     if not rows:
         return {"status": "NO_DATA", "series": [],
                 "detail": "Market tide is not available right now."}
