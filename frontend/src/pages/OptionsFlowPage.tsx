@@ -622,10 +622,31 @@ function Tiles({ data }: { data: OptionsOverview }) {
             </div>
           </div>
         </div>
-        <div className="hint" style={{ padding: '2px 2px 0' }}>
-          From contract volume, put/call ratio and open interest — count-based,
-          not the premium (money) sentiment in the summary above.
-        </div>
+        {Array.isArray(s.components) && s.components.length > 0 && (
+          <div className="st-breakdown">
+            <div className="st-bd-head">How this score is built</div>
+            {s.components.map((c: any) => {
+              const sc = typeof c.score === 'number' ? c.score : null;
+              const col = sc == null ? 'var(--text-mute)'
+                : sc >= 60 ? GREEN : sc <= 40 ? RED : 'var(--amber)';
+              return (
+                <div className="st-bd-row" key={c.name}>
+                  <span className="st-bd-name">{c.name}<em>{c.weight}%</em></span>
+                  <span className="st-bd-bar">
+                    <i style={{ width: `${Math.max(0, Math.min(100, sc ?? 0))}%`, background: col }} />
+                  </span>
+                  <b style={{ color: col }}>{sc != null ? Math.round(sc) : '--'}</b>
+                </div>
+              );
+            })}
+            <div className="hint" style={{ padding: '4px 2px 0' }}>
+              Each component is 0–100 (above 60 bullish, below 40 bearish),
+              weighted as shown. "Bullish premium on the tape" counts whether calls
+              were <b>bought</b> (bullish) or <b>sold</b> (bearish) — so heavy call
+              volume can still read neutral if those calls were being sold.
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
