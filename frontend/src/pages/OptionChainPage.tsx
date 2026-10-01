@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { ChevronRight, Info, RefreshCw } from 'lucide-react';
 import { api2 } from '../api/client';
 import type { PageContext } from '../App';
 import { useApi } from '../hooks/useApi';
@@ -9,6 +9,40 @@ import { compact, money, num, pct } from '../lib/format';
 import { ErrorState, Loading, PageHead, StatusChip, Unavailable } from './shared';
 
 type View = 'quotes' | 'greeks';
+
+const CONTRACT_TERMS: { term: string; body: string }[] = [
+  { term: 'Reading a contract — e.g. "NET 102C 3/08/2024"',
+    body: 'Four parts: the ticker (NET = the stock), the strike (102 = the price level), the type (C = Call, P = Put), and the expiry (3/08/2024 = the last day it trades).' },
+  { term: 'Call vs Put',
+    body: 'A Call profits if the stock rises above the strike; a Put profits if it falls below. Calls lean bullish, puts bearish (or a put can be a hedge).' },
+  { term: 'Strike',
+    body: 'The agreed price. A call is "in the money" when the stock is above its strike; a put when the stock is below its strike.' },
+  { term: 'In / At / Out of the money',
+    body: 'ITM = the strike is already favourable (call strike below spot, put strike above). ATM = strike near the current price. OTM = strike not yet reached — cheaper, lower odds.' },
+  { term: 'Expiry',
+    body: 'The last day the contract can be traded. At expiry it is either exercised (if ITM), sold beforehand, or expires worthless (if OTM).' },
+  { term: 'Volume vs Open Interest',
+    body: 'Volume is contracts traded today; open interest is contracts still open from prior days. Volume far above OI means fresh positioning, not recycling.' },
+];
+
+function ContractExplainer() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`vol-explain ${open ? 'open' : ''}`}>
+      <button className="vol-explain-head" onClick={() => setOpen((v) => !v)}>
+        <Info size={13} /> How do I read an options contract?
+        <ChevronRight size={14} className="vol-explain-caret" />
+      </button>
+      {open && (
+        <div className="vol-explain-body">
+          {CONTRACT_TERMS.map((t) => (
+            <div className="vol-term" key={t.term}><b>{t.term}</b><span>{t.body}</span></div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * The option chain.
@@ -59,6 +93,7 @@ export default function OptionChainPage({
 
   return (
     <div className={embedded ? 'chain-embed' : 'page'}>
+      <ContractExplainer />
       {!embedded && (
       <PageHead
         title={`Option Chain · ${symbol}`}
