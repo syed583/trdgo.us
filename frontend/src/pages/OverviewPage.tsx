@@ -9,6 +9,7 @@ import { api, api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import { PageHead, Loading, ErrorState, Unavailable } from './shared';
 import { Panel } from '../components/common';
+import { ContractModal } from '../components/ContractModal';
 import { compact, compactMoney, money, num, signedPct } from '../lib/format';
 
 /**
@@ -315,8 +316,57 @@ function LatestNews({ symbol }: { symbol: string }) {
   );
 }
 
+function ContractsTable({ rows, metric, onPick }: {
+  rows: any[]; metric: 'volume' | 'open_interest'; onPick: (occ: string) => void;
+}) {
+  if (!rows?.length) {
+    return <div className="hint" style={{ padding: 12 }}>No contracts to show.</div>;
+  }
+  const metricLabel = metric === 'volume' ? 'Volume' : 'OI';
+  return (
+    <div className="tbl-scroll" style={{ maxHeight: 340 }}>
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th>Contract</th><th>Expiry</th><th className="r">DTE</th>
+            <th className="r">Last</th><th className="r">Low–High</th>
+            <th className="r">IV</th><th className="r">{metricLabel}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((c, i) => (
+            <tr key={c.option_symbol || i}
+              className={c.option_symbol ? 'clickable' : ''}
+              onClick={c.option_symbol ? () => onPick(c.option_symbol) : undefined}
+              title={c.option_symbol ? 'Open contract detail' : undefined}>
+              <td>
+                <span className="num">{num(c.strike, 2)}</span>{' '}
+                <span style={{ color: c.right === 'C' ? 'var(--green)' : 'var(--red)', fontWeight: 600 }}>
+                  {c.right === 'C' ? 'call' : 'put'}
+                </span>
+              </td>
+              <td className="num">{c.expiry}</td>
+              <td className="num r">{c.dte ?? '--'}</td>
+              <td className="num r">{money(c.last_price)}</td>
+              <td className="num r" style={{ color: 'var(--text-mute)' }}>
+                {c.low_price != null && c.high_price != null
+                  ? `${num(c.low_price, 2)}–${num(c.high_price, 2)}` : '--'}
+              </td>
+              <td className="num r" style={{ color: 'var(--text-mute)' }}>
+                {c.iv_percent != null ? `${c.iv_percent}%` : '--'}
+              </td>
+              <td className="num r"><b>{compact(c[metric])}</b></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function OverviewPage({ ctx }: { ctx: PageContext }) {
   const symbol = ctx.symbol;
+  const [contract, setContract] = React.useState<string | null>(null);
   const ov = useApi<any>((s) => api.tickerOverview(symbol, s), [symbol]);
   // Only trust data for the symbol on screen (avoid stale render on nav).
   const d = (ov.data && String(ov.data.symbol || '').toUpperCase()
@@ -325,6 +375,7 @@ export default function OverviewPage({ ctx }: { ctx: PageContext }) {
 
   return (
     <div className="page">
+      {contract && <ContractModal occ={contract} onClose={() => setContract(null)} />}
       <PageHead
         title={`${symbol}${ks?.name && ks.name !== symbol ? ` · ${ks.name}` : ''}`}
         subtitle={ks?.sector
@@ -354,6 +405,16 @@ export default function OverviewPage({ ctx }: { ctx: PageContext }) {
               <Panel title="Performance vs Index ETFs" noBody>
                 <Performance p={d.performance} symbol={symbol} />
               </Panel>
+              <div className="two-col">
+                <Panel title={`${symbol} · Highest Volume Contracts`} noBody>
+                  <ContractsTable rows={d.top_contracts?.by_volume || []}
+                    metric="volume" onPick={setContract} />
+                </Panel>
+                <Panel title={`${symbol} · Highest OI Contracts`} noBody>
+                  <ContractsTable rows={d.top_contracts?.by_oi || []}
+                    metric="open_interest" onPick={setContract} />
+                </Panel>
+              </div>
               <Panel title="Historical Data" noBody><History h={d.history} /></Panel>
               <Panel title="Daily GEX — Net Gamma" noBody><DailyGEX g={d.gex} /></Panel>
               <div className="two-col">

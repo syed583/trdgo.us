@@ -14,8 +14,13 @@ marked unavailable rather than failing the whole page.
 
 from __future__ import annotations
 
+import re
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date, datetime, timezone
 from typing import Any, Optional
+
+# NVDA261002C00232500 -> expiry 2026-10-02, call, strike 232.5
+_OCC = re.compile(r"^([A-Z]+)(\d{2})(\d{2})(\d{2})([CP])(\d{8})$")
 
 PERIODS = [
     ("1W", 5), ("1M", 21), ("3M", 63), ("6M", 126), ("1Y", 252),
@@ -300,6 +305,64 @@ def _gex(symbol: str, days: int = 120) -> dict:
     return {"status": "OK" if out else "NO_DATA", "series": out}
 
 
+def _contract_row(r: dict) -> Optional[dict]:
+    """One option-contract row, with the OCC symbol parsed into its parts."""
+    import unusualwhales_service as uw
+
+    occ = str(r.get("option_symbol") or "")
+    m = _OCC.match(occ)
+    if not m:
+        return None
+    _, yy, mm, dd, right, strike = m.groups()
+    expiry = f"20{yy}-{mm}-{dd}"
+    try:
+        dte = (date.fromisoformat(expiry)
+               - datetime.now(timezone.utc).date()).days
+    except ValueError:
+        dte = None
+    iv = uw._f(r.get("implied_volatility"))
+    return {
+        "option_symbol": occ,
+        "strike": int(strike) / 1000.0,
+        "right": right,
+        "type": "CALL" if right == "C" else "PUT",
+        "expiry": expiry,
+        "dte": dte,
+        "volume": uw._f(r.get("volume")),
+        "open_interest": uw._f(r.get("open_interest")),
+        "last_price": uw._f(r.get("last_price")),
+        "low_price": uw._f(r.get("low_price")),
+        "high_price": uw._f(r.get("high_price")),
+        "iv_percent": round(iv * 100, 1) if iv is not None else None,
+        "total_premium": uw._f(r.get("total_premium")),
+    }
+
+
+def _top_contracts(symbol: str, top: int = 10) -> dict:
+    """
+    The chain's busiest and most-held contracts -- the Highest Volume and
+    Highest Open Interest tables Unusual Whales shows on a ticker overview.
+
+    Both come from one option-contracts read (per-contract volume and OI across
+    every expiry), sorted two ways, so the page spends a single request on it.
+    """
+    import unusualwhales_service as uw
+
+    out = uw.get(f"/api/stock/{symbol}/option-contracts", {"limit": 500})
+    if out.get("status") != "OK":
+        return {"status": out.get("status", "NO_DATA"),
+                "detail": out.get("detail"), "by_volume": [], "by_oi": []}
+
+    rows = [c for c in (_contract_row(r) for r in uw._rows(out)) if c]
+    if not rows:
+        return {"status": "NO_DATA", "by_volume": [], "by_oi": []}
+
+    by_volume = sorted(rows, key=lambda c: -(c["volume"] or 0))[:top]
+    by_oi = sorted(rows, key=lambda c: -(c["open_interest"] or 0))[:top]
+    return {"status": "OK", "by_volume": by_volume, "by_oi": by_oi,
+            "source": "Unusual Whales"}
+
+
 def get_overview(symbol: str) -> dict:
     symbol = (symbol or "").upper().strip()
     if not symbol:
@@ -313,6 +376,7 @@ def get_overview(symbol: str) -> dict:
         f_intra = pool.submit(_intraday, symbol)
         f_hist = pool.submit(_history, symbol)
         f_gex = pool.submit(_gex, symbol)
+        f_top = pool.submit(_top_contracts, symbol)
         stats = f_stats.result()
         perf = f_perf.result()
         analysts = f_an.result()
@@ -320,6 +384,7 @@ def get_overview(symbol: str) -> dict:
         intraday = f_intra.result()
         history = f_hist.result()
         gex = f_gex.result()
+        top = f_top.result()
 
     return {
         "symbol": symbol,
@@ -331,5 +396,6 @@ def get_overview(symbol: str) -> dict:
         "intraday": intraday,
         "history": history,
         "gex": gex,
+        "top_contracts": top,
         "source": "UNUSUAL_WHALES + SEC",
     }
