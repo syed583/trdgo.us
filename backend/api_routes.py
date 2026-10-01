@@ -1539,7 +1539,13 @@ def admin_provider_key(request: Request) -> dict:
         "fingerprint": uw.key_fingerprint(),   # e.g. "•••• c082b4", never the key
         "app_left": b.get("app_left"),
         "app_budget": b.get("app_budget"),
-        "blocked": uw.provider_status().get("blocked", False),
+        "used_by_this_app": b.get("used_by_this_app"),
+        "daily_limit_source": b.get("daily_limit_source"),
+        "plan_minute_remaining": b.get("plan_minute_remaining"),
+        "minute_reset_ms": b.get("minute_reset_ms"),
+        "day": b.get("day"),
+        "blocked": b.get("blocked", False),
+        "blocked_for_seconds": b.get("blocked_for_seconds"),
     }
 
 

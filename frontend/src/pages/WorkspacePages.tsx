@@ -504,15 +504,37 @@ function ProviderKeyCard() {
 
   const s = status.data || {};
   return (
-    <Panel title="Unusual Whales API key" icon={<KeyRound size={13} />}>
+    <Panel title="Unusual Whales API — key & credits" icon={<KeyRound size={13} />}>
       <div className="pk-status">
         <span>Active key</span>
         <b>{s.configured ? (s.fingerprint || 'set') : 'Not set'}</b>
-        {s.app_left != null && (
-          <span className="pk-budget">{s.app_left} / {s.app_budget} requests left today</span>
-        )}
-        {s.blocked && <span className="badge red">Rate-limited</span>}
+        {s.blocked
+          ? <span className="badge red">Rate-limited{s.blocked_for_seconds ? ` · ~${s.blocked_for_seconds}s` : ''}</span>
+          : s.configured ? <span className="badge green">Active</span> : null}
       </div>
+
+      {s.app_budget != null && (() => {
+        const used = s.used_by_this_app ?? Math.max(0, (s.app_budget || 0) - (s.app_left || 0));
+        const pct = s.app_budget ? Math.min(100, Math.round(used / s.app_budget * 100)) : 0;
+        const barCol = pct >= 90 ? 'var(--red)' : pct >= 70 ? 'var(--amber)' : 'var(--green)';
+        return (
+          <div className="pk-credits">
+            <div className="pk-credits-row">
+              <span>Daily API credits used</span>
+              <b>{used.toLocaleString()} / {s.app_budget.toLocaleString()}
+                <em> ({s.app_left?.toLocaleString()} left)</em></b>
+            </div>
+            <div className="pk-bar"><i style={{ width: `${pct}%`, background: barCol }} /></div>
+            <div className="pk-credits-foot">
+              {s.daily_limit_source === 'provider'
+                ? 'Live from the provider; resets 8 PM ET.'
+                : 'App estimate (provider usage headers not seen yet); resets 8 PM ET.'}
+              {s.plan_minute_remaining != null
+                && ` · ${Number(s.plan_minute_remaining).toLocaleString()} left this minute`}
+            </div>
+          </div>
+        );
+      })()}
       <div className="pk-row">
         <input className="pk-input" type="password" placeholder="Paste a new API key and press Enter"
           value={key} autoComplete="off" spellCheck={false}

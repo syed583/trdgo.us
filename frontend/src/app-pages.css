@@ -612,3 +612,12 @@ a.index-card { color: inherit; }
 .ov-ins-sum { display: flex; gap: 14px; padding: 8px 12px; font-size: 12px; font-weight: 600; }
 .ov-ins-sum .pos { color: var(--green); }
 .ov-ins-sum .neg { color: var(--red); }
+
+/* API credits / usage card in admin Settings. */
+.pk-credits { margin: 10px 0 4px; padding: 10px 12px; background: var(--panel-2); border-radius: var(--r); }
+.pk-credits-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; }
+.pk-credits-row b { font-size: 13px; }
+.pk-credits-row em { color: var(--text-mute); font-style: normal; font-weight: 500; }
+.pk-bar { height: 8px; background: var(--panel-3); border-radius: 999px; overflow: hidden; margin: 7px 0 6px; }
+.pk-bar i { display: block; height: 100%; border-radius: 999px; }
+.pk-credits-foot { font-size: 11px; color: var(--text-mute); }
