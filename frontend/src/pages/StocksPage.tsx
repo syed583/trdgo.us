@@ -55,7 +55,7 @@ export default function StocksPage({ ctx }: { ctx: PageContext }) {
   return (
     <div className="page">
       <PageHead title="Stocks"
-        subtitle="Every optionable name the data provider tracks, with a live price — one request, no per-stock calls." />
+        subtitle="The most-active optionable names, with live prices — one request, no per-stock calls. Search any other ticker (e.g. RELL) to open it directly." />
 
       <div className="nd-controls">
         <span className="nd-search">
@@ -70,6 +70,16 @@ export default function StocksPage({ ctx }: { ctx: PageContext }) {
         : data.initialLoading ? <Loading />
           : data.data?.status !== 'OK' ? <Unavailable status={data.data?.status} detail={data.data?.detail} />
             : (
+              <>
+              {query.trim() && rows.length === 0 && (
+                <div className="nd-empty" style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'center' }}>
+                  <span>{query.trim().toUpperCase()} isn’t in the most-active list —</span>
+                  <button className="mf-chip on"
+                    onClick={() => navigate(`/dashboard/${query.trim().toUpperCase()}${ctx.search}`)}>
+                    Open {query.trim().toUpperCase()} →
+                  </button>
+                </div>
+              )}
               <Panel title="Covered stocks" noBody>
                 <div className="table-wrap" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
                   <table className="tbl">
@@ -108,6 +118,7 @@ export default function StocksPage({ ctx }: { ctx: PageContext }) {
                 </div>
                 <div className="hint">{data.data?.detail}</div>
               </Panel>
+              </>
             )}
     </div>
   );
