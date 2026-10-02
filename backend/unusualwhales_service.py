@@ -43,6 +43,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections import deque
 from typing import Any, Optional
 
 from dotenv import load_dotenv
@@ -160,6 +161,15 @@ _limits: dict = {"remaining": None, "reset": None,
 _spent: dict = {"day": None, "count": 0}
 _blocked_until = 0.0
 _last_status: Optional[str] = None
+
+# Live flow metrics for the admin Workflow page: how many calls were served
+# from cache vs the network, how long the network and the pacing gate took, and
+# what the last call did. Rolling windows so the figures reflect "right now".
+_metrics: dict = {
+    "net_calls": 0, "net_errors": 0, "cache_hits": 0, "cache_misses": 0,
+    "lat": deque(maxlen=60), "wait": deque(maxlen=60),
+    "last_path": None, "last_latency_ms": None, "last_at": None,
+}
 
 
 # A runtime override for the key, so the admin can swap in a different
@@ -436,15 +446,26 @@ def get(path: str, params: Optional[dict] = None) -> dict:
 
     # Only MAX_INFLIGHT requests hold the wire at once; the rest wait here.
     # Spacing is applied inside the gate so starts stay staggered too.
+    gate_start = time.time()
     with _inflight:
         _space_out()
+        _metrics["wait"].append((time.time() - gate_start) * 1000.0)
+        net_start = time.time()
         try:
             with _OPENER.open(request, timeout=TIMEOUT) as response:
                 _note_limits(response.headers)
                 body = json.loads(response.read().decode("utf-8", "ignore") or "{}")
+            lat = (time.time() - net_start) * 1000.0
+            _metrics["lat"].append(lat)
+            _metrics["net_calls"] += 1
+            _metrics["last_path"] = path
+            _metrics["last_latency_ms"] = round(lat)
+            _metrics["last_at"] = time.time()
         except urllib.error.HTTPError as exc:
+            _metrics["net_errors"] += 1
             return _http_error(exc)
         except Exception as exc:  # noqa: BLE001
+            _metrics["net_errors"] += 1
             _last_status = "PROVIDER_OFFLINE"
             return {"status": "PROVIDER_OFFLINE", "data": None,
                     "detail": type(exc).__name__, "source": SOURCE}
@@ -496,6 +517,7 @@ def _cached(key: str, path: str, params: Optional[dict] = None,
             ttl: float = TTL_DAILY) -> dict:
     hit = cache.get(key, ttl)
     if hit:
+        _metrics["cache_hits"] += 1
         return hit
     # Collapse a stampede: the first caller fetches, the rest wait here and then
     # read the cache it just filled -- one provider call for many users.
@@ -503,7 +525,9 @@ def _cached(key: str, path: str, params: Optional[dict] = None,
     with lock:
         hit = cache.get(key, ttl)
         if hit:
+            _metrics["cache_hits"] += 1
             return hit
+        _metrics["cache_misses"] += 1
         out = get(path, params)
         if out["status"] == "OK":
             cache.put(key, out)
@@ -1182,6 +1206,63 @@ def fundamentals(symbol: str) -> dict:
 # ---------------------------------------------------------------------------
 # status
 # ---------------------------------------------------------------------------
+
+
+def metrics() -> dict:
+    """
+    Live flow metrics for the admin Workflow page. Shows where time goes right
+    now: the cache hit rate (most reads should never reach the provider), the
+    network latency to Unusual Whales, how long the pacing gate is holding
+    requests (the first sign of brushing the per-minute limit), and whether the
+    client is currently in a rate-limit pause.
+    """
+    lat = list(_metrics["lat"])
+    wait = list(_metrics["wait"])
+    hits = _metrics["cache_hits"]
+    misses = _metrics["cache_misses"]
+    reads = hits + misses
+
+    def avg(xs):
+        return round(sum(xs) / len(xs)) if xs else None
+
+    def p95(xs):
+        if not xs:
+            return None
+        s = sorted(xs)
+        return round(s[min(len(s) - 1, int(len(s) * 0.95))])
+
+    blocked = time.time() < _blocked_until
+    avg_wait = avg(wait)
+    # The provider node is "slow" when its typical response runs long, and the
+    # gate is "stuck" when it is holding calls for more than a moment -- those
+    # are the two places the pipeline actually waits.
+    provider_state = ("paused" if blocked
+                      else "slow" if (avg(lat) or 0) > 1200
+                      else "ok")
+    gate_state = ("stuck" if (avg_wait or 0) > 400
+                  else "pacing" if (avg_wait or 0) > 60
+                  else "ok")
+
+    return {
+        "cache_hits": hits,
+        "cache_misses": misses,
+        "cache_hit_rate": round(hits / reads * 100) if reads else None,
+        "net_calls": _metrics["net_calls"],
+        "net_errors": _metrics["net_errors"],
+        "avg_latency_ms": avg(lat),
+        "p95_latency_ms": p95(lat),
+        "last_latency_ms": _metrics["last_latency_ms"],
+        "last_path": _metrics["last_path"],
+        "last_age_seconds": (round(time.time() - _metrics["last_at"])
+                             if _metrics["last_at"] else None),
+        "avg_wait_ms": avg_wait,
+        "blocked": blocked,
+        "blocked_for_seconds": max(0, round(_blocked_until - time.time())),
+        "per_minute_remaining": _limits.get("remaining"),
+        "last_status": _last_status,
+        "provider_state": provider_state,
+        "gate_state": gate_state,
+    }
 
 
 def budget() -> dict:

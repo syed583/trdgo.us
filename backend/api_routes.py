@@ -1600,6 +1600,16 @@ def admin_provider_key(request: Request) -> dict:
     }
 
 
+@router.get("/admin/flow-metrics")
+def admin_flow_metrics(request: Request) -> dict:
+    """Live pipeline metrics for the admin Workflow page."""
+    import auth_service as auth
+    auth.require_admin(request)
+    import unusualwhales_service as uw
+
+    return uw.metrics()
+
+
 @router.post("/admin/provider/key")
 def admin_set_provider_key(request: Request, payload: dict = Body(...)) -> dict:
     """

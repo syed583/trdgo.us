@@ -168,6 +168,14 @@ function Shell() {
 
   const me = useApi<any>((s) => (demo ? Promise.resolve({ is_admin: false, authenticated: false }) : api2.me(s)), [demo]);
   const isAdmin = !!me.data?.is_admin;
+  // Until the account loads, isAdmin is false -- redirecting on that would bounce
+  // an admin off an /admin/* page they opened directly or refreshed. Hold the
+  // guard (render nothing) until the check resolves, then decide.
+  const authResolving = !demo && me.initialLoading;
+  const adminGate = (el: React.ReactNode) =>
+    (isAdmin ? el
+      : authResolving ? null
+        : <Navigate to={`/dashboard${location.search}`} replace />);
   // A signed-in, non-admin account without full access is view-only. While `me`
   // is still loading we do not know yet, so we do not lock the UI prematurely.
   const readOnly = !demo && me.data?.authenticated === true
@@ -276,15 +284,9 @@ function Shell() {
           <Route path="/alerts" element={<AlertsPage ctx={ctx} />} />
           <Route path="/trade-journal" element={<JournalPage ctx={ctx} />} />
           <Route path="/strategy" element={<StrategyPage ctx={ctx} />} />
-          <Route path="/settings" element={isAdmin
-            ? <SettingsPage ctx={ctx} />
-            : <Navigate to={`/dashboard${location.search}`} replace />} />
-          <Route path="/admin/users" element={isAdmin
-            ? <UsersPage ctx={ctx} />
-            : <Navigate to={`/dashboard${location.search}`} replace />} />
-          <Route path="/admin/workflow" element={isAdmin
-            ? <WorkflowPage ctx={ctx} />
-            : <Navigate to={`/dashboard${location.search}`} replace />} />
+          <Route path="/settings" element={adminGate(<SettingsPage ctx={ctx} />)} />
+          <Route path="/admin/users" element={adminGate(<UsersPage ctx={ctx} />)} />
+          <Route path="/admin/workflow" element={adminGate(<WorkflowPage ctx={ctx} />)} />
           <Route path="/community" element={<CommunityPage ctx={ctx} />} />
 
           <Route path="*" element={<NotFound />} />

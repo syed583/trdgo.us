@@ -2,6 +2,8 @@ import React from 'react';
 import type { PageContext } from '../App';
 import { PageHead } from './shared';
 import { Panel } from '../components/common';
+import { api2 } from '../api/client';
+import { useApi } from '../hooks/useApi';
 
 /**
  * Admin · Workflow — how a request moves through Trdgo.us.
@@ -55,15 +57,31 @@ function VArrow({ x, y1, y2, dash, stroke = C.line }: {
 }
 
 /* ---- 1. overall request lifecycle ---- */
-function RequestFlow() {
+function RequestFlow({ m }: { m?: any }) {
   const cx = 340;
+  // Live sub-labels: the cache tier shows its current hit rate, and the
+  // provider client shows latency -- or a red "PAUSED" when it is riding out
+  // the rate limit, which is exactly where the pipeline gets stuck.
+  const cacheSub = m?.cache_hit_rate != null
+    ? `hit rate ${m.cache_hit_rate}% · most reads stop here`
+    : 'swr + Supabase · fresh? serve now';
+  let clientSub = 'token · paced · budget · cached';
+  let clientBg = C.amberBg; let clientBd = C.amber; let clientTc = C.amber;
+  if (m) {
+    if (m.blocked) {
+      clientSub = `PAUSED ${m.blocked_for_seconds}s · rate limit`;
+      clientBg = C.redBg; clientBd = C.red; clientTc = C.red;
+    } else if (m.avg_latency_ms != null) {
+      clientSub = `~${m.avg_latency_ms}ms avg · ${m.net_calls} calls`;
+    }
+  }
   const rows: Array<[string, string, string, string, string]> = [
     ['User (browser)', 'searches a ticker, opens a panel', C.gray, C.grayBd, C.text],
     ['React app (UI)', 'pages · useApi · client.ts', C.blueBg, C.blue, C.blue],
     ['FastAPI + auth', '/api/… · session cookie checked', C.blueBg, C.blue, C.blue],
     ['Service layer', 'overview · flow · levels services', C.blueBg, C.blue, C.blue],
-    ['Cache tier', 'swr + Supabase · fresh? serve now', C.greenBg, C.green, C.green],
-    ['Unusual Whales client', 'token · paced · budget · cached', C.amberBg, C.amber, C.amber],
+    ['Cache tier', cacheSub, C.greenBg, C.green, C.green],
+    ['Unusual Whales client', clientSub, clientBg, clientBd, clientTc],
     ['Unusual Whales API', 'api.unusualwhales.com', C.redBg, C.red, C.red],
   ];
   const ys = rows.map((_, i) => 40 + i * 72);
@@ -142,15 +160,60 @@ function TapeLoop() {
   );
 }
 
+function Stat({ label, value, tone }: { label: string; value: React.ReactNode; tone?: string }) {
+  return (
+    <div className="wf-stat">
+      <span className="wf-stat-label">{label}</span>
+      <b className="wf-stat-value" style={tone ? { color: tone } : undefined}>{value}</b>
+    </div>
+  );
+}
+
+function LivePipeline({ m, loading }: { m?: any; loading: boolean }) {
+  const dim = 'var(--text-mute)';
+  if (loading && !m) {
+    return <div className="hint" style={{ padding: 12 }}>Reading live pipeline…</div>;
+  }
+  if (!m) return <div className="hint" style={{ padding: 12 }}>Metrics unavailable.</div>;
+  const provTone = m.blocked ? 'var(--red)'
+    : m.provider_state === 'slow' ? 'var(--amber)' : 'var(--green)';
+  const gateTone = m.gate_state === 'stuck' ? 'var(--red)'
+    : m.gate_state === 'pacing' ? 'var(--amber)' : 'var(--green)';
+  return (
+    <div className="wf-live">
+      <Stat label="Cache hit rate"
+        value={m.cache_hit_rate != null ? `${m.cache_hit_rate}%` : '--'}
+        tone={m.cache_hit_rate != null && m.cache_hit_rate >= 70 ? 'var(--green)' : dim} />
+      <Stat label="Provider latency"
+        value={m.avg_latency_ms != null ? `${m.avg_latency_ms}ms` : '--'} tone={provTone} />
+      <Stat label="p95 latency" value={m.p95_latency_ms != null ? `${m.p95_latency_ms}ms` : '--'} />
+      <Stat label="Pacing wait"
+        value={m.avg_wait_ms != null ? `${m.avg_wait_ms}ms` : '--'} tone={gateTone} />
+      <Stat label="Provider calls" value={`${m.net_calls}${m.net_errors ? ` · ${m.net_errors} err` : ''}`}
+        tone={m.net_errors ? 'var(--red)' : undefined} />
+      <Stat label="Per-minute left"
+        value={m.per_minute_remaining != null ? Number(m.per_minute_remaining).toLocaleString() : '--'} />
+      <Stat label="Status"
+        value={m.blocked ? `Paused ${m.blocked_for_seconds}s` : (m.last_status || '--')}
+        tone={m.blocked ? 'var(--red)' : m.last_status === 'OK' ? 'var(--green)' : dim} />
+    </div>
+  );
+}
+
 export default function WorkflowPage({ ctx }: { ctx: PageContext }) {
   void ctx;
+  const metrics = useApi<any>((s) => api2.flowMetrics(s), [], { refreshMs: 3000 });
+  const m = metrics.data;
   return (
     <div className="page">
       <PageHead
         title="Workflow"
-        subtitle="How a request moves through Trdgo.us — from the browser to Unusual Whales and back. Admin reference." />
+        subtitle="How a request moves through Trdgo.us — live. The strip below updates every few seconds; the diagram marks where it slows or pauses. Admin only." />
+      <Panel title={<span>● Live pipeline</span>} noBody>
+        <LivePipeline m={m} loading={metrics.initialLoading} />
+      </Panel>
       <div className="wf-grid">
-        <Panel title="1 · Request lifecycle"><RequestFlow /></Panel>
+        <Panel title="1 · Request lifecycle (live)"><RequestFlow m={m} /></Panel>
         <Panel title="2 · Opening a contract"><ContractFlow /></Panel>
         <Panel title="3 · Live tape polling loop"><TapeLoop /></Panel>
       </div>
