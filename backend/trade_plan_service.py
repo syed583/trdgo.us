@@ -321,11 +321,31 @@ def get_plan(symbol: str, horizon: str = "SWING", with_read: bool = True) -> dic
             f"levels (needs {rr_min}). The location is poor -- the target is too "
             f"close to entry relative to the stop."]
 
+    # Issue the plan (or advance the one already issued). The freshly computed
+    # levels above are only the CANDIDATE -- used to open a new plan or to detect
+    # a bias flip. Once a plan is live its levels are fixed; a trader can't act on
+    # an entry/stop that moves every time the price ticks.
+    tracking = _track(plan)
+    plan["tracking"] = tracking
+
+    if tracking:
+        # Lock the displayed levels to the issued plan so they do not drift.
+        plan["bias"] = tracking["bias"]
+        plan["entry"] = tracking["entry"]
+        plan["stop"] = tracking["stop"]
+        plan["do_not_chase"] = tracking["do_not_chase"]
+        plan["do_not_chase_label"] = (
+            "Do not buy above" if tracking["bias"] == "LONG" else "Do not sell below")
+        plan["targets"] = tracking["targets"]
+        plan["reward_risk"] = tracking["reward_risk"]
+        plan["issued_at"] = tracking.get("issued_at")
+        plan["issued_spot"] = tracking.get("spot_at_issue")
+        # An issued plan is a real, live plan regardless of how the candidate
+        # scored on this later pass; the lifecycle status carries the rest.
+        plan["status"] = "OK"
+
     if with_read:
         plan["read"] = _read(plan)
-
-    # Issue/advance the tracked plan and attach its live status.
-    plan["tracking"] = _track(plan)
     return plan
 
 

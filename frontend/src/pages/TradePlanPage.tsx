@@ -378,6 +378,11 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
               {d.style && <span className="tp-style">{d.style}</span>}
               Valid: {d.validity?.label}{' · '}ATR {num(d.atr, 2)}
               {d.atr_basis ? ` (${d.atr_basis})` : ''}
+              {d.issued_spot != null && (
+                <span className="tp-fixed">
+                  Levels fixed — issued @ {num(d.issued_spot, 2)}
+                </span>
+              )}
             </div>
 
             {d.read && <div className="tp-read">{d.read}</div>}
