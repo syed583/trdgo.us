@@ -654,3 +654,5 @@ a.ov-news-row:hover { background: var(--panel-2, rgba(0,0,0,0.03)); }
 .wf-stat:last-child { border-right: none; }
 .wf-stat-label { font-size: 11px; color: var(--text-mute); white-space: nowrap; }
 .wf-stat-value { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.wf-errnote { flex-basis: 100%; padding: 8px 18px 2px; font-size: 11.5px; color: var(--text-mute); line-height: 1.5; }
+.wf-errnote b { color: var(--text-dim); }

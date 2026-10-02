@@ -55,6 +55,11 @@ load_dotenv()
 SOURCE = "UNUSUAL_WHALES"
 BASE = "https://api.unusualwhales.com"
 
+# Cash-settled index roots the provider does not serve stock OHLC for; callers
+# resolve their level through an ETF proxy instead.
+_INDEX_NO_OHLC = {"SPX", "SPXW", "NDX", "NDXP", "RUT", "RUTW", "INDU", "DJX",
+                  "VIX", "VIXW"}
+
 # urllib follows 3xx by default and re-sends every header -- including the
 # Authorization bearer -- to the redirect target, cross-origin included. A
 # provider-side open redirect would then leak the API token. This opener
@@ -166,8 +171,9 @@ _last_status: Optional[str] = None
 # from cache vs the network, how long the network and the pacing gate took, and
 # what the last call did. Rolling windows so the figures reflect "right now".
 _metrics: dict = {
-    "net_calls": 0, "net_errors": 0, "cache_hits": 0, "cache_misses": 0,
+    "net_calls": 0, "net_errors": 0, "no_data": 0, "cache_hits": 0, "cache_misses": 0,
     "lat": deque(maxlen=60), "wait": deque(maxlen=60),
+    "errors_by": {}, "last_error": None,
     "last_path": None, "last_latency_ms": None, "last_at": None,
 }
 
@@ -462,10 +468,21 @@ def get(path: str, params: Optional[dict] = None) -> dict:
             _metrics["last_latency_ms"] = round(lat)
             _metrics["last_at"] = time.time()
         except urllib.error.HTTPError as exc:
-            _metrics["net_errors"] += 1
+            key = str(exc.code)
+            _metrics["errors_by"][key] = _metrics["errors_by"].get(key, 0) + 1
+            # A 404 means the provider has no data for this symbol/endpoint
+            # (a thin ticker with no dividends, insiders, etc.) -- an expected
+            # empty answer, not a pipeline failure, so it is not an "error".
+            if exc.code == 404:
+                _metrics["no_data"] += 1
+            else:
+                _metrics["net_errors"] += 1
+                _metrics["last_error"] = f"{path} → HTTP {exc.code}"
             return _http_error(exc)
         except Exception as exc:  # noqa: BLE001
+            _metrics["errors_by"]["net"] = _metrics["errors_by"].get("net", 0) + 1
             _metrics["net_errors"] += 1
+            _metrics["last_error"] = f"{path} → {type(exc).__name__}"
             _last_status = "PROVIDER_OFFLINE"
             return {"status": "PROVIDER_OFFLINE", "data": None,
                     "detail": type(exc).__name__, "source": SOURCE}
@@ -661,6 +678,13 @@ def candles(symbol: str, size: str = "1d", limit: int = 300,
     source served intraday bars. Now one does.
     """
     symbol = (symbol or "").upper().strip()
+    # Cash-settled index roots have no stock OHLC: /stock/{ticker}/ohlc answers
+    # 422 for SPX, NDX, INDU, VIX ... Callers resolve these through an ETF proxy
+    # anyway, so short-circuit here rather than firing a request that can only
+    # fail -- that 422 was the bulk of the "errors" on the Workflow page.
+    if symbol in _INDEX_NO_OHLC:
+        return {"status": "NO_DATA", "data": None,
+                "detail": f"{symbol} is an index; no stock OHLC.", "source": SOURCE}
     ttl = TTL_SETTLED if date else (
         TTL_DAILY if size.endswith("d") else TTL_INTRADAY)
     return _cached(f"uw:ohlc:{symbol}:{size}:{limit}:{date}",
@@ -1249,6 +1273,9 @@ def metrics() -> dict:
         "cache_hit_rate": round(hits / reads * 100) if reads else None,
         "net_calls": _metrics["net_calls"],
         "net_errors": _metrics["net_errors"],
+        "no_data": _metrics["no_data"],
+        "errors_by": dict(_metrics["errors_by"]),
+        "last_error": _metrics["last_error"],
         "avg_latency_ms": avg(lat),
         "p95_latency_ms": p95(lat),
         "last_latency_ms": _metrics["last_latency_ms"],

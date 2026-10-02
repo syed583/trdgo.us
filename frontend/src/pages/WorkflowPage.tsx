@@ -189,13 +189,27 @@ function LivePipeline({ m, loading }: { m?: any; loading: boolean }) {
       <Stat label="p95 latency" value={m.p95_latency_ms != null ? `${m.p95_latency_ms}ms` : '--'} />
       <Stat label="Pacing wait"
         value={m.avg_wait_ms != null ? `${m.avg_wait_ms}ms` : '--'} tone={gateTone} />
-      <Stat label="Provider calls" value={`${m.net_calls}${m.net_errors ? ` · ${m.net_errors} err` : ''}`}
-        tone={m.net_errors ? 'var(--red)' : undefined} />
+      <Stat label="Provider calls" value={m.net_calls} />
+      <Stat label="Errors"
+        value={m.net_errors || 0}
+        tone={m.net_errors ? 'var(--red)' : 'var(--green)'} />
+      <Stat label="No data (404)" value={m.no_data || 0} />
       <Stat label="Per-minute left"
         value={m.per_minute_remaining != null ? Number(m.per_minute_remaining).toLocaleString() : '--'} />
       <Stat label="Status"
         value={m.blocked ? `Paused ${m.blocked_for_seconds}s` : (m.last_status || '--')}
         tone={m.blocked ? 'var(--red)' : m.last_status === 'OK' ? 'var(--green)' : dim} />
+      {(m.net_errors > 0 || m.no_data > 0) && (
+        <div className="wf-errnote">
+          {m.net_errors > 0 && m.last_error
+            ? <>Last real error: <b>{m.last_error}</b>. </>
+            : <>No real errors. </>}
+          404s are expected empty answers (a ticker with no data for that
+          endpoint), not failures{m.errors_by && Object.keys(m.errors_by).length
+            ? ` — codes: ${Object.entries(m.errors_by).map(([k, v]) => `${k}×${v}`).join(', ')}`
+            : ''}.
+        </div>
+      )}
     </div>
   );
 }
