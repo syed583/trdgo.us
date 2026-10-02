@@ -23,7 +23,7 @@
 .at-wait {
   display: flex; align-items: center; gap: 12px;
   padding: 18px; margin-bottom: 8px;
-  border: 1px solid var(--border); border-radius: 12px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--panel);
 }
 .at-wait b { display: block; font-size: 14px; color: var(--text); }
 .at-wait span {
@@ -38,7 +38,7 @@
   gap: 8px; margin-bottom: 8px;
 }
 .at-stat {
-  padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px;
+  padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--r-lg);
   background: var(--panel); min-width: 0; border-top-width: 2px;
 }
 .at-stat.buy { border-top-color: var(--green); }
@@ -71,7 +71,7 @@
 .at-col-title.buy { color: var(--green); }
 .at-col-title.sell { color: var(--red); }
 .at-chip {
-  padding: 1px 7px; border-radius: 5px; background: var(--panel-2);
+  padding: 1px 7px; border-radius: var(--r-sm); background: var(--panel-2);
   font-size: 11px; font-weight: 750; color: var(--text-mute);
 }
 
@@ -114,16 +114,16 @@
    direction -- so the column is sized to the longest label rather than
    trusted to ellipsis. */
 .at-decision {
-  justify-self: start; padding: 2px 6px; border-radius: 5px;
+  justify-self: start; padding: 2px 6px; border-radius: var(--r-sm);
   font-size: 10px; font-weight: 800; letter-spacing: .2px; white-space: nowrap;
 }
 .at-row.buy .at-decision { background: rgba(33, 208, 122, .14); color: var(--green); }
 .at-row.sell .at-decision { background: rgba(239, 83, 80, .14); color: var(--red); }
 
 .at-bar {
-  height: 7px; border-radius: 4px; background: var(--panel-2); overflow: hidden;
+  height: 7px; border-radius: var(--r-sm); background: var(--panel-2); overflow: hidden;
 }
-.at-bar i { display: block; height: 100%; border-radius: 4px; }
+.at-bar i { display: block; height: 100%; border-radius: var(--r-sm); }
 .at-row.buy .at-bar i { background: var(--green); }
 .at-row.sell .at-bar i { background: var(--red); }
 /* The direction score, 0-100, exactly as the analysis screen's ring shows it.
@@ -233,7 +233,7 @@
 }
 .at-why-open {
   display: inline-flex; align-items: center; gap: 5px; margin-top: 8px;
-  padding: 5px 10px; border-radius: 7px; border: 1px solid var(--border);
+  padding: 5px 10px; border-radius: var(--r); border: 1px solid var(--border);
   background: var(--panel); color: var(--blue); cursor: pointer;
   font: inherit; font-size: 12px; font-weight: 700;
 }
@@ -246,7 +246,7 @@
 /* --- scorecard ------------------------------------------------------------ */
 .sc-title { display: inline-flex; align-items: center; gap: 6px; }
 .sc-warn {
-  margin: 0 0 10px; padding: 8px 10px; border-radius: 7px;
+  margin: 0 0 10px; padding: 8px 10px; border-radius: var(--r);
   background: rgba(245, 165, 36, .1); color: var(--amber, #d9a441);
   font-size: 12px; line-height: 1.5;
 }

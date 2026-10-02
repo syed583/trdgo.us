@@ -83,7 +83,7 @@
   transform: translate(-50%, -50%);
   display: flex; align-items: center; gap: 7px;
   width: auto; min-width: 96px; max-width: 124px; padding: 5px 8px;
-  border: 1px solid var(--border); border-radius: 10px;
+  border: 1px solid var(--border); border-radius: var(--r-lg);
   background: var(--panel);
   transition: border-color .25s ease, box-shadow .25s ease;
 }
@@ -242,7 +242,7 @@
 }
 
 .an-node .as-icon {
-  border-radius: 8px;
+  border-radius: var(--r);
   box-shadow: 0 1px 0 rgba(255, 255, 255, .45) inset;
 }
 

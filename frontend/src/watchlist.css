@@ -29,7 +29,7 @@
 .wl-add {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 3px 3px 3px 10px;
-  border: 1px solid var(--border); border-radius: 8px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: var(--r); background: var(--panel);
 }
 .wl-add input {
   width: 96px; background: none; border: 0; outline: none;
@@ -37,7 +37,7 @@
 }
 .wl-add button {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 5px 11px; border: 0; border-radius: 6px;
+  padding: 5px 11px; border: 0; border-radius: var(--r);
   background: var(--blue-2, #2563eb); color: #fff;
   font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
 }
@@ -46,7 +46,7 @@
 .wl-error {
   display: flex; align-items: center; gap: 7px;
   padding: 8px 12px; margin-bottom: 8px;
-  border: 1px solid rgba(239, 83, 80, .4); border-radius: 8px;
+  border: 1px solid rgba(239, 83, 80, .4); border-radius: var(--r);
   background: rgba(239, 83, 80, .08);
   font-size: 13px; color: var(--red);
 }
@@ -58,7 +58,7 @@
   gap: 8px; margin-bottom: 8px;
 }
 .wl-stat {
-  padding: 11px 13px; border: 1px solid var(--border); border-radius: 10px;
+  padding: 11px 13px; border: 1px solid var(--border); border-radius: var(--r-lg);
   background: var(--panel); min-width: 0;
 }
 .wl-stat-head {
@@ -70,7 +70,7 @@
 }
 .wl-stat-icon {
   display: grid; place-items: center; width: 22px; height: 22px;
-  border-radius: 6px; flex-shrink: 0;
+  border-radius: var(--r); flex-shrink: 0;
   background: var(--panel-2); color: var(--text-mute);
 }
 .wl-stat-icon.green { color: var(--green); background: rgba(33, 208, 122, .12); }
@@ -100,7 +100,7 @@
 
 .wl-search {
   display: inline-flex; align-items: center; gap: 5px;
-  padding: 3px 8px; border: 1px solid var(--border); border-radius: 6px;
+  padding: 3px 8px; border: 1px solid var(--border); border-radius: var(--r);
   background: var(--panel-2);
 }
 .wl-search input {
@@ -116,7 +116,7 @@ tr.wl-picked td:first-child { box-shadow: inset 2px 0 0 var(--blue); }
 /* An unconfirmed date is the provider's guess, marked rather than hidden. */
 .wl-est {
   display: inline-block; margin-left: 5px; padding: 0 4px;
-  border-radius: 4px; font-style: normal; font-size: 10px; font-weight: 700;
+  border-radius: var(--r-sm); font-style: normal; font-size: 10px; font-weight: 700;
   letter-spacing: .3px; text-transform: uppercase;
   background: var(--panel-2); color: var(--text-mute);
 }
@@ -168,7 +168,7 @@ tr.wl-picked td:first-child { box-shadow: inset 2px 0 0 var(--blue); }
   border-bottom: 1px solid var(--border); flex-shrink: 0;
 }
 .wl-tab {
-  flex: 1; padding: 5px 4px; border: 0; border-radius: 6px; background: none;
+  flex: 1; padding: 5px 4px; border: 0; border-radius: var(--r); background: none;
   color: var(--text-mute); font: inherit; font-size: 12px; font-weight: 650;
   cursor: pointer;
 }
@@ -203,10 +203,10 @@ tr.wl-picked td:first-child { box-shadow: inset 2px 0 0 var(--blue); }
 }
 .wl-bar > span:first-child { width: 32px; color: var(--text-dim); flex-shrink: 0; }
 .wl-bar-track {
-  flex: 1; height: 7px; border-radius: 4px;
+  flex: 1; height: 7px; border-radius: var(--r-sm);
   background: var(--panel-2); overflow: hidden;
 }
-.wl-bar-track i { display: block; height: 100%; border-radius: 4px; }
+.wl-bar-track i { display: block; height: 100%; border-radius: var(--r-sm); }
 .wl-bar > b { width: 38px; text-align: right; color: var(--text); flex-shrink: 0; }
 
 .wl-next b {
@@ -244,7 +244,7 @@ tr.wl-picked td:first-child { box-shadow: inset 2px 0 0 var(--blue); }
   display: flex; align-items: center; gap: 8px;
   font-size: 13px; color: var(--text-dim);
 }
-.wl-legend-row em { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+.wl-legend-row em { width: 9px; height: 9px; border-radius: var(--r-sm); flex-shrink: 0; }
 .wl-legend-row span { flex: 1; min-width: 0; }
 .wl-legend-row b { color: var(--text); font-variant-numeric: tabular-nums; }
 

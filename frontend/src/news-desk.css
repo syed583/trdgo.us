@@ -32,7 +32,7 @@
   gap: 8px; margin-bottom: 8px;
 }
 .nd-card {
-  padding: 11px 13px; border: 1px solid var(--border); border-radius: 10px;
+  padding: 11px 13px; border: 1px solid var(--border); border-radius: var(--r-lg);
   background: var(--panel); min-width: 0;
 }
 .nd-card-label {
@@ -63,7 +63,7 @@
   display: flex; align-items: center; gap: 7px;
   font-size: 13px; color: var(--text-dim);
 }
-.nd-split em { width: 9px; height: 9px; border-radius: 2px; flex-shrink: 0; }
+.nd-split em { width: 9px; height: 9px; border-radius: var(--r-sm); flex-shrink: 0; }
 .nd-split b {
   margin-left: auto; color: var(--text); font-variant-numeric: tabular-nums;
 }
@@ -74,7 +74,7 @@
 .nd-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
 .nd-chip {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 4px 8px; border: 1px solid var(--border-2); border-radius: 6px;
+  padding: 4px 8px; border: 1px solid var(--border-2); border-radius: var(--r);
   background: var(--panel-2); color: var(--blue);
   font: inherit; font-size: 12px; font-weight: 750; cursor: pointer;
 }
@@ -98,11 +98,11 @@
 .nd-controls {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
   padding: 8px 10px; margin-bottom: 8px;
-  border: 1px solid var(--border); border-radius: 10px; background: var(--bg-2);
+  border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--bg-2);
 }
 .nd-search {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 5px 10px; border: 1px solid var(--border); border-radius: 8px;
+  padding: 5px 10px; border: 1px solid var(--border); border-radius: var(--r);
   background: var(--panel);
 }
 .nd-search input {
@@ -110,7 +110,7 @@
   font: inherit; font-size: 13px; color: var(--text);
 }
 .nd-pill {
-  padding: 5px 13px; border: 1px solid transparent; border-radius: 8px;
+  padding: 5px 13px; border: 1px solid transparent; border-radius: var(--r);
   background: none; color: var(--text-dim);
   font: inherit; font-size: 13px; font-weight: 650; cursor: pointer;
 }
@@ -153,11 +153,11 @@
 }
 .nd-meta i {
   font-style: normal; font-size: 11px; font-weight: 750; color: var(--blue);
-  padding: 1px 5px; border-radius: 4px; background: var(--blue-bg);
+  padding: 1px 5px; border-radius: var(--r-sm); background: var(--blue-bg);
 }
 
 .nd-badge {
-  flex-shrink: 0; padding: 3px 9px; border-radius: 6px;
+  flex-shrink: 0; padding: 3px 9px; border-radius: var(--r);
   font-size: 11px; font-weight: 750; text-transform: capitalize;
 }
 .nd-badge.positive { background: rgba(33, 208, 122, .14); color: var(--green); }
@@ -190,10 +190,10 @@
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .nd-sector-track {
-  flex: 1; min-width: 0; height: 8px; border-radius: 4px;
+  flex: 1; min-width: 0; height: 8px; border-radius: var(--r-sm);
   background: var(--panel-2); overflow: hidden;
 }
-.nd-sector-track i { display: block; height: 100%; border-radius: 4px; }
+.nd-sector-track i { display: block; height: 100%; border-radius: var(--r-sm); }
 .nd-sector-track i.pos { background: var(--green); }
 .nd-sector-track i.neg { background: var(--red); }
 .nd-sector > b { width: 44px; text-align: right; flex-shrink: 0; }
@@ -218,7 +218,7 @@
 }
 .nd-trend-stack {
   flex: 1; width: 70%; display: flex; flex-direction: column;
-  justify-content: flex-end; border-radius: 4px; overflow: hidden;
+  justify-content: flex-end; border-radius: var(--r-sm); overflow: hidden;
 }
 .nd-trend-stack i { display: block; width: 100%; }
 .nd-trend-col em {
@@ -229,7 +229,7 @@
   font-size: 12px; color: var(--text-mute);
 }
 .nd-legend span { display: inline-flex; align-items: center; gap: 5px; }
-.nd-legend i { width: 9px; height: 9px; border-radius: 2px; }
+.nd-legend i { width: 9px; height: 9px; border-radius: var(--r-sm); }
 
 .nd-note, .nd-empty {
   font-size: 13px; color: var(--text-mute); line-height: 1.6;
@@ -261,7 +261,7 @@
 }
 .nd-impacts i {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px 6px; border-radius: 4px;
+  padding: 2px 6px; border-radius: var(--r-sm);
   font-style: normal; font-size: 11px; font-weight: 750;
   border: 1px solid transparent;
 }
