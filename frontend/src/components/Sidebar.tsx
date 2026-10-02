@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import {
-  Activity, BarChart3, Brain, CalendarDays, LineChart, Users,
+  Activity, BarChart3, Brain, CalendarDays, Layers, LineChart, Users,
   LayoutDashboard, ListOrdered, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
   Scale, Settings, Sparkles, Star, Target, TrendingUp, UserCog, Waves, Waypoints, X,
 } from 'lucide-react';
@@ -42,6 +42,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/dashboard', label: 'Overview', icon: <LayoutDashboard size={S} /> },
     { to: '/stocks', label: 'Stocks', icon: <ListOrdered size={S} /> },
     { to: '/options-flow', label: 'Options', icon: <Activity size={S} /> },
+    { to: '/oi-buildup', label: 'OI Build-Up', icon: <Layers size={S} /> },
     { to: '/volatility', label: 'Volatility', icon: <LineChart size={S} /> },
     { to: '/dark-pool', label: 'Dark Pool', icon: <Waves size={S} /> },
     { to: '/market-insiders', label: 'Market Insiders', icon: <UserCog size={S} /> },
