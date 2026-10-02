@@ -114,7 +114,13 @@
 .sg-dd-head {
   padding: 10px 14px; font-weight: 600; font-size: 13px; color: var(--text);
   border-bottom: 1px solid var(--border); background: var(--panel-2);
+  display: flex; align-items: center; justify-content: space-between;
 }
+.sg-dd-mute {
+  background: none; border: none; cursor: pointer; display: flex;
+  color: var(--text-mute); padding: 2px;
+}
+.sg-dd-mute:hover { color: var(--text); }
 .sg-dd-empty { padding: 18px 14px; font-size: 12.5px; color: var(--text-mute); text-align: center; }
 .sg-dd-item {
   display: grid; grid-template-columns: auto 1fr; gap: 2px 8px;

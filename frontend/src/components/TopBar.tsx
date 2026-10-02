@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { Bell, ChevronDown, Loader2, Moon, RefreshCw, Search, Sun } from 'lucide-react';
+import {
+  Bell, ChevronDown, Loader2, Moon, RefreshCw, Search, Sun, Volume2, VolumeX,
+} from 'lucide-react';
 import '../pages/signals.css';
 import { api2 } from '../api/client';
 import type { HealthPayload, Quote, SymbolMatch } from '../api/client';
@@ -443,6 +445,50 @@ const SG_LABEL: Record<string, string> = {
   INVALIDATED: 'Invalidated',
 };
 
+// A short two-note chime, generated so there's no audio asset to ship. Browsers
+// block audio until the user has interacted with the page; by the time a signal
+// fires the user has almost always clicked something, so it plays.
+let _actx: AudioContext | null = null;
+function chime() {
+  try {
+    const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+    _actx = _actx || new Ctx();
+    if (_actx.state === 'suspended') _actx.resume();
+    const now = _actx.currentTime;
+    [880, 1320].forEach((f, i) => {
+      const o = _actx!.createOscillator();
+      const g = _actx!.createGain();
+      o.type = 'sine';
+      o.frequency.value = f;
+      o.connect(g);
+      g.connect(_actx!.destination);
+      const t = now + i * 0.14;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
+      o.start(t);
+      o.stop(t + 0.15);
+    });
+  } catch { /* no audio available */ }
+}
+
+/** Speak the stock and what happened, e.g. "N V D A, new setup, long". */
+function announce(e: any) {
+  try {
+    if (!('speechSynthesis' in window)) return;
+    const label = SG_LABEL[e.type] || e.type;
+    const ticker = String(e.symbol || '').split('').join(' '); // spell it out
+    let text = `${ticker}, ${label}`;
+    if (e.type === 'NEW_SETUP' && e.to_bias) text += `, ${String(e.to_bias).toLowerCase()}`;
+    if (e.type === 'BIAS_FLIP' && e.to_bias) text += ` to ${String(e.to_bias).toLowerCase()}`;
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.05;
+    u.volume = 1;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+  } catch { /* no speech available */ }
+}
+
 /**
  * Header notification bell. Polls the signal feed, shows an unread badge, opens
  * a dropdown of recent events, and pops a toast when a new one lands.
@@ -456,6 +502,12 @@ function SignalBell({ search }: { search: string }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const lastId = useRef(0);
   const primed = useRef(false);
+  const [sound, setSound] = useState(() => {
+    try { return localStorage.getItem('trdgo_signal_sound') !== 'off'; }
+    catch { return true; }
+  });
+  const soundRef = useRef(sound);
+  soundRef.current = sound;
 
   useEffect(() => {
     let alive = true;
@@ -474,6 +526,11 @@ function SignalBell({ search }: { search: string }) {
             window.setTimeout(
               () => setToasts((t) => t.filter((x) => x._k !== e.id)), 9000);
           });
+          // Chime once, then speak the newest signal's stock + what happened.
+          if (soundRef.current && fresh.length) {
+            chime();
+            announce(fresh[0]);
+          }
         }
         if (maxId) lastId.current = Math.max(lastId.current, maxId);
         primed.current = true;
@@ -514,7 +571,19 @@ function SignalBell({ search }: { search: string }) {
 
       {open && (
         <div className="sg-dropdown">
-          <div className="sg-dd-head">Signals</div>
+          <div className="sg-dd-head">
+            Signals
+            <button className="sg-dd-mute" title={sound ? 'Mute alerts' : 'Unmute alerts'}
+              onClick={(ev) => {
+                ev.stopPropagation();
+                const next = !sound;
+                setSound(next);
+                try { localStorage.setItem('trdgo_signal_sound', next ? 'on' : 'off'); } catch { /* ignore */ }
+                if (next) chime();   // confirm it's on
+              }}>
+              {sound ? <Volume2 size={14} /> : <VolumeX size={14} />}
+            </button>
+          </div>
           {events.length === 0 ? (
             <div className="sg-dd-empty">No signals yet.</div>
           ) : (
