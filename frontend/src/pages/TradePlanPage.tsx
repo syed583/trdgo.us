@@ -4,7 +4,7 @@ import {
   Target, LogIn, Ban, Clock,
 } from 'lucide-react';
 import type { PageContext } from '../App';
-import { api2 } from '../api/client';
+import { api, api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import { num } from '../lib/format';
 import { PageHead } from './shared';
@@ -40,30 +40,45 @@ function Price({ v }: { v: number | null | undefined }) {
   return <span className="tp-price">{v == null ? '--' : num(v, 2)}</span>;
 }
 
-/** Live top-of-book for the underlying stock. */
-function QuoteStrip({ d }: { d: any }) {
+/**
+ * Live top-of-book for the underlying, refreshed on its own short cycle so the
+ * bid/ask floats in real time. Prefers the live quote; falls back to the plan's
+ * snapshot until the quote lands. Outside regular hours it reads the extended
+ * session's book when the regular one is empty.
+ */
+function QuoteStrip({ d, q, live }: { d: any; q: any; live: boolean }) {
+  const ext = q?.extended || {};
+  const bid = q?.bid ?? ext.bid ?? d.bid;
+  const ask = q?.ask ?? ext.ask ?? d.ask;
+  const last = q?.price ?? ext.price ?? d.spot;
+  const chg = q?.change_percent ?? d.change_percent;
+  const spread = (bid != null && ask != null) ? Math.round((ask - bid) * 100) / 100
+    : d.spread;
+
   return (
     <div className="tp-quote">
       <div className="tp-q bid">
         <span className="tp-q-l">Bid</span>
-        <span className="tp-q-v"><Price v={d.bid} /></span>
+        <span className="tp-q-v"><Price v={bid} /></span>
       </div>
       <div className="tp-q last">
-        <span className="tp-q-l">Last</span>
-        <span className="tp-q-v"><Price v={d.spot} /></span>
-        {d.change_percent != null && (
-          <span className={`tp-q-chg ${d.change_percent >= 0 ? 'pos' : 'neg'}`}>
-            {d.change_percent >= 0 ? '+' : ''}{num(d.change_percent, 2)}%
+        <span className="tp-q-l">
+          Last {live && <span className="tp-live-dot" title="Live" />}
+        </span>
+        <span className="tp-q-v"><Price v={last} /></span>
+        {chg != null && (
+          <span className={`tp-q-chg ${chg >= 0 ? 'pos' : 'neg'}`}>
+            {chg >= 0 ? '+' : ''}{num(chg, 2)}%
           </span>
         )}
       </div>
       <div className="tp-q ask">
         <span className="tp-q-l">Ask</span>
-        <span className="tp-q-v"><Price v={d.ask} /></span>
+        <span className="tp-q-v"><Price v={ask} /></span>
       </div>
       <div className="tp-q spread">
         <span className="tp-q-l">Spread</span>
-        <span className="tp-q-v">{d.spread != null ? num(d.spread, 2) : '--'}</span>
+        <span className="tp-q-v">{spread != null ? num(spread, 2) : '--'}</span>
       </div>
     </div>
   );
@@ -188,6 +203,15 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
     (s) => (demo ? Promise.resolve(null) : api2.tradePlanHistory(symbol, s)),
     [symbol, demo],
   );
+  // The bid/ask float on their own fast cycle so the top-of-book is live, while
+  // the plan's levels stay on their slower cache.
+  const quote = useApi<any>(
+    (s) => (demo ? Promise.resolve(null) : api.quote(symbol, s, 5)),
+    [symbol, demo],
+    { refreshMs: demo ? undefined : 6_000 },
+  );
+  const q = quote.data;
+  const live = !!q && q.market?.is_open === true;
 
   const d = plan.data;
   const status = d?.status;
@@ -232,7 +256,7 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
       ) : status === 'NO_SETUP' ? (
         <div className="tp-card tp-nosetup">
           <div className="tp-bias neutral">NO SETUP · {d.lean}</div>
-          <QuoteStrip d={d} />
+          <QuoteStrip d={d} q={q} live={live} />
           <p>The model doesn't point decisively enough to place a plan right now.</p>
           <ul>{(d.reasons || []).map((r: string, i: number) => <li key={i}>{r}</li>)}</ul>
           <div className="tp-ctx">
@@ -265,7 +289,7 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
               );
             })()}
 
-            <QuoteStrip d={d} />
+            <QuoteStrip d={d} q={q} live={live} />
 
             {/* Hero: bias + conviction meter + reward:risk */}
             <div className="tp-hero">

@@ -436,8 +436,10 @@ async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
 
 export const api = {
   status: (s?: AbortSignal) => request<SystemStatus>('/api/status', s),
-  quote: (symbol: string, s?: AbortSignal) =>
-    request<Quote>(`/api/quote/${encodeURIComponent(symbol)}`, s),
+  quote: (symbol: string, s?: AbortSignal, ttl?: number) =>
+    request<Quote>(
+      `/api/quote/${encodeURIComponent(symbol)}`
+      + (ttl != null ? `?ttl=${ttl}` : ''), s),
   tickerOverview: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/overview/${encodeURIComponent(symbol)}`, s),
   chart: (symbol: string, range: string, s?: AbortSignal) =>

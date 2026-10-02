@@ -108,8 +108,11 @@ def symbol_validate(symbol: str) -> dict:
 
 
 @router.get("/quote/{symbol}")
-def quote(symbol: str) -> dict:
-    return market.get_quote(symbol)
+def quote(symbol: str, ttl: Optional[float] = None) -> dict:
+    # A caller that wants a faster-floating quote (the Trade Plan's live bid/ask)
+    # can ask for a shorter cache; floored so it can never hammer the provider.
+    t = max(3.0, min(ttl, 600.0)) if ttl is not None else None
+    return market.get_quote(symbol, ttl=t)
 
 
 @router.get("/chart/{symbol}")
