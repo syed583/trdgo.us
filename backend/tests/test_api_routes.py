@@ -90,8 +90,9 @@ def test_cors_allows_the_vite_dev_origin(client):
 def test_quote_route_upper_cases_and_forwards_the_symbol(client, monkeypatch):
     seen = {}
 
-    def fake(symbol):
+    def fake(symbol, ttl=None):
         seen["symbol"] = symbol
+        seen["ttl"] = ttl
         return {"symbol": symbol, "status": "OK"}
 
     monkeypatch.setattr(api_routes.market, "get_quote", fake)

@@ -377,6 +377,7 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
               <Clock size={13} />
               {d.style && <span className="tp-style">{d.style}</span>}
               Valid: {d.validity?.label}{' · '}ATR {num(d.atr, 2)}
+              {d.atr_basis ? ` (${d.atr_basis})` : ''}
             </div>
 
             {d.read && <div className="tp-read">{d.read}</div>}

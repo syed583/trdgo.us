@@ -76,6 +76,38 @@ def _bars(symbol: str) -> list[dict]:
              "close": b["close"]} for b in chart.get("bars", [])]
 
 
+def _intraday_bars(symbol: str) -> list[dict]:
+    """Recent intraday bars, for an intraday (Today) ATR."""
+    import live_market_service as market
+    chart = market.get_chart(symbol, "5D")
+    if (chart or {}).get("status") != "OK":
+        return []
+    return [{"date": b["t"], "high": b["high"], "low": b["low"],
+             "close": b["close"]} for b in chart.get("bars", [])]
+
+
+def _intraday_atr(symbol: str) -> Optional[float]:
+    """
+    A true intraday volatility unit for the Today plan: the average per-session
+    high-to-low range over recent days, built from intraday bars. Unlike the
+    daily ATR it excludes the overnight gap, so it reflects only what price
+    actually travels while the market is open -- the right scale for a scalp.
+    """
+    bars = _intraday_bars(symbol)
+    if not bars:
+        return None
+    sessions: dict[str, dict] = {}
+    for b in bars:
+        day = (b.get("date") or "")[:10]
+        if not day or b["high"] is None or b["low"] is None:
+            continue
+        s = sessions.setdefault(day, {"hi": b["high"], "lo": b["low"]})
+        s["hi"] = max(s["hi"], b["high"])
+        s["lo"] = min(s["lo"], b["low"])
+    ranges = [s["hi"] - s["lo"] for s in sessions.values() if s["hi"] > s["lo"]]
+    return sum(ranges) / len(ranges) if ranges else None
+
+
 def _atr(bars: list[dict], period: int = ATR_PERIOD) -> Optional[float]:
     """Average true range -- how far the stock travels, for stop/zone buffers."""
     if len(bars) < period + 1:
@@ -164,7 +196,16 @@ def get_plan(symbol: str, horizon: str = "SWING", with_read: bool = True) -> dic
     short = "SELL" in decision
 
     bars = _bars(symbol)
-    atr = _atr(bars) or (spot * 0.02)   # 2% fallback if history is thin
+    daily_atr = _atr(bars) or (spot * 0.02)   # 2% fallback if history is thin
+    # Today scales to the true intraday range (no overnight gap); the other
+    # horizons use the daily ATR. Fall back to daily if intraday is unavailable.
+    if horizon == "TODAY":
+        intraday = _intraday_atr(symbol)
+        atr = intraday or daily_atr
+        atr_basis = "intraday range" if intraday else "daily ATR"
+    else:
+        atr = daily_atr
+        atr_basis = "daily ATR"
     sr = pa.support_resistance(bars) if bars else {}
     support = _f(sr.get("support"))
     resistance = _f(sr.get("resistance"))
@@ -189,7 +230,8 @@ def get_plan(symbol: str, horizon: str = "SWING", with_read: bool = True) -> dic
         "quote_session": (quote.get("market") or {}).get("session"),
         "score": _r(direction_score, 1), "confidence": _r(confidence, 1),
         "decision": decision,
-        "atr": _r(atr), "support": support, "resistance": resistance,
+        "atr": _r(atr), "atr_basis": atr_basis,
+        "support": support, "resistance": resistance,
         "validity": _validity(horizon),
         "as_of": datetime.now().isoformat(),
         "source": SOURCE,
