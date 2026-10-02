@@ -1158,6 +1158,29 @@ def options_flow_market(limit: int = 200) -> dict:
                      market.session_ttl(4, 600))
 
 
+@router.get("/trade-plan/{symbol}")
+def trade_plan(symbol: str, horizon: str = "SWING") -> dict:
+    """
+    Data-derived trade levels for the underlying: bias, entry zone, do-not-chase
+    line, stop, targets and reward:risk, with a plain-English read. Analysis,
+    not advice.
+    """
+    import trade_plan_service as tp
+
+    h = (horizon or "SWING").upper()
+    return swr.serve(f"tradeplan:{symbol.upper()}:{h}",
+                     lambda: tp.get_plan(symbol, horizon=h),
+                     market.session_ttl(60, 900))
+
+
+@router.get("/trade-plan/{symbol}/history")
+def trade_plan_history(symbol: str, horizon: str = "") -> dict:
+    """Past trade plans for a ticker and how each resolved."""
+    import trade_plan_service as tp
+
+    return tp.history(symbol=symbol, horizon=horizon, limit=50)
+
+
 @router.get("/options/oi-change")
 def options_oi_change(symbol: str = "", limit: int = 50, date: str = "") -> dict:
     """

@@ -15,6 +15,7 @@ const AssistantWidget = lazy(() => import('./components/AssistantWidget'));
 const EarningsPage = lazy(() => import('./pages/EarningsPage'));
 const OptionsFlowPage = lazy(() => import('./pages/OptionsFlowPage'));
 const OiBuildupPage = lazy(() => import('./pages/OiBuildupPage'));
+const TradePlanPage = lazy(() => import('./pages/TradePlanPage'));
 const VolatilityPage = lazy(() => import('./pages/VolatilityPage'));
 const ModelPerformancePage = lazy(() => import('./pages/ModelPerformancePage'));
 const PeersPage = lazy(() => import('./pages/PeersPage'));
@@ -76,7 +77,7 @@ const OPTIONS_ROUTES = [
 
 /** Sections that carry a symbol in the URL. */
 const SYMBOL_SECTIONS =
-  /^\/(earnings|options-flow|options-chain|oi-buildup|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)(\/|$)/;
+  /^\/(earnings|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)(\/|$)/;
 
 /**
  * The same sections, capturing the ticker itself.
@@ -88,7 +89,7 @@ const SYMBOL_SECTIONS =
  * ticker card changed the address bar while every panel kept showing NVDA.
  */
 const SYMBOL_IN_PATH =
-  /^\/(?:earnings|options-flow|options-chain|oi-buildup|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)\/([A-Za-z0-9.\-]+)/;
+  /^\/(?:earnings|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)\/([A-Za-z0-9.\-]+)/;
 
 export interface PageContext {
   symbol: string;
@@ -263,6 +264,9 @@ function Shell() {
 
           <Route path="/oi-buildup" element={<OiBuildupPage ctx={ctx} />} />
           <Route path="/oi-buildup/:symbol" element={<OiBuildupPage ctx={ctx} />} />
+
+          <Route path="/trade-plan" element={<Navigate to={`/trade-plan/${DEFAULT_SYMBOL}${location.search}`} replace />} />
+          <Route path="/trade-plan/:symbol" element={<TradePlanPage ctx={ctx} />} />
 
           <Route path="/volatility" element={<Navigate to={`/volatility/${DEFAULT_SYMBOL}${location.search}`} replace />} />
           <Route path="/volatility/:symbol" element={<VolatilityPage ctx={ctx} />} />

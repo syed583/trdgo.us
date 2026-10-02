@@ -635,6 +635,11 @@ export const api2 = {
     request<any>(
       `/api/options/oi-change?limit=${limit}`
       + (symbol ? `&symbol=${encodeURIComponent(symbol)}` : ''), s),
+  tradePlan: (symbol: string, horizon = 'SWING', s?: AbortSignal) =>
+    request<any>(
+      `/api/trade-plan/${encodeURIComponent(symbol)}?horizon=${encodeURIComponent(horizon)}`, s),
+  tradePlanHistory: (symbol: string, s?: AbortSignal) =>
+    request<any>(`/api/trade-plan/${encodeURIComponent(symbol)}/history`, s),
 
   earningsCalendar: (
     range: string, sort: string, q: string, s?: AbortSignal,
