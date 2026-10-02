@@ -116,7 +116,7 @@ TTL_SETTLED = 30 * 24 * 3600.0   # a finished day cannot change
 # and this is the dispatch spacing every multi-call screen waits on, so it is
 # kept as low as stays comfortably clear of the burst limit. It was 0.12s,
 # which doubled the wait on every screen that fans out.
-MIN_INTERVAL = 0.04
+MIN_INTERVAL = 0.012
 
 # The ceiling on proactive spacing. When the per-minute allowance runs low the
 # dispatcher glides toward the window reset (see _space_out), but it never waits
@@ -130,7 +130,11 @@ MAX_PACE = 1.5
 # trip that burst limit and the whole app pauses. This semaphore caps how many
 # requests are on the wire simultaneously, however many callers ask, so a
 # parallel screen is smoothed into a steady trickle instead of a spike.
-MAX_INFLIGHT = 6
+# Raised from 6: on an uncapped plan more requests can be on the wire at once,
+# which is what cuts the pacing wait a fanned-out screen sees. The adaptive
+# dispatcher (and the 429 backoff) still widen the gap the moment a real
+# per-minute cap starts to bite, so this stays safe on a tighter token.
+MAX_INFLIGHT = 12
 _inflight = threading.BoundedSemaphore(MAX_INFLIGHT)
 
 # Single-flight: when many users open the same symbol at once and the cache is

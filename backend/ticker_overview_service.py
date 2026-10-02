@@ -348,7 +348,7 @@ def _top_contracts(symbol: str, top: int = 10) -> dict:
     """
     import unusualwhales_service as uw
 
-    out = uw.get(f"/api/stock/{symbol}/option-contracts", {"limit": 500})
+    out = uw.get(f"/api/stock/{symbol}/option-contracts", {"limit": 250})
     if out.get("status") != "OK":
         return {"status": out.get("status", "NO_DATA"),
                 "detail": out.get("detail"), "by_volume": [], "by_oi": []}
