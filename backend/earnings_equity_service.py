@@ -52,39 +52,68 @@ def _directional_signals(symbol: str) -> dict:
         return {}
 
 
-def _estimate_bias(symbol: str) -> Optional[float]:
-    """Combined EPS+revenue revision lean, -1..+1, from the estimate scorer."""
+def _estimate_bias(symbol: str) -> tuple[Optional[float], Optional[float]]:
+    """
+    (eps_bias, revenue_bias) in -1..+1, straight from UW's forward estimates
+    (/api/companies/{t}/earnings-estimates). EPS lean = analysts' expected growth
+    vs the last reported quarter, blended with last-week revision counts when
+    present; revenue lean = year-over-year growth of the average estimate.
+    """
     try:
-        from database import SessionLocal
-        import estimate_score_service as es
-        db = SessionLocal()
-        try:
-            r = es.score_estimates(db, symbol) or {}
-        finally:
-            db.close()
-        if str(r.get("bias")) in ("TEST_DATA", "NO_DATA"):
+        import unusualwhales_service as uw
+        est = uw._rows(uw.earnings_estimates(symbol))
+        hist = uw._rows(uw.earnings_history(symbol))
+        if not est:
+            return None, None
+
+        fq = sorted((r for r in est if r.get("horizon") == "fiscal quarter"
+                     and r.get("date")), key=lambda r: r.get("date"))
+        fy = sorted((r for r in est if r.get("horizon") == "fiscal year"
+                     and r.get("date")), key=lambda r: r.get("date"))
+
+        def yoy(field: str) -> Optional[float]:
+            """Forward year-over-year growth of an estimate (seasonality-free)."""
+            if len(fy) < 2:
+                return None
+            a, b = _f(fy[0].get(field)), _f(fy[1].get(field))
+            if a and b and a > 0:
+                scale = 0.3 if "eps" in field else 0.2
+                return max(-1.0, min(1.0, ((b - a) / a) / scale))
             return None
-        sc, mx = _f(r.get("score")), _f(r.get("max_score")) or 25.0
-        return None if sc is None else max(-1.0, min(1.0, sc / mx))
+
+        eps_bias = yoy("eps_estimate_average")
+        rev_bias = yoy("revenue_estimate_average")
+
+        # Fold in last-week EPS revision counts when the feed carries them.
+        if fq:
+            up = _f(fq[0].get("eps_estimate_revision_up_last_week"))
+            dn = _f(fq[0].get("eps_estimate_revision_down_last_week"))
+            if up is not None and dn is not None and (up + dn):
+                rev = (up - dn) / (up + dn)
+                eps_bias = rev if eps_bias is None else max(-1.0, min(1.0, (eps_bias + rev) / 2))
+        return eps_bias, rev_bias
     except Exception:  # noqa: BLE001
-        return None
+        return None, None
 
 
 def _history_bias(symbol: str) -> Optional[float]:
+    """
+    Historical earnings reaction straight from UW (/api/earnings/{t}): the beat
+    rate and recent surprise over the last eight reports.
+    """
     try:
-        from database import SessionLocal
-        import earnings_history_service as ehist
-        import earnings_history_score_service as ehs
-        db = SessionLocal()
-        try:
-            hist = ehist.get_earnings_history(db, symbol)
-        finally:
-            db.close()
-        r = ehs.score_earnings_history(hist) or {}
-        if str(r.get("bias")) == "NO_DATA":
+        import unusualwhales_service as uw
+        rows = uw._rows(uw.earnings_history(symbol))
+        past = [(r.get("report_date") or "", _f(r.get("surprise_percentage")))
+                for r in rows if _f(r.get("surprise_percentage")) is not None]
+        if not past:
             return None
-        sc, mx = _f(r.get("score")), _f(r.get("max_score")) or 15.0
-        return None if sc is None else max(-1.0, min(1.0, sc / mx))
+        past.sort(key=lambda x: x[0], reverse=True)
+        recent = past[:8]
+        beat_rate = sum(1 for _, sp in recent if sp > 0) / len(recent)
+        avg_surprise = sum(sp for _, sp in recent) / len(recent)
+        bias = (beat_rate - 0.5) * 2 * 0.6 + max(-1.0, min(1.0, avg_surprise / 10)) * 0.4
+        return max(-1.0, min(1.0, bias))
     except Exception:  # noqa: BLE001
         return None
 
@@ -173,15 +202,15 @@ def get_analysis(symbol: str) -> dict:
     def s(*names) -> Optional[float]:
         return _avg(*(sig.get(n) for n in names))
 
-    est = _estimate_bias(symbol)
+    eps_bias, rev_bias = _estimate_bias(symbol)
 
     params = [
-        eng.Param("eps_estimates", "EPS Estimates & Revisions", 15, est,
-                  detail="EPS/revenue revision trend (shared revision model).",
-                  unavailable_reason="" if est is not None else "No revision history."),
-        eng.Param("revenue_estimates", "Revenue Estimates & Revisions", 15, est,
-                  detail="Revenue revision trend (shared revision model).",
-                  unavailable_reason="" if est is not None else "No revision history."),
+        eng.Param("eps_estimates", "EPS Estimates & Revisions", 15, eps_bias,
+                  detail="Analysts' expected EPS growth and last-week revisions (UW).",
+                  unavailable_reason="" if eps_bias is not None else "No analyst EPS estimates."),
+        eng.Param("revenue_estimates", "Revenue Estimates & Revisions", 15, rev_bias,
+                  detail="Year-over-year growth of the average revenue estimate (UW).",
+                  unavailable_reason="" if rev_bias is not None else "No analyst revenue estimates."),
         eng.Param("guidance", "Forward Guidance & Outlook", 15, None,
                   detail="No structured guidance feed.",
                   unavailable_reason="Guidance is not available as structured data."),
