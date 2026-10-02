@@ -89,14 +89,7 @@ def score(params: list[Param], *, pos_label: str, neg_label: str,
     # Confidence blends how much data arrived with how aligned it is.
     confidence = round(min(100.0, (coverage * 0.5) + (agreement * 0.5)), 1)
 
-    reasons: list[str] = []
     actionable = coverage >= min_coverage and confidence >= 45.0
-    if coverage < min_coverage:
-        reasons.append(f"Only {coverage:.0f}% of the evidence was available "
-                       f"(needs {min_coverage:.0f}%).")
-    if agreement < 55.0:
-        reasons.append("The parameters are split; no clear edge.")
-
     if not actionable:
         decision = "NO TRADE"
     elif s >= buy_at:
@@ -105,8 +98,19 @@ def score(params: list[Param], *, pos_label: str, neg_label: str,
         decision = neg_label
     else:
         decision = "NO TRADE"
+
+    # Reasons explain only a NO TRADE -- they must not contradict a live call.
+    reasons: list[str] = []
+    if decision == "NO TRADE":
+        if coverage < min_coverage:
+            reasons.append(f"Only {coverage:.0f}% of the evidence was available "
+                           f"(needs {min_coverage:.0f}%).")
+        if confidence < 45.0:
+            reasons.append("Confidence is too low to act on.")
+        if actionable and sell_at < s < buy_at:
+            reasons.append("The evidence is close to neutral -- no clear edge.")
         if not reasons:
-            reasons.append("The evidence is close to neutral.")
+            reasons.append("The evidence does not point decisively enough.")
 
     return {
         "score": round(s, 1),
