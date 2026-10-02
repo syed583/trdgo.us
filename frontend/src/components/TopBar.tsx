@@ -60,7 +60,12 @@ export default function TopBar({
   // The Analysis page carries its own prominent ticker search (the centred hero
   // when idle, a back-to-search control on a result), so the header's search
   // there was a second box doing the same job. Hide it on that route only.
-  const hideHeaderSearch = useLocation().pathname.startsWith('/ai-insights');
+  // The earnings engines land on their own upcoming-earnings list (with its own
+  // filter box), so the header ticker search there is a confusing second box --
+  // hide it on those landing pages. The per-symbol analysis view keeps it.
+  const _path = useLocation().pathname;
+  const hideHeaderSearch = _path.startsWith('/ai-insights')
+    || _path === '/earnings-equity' || _path === '/earnings-options';
 
   return (
     <header className="topbar">
