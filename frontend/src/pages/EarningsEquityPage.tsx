@@ -1,13 +1,30 @@
+import { Link, useParams } from 'react-router-dom';
+import { ChevronLeft } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import { PageHead } from './shared';
 import { num } from '../lib/format';
 import { ScoreHeader, ParamList, CorporateAlerts } from '../components/EarningsShared';
+import UpcomingEarnings from '../components/UpcomingEarnings';
 import '../components/earnings-trade.css';
 
 export default function EarningsEquityPage({ ctx }: { ctx: PageContext }) {
   const { symbol, demo } = ctx;
+  const { symbol: pathSym } = useParams();
+
+  // No ticker in the URL -> show the upcoming-earnings list to pick from.
+  if (!pathSym) {
+    return (
+      <div className="page es">
+        <PageHead title="Earnings — Equity"
+          subtitle={<>Engine 1: a 100-point directional earnings score. Pick a
+            stock reporting soon. <b>Analysis, not advice.</b></>} />
+        <UpcomingEarnings base="/earnings-equity" title="Upcoming earnings"
+          demo={demo} search={ctx.search} />
+      </div>
+    );
+  }
   const q = useApi<any>(
     (s) => (demo ? Promise.resolve(null) : api2.earningsEquity(symbol, s)),
     [symbol, demo],
@@ -18,6 +35,9 @@ export default function EarningsEquityPage({ ctx }: { ctx: PageContext }) {
 
   return (
     <div className="page es">
+      <Link to={`/earnings-equity${ctx.search}`} className="es-back">
+        <ChevronLeft size={14} /> Upcoming earnings
+      </Link>
       <PageHead
         title={`Earnings — Equity · ${symbol}`}
         subtitle={<>Engine 1: a 100-point evidence score for a directional stock

@@ -96,6 +96,42 @@ def _estimate_bias(symbol: str) -> tuple[Optional[float], Optional[float]]:
         return None, None
 
 
+def _guidance_bias(symbol: str) -> Optional[float]:
+    """
+    Forward Guidance & Outlook, from UW's quarterly estimate trajectory: the next
+    upcoming fiscal quarter's year-over-year expected growth in EPS and revenue
+    (4-quarter lag, so it is seasonality-correct). Analysts set these to the
+    company's guidance, so a rising next-quarter outlook reads bullish. Distinct
+    from the annual estimate/revision parameters.
+    """
+    try:
+        from datetime import date
+        import unusualwhales_service as uw
+        fq = sorted((r for r in uw._rows(uw.earnings_estimates(symbol))
+                     if r.get("horizon") == "fiscal quarter" and r.get("date")),
+                    key=lambda r: r.get("date"))
+        if len(fq) < 5:
+            return None
+        today = date.today().isoformat()
+        idx = next((i for i, r in enumerate(fq) if r.get("date") >= today), None)
+        if idx is None or idx < 4:
+            # No future quarter with a year-ago comparator; use the latest pair.
+            idx = len(fq) - 1
+            if idx < 4:
+                return None
+
+        def yoy(field: str) -> Optional[float]:
+            now, ago = _f(fq[idx].get(field)), _f(fq[idx - 4].get(field))
+            if now is not None and ago and ago > 0:
+                return (now - ago) / ago
+            return None
+
+        g = _avg(yoy("eps_estimate_average"), yoy("revenue_estimate_average"))
+        return None if g is None else max(-1.0, min(1.0, g / 0.3))
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _history_bias(symbol: str) -> Optional[float]:
     """
     Historical earnings reaction straight from UW (/api/earnings/{t}): the beat
@@ -211,9 +247,9 @@ def get_analysis(symbol: str) -> dict:
         eng.Param("revenue_estimates", "Revenue Estimates & Revisions", 15, rev_bias,
                   detail="Year-over-year growth of the average revenue estimate (UW).",
                   unavailable_reason="" if rev_bias is not None else "No analyst revenue estimates."),
-        eng.Param("guidance", "Forward Guidance & Outlook", 15, None,
-                  detail="No structured guidance feed.",
-                  unavailable_reason="Guidance is not available as structured data."),
+        eng.Param("guidance", "Forward Guidance & Outlook", 15, _guidance_bias(symbol),
+                  detail="Next-quarter YoY outlook from analyst estimates (UW).",
+                  unavailable_reason="No forward quarterly estimates."),
         eng.Param("historical_reaction", "Historical Earnings Reaction", 15,
                   _history_bias(symbol),
                   detail="Beat rate and post-earnings drift over recent quarters."),

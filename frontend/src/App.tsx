@@ -273,9 +273,9 @@ function Shell() {
           {/* Signals now live inside the Trade Plan screen. */}
           <Route path="/signals" element={<Navigate to={`/trade-plan/${DEFAULT_SYMBOL}${location.search}`} replace />} />
 
-          <Route path="/earnings-equity" element={<Navigate to={`/earnings-equity/${DEFAULT_SYMBOL}${location.search}`} replace />} />
+          <Route path="/earnings-equity" element={<EarningsEquityPage ctx={ctx} />} />
           <Route path="/earnings-equity/:symbol" element={<EarningsEquityPage ctx={ctx} />} />
-          <Route path="/earnings-options" element={<Navigate to={`/earnings-options/${DEFAULT_SYMBOL}${location.search}`} replace />} />
+          <Route path="/earnings-options" element={<EarningsOptionsPage ctx={ctx} />} />
           <Route path="/earnings-options/:symbol" element={<EarningsOptionsPage ctx={ctx} />} />
 
           <Route path="/volatility" element={<Navigate to={`/volatility/${DEFAULT_SYMBOL}${location.search}`} replace />} />
