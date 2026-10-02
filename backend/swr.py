@@ -193,7 +193,7 @@ def warm_once() -> None:
         singleflight.call(f"swr:{key}", lambda k=key, f=fn: _run(k, f), FIRST_WAIT)
 
 
-def start_warmer(every: float = 30.0) -> None:
+def start_warmer(every: float = 60.0) -> None:
     if os.environ.get("PYTEST_CURRENT_TEST"):
         return
 

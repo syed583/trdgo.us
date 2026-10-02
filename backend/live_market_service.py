@@ -489,7 +489,7 @@ def get_quote(symbol: str, ttl: Optional[float] = None,
               live_timeout: float = LIVE_PRICE_BUDGET_REQUEST) -> dict:
     symbol = symbol.upper()
     key = f"quote:{symbol}"
-    cached = cache.get(key, ttl if ttl is not None else session_ttl(5.0, 300.0))
+    cached = cache.get(key, ttl if ttl is not None else session_ttl(20.0, 600.0))
     if cached:
         return cached
 

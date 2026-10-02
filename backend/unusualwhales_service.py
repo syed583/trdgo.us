@@ -101,8 +101,8 @@ def _flow_live_ttl() -> float:
     return (TTL_FLOW_LIVE_OPEN
             if session in ("OPEN", "PRE_MARKET", "AFTER_HOURS")
             else TTL_FLOW_LIVE_CLOSED)
-TTL_QUOTE = 15.0
-TTL_INTRADAY = 120.0
+TTL_QUOTE = 30.0
+TTL_INTRADAY = 300.0
 TTL_DAILY = 6 * 3600.0     # earnings, dividends, fundamentals, ownership
 TTL_SETTLED = 30 * 24 * 3600.0   # a finished day cannot change
 
@@ -116,7 +116,7 @@ TTL_SETTLED = 30 * 24 * 3600.0   # a finished day cannot change
 # and this is the dispatch spacing every multi-call screen waits on, so it is
 # kept as low as stays comfortably clear of the burst limit. It was 0.12s,
 # which doubled the wait on every screen that fans out.
-MIN_INTERVAL = 0.012
+MIN_INTERVAL = 0.022
 
 # The ceiling on proactive spacing. When the per-minute allowance runs low the
 # dispatcher glides toward the window reset (see _space_out), but it never waits
@@ -134,7 +134,7 @@ MAX_PACE = 1.5
 # which is what cuts the pacing wait a fanned-out screen sees. The adaptive
 # dispatcher (and the 429 backoff) still widen the gap the moment a real
 # per-minute cap starts to bite, so this stays safe on a tighter token.
-MAX_INFLIGHT = 12
+MAX_INFLIGHT = 8
 _inflight = threading.BoundedSemaphore(MAX_INFLIGHT)
 
 # Single-flight: when many users open the same symbol at once and the cache is
