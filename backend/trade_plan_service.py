@@ -188,40 +188,51 @@ def get_plan(symbol: str, horizon: str = "SWING", with_read: bool = True) -> dic
                 "reasons": score.get("blocked_reasons") or
                 ["The model does not point decisively enough for a plan."]}
 
+    # How deep a pullback to wait for, as a fraction of ATR. Kept shallow so the
+    # entry sits near the current price -- a trade you can actually take within
+    # the horizon, not a far-off structural level that may never print.
+    DIP = 0.6
+
     if long:
         bias = "LONG"
-        anchor = support if (support and support < spot) else spot - 0.5 * atr
-        entry_low = anchor
-        entry_high = min(spot, anchor + 0.4 * atr)
-        if entry_high <= entry_low:
-            entry_high = entry_low + 0.3 * atr
-        cap = (resistance - 0.1 * atr) if resistance and resistance > entry_high \
-            else None
-        do_not_chase = min(entry_high + 0.6 * atr, cap) if cap \
-            else entry_high + 0.6 * atr
-        stop = (min(support, anchor) if support else anchor) - 0.7 * atr
-        tp1 = next((x for x in (resistance, em_hi) if x and x > spot),
-                   spot + 1.5 * atr)
-        tp2 = next((x for x in (call_wall, em_hi, spot + 3 * atr)
-                    if x and x > tp1), tp1 + 1.5 * atr)
+        # Buy from a shallow dip up to just above the current price (enter at
+        # market near the top of the zone, or better on a small pullback). The
+        # small buffer above spot means an at-market entry reads as active, not
+        # "waiting", when price ticks a cent higher.
+        entry_high = spot + 0.1 * atr
+        entry_low = spot - DIP * atr
+        # If a real support sits just inside that band, prefer it as the floor.
+        if support and entry_low < support < spot:
+            entry_low = support
         entry_mid = (entry_low + entry_high) / 2
+        do_not_chase = spot + 0.4 * atr      # above this the reward:risk is gone
+        # Stop a tight ATR below the entry -- not pinned to a far structural low.
+        # Only tuck under a support when it sits close under the entry.
+        stop = entry_low - 0.7 * atr
+        if support and 0 < (entry_low - support) <= 0.9 * atr:
+            stop = support - 0.25 * atr
+        # Targets: the FURTHER of a real level or an ATR projection, so a nearby
+        # resistance doesn't cap the target to something trivially close.
+        tp1 = max(spot + 1.5 * atr, *(x for x in (resistance, em_hi) if x))
+        tp2 = max(spot + 3.0 * atr, *(x for x in (call_wall, em_hi) if x))
+        if tp2 <= tp1:
+            tp2 = tp1 + 1.5 * atr
         risk, reward = entry_mid - stop, tp1 - entry_mid
     else:
         bias = "SHORT"
-        anchor = resistance if (resistance and resistance > spot) else spot + 0.5 * atr
-        entry_high = anchor
-        entry_low = max(spot, anchor - 0.4 * atr)
-        if entry_low >= entry_high:
-            entry_low = entry_high - 0.3 * atr
-        floor = (support + 0.1 * atr) if support and support < entry_low else None
-        do_not_chase = max(entry_low - 0.6 * atr, floor) if floor \
-            else entry_low - 0.6 * atr
-        stop = (max(resistance, anchor) if resistance else anchor) + 0.7 * atr
-        tp1 = next((x for x in (support, em_lo) if x and x < spot),
-                   spot - 1.5 * atr)
-        tp2 = next((x for x in (put_wall, em_lo, spot - 3 * atr)
-                    if x and x < tp1), tp1 - 1.5 * atr)
+        entry_low = spot - 0.1 * atr
+        entry_high = spot + DIP * atr
+        if resistance and spot < resistance < entry_high:
+            entry_high = resistance
         entry_mid = (entry_low + entry_high) / 2
+        do_not_chase = spot - 0.4 * atr      # below this the reward:risk is gone
+        stop = entry_high + 0.7 * atr
+        if resistance and 0 < (resistance - entry_high) <= 0.9 * atr:
+            stop = resistance + 0.25 * atr
+        tp1 = min(spot - 1.5 * atr, *(x for x in (support, em_lo) if x))
+        tp2 = min(spot - 3.0 * atr, *(x for x in (put_wall, em_lo) if x))
+        if tp2 >= tp1:
+            tp2 = tp1 - 1.5 * atr
         risk, reward = stop - entry_mid, entry_mid - tp1
 
     rr = round(reward / risk, 2) if risk and risk > 0 else None
