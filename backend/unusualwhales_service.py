@@ -177,7 +177,7 @@ _last_status: Optional[str] = None
 _metrics: dict = {
     "net_calls": 0, "net_errors": 0, "no_data": 0, "cache_hits": 0, "cache_misses": 0,
     "lat": deque(maxlen=60), "wait": deque(maxlen=60),
-    "errors_by": {}, "last_error": None,
+    "errors_by": {}, "last_error": None, "err_times": deque(maxlen=200),
     "last_path": None, "last_latency_ms": None, "last_at": None,
 }
 
@@ -481,11 +481,13 @@ def get(path: str, params: Optional[dict] = None) -> dict:
                 _metrics["no_data"] += 1
             else:
                 _metrics["net_errors"] += 1
+                _metrics["err_times"].append(time.time())
                 _metrics["last_error"] = f"{path} → HTTP {exc.code}"
             return _http_error(exc)
         except Exception as exc:  # noqa: BLE001
             _metrics["errors_by"]["net"] = _metrics["errors_by"].get("net", 0) + 1
             _metrics["net_errors"] += 1
+            _metrics["err_times"].append(time.time())
             _metrics["last_error"] = f"{path} → {type(exc).__name__}"
             _last_status = "PROVIDER_OFFLINE"
             return {"status": "PROVIDER_OFFLINE", "data": None,
@@ -1276,7 +1278,12 @@ def metrics() -> dict:
         "cache_misses": misses,
         "cache_hit_rate": round(hits / reads * 100) if reads else None,
         "net_calls": _metrics["net_calls"],
-        "net_errors": _metrics["net_errors"],
+        # Errors in the last 5 minutes -- a one-off cold-start burst clears
+        # itself instead of sitting on the board forever. The lifetime total is
+        # kept alongside for context.
+        "net_errors": sum(1 for t in _metrics["err_times"]
+                          if time.time() - t <= 300),
+        "net_errors_total": _metrics["net_errors"],
         "no_data": _metrics["no_data"],
         "errors_by": dict(_metrics["errors_by"]),
         "last_error": _metrics["last_error"],

@@ -273,7 +273,11 @@ def _start_slow_screen_warmer() -> None:
             except Exception:  # noqa: BLE001 - warming is best effort
                 pass
 
-        with ThreadPoolExecutor(max_workers=6, thread_name_prefix="warm") as pool:
+        # Gentle concurrency on the cold build: eighteen screens each fan out to
+        # several provider calls, and firing them six-wide on an empty cache was
+        # enough of a burst to trip the per-minute limit at boot. Three-wide
+        # still warms everything in a few seconds without the 429s.
+        with ThreadPoolExecutor(max_workers=3, thread_name_prefix="warm") as pool:
             list(pool.map(build, screens))
         swr.start_warmer()
 

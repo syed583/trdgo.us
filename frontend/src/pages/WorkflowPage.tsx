@@ -190,7 +190,7 @@ function LivePipeline({ m, loading }: { m?: any; loading: boolean }) {
       <Stat label="Pacing wait"
         value={m.avg_wait_ms != null ? `${m.avg_wait_ms}ms` : '--'} tone={gateTone} />
       <Stat label="Provider calls" value={m.net_calls} />
-      <Stat label="Errors"
+      <Stat label="Errors (5 min)"
         value={m.net_errors || 0}
         tone={m.net_errors ? 'var(--red)' : 'var(--green)'} />
       <Stat label="No data (404)" value={m.no_data || 0} />
@@ -203,10 +203,10 @@ function LivePipeline({ m, loading }: { m?: any; loading: boolean }) {
         <div className="wf-errnote">
           {m.net_errors > 0 && m.last_error
             ? <>Last real error: <b>{m.last_error}</b>. </>
-            : <>No real errors. </>}
+            : <>No real errors in the last 5 minutes. </>}
           404s are expected empty answers (a ticker with no data for that
           endpoint), not failures{m.errors_by && Object.keys(m.errors_by).length
-            ? ` — codes: ${Object.entries(m.errors_by).map(([k, v]) => `${k}×${v}`).join(', ')}`
+            ? ` — all-time codes: ${Object.entries(m.errors_by).map(([k, v]) => `${k}×${v}`).join(', ')}`
             : ''}.
         </div>
       )}
