@@ -1184,6 +1184,49 @@ def trade_plan_history(symbol: str, horizon: str = "") -> dict:
     return tp.history(symbol=symbol, horizon=horizon, limit=50)
 
 
+def _watch_symbols(request: Request) -> list[str]:
+    """The signed-in user's watchlist symbols -- the signals universe."""
+    rows = (workspace.list_watchlist(with_quotes=False, owner=_who(request))
+            .get("rows") or [])
+    return [r["symbol"] for r in rows if r.get("symbol")]
+
+
+@router.get("/signals")
+def signals(request: Request, limit: int = 60) -> dict:
+    """The feed of view-changes and plan outcomes across the user's watchlist."""
+    import trade_plan_service as tp
+
+    syms = _watch_symbols(request)
+    out = tp.events(symbols=syms or None, limit=limit)
+    out["watchlist"] = syms
+    out["unread"] = tp.unread_count(_who(request) or "admin", syms or None).get("count", 0)
+    return out
+
+
+@router.get("/signals/unread")
+def signals_unread(request: Request) -> dict:
+    """Unread signal count for the notification badge."""
+    import trade_plan_service as tp
+
+    return tp.unread_count(_who(request) or "admin", _watch_symbols(request) or None)
+
+
+@router.post("/signals/seen")
+def signals_seen(request: Request) -> dict:
+    """Clear the unread badge for this user."""
+    import trade_plan_service as tp
+
+    return tp.mark_seen(_who(request) or "admin")
+
+
+@router.post("/signals/scan")
+def signals_scan(request: Request) -> dict:
+    """Force a scan of the user's watchlist now (manual refresh)."""
+    import trade_plan_service as tp
+
+    return tp.scan(symbols=_watch_symbols(request) or None)
+
+
 @router.get("/options/oi-change")
 def options_oi_change(symbol: str = "", limit: int = 50, date: str = "") -> dict:
     """

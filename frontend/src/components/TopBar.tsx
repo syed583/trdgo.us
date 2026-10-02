@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { ChevronDown, Loader2, Moon, RefreshCw, Search, Sun } from 'lucide-react';
+import { Bell, ChevronDown, Loader2, Moon, RefreshCw, Search, Sun } from 'lucide-react';
+import '../pages/signals.css';
 import { api2 } from '../api/client';
 import type { HealthPayload, Quote, SymbolMatch } from '../api/client';
 import { money, signed, signedPct, tone as tone2 } from '../lib/format';
@@ -102,6 +103,8 @@ export default function TopBar({
           <RefreshCw size={15} className={refreshing ? 'spin' : undefined} />
         </button>
       )}
+
+      {!demo && <SignalBell search={search} />}
 
       <ThemeToggle />
 
@@ -431,5 +434,34 @@ function ThemeToggle() {
         <Moon size={14} />
       </button>
     </div>
+  );
+}
+
+/** Header notification bell: unread signal count, click opens the Signals feed. */
+function SignalBell({ search }: { search: string }) {
+  const navigate = useNavigate();
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    const poll = () => {
+      api2.signalsUnread()
+        .then((r) => { if (alive) setCount(r?.count || 0); })
+        .catch(() => {});
+    };
+    poll();
+    const id = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      poll();
+    }, 30_000);
+    return () => { alive = false; window.clearInterval(id); };
+  }, []);
+
+  return (
+    <button className="icon-btn sg-bell" title="Signals"
+      aria-label="Signals" onClick={() => navigate(`/signals${search}`)}>
+      <Bell size={15} />
+      {count > 0 && <span className="sg-bell-badge">{count > 99 ? '99+' : count}</span>}
+    </button>
   );
 }

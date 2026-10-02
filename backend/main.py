@@ -285,6 +285,16 @@ def _start_slow_screen_warmer() -> None:
 
 
 @app.on_event("startup")
+def _start_signal_scanner() -> None:
+    """Watch the watchlist for view-flips and plan hits, in the background."""
+    try:
+        import trade_plan_service as tp
+        tp.start_scanner(every=300.0)
+    except Exception:  # noqa: BLE001 - a scanner must never stop the server
+        pass
+
+
+@app.on_event("startup")
 def _warm_default_strip() -> None:
     """
     Start scoring the default ticker basket as soon as the server is up.

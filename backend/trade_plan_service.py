@@ -285,11 +285,13 @@ def _live_price(symbol: str) -> Optional[float]:
         return None
 
 
-def _evaluate(row, price: Optional[float]) -> None:
-    """Advance one open plan's status given the current price. Mutates row."""
-    from models_trade_plans import TradePlan  # noqa: F401 (type clarity)
-
+def _evaluate(row, price: Optional[float]):
+    """
+    Advance one open plan's status given the current price. Mutates row and
+    returns (status, note) if the plan closed on this pass, else None.
+    """
     now = datetime.now(timezone.utc)
+    was_open = row.resolved_at is None
     row.updated_at = now
     if price is not None:
         row.last_price = price
@@ -309,7 +311,7 @@ def _evaluate(row, price: Optional[float]) -> None:
     if price is None:
         if expired and row.status in ("PENDING", "ACTIVE"):
             _close(row, "EXPIRED", "The validity window passed without resolving.", now)
-        return
+        return (row.status, row.outcome_note) if (was_open and row.resolved_at) else None
 
     long = row.bias == "LONG"
     entry_hi, entry_lo = row.entry_high, row.entry_low
@@ -354,11 +356,25 @@ def _evaluate(row, price: Optional[float]) -> None:
     if row.resolved_at is None and expired and row.status in ("PENDING", "ACTIVE"):
         _close(row, "EXPIRED", "The validity window passed without resolving.", now)
 
+    # Report a close that happened on THIS pass, so the caller can log a signal.
+    if was_open and row.resolved_at is not None:
+        return (row.status, row.outcome_note)
+    return None
+
 
 def _close(row, status: str, note: str, now: datetime) -> None:
     row.status = status
     row.outcome_note = note
     row.resolved_at = now
+
+
+def _log_event(db, symbol: str, horizon: str, etype: str, note: str,
+               from_bias: Optional[str] = None, to_bias: Optional[str] = None,
+               price: Optional[float] = None) -> None:
+    from models_trade_plans import TradePlanEvent
+    db.add(TradePlanEvent(
+        symbol=symbol, horizon=horizon, type=etype, note=note,
+        from_bias=from_bias, to_bias=to_bias, price=price))
 
 
 def _serialise(row) -> dict:
@@ -407,14 +423,21 @@ def _track(plan: dict) -> Optional[dict]:
             # A fresh, actionable plan whose bias flips the open one retires it.
             if (open_row is not None and plan.get("status") == "OK"
                     and plan.get("bias") and open_row.bias != plan["bias"]):
+                old_bias = open_row.bias
                 _close(open_row, "INVALIDATED",
                        f"Bias flipped to {plan['bias']}; a new plan was issued.",
                        datetime.now(timezone.utc))
+                _log_event(db, symbol, horizon, "BIAS_FLIP",
+                           f"View changed: {old_bias} → {plan['bias']}.",
+                           from_bias=old_bias, to_bias=plan["bias"], price=price)
                 db.commit()
                 open_row = None
 
             if open_row is not None:
-                _evaluate(open_row, price)
+                ev = _evaluate(open_row, price)
+                if ev:
+                    _log_event(db, symbol, horizon, ev[0], ev[1],
+                               to_bias=open_row.bias, price=price)
                 db.commit()
                 return _serialise(open_row)
 
@@ -435,8 +458,17 @@ def _track(plan: dict) -> Optional[dict]:
                 reward_risk=plan.get("reward_risk"), read=plan.get("read"),
                 status="PENDING", entered=0, last_price=price, best_price=price,
             )
-            _evaluate(row, price)   # a brand-new plan may already be in its zone
+            ev = _evaluate(row, price)   # a brand-new plan may already be in its zone
             db.add(row)
+            db.flush()
+            _log_event(db, symbol, horizon, "NEW_SETUP",
+                       f"New {plan['bias']} setup — entry {plan['entry']['low']}"
+                       f"–{plan['entry']['high']}, stop {plan.get('stop')}, "
+                       f"target {plan['targets']['tp1']}.",
+                       to_bias=plan["bias"], price=price)
+            if ev:
+                _log_event(db, symbol, horizon, ev[0], ev[1],
+                           to_bias=row.bias, price=price)
             db.commit()
             return _serialise(row)
         finally:
@@ -481,10 +513,151 @@ def evaluate_open(limit: int = 300) -> dict:
                     .filter(TradePlan.status.in_(_OPEN))
                     .limit(limit).all())
             for row in rows:
-                _evaluate(row, _live_price(row.symbol))
+                ev = _evaluate(row, _live_price(row.symbol))
+                if ev:
+                    _log_event(db, row.symbol, row.horizon, ev[0], ev[1],
+                               to_bias=row.bias, price=row.last_price)
             db.commit()
             return {"status": "OK", "evaluated": len(rows)}
         finally:
             db.close()
     except Exception as exc:  # noqa: BLE001
         return {"status": "ERROR", "detail": type(exc).__name__}
+
+
+# ---------------------------------------------------------------------------
+# signals: a feed of view-changes and plan outcomes across the watchlist
+# ---------------------------------------------------------------------------
+
+import threading as _threading  # noqa: E402
+import time as _time            # noqa: E402
+
+_scanner_started = False
+
+
+def _event_row(e) -> dict:
+    return {
+        "id": e.id, "symbol": e.symbol, "horizon": e.horizon, "type": e.type,
+        "from_bias": e.from_bias, "to_bias": e.to_bias, "price": e.price,
+        "note": e.note,
+        "created_at": e.created_at.isoformat() if e.created_at else None,
+    }
+
+
+def events(symbols: Optional[list[str]] = None, limit: int = 60) -> dict:
+    """The signal feed, newest first. Optionally scoped to a set of symbols."""
+    try:
+        from database import SessionLocal
+        from models_trade_plans import TradePlanEvent
+        _ensure_table()
+        db = SessionLocal()
+        try:
+            q = db.query(TradePlanEvent)
+            if symbols:
+                q = q.filter(TradePlanEvent.symbol.in_([s.upper() for s in symbols]))
+            rows = (q.order_by(TradePlanEvent.created_at.desc())
+                    .limit(max(1, min(limit, 200))).all())
+            return {"status": "OK", "events": [_event_row(e) for e in rows],
+                    "source": SOURCE}
+        finally:
+            db.close()
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "ERROR", "detail": type(exc).__name__, "events": []}
+
+
+def unread_count(owner: str, symbols: Optional[list[str]] = None) -> dict:
+    """How many events since this user last opened the feed."""
+    try:
+        from database import SessionLocal
+        from models_trade_plans import TradePlanEvent, TradePlanSeen
+        _ensure_table()
+        db = SessionLocal()
+        try:
+            seen = db.get(TradePlanSeen, owner or "admin")
+            q = db.query(TradePlanEvent)
+            if symbols:
+                q = q.filter(TradePlanEvent.symbol.in_([s.upper() for s in symbols]))
+            if seen is not None:
+                q = q.filter(TradePlanEvent.created_at > seen.seen_at)
+            return {"status": "OK", "count": q.count()}
+        finally:
+            db.close()
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "ERROR", "detail": type(exc).__name__, "count": 0}
+
+
+def mark_seen(owner: str) -> dict:
+    """Clear the unread badge for this user."""
+    try:
+        from database import SessionLocal
+        from models_trade_plans import TradePlanSeen
+        _ensure_table()
+        db = SessionLocal()
+        try:
+            row = db.get(TradePlanSeen, owner or "admin")
+            now = datetime.now(timezone.utc)
+            if row is None:
+                db.add(TradePlanSeen(owner=owner or "admin", seen_at=now))
+            else:
+                row.seen_at = now
+            db.commit()
+            return {"status": "OK"}
+        finally:
+            db.close()
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "ERROR", "detail": type(exc).__name__}
+
+
+def _all_watch_symbols(limit: int = 60) -> list[str]:
+    """Distinct symbols on every watchlist -- the universe the scanner monitors."""
+    try:
+        from database import SessionLocal
+        from models_user import WatchlistItem
+        db = SessionLocal()
+        try:
+            rows = db.query(WatchlistItem.symbol).distinct().limit(limit).all()
+            return [r[0].upper() for r in rows if r[0]]
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def scan(symbols: Optional[list[str]] = None, horizon: str = "SWING") -> dict:
+    """
+    Recompute plans for the watched universe so view-flips and hits are detected
+    without anyone opening each page. Each get_plan logs its own transitions.
+    """
+    syms = symbols if symbols is not None else _all_watch_symbols()
+    done = 0
+    for s in syms:
+        try:
+            get_plan(s, horizon=horizon, with_read=False)
+            done += 1
+        except Exception:  # noqa: BLE001 - one bad symbol never stops the scan
+            continue
+    return {"status": "OK", "scanned": done}
+
+
+def start_scanner(every: float = 300.0) -> None:
+    """Background loop: scan the watchlist every few minutes during market hours."""
+    global _scanner_started
+    if _scanner_started:
+        return
+    _scanner_started = True
+
+    def loop() -> None:
+        _time.sleep(20)  # let the app settle before the first pass
+        while True:
+            try:
+                import live_market_service as market
+                if (market.market_clock() or {}).get("is_open"):
+                    scan()
+                else:
+                    evaluate_open()   # still close out anything that expired
+            except Exception:  # noqa: BLE001
+                pass
+            _time.sleep(every)
+
+    t = _threading.Thread(target=loop, name="trade-plan-scanner", daemon=True)
+    t.start()

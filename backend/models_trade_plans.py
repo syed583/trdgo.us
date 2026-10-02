@@ -76,6 +76,41 @@ class TradePlan(Base):
     )
 
 
+# The kinds of change worth a notification.
+EVENT_TYPES = ("BIAS_FLIP", "NEW_SETUP", "TP1_HIT", "TP2_HIT", "SL_HIT",
+               "EXPIRED", "INVALIDATED")
+
+
+class TradePlanEvent(Base):
+    """One change in a stock's plan -- a view flip, a new setup, a hit stop/target."""
+    __tablename__ = "trade_plan_events"
+
+    id = Column(Integer, primary_key=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+    symbol = Column(String(16), nullable=False)
+    horizon = Column(String(12), nullable=False, default="SWING")
+    type = Column(String(16), nullable=False)
+    from_bias = Column(String(10), nullable=True)
+    to_bias = Column(String(10), nullable=True)
+    price = Column(Float, nullable=True)
+    note = Column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("ix_tp_events_created", "created_at"),
+        Index("ix_tp_events_symbol", "symbol", "created_at"),
+    )
+
+
+class TradePlanSeen(Base):
+    """Per-user 'last looked at the signals feed', for the unread badge."""
+    __tablename__ = "trade_plan_seen"
+
+    owner = Column(String(64), primary_key=True)
+    seen_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+
 def create_all(engine) -> list[str]:
-    Base.metadata.create_all(bind=engine, tables=[TradePlan.__table__])
-    return [TradePlan.__tablename__]
+    tables = [TradePlan.__table__, TradePlanEvent.__table__, TradePlanSeen.__table__]
+    Base.metadata.create_all(bind=engine, tables=tables)
+    return [t.name for t in tables]

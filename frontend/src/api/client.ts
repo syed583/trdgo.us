@@ -642,6 +642,11 @@ export const api2 = {
       `/api/trade-plan/${encodeURIComponent(symbol)}?horizon=${encodeURIComponent(horizon)}`, s),
   tradePlanHistory: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/trade-plan/${encodeURIComponent(symbol)}/history`, s),
+  signals: (limit = 60, s?: AbortSignal) =>
+    request<any>(`/api/signals?limit=${limit}`, s),
+  signalsUnread: (s?: AbortSignal) => request<any>('/api/signals/unread', s),
+  signalsSeen: () => send<any>('/api/signals/seen', 'POST'),
+  signalsScan: () => send<any>('/api/signals/scan', 'POST'),
 
   earningsCalendar: (
     range: string, sort: string, q: string, s?: AbortSignal,
