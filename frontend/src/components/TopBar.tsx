@@ -65,7 +65,8 @@ export default function TopBar({
   // hide it on those landing pages. The per-symbol analysis view keeps it.
   const _path = useLocation().pathname;
   const hideHeaderSearch = _path.startsWith('/ai-insights')
-    || _path === '/earnings-equity' || _path === '/earnings-options';
+    || _path === '/earnings-equity' || _path === '/earnings-options'
+    || _path === '/earnings-trade';
 
   return (
     <header className="topbar">

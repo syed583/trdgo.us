@@ -1176,6 +1176,16 @@ def trade_plan(symbol: str, horizon: str = "SWING") -> dict:
                      market.session_ttl(60, 900))
 
 
+@router.get("/earnings/trade/{symbol}")
+def earnings_trade(symbol: str) -> dict:
+    """Combined Earnings Trade summary (equity + options + calendar + strategy)."""
+    import earnings_trade_service as ets
+
+    return swr.serve(f"earn:trade:{symbol.upper()}",
+                     lambda: ets.get_summary(symbol),
+                     market.session_ttl(120, 1800))
+
+
 @router.get("/earnings/equity/{symbol}")
 def earnings_equity(symbol: str) -> dict:
     """Engine 1: the 100-point Equity Earnings analysis."""
