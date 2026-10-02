@@ -5,6 +5,7 @@ import { api2 } from '../api/client';
 import type { InstitutionalActivity, InstitutionalMover } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import { Panel, StateBlock } from './common';
+import { titleCase } from '../lib/format';
 
 const GREEN = '#21d07a';
 const RED = '#f2465a';
@@ -151,7 +152,7 @@ function MoverList({
           <tbody>
             {rows.map((r, i) => (
               <tr key={`${r.cik}-${i}`}>
-                <td title={r.fund || ''}>{(r.fund || '--').slice(0, 34)}</td>
+                <td title={r.fund || ''}>{titleCase(r.fund || '').slice(0, 34) || '--'}</td>
                 <td className="num r" style={{ color: colour }}>
                   {r.share_change > 0 ? '+' : ''}{compact(r.share_change)}
                 </td>

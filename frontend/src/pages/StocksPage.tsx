@@ -60,7 +60,8 @@ export default function StocksPage({ ctx }: { ctx: PageContext }) {
       <div className="nd-controls">
         <span className="nd-search">
           <Search size={12} color="var(--text-mute)" />
-          <input value={query} placeholder="Search ticker or name"
+          <input value={query} placeholder="Filter this list…"
+            aria-label="Filter the stock list"
             onChange={(e) => setQuery(e.target.value)} />
         </span>
         <span className="nd-count">{rows.length} shown{data.data?.count ? ` of ${data.data.count}` : ''}</span>
