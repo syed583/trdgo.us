@@ -12,6 +12,16 @@ import '../components/earnings-trade.css';
 export default function EarningsOptionsPage({ ctx }: { ctx: PageContext }) {
   const { symbol, demo } = ctx;
   const { symbol: pathSym } = useParams();
+  const on = !!pathSym && !demo;
+
+  const q = useApi<any>(
+    (s) => (on ? api2.earningsOptions(symbol, s) : Promise.resolve(null)),
+    [symbol, demo, pathSym],
+    { refreshMs: on ? 60_000 : undefined, enabled: on },
+  );
+  const r = q.data;
+  const c = r?.construction || {};
+  const range = c.expected_range || {};
 
   if (!pathSym) {
     return (
@@ -24,14 +34,6 @@ export default function EarningsOptionsPage({ ctx }: { ctx: PageContext }) {
       </div>
     );
   }
-  const q = useApi<any>(
-    (s) => (demo ? Promise.resolve(null) : api2.earningsOptions(symbol, s)),
-    [symbol, demo],
-    { refreshMs: demo ? undefined : 60_000 },
-  );
-  const r = q.data;
-  const c = r?.construction || {};
-  const range = c.expected_range || {};
 
   return (
     <div className="page es">

@@ -12,6 +12,16 @@ import '../components/earnings-trade.css';
 export default function EarningsEquityPage({ ctx }: { ctx: PageContext }) {
   const { symbol, demo } = ctx;
   const { symbol: pathSym } = useParams();
+  const on = !!pathSym && !demo;
+
+  // Hook runs every render; disabled until a ticker is picked (Rules of Hooks).
+  const q = useApi<any>(
+    (s) => (on ? api2.earningsEquity(symbol, s) : Promise.resolve(null)),
+    [symbol, demo, pathSym],
+    { refreshMs: on ? 60_000 : undefined, enabled: on },
+  );
+  const r = q.data;
+  const t = r?.trade || {};
 
   // No ticker in the URL -> show the upcoming-earnings list to pick from.
   if (!pathSym) {
@@ -25,13 +35,6 @@ export default function EarningsEquityPage({ ctx }: { ctx: PageContext }) {
       </div>
     );
   }
-  const q = useApi<any>(
-    (s) => (demo ? Promise.resolve(null) : api2.earningsEquity(symbol, s)),
-    [symbol, demo],
-    { refreshMs: demo ? undefined : 60_000 },
-  );
-  const r = q.data;
-  const t = r?.trade || {};
 
   return (
     <div className="page es">

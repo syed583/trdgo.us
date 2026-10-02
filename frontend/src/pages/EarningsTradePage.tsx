@@ -49,29 +49,19 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
   const { symbol, demo } = ctx;
   const { symbol: pathSym } = useParams();
   const navigate = useNavigate();
-
-  if (!pathSym) {
-    return (
-      <div className="page ets">
-        <div className="ets-landing-head">
-          <h1>Earnings Trade</h1>
-          <p>Combined equity + options earnings analysis. Pick a stock reporting soon.</p>
-        </div>
-        <UpcomingEarnings base="/earnings-trade" title="Upcoming earnings"
-          demo={demo} search={ctx.search} />
-      </div>
-    );
-  }
+  // Hooks must run every render (Rules of Hooks), so they stay above the
+  // list-view early return; the data calls are disabled until a ticker is picked.
+  const on = !!pathSym && !demo;
 
   const q = useApi<any>(
-    (s) => (demo ? Promise.resolve(null) : api2.earningsTrade(symbol, s)),
-    [symbol, demo], { refreshMs: demo ? undefined : 60_000 });
+    (s) => (on ? api2.earningsTrade(symbol, s) : Promise.resolve(null)),
+    [symbol, demo, pathSym], { refreshMs: on ? 60_000 : undefined, enabled: on });
   const chart = useApi<any>(
-    (s) => (demo ? Promise.resolve(null) : api.chart(symbol, '3M', s)),
-    [symbol, demo]);
+    (s) => (on ? api.chart(symbol, '3M', s) : Promise.resolve(null)),
+    [symbol, demo, pathSym], { enabled: on });
   const alerts = useApi<any>(
-    (s) => (demo ? Promise.resolve(null) : api2.earningsAlerts(symbol, s)),
-    [symbol, demo]);
+    (s) => (on ? api2.earningsAlerts(symbol, s) : Promise.resolve(null)),
+    [symbol, demo, pathSym], { enabled: on });
 
   const d = q.data;
   const em = d?.expected_move || {};
@@ -97,6 +87,20 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
     [chart.data]);
   const sparkBars = useMemo(
     () => (d?.spark || []).map((v: number, i: number) => ({ i, v })), [d]);
+
+  // List view (no ticker) -- all hooks above have run, safe to branch now.
+  if (!pathSym) {
+    return (
+      <div className="page ets">
+        <div className="ets-landing-head">
+          <h1>Earnings Trade</h1>
+          <p>Combined equity + options earnings analysis. Pick a stock reporting soon.</p>
+        </div>
+        <UpcomingEarnings base="/earnings-trade" title="Upcoming earnings"
+          demo={demo} search={ctx.search} />
+      </div>
+    );
+  }
 
   return (
     <div className="page ets">
