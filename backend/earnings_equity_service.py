@@ -188,6 +188,17 @@ def _darkpool_bias(symbol: str) -> Optional[float]:
         return None
 
 
+def _institutional_bias(symbol: str) -> Optional[float]:
+    """Net institutional (13F) share change for the ticker, -1..+1."""
+    try:
+        import institutional_service as inst
+        d = inst.get_institutional_activity(symbol) or {}
+        net = _f(d.get("net_share_change_pct"))
+        return None if net is None else max(-1.0, min(1.0, net / 15.0))
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _sector_bias(symbol: str) -> Optional[float]:
     """Market tailwind from SPY's day change -- always available when open."""
     try:
@@ -257,8 +268,9 @@ def get_analysis(symbol: str) -> dict:
                   s("price_action", "ema_trend", "rsi", "key_levels"),
                   detail="Trend, moving averages, RSI and key levels."),
         eng.Param("options_positioning", "Options Flow & Institutional Positioning", 10,
-                  s("options_flow", "oi_positioning", "gamma_exposure"),
-                  detail="Net options flow and open-interest positioning."),
+                  _avg(s("options_flow", "oi_positioning", "gamma_exposure"),
+                       _institutional_bias(symbol)),
+                  detail="Net options flow, OI positioning and 13F institutional change."),
         eng.Param("dark_pool", "Dark Pool Activity", 5, _darkpool_bias(symbol),
                   detail="Off-lit buy vs sell pressure (direction is indicative)."),
         eng.Param("unusual_options", "Unusual Options Activity", 5,
