@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronRight, Info, Target } from 'lucide-react';
+import { ChevronRight, Info, Loader2, Target } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
@@ -118,12 +118,15 @@ export default function ModelPerformancePage({ ctx }: { ctx: PageContext }) {
           <button key={h} className={`mp-range-btn ${horizon === h ? 'active' : ''}`}
             onClick={() => setHorizon(h)}>{h === 'ALL' ? 'All' : h.charAt(0) + h.slice(1).toLowerCase()}</button>
         ))}
+        {card.loading && !card.initialLoading && (
+          <span className="mp-updating"><Loader2 size={12} className="spin" /> Updating…</span>
+        )}
       </div>
 
       {card.error ? <ErrorState error={card.error} />
         : card.initialLoading || !d ? <Loading />
           : (
-            <>
+            <div className={card.loading ? 'mp-refreshing' : ''} aria-busy={card.loading}>
               {/* Headline */}
               <Panel title="Track record" icon={<Target size={13} />} noBody>
                 <div className="mp-head">
@@ -278,7 +281,7 @@ export default function ModelPerformancePage({ ctx }: { ctx: PageContext }) {
               </Panel>
 
               <div className="hint" style={{ padding: '2px 4px' }}>{d.note}</div>
-            </>
+            </div>
           )}
     </div>
   );

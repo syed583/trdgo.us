@@ -72,7 +72,12 @@ export function useApi<T>(
       return;
     }
 
-    controllerRef.current?.abort();
+    // Per-run cancellation flag (the canonical React data-fetch pattern). Only
+    // THIS run's callbacks act, and only while it has not been superseded. Using
+    // a shared controllerRef here was the bug behind the Model Performance
+    // horizon switch: a succeeded request could land while the ref already
+    // pointed elsewhere, so its result was dropped and `loading` stuck true.
+    let cancelled = false;
     const controller = new AbortController();
     controllerRef.current = controller;
 
@@ -89,27 +94,30 @@ export function useApi<T>(
     loaderRef
       .current(controller.signal)
       .then((result) => {
-        if (controller.signal.aborted || !mountedRef.current) return;
-        setData(result);
-        setLastUpdated(new Date());
         if (key) {
           MEMO.delete(key);
           MEMO.set(key, { data: result, at: Date.now() });
           if (MEMO.size > MEMO_LIMIT) MEMO.delete(MEMO.keys().next().value as string);
         }
+        if (cancelled || !mountedRef.current) return;
+        setData(result);
+        setLastUpdated(new Date());
       })
       .catch((err: Error) => {
-        if (controller.signal.aborted || !mountedRef.current) return;
+        if (cancelled || !mountedRef.current) return;
         if (err.name === 'AbortError') return;
         setError(err.message || 'Request failed');
       })
       .finally(() => {
-        if (controller.signal.aborted || !mountedRef.current) return;
+        if (cancelled || !mountedRef.current) return;
         setLoading(false);
         setInitialLoading(false);
       });
 
-    return () => controller.abort();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, tick, enabled]);
 
