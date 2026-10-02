@@ -121,13 +121,21 @@ def get_plan(symbol: str, horizon: str = "SWING", with_read: bool = True) -> dic
     import options_levels_service as ol
     import price_action_service as pa
 
+    import live_market_service as market
     score = dss.get_directional_score(symbol)
     levels = ol.get_levels(symbol)
+    quote = market.get_quote(symbol) or {}
+
+    # Live top-of-book for the underlying. Outside regular hours the regular
+    # bid/ask can be empty while the extended session has one, so fall back.
+    ext = quote.get("extended") or {}
+    bid = _f(quote.get("bid")) if quote.get("bid") is not None else _f(ext.get("bid"))
+    ask = _f(quote.get("ask")) if quote.get("ask") is not None else _f(ext.get("ask"))
+    spread = round(ask - bid, 2) if (bid is not None and ask is not None) else None
 
     spot = _f(levels.get("spot")) if levels.get("status") == "OK" else None
     if spot is None:
-        import live_market_service as market
-        spot = _f((market.get_quote(symbol) or {}).get("price"))
+        spot = _f(quote.get("price"))
     if spot is None:
         return {"status": "NO_PRICE", "symbol": symbol,
                 "detail": "No underlying price to anchor levels.", "source": SOURCE}
@@ -160,6 +168,9 @@ def get_plan(symbol: str, horizon: str = "SWING", with_read: bool = True) -> dic
 
     base = {
         "symbol": symbol, "horizon": horizon, "spot": _r(spot),
+        "bid": bid, "ask": ask, "spread": spread,
+        "change_percent": _f(quote.get("change_percent")),
+        "quote_session": (quote.get("market") or {}).get("session"),
         "score": _r(direction_score, 1), "confidence": _r(confidence, 1),
         "decision": decision,
         "atr": _r(atr), "support": support, "resistance": resistance,

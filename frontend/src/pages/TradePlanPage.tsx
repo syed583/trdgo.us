@@ -40,6 +40,35 @@ function Price({ v }: { v: number | null | undefined }) {
   return <span className="tp-price">{v == null ? '--' : num(v, 2)}</span>;
 }
 
+/** Live top-of-book for the underlying stock. */
+function QuoteStrip({ d }: { d: any }) {
+  return (
+    <div className="tp-quote">
+      <div className="tp-q bid">
+        <span className="tp-q-l">Bid</span>
+        <span className="tp-q-v"><Price v={d.bid} /></span>
+      </div>
+      <div className="tp-q last">
+        <span className="tp-q-l">Last</span>
+        <span className="tp-q-v"><Price v={d.spot} /></span>
+        {d.change_percent != null && (
+          <span className={`tp-q-chg ${d.change_percent >= 0 ? 'pos' : 'neg'}`}>
+            {d.change_percent >= 0 ? '+' : ''}{num(d.change_percent, 2)}%
+          </span>
+        )}
+      </div>
+      <div className="tp-q ask">
+        <span className="tp-q-l">Ask</span>
+        <span className="tp-q-v"><Price v={d.ask} /></span>
+      </div>
+      <div className="tp-q spread">
+        <span className="tp-q-l">Spread</span>
+        <span className="tp-q-v">{d.spread != null ? num(d.spread, 2) : '--'}</span>
+      </div>
+    </div>
+  );
+}
+
 /**
  * The one-line answer to "what do I do right now": buy/sell at a price, wait for
  * a pullback, wait because the location is poor, or stand aside. This is the
@@ -203,6 +232,7 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
       ) : status === 'NO_SETUP' ? (
         <div className="tp-card tp-nosetup">
           <div className="tp-bias neutral">NO SETUP · {d.lean}</div>
+          <QuoteStrip d={d} />
           <p>The model doesn't point decisively enough to place a plan right now.</p>
           <ul>{(d.reasons || []).map((r: string, i: number) => <li key={i}>{r}</li>)}</ul>
           <div className="tp-ctx">
@@ -234,6 +264,8 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
                 </div>
               );
             })()}
+
+            <QuoteStrip d={d} />
 
             {/* Hero: bias + conviction meter + reward:risk */}
             <div className="tp-hero">
