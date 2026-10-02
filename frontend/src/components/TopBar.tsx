@@ -437,17 +437,47 @@ function ThemeToggle() {
   );
 }
 
-/** Header notification bell: unread signal count, click opens the Signals feed. */
+const SG_LABEL: Record<string, string> = {
+  BIAS_FLIP: 'View changed', NEW_SETUP: 'New setup', TP1_HIT: 'Target 1 hit',
+  TP2_HIT: 'Target 2 hit', SL_HIT: 'Stopped out', EXPIRED: 'Expired',
+  INVALIDATED: 'Invalidated',
+};
+
+/**
+ * Header notification bell. Polls the signal feed, shows an unread badge, opens
+ * a dropdown of recent events, and pops a toast when a new one lands.
+ */
 function SignalBell({ search }: { search: string }) {
   const navigate = useNavigate();
   const [count, setCount] = useState(0);
+  const [events, setEvents] = useState<any[]>([]);
+  const [open, setOpen] = useState(false);
+  const [toasts, setToasts] = useState<any[]>([]);
+  const ref = useRef<HTMLDivElement | null>(null);
+  const lastId = useRef(0);
+  const primed = useRef(false);
 
   useEffect(() => {
     let alive = true;
-    const poll = () => {
-      api2.signalsUnread()
-        .then((r) => { if (alive) setCount(r?.count || 0); })
-        .catch(() => {});
+    const poll = async () => {
+      try {
+        const r = await api2.signals(8);
+        if (!alive) return;
+        const evs: any[] = r?.events || [];
+        setEvents(evs);
+        setCount(r?.unread || 0);
+        const maxId = evs.length ? evs[0].id : 0;
+        if (primed.current && maxId > lastId.current) {
+          const fresh = evs.filter((e) => e.id > lastId.current).slice(0, 3);
+          fresh.forEach((e) => {
+            setToasts((t) => [{ ...e, _k: e.id }, ...t].slice(0, 3));
+            window.setTimeout(
+              () => setToasts((t) => t.filter((x) => x._k !== e.id)), 9000);
+          });
+        }
+        if (maxId) lastId.current = Math.max(lastId.current, maxId);
+        primed.current = true;
+      } catch { /* ignore */ }
     };
     poll();
     const id = window.setInterval(() => {
@@ -457,11 +487,65 @@ function SignalBell({ search }: { search: string }) {
     return () => { alive = false; window.clearInterval(id); };
   }, []);
 
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, []);
+
+  const openFeed = () => {
+    setOpen((v) => !v);
+    if (!open && count) { api2.signalsSeen().catch(() => {}); setCount(0); }
+  };
+  const goPlan = (sym: string) => {
+    setOpen(false);
+    navigate(sym ? `/trade-plan/${sym}${search}` : `/trade-plan${search}`);
+  };
+
   return (
-    <button className="icon-btn sg-bell" title="Signals"
-      aria-label="Signals" onClick={() => navigate(`/signals${search}`)}>
-      <Bell size={15} />
-      {count > 0 && <span className="sg-bell-badge">{count > 99 ? '99+' : count}</span>}
-    </button>
+    <div className="sg-bell-wrap" ref={ref}>
+      <button className="icon-btn sg-bell" title="Signals"
+        aria-label="Signals" onClick={openFeed}>
+        <Bell size={15} />
+        {count > 0 && <span className="sg-bell-badge">{count > 99 ? '99+' : count}</span>}
+      </button>
+
+      {open && (
+        <div className="sg-dropdown">
+          <div className="sg-dd-head">Signals</div>
+          {events.length === 0 ? (
+            <div className="sg-dd-empty">No signals yet.</div>
+          ) : (
+            events.map((e) => (
+              <button key={e.id} className="sg-dd-item" onClick={() => goPlan(e.symbol)}>
+                <span className="sg-dd-sym">{e.symbol}</span>
+                <span className="sg-dd-type">{SG_LABEL[e.type] || e.type}</span>
+                <span className="sg-dd-note">{e.note}</span>
+              </button>
+            ))
+          )}
+          <button className="sg-dd-all" onClick={() => goPlan('')}>
+            Open Trade Plan →
+          </button>
+        </div>
+      )}
+
+      {/* Toasts: pop when a fresh signal lands. */}
+      <div className="sg-toasts">
+        {toasts.map((t) => (
+          <button key={t._k} className="sg-toast" onClick={() => goPlan(t.symbol)}>
+            <Bell size={14} />
+            <div>
+              <div className="sg-toast-t">
+                <b>{t.symbol}</b> · {SG_LABEL[t.type] || t.type}
+              </div>
+              <div className="sg-toast-n">{t.note}</div>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }

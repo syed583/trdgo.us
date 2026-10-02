@@ -101,3 +101,52 @@
   background: var(--red); color: #fff; font-size: 10px; font-weight: 700;
   display: flex; align-items: center; justify-content: center; line-height: 1;
 }
+
+/* header bell dropdown */
+.sg-bell-wrap { position: relative; }
+.sg-dropdown {
+  position: absolute; top: 38px; right: 0; z-index: 1000;
+  width: 340px; max-width: 92vw;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--r); box-shadow: 0 12px 34px rgba(0,0,0,0.45);
+  overflow: hidden;
+}
+.sg-dd-head {
+  padding: 10px 14px; font-weight: 600; font-size: 13px; color: var(--text);
+  border-bottom: 1px solid var(--border); background: var(--panel-2);
+}
+.sg-dd-empty { padding: 18px 14px; font-size: 12.5px; color: var(--text-mute); text-align: center; }
+.sg-dd-item {
+  display: grid; grid-template-columns: auto 1fr; gap: 2px 8px;
+  width: 100%; text-align: left; padding: 9px 14px; cursor: pointer;
+  background: none; border: none; border-bottom: 1px solid var(--border-2, var(--border));
+}
+.sg-dd-item:hover { background: var(--panel-2); }
+.sg-dd-sym { font-weight: 700; font-size: 12.5px; color: var(--text); }
+.sg-dd-type { font-size: 11px; color: var(--text-dim); align-self: center; }
+.sg-dd-note { grid-column: 1 / -1; font-size: 11px; color: var(--text-mute); line-height: 1.35; }
+.sg-dd-all {
+  width: 100%; padding: 9px; background: var(--panel-2); border: none;
+  color: var(--blue); font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.sg-dd-all:hover { background: var(--blue-bg); }
+
+/* toasts */
+.sg-toasts {
+  position: fixed; top: 64px; right: 18px; z-index: 1100;
+  display: flex; flex-direction: column; gap: 10px; pointer-events: none;
+}
+.sg-toast {
+  pointer-events: auto; cursor: pointer; text-align: left;
+  display: flex; gap: 10px; align-items: flex-start;
+  width: 320px; max-width: 90vw; padding: 12px 14px;
+  background: var(--panel); border: 1px solid var(--blue);
+  border-left-width: 3px; border-radius: var(--r);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  color: var(--blue);
+  animation: sg-toast-in 0.25s ease;
+}
+@keyframes sg-toast-in { from { transform: translateX(20px); opacity: 0; } }
+.sg-toast-t { font-size: 13px; color: var(--text); }
+.sg-toast-t b { color: var(--text); }
+.sg-toast-n { font-size: 11.5px; color: var(--text-mute); margin-top: 2px; line-height: 1.35; }

@@ -4,12 +4,10 @@ import {
   ArrowUpRight, ArrowDownRight, Target, ShieldAlert, Ban,
   Clock, RefreshCw, Plus, X, Bell,
 } from 'lucide-react';
-import type { PageContext } from '../App';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import { num } from '../lib/format';
-import { PageHead } from './shared';
-import './signals.css';
+import '../pages/signals.css';
 
 const TYPE_META: Record<string, { label: string; tone: string; icon: any }> = {
   BIAS_FLIP: { label: 'View changed', tone: 'flip', icon: RefreshCw },
@@ -40,14 +38,20 @@ function BiasTag({ b }: { b: string | null }) {
   );
 }
 
-export default function SignalsPage({ ctx }: { ctx: PageContext }) {
-  const { demo } = ctx;
+/**
+ * The Signals feed + watchlist manager, embedded inside the Trade Plan screen.
+ * Watched stocks are scanned in the background; a view flip, new setup or a
+ * target/stop hit shows up here (and in the header bell / toasts).
+ */
+export default function SignalsPanel({
+  demo, search, onPick,
+}: { demo?: boolean; search: string; onPick?: (sym: string) => void }) {
   const navigate = useNavigate();
   const [add, setAdd] = useState('');
   const [scanning, setScanning] = useState(false);
 
   const feed = useApi<any>(
-    (s) => (demo ? Promise.resolve(null) : api2.signals(80, s)),
+    (s) => (demo ? Promise.resolve(null) : api2.signals(60, s)),
     [demo],
     { refreshMs: demo ? undefined : 20_000 },
   );
@@ -56,13 +60,17 @@ export default function SignalsPage({ ctx }: { ctx: PageContext }) {
     [demo],
   );
 
-  // Opening the page clears the unread badge.
   useEffect(() => {
     if (!demo) api2.signalsSeen().catch(() => {});
   }, [demo, feed.data]);
 
   const events = feed.data?.events || [];
   const watchlist = wl.data?.rows || [];
+
+  const go = (sym: string) => {
+    if (onPick) onPick(sym);
+    else navigate(`/trade-plan/${sym}${search}`);
+  };
 
   async function addSym() {
     const sym = add.trim().toUpperCase();
@@ -75,25 +83,23 @@ export default function SignalsPage({ ctx }: { ctx: PageContext }) {
   }
   async function scanNow() {
     setScanning(true);
-    try { await api2.signalsScan(); feed.refresh(); } finally { setScanning(false); }
+    try { await api2.signalsScan(); feed.refresh(); wl.refresh(); }
+    finally { setScanning(false); }
   }
 
   return (
-    <div className="page sg">
-      <PageHead
-        title="Signals"
-        subtitle={<>When a stock's view flips (Buy ⇄ Sell ⇄ Neutral) or a plan
-          hits its target or stop, it shows up here — across your watchlist.
-          <b> Analysis, not advice.</b></>}
-        right={
-          <button className="btn-icon" onClick={scanNow} title="Scan now">
-            <RefreshCw size={15} className={scanning || feed.loading ? 'sg-spin' : ''} />
-          </button>
-        }
-      />
+    <div className="sg-section">
+      <div className="sg-section-head">
+        <h2><Bell size={15} /> Signals</h2>
+        <span className="sg-section-sub">
+          View flips (Buy ⇄ Sell ⇄ Neutral) and plan hits across your watchlist
+        </span>
+        <button className="btn-icon" onClick={scanNow} title="Scan now">
+          <RefreshCw size={14} className={scanning || feed.loading ? 'sg-spin' : ''} />
+        </button>
+      </div>
 
       <div className="sg-grid">
-        {/* Feed */}
         <div className="sg-feed">
           {demo ? (
             <div className="sg-empty">Signals are disabled in demo mode.</div>
@@ -102,16 +108,15 @@ export default function SignalsPage({ ctx }: { ctx: PageContext }) {
           ) : !events.length ? (
             <div className="sg-empty">
               <Bell size={22} />
-              <p>No signals yet. Add stocks to your watchlist and they'll appear
-                here the moment their view changes or a plan resolves.</p>
+              <p>No signals yet. Add stocks to your watchlist — a flip or a
+                target/stop hit shows up here instantly.</p>
             </div>
           ) : (
             events.map((e: any) => {
               const m = TYPE_META[e.type] || { label: e.type, tone: 'flat', icon: Bell };
               const Icon = m.icon;
               return (
-                <button key={e.id} className={`sg-item ${m.tone}`}
-                  onClick={() => navigate(`/trade-plan/${e.symbol}${ctx.search}`)}>
+                <button key={e.id} className={`sg-item ${m.tone}`} onClick={() => go(e.symbol)}>
                   <div className={`sg-ic ${m.tone}`}><Icon size={15} /></div>
                   <div className="sg-body">
                     <div className="sg-line1">
@@ -133,25 +138,19 @@ export default function SignalsPage({ ctx }: { ctx: PageContext }) {
           )}
         </div>
 
-        {/* Watchlist manager */}
         <aside className="sg-side">
-          <h2>Watching {watchlist.length ? `(${watchlist.length})` : ''}</h2>
+          <h3>Watching {watchlist.length ? `(${watchlist.length})` : ''}</h3>
           <div className="sg-add">
             <input value={add} onChange={(e) => setAdd(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && addSym()}
               placeholder="Add ticker…" />
             <button className="btn-icon" onClick={addSym} aria-label="Add"><Plus size={16} /></button>
           </div>
-          {!watchlist.length && (
-            <p className="sg-side-empty">No stocks watched yet.</p>
-          )}
+          {!watchlist.length && <p className="sg-side-empty">No stocks watched yet.</p>}
           <ul className="sg-wl">
             {watchlist.map((r: any) => (
               <li key={r.symbol}>
-                <button className="sg-wl-sym"
-                  onClick={() => navigate(`/trade-plan/${r.symbol}${ctx.search}`)}>
-                  {r.symbol}
-                </button>
+                <button className="sg-wl-sym" onClick={() => go(r.symbol)}>{r.symbol}</button>
                 {r.change_percent != null && (
                   <span className={`sg-wl-chg ${r.change_percent >= 0 ? 'pos' : 'neg'}`}>
                     {r.change_percent >= 0 ? '+' : ''}{num(r.change_percent, 2)}%
@@ -162,8 +161,8 @@ export default function SignalsPage({ ctx }: { ctx: PageContext }) {
               </li>
             ))}
           </ul>
-          <p className="sg-hint">Scanned automatically every few minutes while
-            the market is open.</p>
+          <p className="sg-hint">Scanned automatically every few minutes while the
+            market is open.</p>
         </aside>
       </div>
     </div>

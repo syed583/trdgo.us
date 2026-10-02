@@ -16,7 +16,6 @@ const EarningsPage = lazy(() => import('./pages/EarningsPage'));
 const OptionsFlowPage = lazy(() => import('./pages/OptionsFlowPage'));
 const OiBuildupPage = lazy(() => import('./pages/OiBuildupPage'));
 const TradePlanPage = lazy(() => import('./pages/TradePlanPage'));
-const SignalsPage = lazy(() => import('./pages/SignalsPage'));
 const VolatilityPage = lazy(() => import('./pages/VolatilityPage'));
 const ModelPerformancePage = lazy(() => import('./pages/ModelPerformancePage'));
 const PeersPage = lazy(() => import('./pages/PeersPage'));
@@ -269,7 +268,8 @@ function Shell() {
           <Route path="/trade-plan" element={<Navigate to={`/trade-plan/${DEFAULT_SYMBOL}${location.search}`} replace />} />
           <Route path="/trade-plan/:symbol" element={<TradePlanPage ctx={ctx} />} />
 
-          <Route path="/signals" element={<SignalsPage ctx={ctx} />} />
+          {/* Signals now live inside the Trade Plan screen. */}
+          <Route path="/signals" element={<Navigate to={`/trade-plan/${DEFAULT_SYMBOL}${location.search}`} replace />} />
 
           <Route path="/volatility" element={<Navigate to={`/volatility/${DEFAULT_SYMBOL}${location.search}`} replace />} />
           <Route path="/volatility/:symbol" element={<VolatilityPage ctx={ctx} />} />

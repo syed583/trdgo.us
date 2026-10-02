@@ -9,6 +9,7 @@ import { useApi } from '../hooks/useApi';
 import { num } from '../lib/format';
 import { PageHead } from './shared';
 import { ScoreGauge } from '../components/common';
+import SignalsPanel from '../components/SignalsPanel';
 import './trade-plan.css';
 
 const HORIZONS = ['TODAY', 'TOMORROW', 'SWING'];
@@ -411,6 +412,9 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
           </table>
         </div>
       )}
+
+      {/* Signals + watchlist live right here in the Trade Plan. */}
+      <SignalsPanel demo={demo} search={ctx.search} />
     </div>
   );
 }
