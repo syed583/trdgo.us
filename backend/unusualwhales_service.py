@@ -860,6 +860,20 @@ def oi_change(symbol: str, limit: int = 100, date: str = "") -> dict:
                    ttl=TTL_SETTLED if date else TTL_DAILY)
 
 
+def oi_change_market(limit: int = 100, date: str = "",
+                     order: str = "desc") -> dict:
+    """
+    Market-wide overnight OI build-up: the contracts across every name with the
+    largest change in open interest. Updates once per trading day (~6:45am ET),
+    so a long cache is right -- this is not an intraday figure.
+    """
+    limit = max(1, min(int(limit or 100), 200))
+    return _cached(f"uw:oimkt:{limit}:{date}:{order}",
+                   "/api/market/oi-change",
+                   {"limit": limit, "date": date, "order": order},
+                   ttl=TTL_SETTLED if date else TTL_DAILY)
+
+
 def iv_rank(symbol: str) -> dict:
     """Where implied volatility sits against its own year."""
     symbol = (symbol or "").upper().strip()

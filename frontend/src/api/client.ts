@@ -631,6 +631,10 @@ export const api2 = {
   flowMetrics: (s?: AbortSignal) => request<any>('/api/admin/flow-metrics', s),
   optionsContract: (occ: string, s?: AbortSignal) =>
     request<any>(`/api/options/contract/${encodeURIComponent(occ)}`, s),
+  oiChange: (symbol = '', limit = 50, s?: AbortSignal) =>
+    request<any>(
+      `/api/options/oi-change?limit=${limit}`
+      + (symbol ? `&symbol=${encodeURIComponent(symbol)}` : ''), s),
 
   earningsCalendar: (
     range: string, sort: string, q: string, s?: AbortSignal,

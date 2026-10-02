@@ -28,6 +28,7 @@ import {
 } from '../components/MarketFlow';
 import type { FlowFilterState } from '../components/MarketFlow';
 import { ContractModal } from '../components/ContractModal';
+import OiBuildup from '../components/OiBuildup';
 import { Donut, MiniRing, Panel, SentimentGauge, StateBlock } from '../components/common';
 import { StatusChip } from './shared';
 import {
@@ -115,7 +116,7 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
   // a default -- so the URL cannot distinguish an intentional ticker from that
   // default, and defaulting to the tape is the honest reading of a bare click.
   const [mode, setMode] =
-    useState<'market' | 'symbol' | 'chain'>('market');
+    useState<'market' | 'symbol' | 'chain' | 'oi'>('market');
   const [picked, setPicked] = useState<string | null>(null);
   const [contract, setContract] = useState<string | null>(null);
   // Filters narrow the tape the operator is already looking at rather than
@@ -286,6 +287,9 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
           <button role="tab" aria-selected={mode === 'chain'}
             className={`mf-mode-btn ${mode === 'chain' ? 'active' : ''}`}
             onClick={() => setMode('chain')}>Option Chain</button>
+          <button role="tab" aria-selected={mode === 'oi'}
+            className={`mf-mode-btn ${mode === 'oi' ? 'active' : ''}`}
+            onClick={() => setMode('oi')}>OI Build-Up</button>
           {/* Dark Pool and Market Insiders moved out to their own sidebar
               sections -- neither is an options reading. */}
         </div>
@@ -312,13 +316,15 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
             </button>
           )))}
         </div>
-        {mode !== 'market' && (
+        {(mode === 'symbol' || mode === 'chain') && (
           <HeadInfo data={d}
             earnings={demo ? DEMO_EARNINGS_DATE : earnings.data?.event} />
         )}
       </div>
 
-      {mode === 'chain' ? (
+      {mode === 'oi' ? (
+        <OiBuildup symbol={symbol} demo={demo} onContract={setContract} />
+      ) : mode === 'chain' ? (
         <div className="page">
           <div className="mf-head">
             <div>

@@ -1158,6 +1158,22 @@ def options_flow_market(limit: int = 200) -> dict:
                      market.session_ttl(4, 600))
 
 
+@router.get("/options/oi-change")
+def options_oi_change(symbol: str = "", limit: int = 50, date: str = "") -> dict:
+    """
+    OI build-up: contracts whose open interest changed most since yesterday.
+    Market-wide when no symbol, otherwise that one ticker. Updates once per
+    trading day (~6:45am ET), so this caches long.
+    """
+    import oi_buildup_service as oib
+
+    sym = (symbol or "").upper().strip()
+    return swr.serve(
+        f"oi:buildup:{sym}:{limit}:{date}",
+        lambda: oib.get_buildup(symbol=sym, limit=limit, date=date),
+        market.session_ttl(900, 3600))
+
+
 @router.get("/options/contract/{occ}")
 def options_contract(occ: str) -> dict:
     """Per-contract detail (summary, time & sales, volume, analysis, history)."""
