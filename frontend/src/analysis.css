@@ -55,10 +55,11 @@
   margin-top: 14px; font-size: 13px; color: var(--text-mute);
 }
 .an-try button {
-  background: none; border: 0; cursor: pointer;
-  color: var(--blue); font-size: 13px; font-weight: 700;
+  cursor: pointer; color: var(--blue); font-size: 13px; font-weight: 700;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 3px 10px;
 }
-.an-try button:hover { text-decoration: underline; }
+.an-try button:hover { background: var(--panel); border-color: var(--blue); }
 
 .an-stats {
   display: flex; gap: 34px; flex-wrap: wrap; justify-content: center;
@@ -68,8 +69,7 @@
 }
 .an-stats b { display: block; font-size: 21px; font-weight: 800; color: var(--green); }
 .an-stats span {
-  display: block; font-size: 11px; letter-spacing: .5px;
-  text-transform: uppercase; color: var(--text-mute); margin-top: 3px;
+  display: block; font-size: 12px; color: var(--text-mute); margin-top: 3px;
 }
 
 /* --- 2-4. searching, scanning, live progress ---------------------------- */

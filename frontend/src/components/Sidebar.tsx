@@ -16,30 +16,44 @@ interface NavEntry {
   icon: React.ReactNode;
 }
 
+interface NavGroup {
+  heading: string;
+  items: NavEntry[];
+}
+
 /**
- * The sidebar: every section, one list.
+ * The sidebar: every section, grouped by what you came to do.
  *
- * Still a single list rather than the old pair that swapped by workspace --
- * entries that move under you depending on where you came from cannot be
- * learned. Every route the app serves has exactly one entry here, so nothing
- * is reachable only by typing a URL and nothing appears twice.
+ * Still one entry per route -- nothing reachable only by URL, nothing twice --
+ * but the fifteen links were a flat wall that was hard to scan, so they are
+ * gathered under a few headings (Analysis, Markets, Earnings & news, Lists).
+ * The groups are labels only, not collapsible: a label you cannot get wrong is
+ * worth more here than another thing to toggle.
  */
-const NAV: NavEntry[] = [
-  { to: '/ai-insights', label: 'Analysis', icon: <Brain size={S} /> },
-  { to: '/ai-trade', label: 'AI Trade', icon: <Sparkles size={S} /> },
-  { to: '/model-performance', label: 'Model Performance', icon: <Target size={S} /> },
-  { to: '/dashboard', label: 'Overview', icon: <LayoutDashboard size={S} /> },
-  { to: '/stocks', label: 'Stocks', icon: <ListOrdered size={S} /> },
-  { to: '/earnings-calendar', label: 'Earnings Calendar', icon: <CalendarDays size={S} /> },
-  { to: '/earnings', label: 'Earnings Analysis', icon: <BarChart3 size={S} /> },
-  { to: '/peers', label: 'Peer Comparison', icon: <Scale size={S} /> },
-  { to: '/options-flow', label: 'Options', icon: <Activity size={S} /> },
-  { to: '/volatility', label: 'Volatility', icon: <LineChart size={S} /> },
-  { to: '/market', label: 'Market Overview', icon: <TrendingUp size={S} /> },
-  { to: '/watchlist', label: 'Watchlist', icon: <Star size={S} /> },
-  { to: '/news', label: 'News & Sentiment', icon: <Newspaper size={S} /> },
-  { to: '/dark-pool', label: 'Dark Pool', icon: <Waves size={S} /> },
-  { to: '/market-insiders', label: 'Market Insiders', icon: <UserCog size={S} /> },
+const NAV_GROUPS: NavGroup[] = [
+  { heading: 'Analysis', items: [
+    { to: '/ai-insights', label: 'Analysis', icon: <Brain size={S} /> },
+    { to: '/ai-trade', label: 'AI Trade', icon: <Sparkles size={S} /> },
+    { to: '/model-performance', label: 'Model Performance', icon: <Target size={S} /> },
+    { to: '/peers', label: 'Peer Comparison', icon: <Scale size={S} /> },
+  ] },
+  { heading: 'Markets', items: [
+    { to: '/market', label: 'Market Overview', icon: <TrendingUp size={S} /> },
+    { to: '/dashboard', label: 'Overview', icon: <LayoutDashboard size={S} /> },
+    { to: '/stocks', label: 'Stocks', icon: <ListOrdered size={S} /> },
+    { to: '/options-flow', label: 'Options', icon: <Activity size={S} /> },
+    { to: '/volatility', label: 'Volatility', icon: <LineChart size={S} /> },
+    { to: '/dark-pool', label: 'Dark Pool', icon: <Waves size={S} /> },
+    { to: '/market-insiders', label: 'Market Insiders', icon: <UserCog size={S} /> },
+  ] },
+  { heading: 'Earnings & news', items: [
+    { to: '/earnings-calendar', label: 'Earnings Calendar', icon: <CalendarDays size={S} /> },
+    { to: '/earnings', label: 'Earnings Analysis', icon: <BarChart3 size={S} /> },
+    { to: '/news', label: 'News & Sentiment', icon: <Newspaper size={S} /> },
+  ] },
+  { heading: 'Lists', items: [
+    { to: '/watchlist', label: 'Watchlist', icon: <Star size={S} /> },
+  ] },
 ];
 
 const COLLAPSE_KEY = 'usr.sidebar.collapsed';
@@ -76,10 +90,11 @@ export default function Sidebar({
   // The admin is the operator, not a viewer: signed in as admin the sidebar is
   // just the admin panel -- Users and Settings -- and none of the data pages.
   // Regular users get every data page and neither admin link.
-  const nav = isAdmin
-    ? [{ to: '/admin/users', label: 'Users', icon: <Users size={S} /> },
-       { to: '/settings', label: 'Settings', icon: <Settings size={S} /> }]
-    : NAV;
+  const groups: NavGroup[] = isAdmin
+    ? [{ heading: '', items: [
+        { to: '/admin/users', label: 'Users', icon: <Users size={S} /> },
+        { to: '/settings', label: 'Settings', icon: <Settings size={S} /> }] }]
+    : NAV_GROUPS;
   const [collapsed, setCollapsed] = React.useState(readCollapsed);
 
   // On a phone the sidebar is a drawer rather than a column. Without it there
@@ -153,19 +168,26 @@ export default function Sidebar({
       {!collapsed && <BrandLockup />}
 
       <nav className="nav">
-        {nav.map((item) => (
-          <NavLink
-            key={item.to + item.label}
-            to={(SYMBOL_SECTIONS.has(item.to) && symbol
-              ? `${item.to}/${symbol}` : item.to) + search}
-            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-            end={item.to === '/dashboard'}
-            // Collapsed to icons only, the label has to survive as a tooltip.
-            title={collapsed ? item.label : undefined}
-          >
-            {item.icon}
-            {!collapsed && <span>{item.label}</span>}
-          </NavLink>
+        {groups.map((group) => (
+          <div className="nav-group" key={group.heading || 'main'}>
+            {group.heading && !collapsed && (
+              <div className="nav-group-label">{group.heading}</div>
+            )}
+            {group.items.map((item) => (
+              <NavLink
+                key={item.to + item.label}
+                to={(SYMBOL_SECTIONS.has(item.to) && symbol
+                  ? `${item.to}/${symbol}` : item.to) + search}
+                className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                end={item.to === '/dashboard'}
+                // Collapsed to icons only, the label has to survive as a tooltip.
+                title={collapsed ? item.label : undefined}
+              >
+                {item.icon}
+                {!collapsed && <span>{item.label}</span>}
+              </NavLink>
+            ))}
+          </div>
         ))}
       </nav>
 

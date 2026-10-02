@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { ChevronDown, Loader2, Moon, RefreshCw, Search, Sun } from 'lucide-react';
 import { api2 } from '../api/client';
 import type { HealthPayload, Quote, SymbolMatch } from '../api/client';
@@ -54,6 +54,10 @@ export default function TopBar({
   username?: string;
 }) {
   const chgTone = tone2(quote?.change);
+  // The Analysis page carries its own prominent ticker search (the centred hero
+  // when idle, a back-to-search control on a result), so the header's search
+  // there was a second box doing the same job. Hide it on that route only.
+  const hideHeaderSearch = useLocation().pathname.startsWith('/ai-insights');
 
   return (
     <header className="topbar">
@@ -67,12 +71,12 @@ export default function TopBar({
               repeat it as pills, which duplicated the sidebar and was the
               single widest thing in the bar. */}
           <HeaderNav search={search} />
-          <SymbolSearch symbol={symbol} onSymbol={onSymbol} demo={demo} />
+          {!hideHeaderSearch && <SymbolSearch symbol={symbol} onSymbol={onSymbol} demo={demo} />}
           <div className="topbar-spacer" />
         </>
       ) : (
         <>
-          <SymbolSearch symbol={symbol} onSymbol={onSymbol} demo={demo} />
+          {!hideHeaderSearch && <SymbolSearch symbol={symbol} onSymbol={onSymbol} demo={demo} />}
           <div className="topbar-quote">
             <span className="tq-sym">{quote?.symbol || symbol}</span>
             <span className="tq-px">{money(quote?.price)}</span>

@@ -17,6 +17,7 @@
   max-width: 640px; line-height: 1.5;
 }
 .at-head-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.at-tabgroup { display: flex; align-items: center; gap: 6px; }
 .at-cover { font-size: 13px; font-weight: 650; color: var(--text-mute); }
 
 .at-wait {
@@ -56,7 +57,7 @@
 .at-stat.buy b { color: var(--green); }
 .at-stat.sell b { color: var(--red); }
 .at-stat-sub {
-  display: block; margin-top: 3px; font-size: 11px;
+  display: block; margin-top: 3px; font-size: 12px;
   color: var(--text-mute); line-height: 1.4;
 }
 
@@ -148,7 +149,10 @@
 
 /* --- secondary lists ----------------------------------------------------- */
 
-.at-mini { display: flex; flex-direction: column; }
+/* The withheld list can run to dozens of names; a cap with its own scroll
+   keeps the two columns level instead of one towering over the other and
+   pushing the footer far down the page. */
+.at-mini { display: flex; flex-direction: column; max-height: 440px; overflow-y: auto; }
 .at-mini-row {
   display: grid; align-items: baseline; gap: 8px;
   grid-template-columns: 52px minmax(0, 1fr) 46px;
@@ -181,7 +185,7 @@
 .at-note.at-empty { padding: 24px 14px; justify-content: center; text-align: center; }
 .at-foot {
   margin: 0; padding: 4px 2px 16px;
-  font-size: 11px; color: var(--text-mute); line-height: 1.6;
+  font-size: 12px; color: var(--text-mute); line-height: 1.6;
 }
 
 @media (max-width: 1180px) {
@@ -212,7 +216,7 @@
 @media (max-width: 560px) {
   .at-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .at-cols { grid-template-columns: minmax(0, 1fr); }
-  .at-foot { font-size: 10px; }
+  .at-foot { font-size: 12px; }
   /* The chevron earns no room on a phone: the whole row is the tap target. */
   .at-row { grid-template-columns: 16px 46px minmax(0, 1fr) 34px; }
   .at-row .at-go { display: none; }

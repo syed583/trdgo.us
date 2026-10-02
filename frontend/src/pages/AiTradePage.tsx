@@ -100,7 +100,18 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
           </p>
         </div>
         <div className="at-head-right">
-          <HorizonSwitch value={horizon} onChange={setPicked} session={session} />
+          {/* The refresh sits with the horizon tabs it reloads, not pushed to
+              the far edge by the coverage note, so the control and the data it
+              affects read as one group. */}
+          <div className="at-tabgroup">
+            <HorizonSwitch value={horizon} onChange={setPicked} session={session} />
+            <button className="icon-btn" onClick={board.refresh}
+              aria-label="Refresh" disabled={board.loading}>
+              {board.loading
+                ? <Loader2 size={15} className="spin" />
+                : <RefreshCw size={15} />}
+            </button>
+          </div>
           {d && (
             <span className="at-cover">
               {d.scored} of {d.universe} scored
@@ -112,12 +123,6 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
                 : ''}
             </span>
           )}
-          <button className="icon-btn" onClick={board.refresh}
-            aria-label="Refresh" disabled={board.loading}>
-            {board.loading
-              ? <Loader2 size={15} className="spin" />
-              : <RefreshCw size={15} />}
-          </button>
         </div>
       </div>
 
@@ -179,6 +184,11 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
               sub="model declined to call" />
           </div>
 
+          {/* The scorecard is the model's track record -- the thing that says
+              whether any of this is worth trusting -- so it sits up here with
+              the summary, not buried under the full withheld list. */}
+          <Scorecard horizon={horizon} />
+
           <div className="at-cols">
             <Column
               title="Top Buyers" icon={<TrendingUp size={15} />} tone="buy"
@@ -219,8 +229,6 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
                 )}
             </Panel>
           </div>
-
-          <Scorecard horizon={horizon} />
 
           <p className="at-foot">
             {d.note} Built in {d.elapsed_seconds}s and cached.
