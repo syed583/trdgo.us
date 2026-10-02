@@ -84,43 +84,63 @@ function verdict(d: any): { tone: string; action: string; detail: string } {
 }
 
 /**
- * A scaled horizontal track showing where price sits between the stop and the
- * targets, with the entry band shaded. Makes the setup readable at a glance.
+ * A horizontal track showing where price sits between the stop and the targets,
+ * with the entry band shaded. Uses an ordinal (rank) scale -- every level gets
+ * even spacing regardless of how far apart the prices are -- so a distant stop
+ * no longer crams everything else into one corner. Labels show the real prices;
+ * the reward:risk box carries the true distance ratio.
  */
 function PriceLadder({ d }: { d: any }) {
   const long = d.bias === 'LONG';
-  const vals = [d.stop, d.entry.low, d.entry.high, d.spot, d.targets.tp1, d.targets.tp2]
-    .filter((x) => x != null) as number[];
-  if (vals.length < 2) return null;
-  const lo = Math.min(...vals);
-  const hi = Math.max(...vals);
-  const span = hi - lo || 1;
-  const pct = (v: number) => ((v - lo) / span) * 100;
+  const PAD = 7;
+  const EPS = 1e-6;
 
-  const entryL = pct(long ? d.entry.low : d.entry.high);
-  const entryR = pct(long ? d.entry.high : d.entry.low);
+  const anchors = Array.from(
+    new Set([d.stop, d.entry?.low, d.entry?.high, d.spot, d.targets?.tp1, d.targets?.tp2]
+      .filter((x) => x != null) as number[]),
+  ).sort((a, b) => a - b);
+  if (anchors.length < 2) return null;
+  const n = anchors.length;
+
+  // Map a price to an evenly-spaced ordinal position (0..1), interpolating
+  // linearly between the nearest anchors so the spot sits sensibly between them.
+  const even = (v: number): number => {
+    if (v <= anchors[0]) return 0;
+    if (v >= anchors[n - 1]) return 1;
+    let k = 0;
+    while (k < n - 1 && !(v >= anchors[k] && v <= anchors[k + 1])) k++;
+    const frac = (v - anchors[k]) / ((anchors[k + 1] - anchors[k]) || EPS);
+    return (k + frac) / (n - 1);
+  };
+  const pos = (v: number) => PAD + even(v) * (100 - 2 * PAD);
+
+  const el = pos(long ? d.entry.low : d.entry.high);
+  const eh = pos(long ? d.entry.high : d.entry.low);
 
   const marks = [
     { v: d.stop, cls: 'stop', label: 'Stop' },
+    { v: d.spot, cls: 'spot', label: 'Spot' },
     { v: d.targets.tp1, cls: 'tp', label: 'TP1' },
     { v: d.targets.tp2, cls: 'tp', label: 'TP2' },
-    { v: d.spot, cls: 'spot', label: 'Spot' },
   ].filter((m) => m.v != null);
 
   return (
     <div className="tp-ladder">
-      <div className="tp-ladder-track">
-        {/* entry zone band */}
+      <div className={`tp-ladder-track ${long ? '' : 'rev'}`}>
         <div className="tp-ladder-zone"
-          style={{ left: `${Math.min(entryL, entryR)}%`,
-            width: `${Math.abs(entryR - entryL) || 1}%` }} />
+          style={{ left: `${Math.min(el, eh)}%`,
+            width: `${Math.max(Math.abs(eh - el), 4)}%` }} />
         {marks.map((m) => (
           <div key={m.label} className={`tp-ladder-mark ${m.cls}`}
-            style={{ left: `${pct(m.v)}%` }}>
+            style={{ left: `${pos(m.v)}%` }}>
             <span className="tp-ladder-tick" />
             <span className="tp-ladder-cap">{m.label}<br />{num(m.v, 1)}</span>
           </div>
         ))}
+      </div>
+      <div className="tp-ladder-legend">
+        <span>◀ {long ? 'risk (stop)' : 'reward (targets)'}</span>
+        <span>{long ? 'reward (targets)' : 'risk (stop)'} ▶</span>
       </div>
     </div>
   );
