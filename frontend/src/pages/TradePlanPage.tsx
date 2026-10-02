@@ -7,6 +7,8 @@ import type { PageContext } from '../App';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import { num } from '../lib/format';
+import { PageHead } from './shared';
+import { ScoreGauge } from '../components/common';
 import './trade-plan.css';
 
 const HORIZONS = ['TODAY', 'TOMORROW', 'SWING'];
@@ -25,8 +27,60 @@ const STATUS_TONE: Record<string, string> = {
   SL_HIT: 'loss', EXPIRED: 'flat', INVALIDATED: 'flat',
 };
 
+/** Plain-English conviction from the confidence number. */
+function convictionLabel(c: number | null | undefined): string {
+  if (c == null) return 'Unrated';
+  if (c >= 80) return 'High conviction';
+  if (c >= 65) return 'Solid conviction';
+  if (c >= 50) return 'Moderate conviction';
+  return 'Low conviction';
+}
+
 function Price({ v }: { v: number | null | undefined }) {
   return <span className="tp-price">{v == null ? '--' : num(v, 2)}</span>;
+}
+
+/**
+ * A scaled horizontal track showing where price sits between the stop and the
+ * targets, with the entry band shaded. Makes the setup readable at a glance.
+ */
+function PriceLadder({ d }: { d: any }) {
+  const long = d.bias === 'LONG';
+  const vals = [d.stop, d.entry.low, d.entry.high, d.spot, d.targets.tp1, d.targets.tp2]
+    .filter((x) => x != null) as number[];
+  if (vals.length < 2) return null;
+  const lo = Math.min(...vals);
+  const hi = Math.max(...vals);
+  const span = hi - lo || 1;
+  const pct = (v: number) => ((v - lo) / span) * 100;
+
+  const entryL = pct(long ? d.entry.low : d.entry.high);
+  const entryR = pct(long ? d.entry.high : d.entry.low);
+
+  const marks = [
+    { v: d.stop, cls: 'stop', label: 'Stop' },
+    { v: d.targets.tp1, cls: 'tp', label: 'TP1' },
+    { v: d.targets.tp2, cls: 'tp', label: 'TP2' },
+    { v: d.spot, cls: 'spot', label: 'Spot' },
+  ].filter((m) => m.v != null);
+
+  return (
+    <div className="tp-ladder">
+      <div className="tp-ladder-track">
+        {/* entry zone band */}
+        <div className="tp-ladder-zone"
+          style={{ left: `${Math.min(entryL, entryR)}%`,
+            width: `${Math.abs(entryR - entryL) || 1}%` }} />
+        {marks.map((m) => (
+          <div key={m.label} className={`tp-ladder-mark ${m.cls}`}
+            style={{ left: `${pct(m.v)}%` }}>
+            <span className="tp-ladder-tick" />
+            <span className="tp-ladder-cap">{m.label}<br />{num(m.v, 1)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
@@ -47,32 +101,35 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
   const status = d?.status;
   const long = d?.bias === 'LONG';
   const t = d?.tracking;
+  const conf = d?.confidence as number | null | undefined;
+  const confColor = conf == null ? 'var(--text-mute)'
+    : conf >= 65 ? 'var(--green)' : conf >= 50 ? 'var(--amber)' : 'var(--red)';
+
+  const controls = (
+    <>
+      <div className="tp-horizons">
+        {HORIZONS.map((h) => (
+          <button key={h}
+            className={`tp-h-btn ${horizon === h ? 'active' : ''}`}
+            onClick={() => setHorizon(h)}>{h}</button>
+        ))}
+      </div>
+      <button className="btn-icon" onClick={() => { plan.refresh(); hist.refresh(); }}
+        aria-label="Refresh" title="Refresh">
+        <RefreshCw size={15} className={plan.loading ? 'tp-spin' : ''} />
+      </button>
+    </>
+  );
 
   return (
     <div className="page tp">
-      <div className="mf-head">
-        <div>
-          <h1>Trade Plan — {symbol}</h1>
-          <p>
-            Data-derived levels: where the setup is supported, where to stop
-            chasing, where it's wrong, and where it's going — with the
-            reward:risk those levels imply. <b>Analysis, not advice.</b>
-          </p>
-        </div>
-        <div className="mf-head-right">
-          <div className="tp-horizons">
-            {HORIZONS.map((h) => (
-              <button key={h}
-                className={`tp-h-btn ${horizon === h ? 'active' : ''}`}
-                onClick={() => setHorizon(h)}>{h}</button>
-            ))}
-          </div>
-          <button className="btn-icon" onClick={() => { plan.refresh(); hist.refresh(); }}
-            aria-label="Refresh" title="Refresh">
-            <RefreshCw size={15} className={plan.loading ? 'tp-spin' : ''} />
-          </button>
-        </div>
-      </div>
+      <PageHead
+        title={`Trade Plan — ${symbol}`}
+        subtitle={<>Data-derived levels: where the setup is supported, where to
+          stop chasing, where it's wrong, and where it's going — with the
+          reward:risk those levels imply. <b>Analysis, not advice.</b></>}
+        right={controls}
+      />
 
       {demo ? (
         <div className="tp-empty">Trade Plan is disabled in demo mode.</div>
@@ -92,7 +149,6 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
         </div>
       ) : (
         <>
-          {/* Status pill: what this plan has actually done */}
           {t && (
             <div className={`tp-status ${STATUS_TONE[t.status] || 'wait'}`}>
               <span className="tp-status-dot" />
@@ -105,18 +161,30 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
           )}
 
           <div className="tp-card">
-            <div className="tp-top">
+            {/* Hero: bias + conviction meter + reward:risk */}
+            <div className="tp-hero">
               <div className={`tp-bias ${long ? 'long' : 'short'}`}>
-                {long ? <ArrowUpRight size={18} /> : <ArrowDownRight size={18} />}
+                {long ? <ArrowUpRight size={20} /> : <ArrowDownRight size={20} />}
                 {d.bias}
               </div>
-              <div className="tp-meta">
-                <span>{d.decision}</span>
-                <span>score <b>{num(d.score, 0)}</b></span>
-                <span>conf <b>{num(d.confidence, 0)}</b></span>
-                <span className={`tp-rr ${d.reward_risk >= 2 ? 'good' : ''}`}>
-                  R:R <b>{num(d.reward_risk, 2)}</b>
-                </span>
+
+              <div className="tp-conf">
+                <div className="tp-conf-gauge">
+                  <ScoreGauge value={conf ?? 0} color={confColor} size={96} />
+                  <div className="tp-conf-num" style={{ color: confColor }}>
+                    {num(conf, 0)}
+                  </div>
+                </div>
+                <div className="tp-conf-meta">
+                  <div className="tp-conf-label">{convictionLabel(conf)}</div>
+                  <div className="tp-conf-sub">{d.decision} · score {num(d.score, 0)}</div>
+                </div>
+              </div>
+
+              <div className={`tp-rrbox ${d.reward_risk >= 2 ? 'good'
+                : status === 'WEAK_SETUP' ? 'weak' : ''}`}>
+                <div className="tp-rrbox-v">{num(d.reward_risk, 2)}</div>
+                <div className="tp-rrbox-l">Reward : Risk</div>
               </div>
             </div>
 
@@ -127,14 +195,14 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
               </div>
             )}
 
+            <PriceLadder d={d} />
+
             <div className="tp-levels">
               <div className="tp-lv entry">
                 <div className="tp-lv-ic"><LogIn size={16} /></div>
                 <div>
                   <div className="tp-lv-l">Entry zone</div>
-                  <div className="tp-lv-v">
-                    <Price v={d.entry.low} /> – <Price v={d.entry.high} />
-                  </div>
+                  <div className="tp-lv-v"><Price v={d.entry.low} /> – <Price v={d.entry.high} /></div>
                 </div>
               </div>
               <div className="tp-lv chase">
@@ -175,18 +243,15 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
             </div>
 
             <div className="tp-validity">
-              <Clock size={13} /> Valid: {d.validity?.label}
-              {' · '}ATR {num(d.atr, 2)}
+              <Clock size={13} /> Valid: {d.validity?.label}{' · '}ATR {num(d.atr, 2)}
             </div>
 
             {d.read && <div className="tp-read">{d.read}</div>}
-
             <div className="tp-disclaimer">{d.disclaimer}</div>
           </div>
         </>
       )}
 
-      {/* History: what past plans did */}
       {!demo && hist.data?.plans?.length > 1 && (
         <div className="tp-history">
           <h2>Past plans for {symbol}</h2>
@@ -194,8 +259,7 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
             <thead>
               <tr>
                 <th>Issued</th><th>Bias</th><th className="r">Entry</th>
-                <th className="r">Stop</th><th className="r">TP1</th>
-                <th>Outcome</th>
+                <th className="r">Stop</th><th className="r">TP1</th><th>Outcome</th>
               </tr>
             </thead>
             <tbody>
