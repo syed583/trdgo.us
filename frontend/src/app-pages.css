@@ -639,3 +639,8 @@ a.ov-news-row:hover { background: var(--panel-2, rgba(0,0,0,0.03)); }
 .ov-news-tone { font-weight: 700; }
 .ov-news-tone.pos { color: var(--green); }
 .ov-news-tone.neg { color: var(--red); }
+
+/* Admin · Workflow diagrams */
+.wf-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+@media (min-width: 1100px) { .wf-grid { grid-template-columns: 1fr 1fr; } }
+.wf-grid > .panel:first-child { grid-column: 1 / -1; }

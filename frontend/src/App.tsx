@@ -19,6 +19,7 @@ const PeersPage = lazy(() => import('./pages/PeersPage'));
 const DarkPoolPage = lazy(() => import('./pages/DarkPoolPage'));
 const MarketInsidersPage = lazy(() => import('./pages/MarketInsidersPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
+const WorkflowPage = lazy(() => import('./pages/WorkflowPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const OverviewPage = lazy(() => import('./pages/OverviewPage'));
 const StocksPage = lazy(() => import('./pages/StocksPage'));
@@ -280,6 +281,9 @@ function Shell() {
             : <Navigate to={`/dashboard${location.search}`} replace />} />
           <Route path="/admin/users" element={isAdmin
             ? <UsersPage ctx={ctx} />
+            : <Navigate to={`/dashboard${location.search}`} replace />} />
+          <Route path="/admin/workflow" element={isAdmin
+            ? <WorkflowPage ctx={ctx} />
             : <Navigate to={`/dashboard${location.search}`} replace />} />
           <Route path="/community" element={<CommunityPage ctx={ctx} />} />
 

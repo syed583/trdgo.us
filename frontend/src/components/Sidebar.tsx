@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom';
 import {
   Activity, BarChart3, Brain, CalendarDays, LineChart, Users,
   LayoutDashboard, ListOrdered, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
-  Scale, Settings, Sparkles, Star, Target, TrendingUp, UserCog, Waves, X,
+  Scale, Settings, Sparkles, Star, Target, TrendingUp, UserCog, Waves, Waypoints, X,
 } from 'lucide-react';
 import { BrandLockup, BRAND_QUOTE_EARNINGS } from './Brand';
 
@@ -93,6 +93,7 @@ export default function Sidebar({
   const groups: NavGroup[] = isAdmin
     ? [{ heading: '', items: [
         { to: '/admin/users', label: 'Users', icon: <Users size={S} /> },
+        { to: '/admin/workflow', label: 'Workflow', icon: <Waypoints size={S} /> },
         { to: '/settings', label: 'Settings', icon: <Settings size={S} /> }] }]
     : NAV_GROUPS;
   const [collapsed, setCollapsed] = React.useState(readCollapsed);
