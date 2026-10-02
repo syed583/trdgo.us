@@ -456,42 +456,52 @@ def get(path: str, params: Optional[dict] = None) -> dict:
 
     # Only MAX_INFLIGHT requests hold the wire at once; the rest wait here.
     # Spacing is applied inside the gate so starts stay staggered too.
-    gate_start = time.time()
-    with _inflight:
-        _space_out()
-        _metrics["wait"].append((time.time() - gate_start) * 1000.0)
-        net_start = time.time()
-        try:
-            with _OPENER.open(request, timeout=TIMEOUT) as response:
-                _note_limits(response.headers)
-                body = json.loads(response.read().decode("utf-8", "ignore") or "{}")
-            lat = (time.time() - net_start) * 1000.0
-            _metrics["lat"].append(lat)
-            _metrics["net_calls"] += 1
-            _metrics["last_path"] = path
-            _metrics["last_latency_ms"] = round(lat)
-            _metrics["last_at"] = time.time()
-        except urllib.error.HTTPError as exc:
-            key = str(exc.code)
-            _metrics["errors_by"][key] = _metrics["errors_by"].get(key, 0) + 1
-            # A 404 means the provider has no data for this symbol/endpoint
-            # (a thin ticker with no dividends, insiders, etc.) -- an expected
-            # empty answer, not a pipeline failure, so it is not an "error".
-            if exc.code == 404:
-                _metrics["no_data"] += 1
-            else:
+    # One automatic retry on a 429: a short burst can brush the per-minute cap,
+    # and by the time a brief bounded wait passes the window has usually
+    # advanced, so the re-send succeeds and no error ever reaches the caller.
+    for _attempt in range(2):
+        gate_start = time.time()
+        with _inflight:
+            _space_out()
+            _metrics["wait"].append((time.time() - gate_start) * 1000.0)
+            net_start = time.time()
+            try:
+                with _OPENER.open(request, timeout=TIMEOUT) as response:
+                    _note_limits(response.headers)
+                    body = json.loads(response.read().decode("utf-8", "ignore") or "{}")
+                lat = (time.time() - net_start) * 1000.0
+                _metrics["lat"].append(lat)
+                _metrics["net_calls"] += 1
+                _metrics["last_path"] = path
+                _metrics["last_latency_ms"] = round(lat)
+                _metrics["last_at"] = time.time()
+                break
+            except urllib.error.HTTPError as exc:
+                key = str(exc.code)
+                _metrics["errors_by"][key] = _metrics["errors_by"].get(key, 0) + 1
+                if exc.code == 429 and _attempt == 0:
+                    time.sleep(min(
+                        _seconds(getattr(exc, "headers", {}).get("Retry-After"))
+                        or 1.0, 2.0))
+                    continue
+                # A 404 means the provider has no data for this symbol/endpoint
+                # (a thin ticker with no dividends, insiders, etc.) -- an
+                # expected empty answer, not a pipeline failure.
+                if exc.code == 404:
+                    _metrics["no_data"] += 1
+                else:
+                    _metrics["net_errors"] += 1
+                    _metrics["err_times"].append(time.time())
+                    _metrics["last_error"] = f"{path} → HTTP {exc.code}"
+                return _http_error(exc)
+            except Exception as exc:  # noqa: BLE001
+                _metrics["errors_by"]["net"] = _metrics["errors_by"].get("net", 0) + 1
                 _metrics["net_errors"] += 1
                 _metrics["err_times"].append(time.time())
-                _metrics["last_error"] = f"{path} → HTTP {exc.code}"
-            return _http_error(exc)
-        except Exception as exc:  # noqa: BLE001
-            _metrics["errors_by"]["net"] = _metrics["errors_by"].get("net", 0) + 1
-            _metrics["net_errors"] += 1
-            _metrics["err_times"].append(time.time())
-            _metrics["last_error"] = f"{path} → {type(exc).__name__}"
-            _last_status = "PROVIDER_OFFLINE"
-            return {"status": "PROVIDER_OFFLINE", "data": None,
-                    "detail": type(exc).__name__, "source": SOURCE}
+                _metrics["last_error"] = f"{path} → {type(exc).__name__}"
+                _last_status = "PROVIDER_OFFLINE"
+                return {"status": "PROVIDER_OFFLINE", "data": None,
+                        "detail": type(exc).__name__, "source": SOURCE}
 
     _last_status = "OK"
     # Their payloads put the answer under "data"; a few return the object
