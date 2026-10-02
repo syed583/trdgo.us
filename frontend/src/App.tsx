@@ -16,6 +16,8 @@ const EarningsPage = lazy(() => import('./pages/EarningsPage'));
 const OptionsFlowPage = lazy(() => import('./pages/OptionsFlowPage'));
 const OiBuildupPage = lazy(() => import('./pages/OiBuildupPage'));
 const TradePlanPage = lazy(() => import('./pages/TradePlanPage'));
+const EarningsEquityPage = lazy(() => import('./pages/EarningsEquityPage'));
+const EarningsOptionsPage = lazy(() => import('./pages/EarningsOptionsPage'));
 const VolatilityPage = lazy(() => import('./pages/VolatilityPage'));
 const ModelPerformancePage = lazy(() => import('./pages/ModelPerformancePage'));
 const PeersPage = lazy(() => import('./pages/PeersPage'));
@@ -77,7 +79,7 @@ const OPTIONS_ROUTES = [
 
 /** Sections that carry a symbol in the URL. */
 const SYMBOL_SECTIONS =
-  /^\/(earnings|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)(\/|$)/;
+  /^\/(earnings|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)(\/|$)/;
 
 /**
  * The same sections, capturing the ticker itself.
@@ -89,7 +91,7 @@ const SYMBOL_SECTIONS =
  * ticker card changed the address bar while every panel kept showing NVDA.
  */
 const SYMBOL_IN_PATH =
-  /^\/(?:earnings|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)\/([A-Za-z0-9.\-]+)/;
+  /^\/(?:earnings|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)\/([A-Za-z0-9.\-]+)/;
 
 export interface PageContext {
   symbol: string;
@@ -270,6 +272,11 @@ function Shell() {
 
           {/* Signals now live inside the Trade Plan screen. */}
           <Route path="/signals" element={<Navigate to={`/trade-plan/${DEFAULT_SYMBOL}${location.search}`} replace />} />
+
+          <Route path="/earnings-equity" element={<Navigate to={`/earnings-equity/${DEFAULT_SYMBOL}${location.search}`} replace />} />
+          <Route path="/earnings-equity/:symbol" element={<EarningsEquityPage ctx={ctx} />} />
+          <Route path="/earnings-options" element={<Navigate to={`/earnings-options/${DEFAULT_SYMBOL}${location.search}`} replace />} />
+          <Route path="/earnings-options/:symbol" element={<EarningsOptionsPage ctx={ctx} />} />
 
           <Route path="/volatility" element={<Navigate to={`/volatility/${DEFAULT_SYMBOL}${location.search}`} replace />} />
           <Route path="/volatility/:symbol" element={<VolatilityPage ctx={ctx} />} />

@@ -1,0 +1,110 @@
+/* Earnings Equity / Options engines + Corporate Alerts. */
+
+.es-empty {
+  text-align: center; color: var(--text-mute); font-size: 13px;
+  padding: 40px 20px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: var(--r);
+}
+.es-card {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 18px; margin-bottom: 16px;
+}
+
+/* score header */
+.es-head { display: flex; gap: 22px; align-items: center; flex-wrap: wrap; }
+.es-gauge { position: relative; width: 108px; height: 108px; flex: 0 0 auto; }
+.es-gauge-num {
+  position: absolute; inset: 0; display: flex; align-items: center;
+  justify-content: center; font-size: 30px; font-weight: 700; font-family: var(--mono);
+}
+.es-gauge-max { font-size: 12px; color: var(--text-mute); margin-left: 2px; align-self: flex-end; margin-bottom: 8px; }
+.es-head-mid { flex: 1; min-width: 220px; }
+.es-decision {
+  display: inline-block; font-size: 20px; font-weight: 800; letter-spacing: 0.02em;
+  padding: 6px 16px; border-radius: var(--r-pill); margin-bottom: 10px;
+}
+.es-decision.buy { color: var(--green); background: var(--green-bg); }
+.es-decision.sell { color: var(--red); background: var(--red-bg); }
+.es-decision.flat { color: var(--text-dim); background: var(--panel-2); }
+.es-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.es-chip {
+  font-size: 11px; color: var(--text-dim); background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: var(--r-pill); padding: 3px 10px;
+}
+.es-reasons { margin: 10px 0 0; padding-left: 18px; color: var(--text-mute); font-size: 12px; }
+.es-reasons li { margin: 3px 0; }
+
+/* trade refs */
+.es-trade {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px; margin: 16px 0;
+}
+.es-trade > div {
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 9px 12px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.es-trade span { font-size: 11px; color: var(--text-mute); }
+.es-trade b { font-size: 14px; color: var(--text); font-family: var(--mono); }
+.es-trade-wide { grid-column: 1 / -1; }
+.es-trade-wide b { font-family: var(--font); font-weight: 500; font-size: 12.5px; }
+
+.es-sub { font-size: 13px; color: var(--text-dim); margin: 14px 0 10px; }
+
+/* parameter breakdown */
+.es-params { display: flex; flex-direction: column; gap: 8px; }
+.es-param {
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-left-width: 3px; border-radius: var(--r); padding: 9px 12px;
+}
+.es-param.pos { border-left-color: var(--green); }
+.es-param.neg { border-left-color: var(--red); }
+.es-param.neu { border-left-color: var(--text-mute); }
+.es-param.na { border-left-color: var(--border); opacity: 0.72; }
+.es-param-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.es-param-label { font-size: 13px; font-weight: 600; color: var(--text); }
+.es-param-pts { font-size: 12px; font-family: var(--mono); color: var(--text-dim); white-space: nowrap; }
+.es-param-bar {
+  height: 4px; background: var(--bg-2); border-radius: var(--r-pill);
+  margin: 6px 0 5px; overflow: hidden;
+}
+.es-param-fill { height: 100%; border-radius: var(--r-pill); background: currentColor; }
+.es-param.pos .es-param-fill { background: var(--green); }
+.es-param.neg .es-param-fill { background: var(--red); }
+.es-param.neu .es-param-fill { background: var(--text-mute); }
+.es-param-detail { font-size: 11.5px; color: var(--text-mute); line-height: 1.4; }
+.es-na { font-style: italic; }
+
+.es-foot { font-size: 11px; color: var(--text-mute); font-style: italic; margin-top: 14px; }
+
+/* corporate alerts */
+.es-alerts { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; }
+.es-alerts-head {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; background: var(--panel-2); border: none; cursor: pointer;
+  color: var(--text); font-size: 13px;
+}
+.es-alerts-head b { font-weight: 600; }
+.es-sev { font-size: 11px; padding: 1px 8px; border-radius: var(--r-pill); font-weight: 600; }
+.es-sev.red { color: var(--red); background: var(--red-bg); }
+.es-sev.amber { color: var(--amber); background: var(--amber-bg); }
+.es-sev.grey { color: var(--text-dim); background: var(--bg-2); }
+.es-alerts-toggle { margin-left: auto; font-size: 11px; color: var(--text-mute); }
+.es-alerts-body { padding: 10px 14px 14px; }
+.es-alerts-note {
+  display: flex; align-items: center; gap: 6px; font-size: 11px;
+  color: var(--text-mute); margin-bottom: 10px;
+}
+.es-alert { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border-2, var(--border)); }
+.es-alert-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex: 0 0 auto; }
+.es-alert-dot.red { background: var(--red); }
+.es-alert-dot.amber { background: var(--amber); }
+.es-alert-dot.grey { background: var(--text-mute); }
+.es-alert-body { flex: 1; min-width: 0; }
+.es-alert-title { font-size: 12.5px; color: var(--text); line-height: 1.4; }
+.es-alert-cat {
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em; color: var(--text-mute);
+  background: var(--bg-2); padding: 1px 6px; border-radius: var(--r-sm); margin-right: 8px;
+}
+.es-alert-link { color: var(--blue); margin-left: 6px; vertical-align: middle; }
+.es-alert-detail { font-size: 11px; color: var(--text-mute); margin-top: 2px; }

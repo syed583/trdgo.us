@@ -642,6 +642,12 @@ export const api2 = {
       `/api/trade-plan/${encodeURIComponent(symbol)}?horizon=${encodeURIComponent(horizon)}`, s),
   tradePlanHistory: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/trade-plan/${encodeURIComponent(symbol)}/history`, s),
+  earningsEquity: (symbol: string, s?: AbortSignal) =>
+    request<any>(`/api/earnings/equity/${encodeURIComponent(symbol)}`, s),
+  earningsOptions: (symbol: string, s?: AbortSignal) =>
+    request<any>(`/api/earnings/options/${encodeURIComponent(symbol)}`, s),
+  earningsAlerts: (symbol: string, s?: AbortSignal) =>
+    request<any>(`/api/earnings/alerts/${encodeURIComponent(symbol)}`, s),
   signals: (limit = 60, s?: AbortSignal) =>
     request<any>(`/api/signals?limit=${limit}`, s),
   signalsUnread: (s?: AbortSignal) => request<any>('/api/signals/unread', s),

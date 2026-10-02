@@ -1176,6 +1176,36 @@ def trade_plan(symbol: str, horizon: str = "SWING") -> dict:
                      market.session_ttl(60, 900))
 
 
+@router.get("/earnings/equity/{symbol}")
+def earnings_equity(symbol: str) -> dict:
+    """Engine 1: the 100-point Equity Earnings analysis."""
+    import earnings_equity_service as eq
+
+    return swr.serve(f"earn:equity:{symbol.upper()}",
+                     lambda: eq.get_analysis(symbol),
+                     market.session_ttl(120, 1800))
+
+
+@router.get("/earnings/options/{symbol}")
+def earnings_options(symbol: str) -> dict:
+    """Engine 2: the 100-point Options (straddle/strangle) Earnings analysis."""
+    import earnings_options_service as op
+
+    return swr.serve(f"earn:options:{symbol.upper()}",
+                     lambda: op.get_analysis(symbol),
+                     market.session_ttl(120, 1800))
+
+
+@router.get("/earnings/alerts/{symbol}")
+def earnings_alerts(symbol: str) -> dict:
+    """Engine 3: shared Corporate News & Risk Alerts (unscored)."""
+    import corporate_alerts_service as ca
+
+    return swr.serve(f"earn:alerts:{symbol.upper()}",
+                     lambda: ca.get_alerts(symbol),
+                     market.session_ttl(300, 1800))
+
+
 @router.get("/trade-plan/{symbol}/history")
 def trade_plan_history(symbol: str, horizon: str = "") -> dict:
     """Past trade plans for a ticker and how each resolved."""
