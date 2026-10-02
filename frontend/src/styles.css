@@ -1219,11 +1219,12 @@ select.mini {
 /* flow table filters */
 .filter-pills { display: flex; gap: 2px; background: var(--panel-2); border-radius: var(--r); padding: 2px; }
 .filter-pill {
-  border: 0; background: none; color: var(--text-dim);
-  font-size: 12px; font-weight: 500; padding: 4px 11px; border-radius: var(--r-sm);
+  border: 1px solid transparent; background: none; color: var(--text-dim);
+  font: inherit; font-size: 13px; font-weight: 600; padding: 5px 12px;
+  border-radius: var(--r); cursor: pointer; white-space: nowrap;
 }
 .filter-pill:hover { color: var(--text); }
-.filter-pill.active { background: var(--blue-2); color: #fff; font-weight: 600; }
+.filter-pill.active { background: var(--blue-bg); color: var(--blue); border-color: transparent; }
 
 .filter-bar {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;

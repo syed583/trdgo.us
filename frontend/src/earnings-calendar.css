@@ -41,6 +41,10 @@
 .ec-delta.pos { color: var(--green); }
 .ec-delta.neg { color: var(--red); }
 .ec-delta.flat { color: var(--text-mute); font-weight: 500; }
+/* The delta is a span inside .ec-stat, so the uppercase 11px ".ec-stat span"
+   label rule outranks ".ec-delta". Override it so the delta reads as 12px
+   sentence case, not another all-caps label. */
+.ec-stat .ec-delta { font-size: 12px; text-transform: none; letter-spacing: normal; }
 
 /* --- range pills --------------------------------------------------------- */
 
@@ -52,15 +56,15 @@
   margin-bottom: 8px;
 }
 .ec-pill {
-  padding: 6px 14px;
+  padding: 5px 12px;
   border: 1px solid transparent; border-radius: var(--r);
   background: none; color: var(--text-dim);
-  font-size: 13px; font-weight: 650; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
   white-space: nowrap;
 }
-.ec-pill:hover { color: var(--text); border-color: var(--border-2); }
+.ec-pill:hover { color: var(--text); }
 .ec-pill.active {
-  background: var(--blue-2, #2563eb); color: #fff; border-color: transparent;
+  background: var(--blue-bg); color: var(--blue); border-color: transparent;
 }
 .ec-week-label {
   display: inline-flex; align-items: center; gap: 6px;

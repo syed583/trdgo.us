@@ -11,13 +11,13 @@
   background: var(--panel); margin-right: 10px; flex-shrink: 0;
 }
 .mf-mode-btn {
-  padding: 5px 14px; border: 0; border-radius: var(--r);
-  background: none; color: var(--text-mute);
-  font: inherit; font-size: 13px; font-weight: 650; cursor: pointer;
+  padding: 5px 12px; border: 1px solid transparent; border-radius: var(--r);
+  background: none; color: var(--text-dim);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
   white-space: nowrap;
 }
 .mf-mode-btn:hover { color: var(--text); }
-.mf-mode-btn.active { background: var(--blue-bg); color: var(--blue); }
+.mf-mode-btn.active { background: var(--blue-bg); color: var(--blue); border-color: transparent; }
 
 /* --- summary tiles ------------------------------------------------------- */
 
