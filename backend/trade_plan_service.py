@@ -24,6 +24,22 @@ from zoneinfo import ZoneInfo
 
 SOURCE = "Trdgo model"
 EASTERN = ZoneInfo("America/New_York")
+
+# Each horizon is a different trade, so it gets different geometry (all in units
+# of ATR). Today is an intraday scalp -- a shallow entry, a tight stop, modest
+# targets inside the session, and no distant structural levels. Tomorrow is an
+# overnight hold. Swing runs multiple days with the widest targets and blends in
+# real support/resistance and the options expected move.
+#   dip  = how far below spot (long) the entry zone reaches
+#   stop = stop distance below the entry
+#   tp1/tp2 = target distances above spot
+#   dnc  = do-not-chase distance above spot
+#   struct = blend in resistance / call wall / expected move
+HORIZON_PARAMS = {
+    "TODAY":    {"dip": 0.3, "stop": 0.5, "tp1": 0.8, "tp2": 1.5, "dnc": 0.2, "struct": False, "rr": 1.2},
+    "TOMORROW": {"dip": 0.4, "stop": 0.7, "tp1": 1.2, "tp2": 2.2, "dnc": 0.3, "struct": True, "rr": 1.3},
+    "SWING":    {"dip": 0.6, "stop": 0.7, "tp1": 1.5, "tp2": 3.0, "dnc": 0.4, "struct": True, "rr": 1.5},
+}
 RR_MIN = 1.5            # below this the location is poor -- say "wait", don't force it
 ATR_PERIOD = 14
 
@@ -188,58 +204,65 @@ def get_plan(symbol: str, horizon: str = "SWING", with_read: bool = True) -> dic
                 "reasons": score.get("blocked_reasons") or
                 ["The model does not point decisively enough for a plan."]}
 
-    # How deep a pullback to wait for, as a fraction of ATR. Kept shallow so the
-    # entry sits near the current price -- a trade you can actually take within
-    # the horizon, not a far-off structural level that may never print.
-    DIP = 0.6
+    # Geometry for this horizon (see HORIZON_PARAMS): Today is a tight intraday
+    # scalp, Tomorrow an overnight hold, Swing a multi-day trade.
+    hp = HORIZON_PARAMS.get(horizon, HORIZON_PARAMS["SWING"])
+    struct = hp["struct"]
 
     if long:
         bias = "LONG"
-        # Buy from a shallow dip up to just above the current price (enter at
-        # market near the top of the zone, or better on a small pullback). The
-        # small buffer above spot means an at-market entry reads as active, not
+        # Buy from a shallow dip up to just above the current price. The small
+        # buffer above spot means an at-market entry reads as active, not
         # "waiting", when price ticks a cent higher.
         entry_high = spot + 0.1 * atr
-        entry_low = spot - DIP * atr
-        # If a real support sits just inside that band, prefer it as the floor.
+        entry_low = spot - hp["dip"] * atr
         if support and entry_low < support < spot:
             entry_low = support
         entry_mid = (entry_low + entry_high) / 2
-        do_not_chase = spot + 0.4 * atr      # above this the reward:risk is gone
-        # Stop a tight ATR below the entry -- not pinned to a far structural low.
-        # Only tuck under a support when it sits close under the entry.
-        stop = entry_low - 0.7 * atr
+        do_not_chase = spot + hp["dnc"] * atr
+        stop = entry_low - hp["stop"] * atr
         if support and 0 < (entry_low - support) <= 0.9 * atr:
             stop = support - 0.25 * atr
-        # Targets: the FURTHER of a real level or an ATR projection, so a nearby
-        # resistance doesn't cap the target to something trivially close.
-        tp1 = max(spot + 1.5 * atr, *(x for x in (resistance, em_hi) if x))
-        tp2 = max(spot + 3.0 * atr, *(x for x in (call_wall, em_hi) if x))
+        # Swing/Tomorrow blend in a real level or the expected move; Today stays
+        # on a pure intraday ATR projection (structural levels are too far off).
+        tp1_ref = [spot + hp["tp1"] * atr]
+        tp2_ref = [spot + hp["tp2"] * atr]
+        if struct:
+            tp1_ref += [x for x in (resistance, em_hi) if x]
+            tp2_ref += [x for x in (call_wall, em_hi) if x]
+        tp1, tp2 = max(tp1_ref), max(tp2_ref)
         if tp2 <= tp1:
-            tp2 = tp1 + 1.5 * atr
+            tp2 = tp1 + hp["tp1"] * atr
         risk, reward = entry_mid - stop, tp1 - entry_mid
     else:
         bias = "SHORT"
         entry_low = spot - 0.1 * atr
-        entry_high = spot + DIP * atr
+        entry_high = spot + hp["dip"] * atr
         if resistance and spot < resistance < entry_high:
             entry_high = resistance
         entry_mid = (entry_low + entry_high) / 2
-        do_not_chase = spot - 0.4 * atr      # below this the reward:risk is gone
-        stop = entry_high + 0.7 * atr
+        do_not_chase = spot - hp["dnc"] * atr
+        stop = entry_high + hp["stop"] * atr
         if resistance and 0 < (resistance - entry_high) <= 0.9 * atr:
             stop = resistance + 0.25 * atr
-        tp1 = min(spot - 1.5 * atr, *(x for x in (support, em_lo) if x))
-        tp2 = min(spot - 3.0 * atr, *(x for x in (put_wall, em_lo) if x))
+        tp1_ref = [spot - hp["tp1"] * atr]
+        tp2_ref = [spot - hp["tp2"] * atr]
+        if struct:
+            tp1_ref += [x for x in (support, em_lo) if x]
+            tp2_ref += [x for x in (put_wall, em_lo) if x]
+        tp1, tp2 = min(tp1_ref), min(tp2_ref)
         if tp2 >= tp1:
-            tp2 = tp1 - 1.5 * atr
+            tp2 = tp1 - hp["tp1"] * atr
         risk, reward = stop - entry_mid, entry_mid - tp1
 
     rr = round(reward / risk, 2) if risk and risk > 0 else None
+    rr_min = hp["rr"]
 
     plan = {
         **base,
         "bias": bias,
+        "style": {"TODAY": "Intraday", "TOMORROW": "Overnight",
+                  "SWING": "Multi-day swing"}.get(horizon, "Swing"),
         "entry": {"low": _r(entry_low), "high": _r(entry_high),
                   "mid": _r(entry_mid)},
         "do_not_chase": _r(do_not_chase),
@@ -247,13 +270,13 @@ def get_plan(symbol: str, horizon: str = "SWING", with_read: bool = True) -> dic
         "stop": _r(stop),
         "targets": {"tp1": _r(tp1), "tp2": _r(tp2)},
         "reward_risk": rr,
-        "rr_min": RR_MIN,
-        "status": "OK" if (rr and rr >= RR_MIN) else "WEAK_SETUP",
+        "rr_min": rr_min,
+        "status": "OK" if (rr and rr >= rr_min) else "WEAK_SETUP",
     }
     if plan["status"] == "WEAK_SETUP":
         plan["reasons"] = [
             f"Reward:risk is {rr if rr is not None else 'undefined'} at these "
-            f"levels (needs {RR_MIN}). The location is poor -- the target is too "
+            f"levels (needs {rr_min}). The location is poor -- the target is too "
             f"close to entry relative to the stop."]
 
     if with_read:
