@@ -11,6 +11,7 @@ import {
 } from './demo';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
+const AssistantWidget = lazy(() => import('./components/AssistantWidget'));
 const EarningsPage = lazy(() => import('./pages/EarningsPage'));
 const OptionsFlowPage = lazy(() => import('./pages/OptionsFlowPage'));
 const VolatilityPage = lazy(() => import('./pages/VolatilityPage'));
@@ -293,6 +294,13 @@ function Shell() {
         </Routes>
         </Suspense>
       </div>
+
+      {/* The assistant spends the Claude key, so only for signed-in accounts. */}
+      {!demo && me.data?.authenticated === true && (
+        <Suspense fallback={null}>
+          <AssistantWidget symbol={symbol} />
+        </Suspense>
+      )}
     </div>
   );
 }

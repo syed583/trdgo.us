@@ -757,6 +757,12 @@ export const api2 = {
   // earnings intelligence
   earningsLifecycle: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/earnings/lifecycle/${encodeURIComponent(symbol)}`, s),
+
+  // the Trdgo assistant (Claude, grounded on live UW data)
+  chat: (message: string, symbol?: string,
+         history?: { role: 'user' | 'assistant'; content: string }[]) =>
+    send<{ status: string; text?: string; detail?: string; symbol?: string | null }>(
+      '/api/chat', 'POST', { message, symbol: symbol || '', history: history || [] }),
 };
 
 export { ApiError };

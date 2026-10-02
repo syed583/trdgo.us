@@ -565,6 +565,23 @@ def calls_explain(call_id: int) -> dict:
     return calls_service.explain(call_id)
 
 
+@router.post("/chat")
+def chat(request: Request, payload: dict = Body(...)) -> dict:
+    """
+    The Trdgo assistant: a Claude-powered chat grounded on live UW data for the
+    ticker in context. Signed-in only, since it spends the Claude key.
+    """
+    import auth_service as auth
+    auth.require_session(request)
+
+    import chat_service
+    return chat_service.answer(
+        message=payload.get("message", ""),
+        symbol=payload.get("symbol", "") or "",
+        history=payload.get("history") or [],
+    )
+
+
 @router.get("/calls/{call_id}")
 def calls_get(call_id: int) -> dict:
     import calls_service
