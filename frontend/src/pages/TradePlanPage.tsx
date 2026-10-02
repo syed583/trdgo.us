@@ -41,6 +41,49 @@ function Price({ v }: { v: number | null | undefined }) {
 }
 
 /**
+ * The one-line answer to "what do I do right now": buy/sell at a price, wait for
+ * a pullback, wait because the location is poor, or stand aside. This is the
+ * first thing the card says.
+ */
+function verdict(d: any): { tone: string; action: string; detail: string } {
+  const long = d.bias === 'LONG';
+  const verb = long ? 'Buy' : 'Sell';
+  const side = long ? 'long' : 'short';
+  const st = d.tracking?.status;
+  const lo = num(d.entry?.low, 2), hi = num(d.entry?.high, 2);
+  const spot = num(d.spot, 2);
+
+  if (d.status === 'NO_SETUP')
+    return { tone: 'flat', action: 'Stand aside',
+      detail: 'No clear setup right now — the model does not point decisively enough.' };
+
+  if (st === 'SL_HIT') return { tone: 'loss', action: 'Stopped out', detail: d.tracking.outcome_note };
+  if (st === 'TP1_HIT' || st === 'TP2_HIT')
+    return { tone: 'win', action: 'Target reached', detail: d.tracking.outcome_note };
+  if (st === 'EXPIRED') return { tone: 'flat', action: 'Expired', detail: d.tracking.outcome_note };
+  if (st === 'INVALIDATED') return { tone: 'flat', action: 'Invalidated', detail: d.tracking.outcome_note };
+
+  if (d.status === 'WEAK_SETUP')
+    return { tone: 'wait', action: 'Wait — weak location',
+      detail: `Reward:risk is ${num(d.reward_risk, 2)} (needs ${d.rr_min ?? 1.5}). `
+        + `Better entries exist; no trade here.` };
+
+  // A real, actionable setup.
+  if (st === 'ACTIVE')
+    return { tone: 'go', action: `${verb} now — in the zone`,
+      detail: `Price ${spot} is inside the ${side} entry zone ${lo}–${hi}.` };
+
+  // PENDING: waiting for price to reach the entry.
+  const above = long ? (d.spot > d.entry?.high) : (d.spot < d.entry?.low);
+  if (above)
+    return { tone: 'wait', action: 'Wait for pullback',
+      detail: `${verb} only in ${lo}–${hi}. Price now ${spot} is `
+        + `${long ? 'above' : 'below'} the zone — do not chase.` };
+  return { tone: 'go', action: `${verb} zone ${lo}–${hi}`,
+    detail: `Price ${spot} is at the entry. ${d.do_not_chase_label} ${num(d.do_not_chase, 2)}.` };
+}
+
+/**
  * A scaled horizontal track showing where price sits between the stop and the
  * targets, with the entry band shaded. Makes the setup readable at a glance.
  */
@@ -161,6 +204,17 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
           )}
 
           <div className="tp-card">
+            {/* The one-line "what do I do now" answer. */}
+            {(() => {
+              const v = verdict(d);
+              return (
+                <div className={`tp-verdict ${v.tone}`}>
+                  <div className="tp-verdict-action">{v.action}</div>
+                  <div className="tp-verdict-detail">{v.detail}</div>
+                </div>
+              );
+            })()}
+
             {/* Hero: bias + conviction meter + reward:risk */}
             <div className="tp-hero">
               <div className={`tp-bias ${long ? 'long' : 'short'}`}>
