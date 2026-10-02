@@ -111,10 +111,10 @@
 .ec-day.active i { color: var(--blue); opacity: .85; }
 .ec-day u {
   display: block; text-decoration: none;
-  font-size: 11px; font-weight: 650; margin-top: 5px;
+  font-size: 12px; font-weight: 650; margin-top: 5px;
   color: var(--green);
 }
-.ec-day u.none { color: var(--text-mute); font-weight: 500; }
+.ec-day u.none { color: var(--text-dim); font-weight: 600; }
 .ec-day.active u { color: var(--blue); }
 
 /* --- table + detail split ------------------------------------------------ */

@@ -31,8 +31,7 @@
   background: var(--panel); min-width: 0;
 }
 .mf-tile-label {
-  display: block; font-size: 11px; letter-spacing: .45px;
-  text-transform: uppercase; color: var(--text-mute);
+  display: block; font-size: 12px; color: var(--text-mute);
 }
 .mf-tile-value {
   display: block; margin-top: 5px;
@@ -111,7 +110,7 @@ tr.mf-picked td:first-child { box-shadow: inset 2px 0 0 var(--blue); }
 }
 .mf-sector-name {
   width: 132px; flex-shrink: 0; color: var(--text-dim);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: normal; line-height: 1.2;
 }
 .mf-sector-bar {
   flex: 1; min-width: 0; height: 9px; border-radius: 6px;
@@ -771,18 +770,17 @@ tr.mf-picked td:first-child { box-shadow: inset 2px 0 0 var(--blue); }
 }
 .mf-topbar-cell {
   display: flex; flex-direction: column; gap: 2px;
-  padding: 7px 14px; border-right: 1px solid var(--border); min-width: 104px;
+  padding: 8px 18px; border-right: 1px solid var(--border); min-width: 112px;
 }
 .mf-topbar-cell:last-child { border-right: none; }
 .mf-topbar-label {
-  font-size: 9.5px; text-transform: uppercase; letter-spacing: .4px;
-  color: var(--text-mute); white-space: nowrap;
+  font-size: 11px; color: var(--text-mute); white-space: nowrap;
 }
 .mf-topbar-val {
-  font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums;
+  font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums;
   display: flex; align-items: baseline; gap: 6px;
 }
-.mf-topbar-chg { font-size: 10.5px; font-weight: 600; }
+.mf-topbar-chg { font-size: 11px; font-weight: 600; }
 .mf-topbar-chg.up, .mf-topbar-val .up { color: var(--green, #22a06b); }
 .mf-topbar-chg.down, .mf-topbar-val .down { color: var(--red, #e5484d); }
 

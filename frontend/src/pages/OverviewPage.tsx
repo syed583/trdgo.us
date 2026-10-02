@@ -10,7 +10,7 @@ import { useApi } from '../hooks/useApi';
 import { PageHead, Loading, ErrorState, Unavailable } from './shared';
 import { Panel } from '../components/common';
 import { ContractModal } from '../components/ContractModal';
-import { compact, compactMoney, money, num, signedPct } from '../lib/format';
+import { compact, compactMoney, money, num, signedPct, titleCase } from '../lib/format';
 
 /**
  * Ticker Overview: one page of everything on a stock.
@@ -156,7 +156,7 @@ function Insiders({ ins }: { ins: any }) {
               return (
                 <tr key={`${r.owner}-${r.filed}-${i}`}>
                   <td className="num">{r.filed || r.date || '--'}</td>
-                  <td>{r.owner || '--'}</td>
+                  <td>{titleCase(r.owner) || '--'}</td>
                   <td className="mf-dim">{r.role || (r.is_officer ? 'Officer' : r.is_director ? 'Director' : '--')}</td>
                   <td style={{ color: buy ? GREEN : RED }}>{r.code_label || (buy ? 'Acquired' : 'Disposed')}</td>
                   <td className="num r">{r.shares != null ? compact(r.shares) : '--'}</td>
@@ -377,7 +377,7 @@ export default function OverviewPage({ ctx }: { ctx: PageContext }) {
     <div className="page">
       {contract && <ContractModal occ={contract} onClose={() => setContract(null)} />}
       <PageHead
-        title={`${symbol}${ks?.name && ks.name !== symbol ? ` · ${ks.name}` : ''}`}
+        title={`${symbol}${ks?.name && ks.name !== symbol ? ` · ${titleCase(ks.name)}` : ''}`}
         subtitle={ks?.sector
           ? `${ks.sector} — key stats, performance, analyst actions and insider activity.`
           : 'Key stats, performance, analyst actions and insider activity.'}

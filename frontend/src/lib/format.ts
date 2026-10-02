@@ -105,3 +105,23 @@ export function safeHref(url: string | null | undefined): string | undefined {
   const trimmed = String(url).trim();
   return /^https?:\/\//i.test(trimmed) ? trimmed : undefined;
 }
+
+/**
+ * A company or person's name in Title Case, for data that arrives SHOUTING.
+ * Tickers and common entity suffixes (LLC, INC, ETF, USA ...) stay upper-case;
+ * everything else gets a leading capital. Keeps "NVDA" and "LLC" intact while
+ * turning "NVIDIA CORP" into "Nvidia Corp" and "NORA JOHNSON" into "Nora Johnson".
+ */
+const KEEP_UPPER = new Set([
+  'LLC', 'INC', 'LP', 'LLP', 'PLC', 'NV', 'SA', 'AG', 'ETF', 'USA', 'US',
+  'REIT', 'II', 'III', 'IV', 'CEO', 'CFO', 'CTO', 'AI',
+]);
+export function titleCase(name: string | null | undefined): string {
+  if (!name) return '';
+  return name.split(/\s+/).map((word) => {
+    const bare = word.replace(/[^A-Za-z&]/g, '').toUpperCase();
+    if (KEEP_UPPER.has(bare)) return word.toUpperCase();
+    if (word.length <= 1) return word.toUpperCase();
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  }).join(' ');
+}
