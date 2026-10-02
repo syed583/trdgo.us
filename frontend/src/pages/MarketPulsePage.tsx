@@ -54,6 +54,11 @@ function MarketTide() {
                     strokeDasharray="4 2" isAnimationActive={false} connectNulls />
                 </ComposedChart>
               </ResponsiveContainer>
+              <div className="mo-legend" role="list">
+                <span role="listitem"><i style={{ background: 'var(--green)' }} />Net call premium</span>
+                <span role="listitem"><i style={{ background: 'var(--red)' }} />Net put premium</span>
+                <span role="listitem"><i style={{ background: 'var(--gold, #e0a45c)' }} />S&amp;P 500</span>
+              </div>
               <div className="hint">{d?.detail}</div>
             </>
           )}

@@ -348,20 +348,24 @@ function HealthBadge({
     return <span className="conn"><i className="dot" />Connecting</span>;
   }
 
-  // "Live" used to mean the TWS socket was open. It means the market feed
-  // is answering, which is what the badge was really reporting: whether the
-  // numbers on screen are coming from anywhere.
-  const live = health.feed === 'OK';
-  // If real quotes are flowing, the feed is not offline no matter what the feed
-  // probe said -- the numbers on the screen prove it. A rate-limit pause is
-  // temporary and the screens still serve their held data, so it is "busy",
-  // not "offline". Only a genuine outage (no data at all) is offline.
+  // The feed answering is not the same as the market trading. Saying "LIVE"
+  // while the Market Overview says "Closed" read as a contradiction, so the
+  // badge now reflects the session too: "LIVE" only when the market is open,
+  // otherwise the session label (e.g. "Closed") in a calm, non-green state --
+  // the same state the page's own header shows.
+  const feedOk = health.feed === 'OK';
+  const marketOpen = !!health.market?.is_open;
+  const live = feedOk && marketOpen;
+  const closed = feedOk && !marketOpen;
+  // A rate-limit pause is temporary and the screens still serve held data, so
+  // it is "busy", not "offline". Only a genuine outage (no data at all) is off.
   const dataFlowing = health.market_data === 'OK';
-  const busy = !live && (dataFlowing
+  const busy = !feedOk && (dataFlowing
     || health.feed === 'RATE_LIMITED' || health.feed === 'UNKNOWN');
   const degraded = live && (
     health.market_data !== 'OK' || health.providers?.news?.status !== 'OK'
   );
+  const sessionLabel = health.market?.label || 'Market closed';
 
   const title = Object.entries(health.providers || {})
     .map(([k, v]) => `${k}: ${v.status}`)
@@ -370,11 +374,13 @@ function HealthBadge({
   return (
     <NavLink
       to={`/settings${search}`}
-      className={`conn ${live ? (degraded ? 'warn' : 'live') : busy ? 'warn' : 'down'}`}
+      className={`conn ${live ? (degraded ? 'warn' : 'live') : closed ? '' : busy ? 'warn' : 'down'}`}
       title={title || 'Provider status'}
     >
       <i className="dot" />
-      {live ? (degraded ? 'LIVE · DEGRADED' : 'LIVE') : busy ? 'LIVE · BUSY' : 'FEED OFFLINE'}
+      {live ? (degraded ? 'LIVE · DEGRADED' : 'LIVE')
+        : closed ? sessionLabel
+          : busy ? 'FEED BUSY' : 'FEED OFFLINE'}
     </NavLink>
   );
 }

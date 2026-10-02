@@ -352,8 +352,13 @@ table { border-collapse: collapse; width: 100%; }
 /* The primary sections as pills, matching the product design. The sidebar
    still carries every destination; this is the short list the screen moves
    between most, so it sits where the eye already is. */
+/* The sidebar is the single primary navigation and reaches every destination,
+   so the top pill row is not rendered -- two parallel menus duplicated links
+   and styled the active state differently. The top bar keeps global utilities
+   (search, theme, settings, profile). display:none also drops it from the
+   accessibility tree, so screen readers see one nav, not two. */
 .header-nav {
-  display: flex;
+  display: none;
   align-items: center;
   gap: 2px;
   min-width: 0;
@@ -374,8 +379,8 @@ table { border-collapse: collapse; width: 100%; }
 }
 .hn-pill:hover { background: var(--panel-2); color: var(--text); }
 .hn-pill.active {
-  background: var(--blue-2);
-  color: #fff;
+  background: var(--green-bg);
+  color: var(--green);
 }
 
 /* ------------------------------------------------------- theme switch */

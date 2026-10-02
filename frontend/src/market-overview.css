@@ -34,7 +34,7 @@
   gap: 8px; margin-bottom: 10px;
 }
 .mo-index {
-  padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px;
+  padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--r-lg);
   background: var(--panel); min-width: 0;
 }
 .mo-index-label {
@@ -82,8 +82,8 @@
   font-size: 13px; font-variant-numeric: tabular-nums;
 }
 .mo-sector-name {
-  width: 108px; flex-shrink: 0; color: var(--text-dim);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  width: 116px; flex-shrink: 0; color: var(--text-dim);
+  white-space: normal; line-height: 1.2;
 }
 /* Bars grow from the centre so a negative sector reads as negative at a
    glance rather than as a short positive one. */
@@ -104,8 +104,7 @@
 .mo-heat-group { min-width: 0; }
 .mo-heat-title {
   display: flex; align-items: baseline; gap: 8px;
-  font-size: 11px; letter-spacing: .5px; text-transform: uppercase;
-  color: var(--text-mute); margin-bottom: 4px;
+  font-size: 12px; color: var(--text-dim); margin-bottom: 4px;
 }
 .mo-heat-title em { font-style: normal; font-weight: 750; font-size: 12px; }
 .mo-heat-tiles {
@@ -199,4 +198,17 @@
   .mo-indices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mo-grid, .mo-grid-3, .mo-grid-2 { grid-template-columns: minmax(0, 1fr); }
   .mo-grid > .panel:nth-child(2) { grid-column: auto; }
+}
+
+/* Visual legend for the Market Tide chart — color swatches instead of a text
+   blob, so line colors are read at a glance rather than memorised. */
+.mo-legend {
+  display: flex; flex-wrap: wrap; gap: 14px; margin: 8px 0 2px;
+  font-size: 12px; color: var(--text-dim);
+}
+.mo-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.mo-legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+.mo-legend i.dash {
+  background-image: repeating-linear-gradient(90deg,
+    currentColor 0 4px, transparent 4px 6px);
 }
