@@ -64,9 +64,8 @@ export default function TopBar({
   // filter box), so the header ticker search there is a confusing second box --
   // hide it on those landing pages. The per-symbol analysis view keeps it.
   const _path = useLocation().pathname;
-  const hideHeaderSearch = _path.startsWith('/ai-insights')
-    || _path === '/earnings-equity' || _path === '/earnings-options'
-    || _path === '/earnings-trade';
+  const hideHeaderSearch = ['/ai-insights', '/earnings-equity', '/earnings-options',
+    '/earnings-trade', '/trade-plan'].some((p) => _path.startsWith(p));
 
   return (
     <header className="topbar">

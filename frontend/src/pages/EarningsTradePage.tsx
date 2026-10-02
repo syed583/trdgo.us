@@ -163,9 +163,6 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
               <button className="btn-primary" onClick={() => api2.watchlistAdd(symbol).catch(() => {})}>
                 <Plus size={15} /> Add to Watchlist
               </button>
-              <button className="btn-secondary" onClick={() => navigate(`/trade-plan/${symbol}${ctx.search}`)}>
-                Trade Plan
-              </button>
             </div>
           </div>
 
