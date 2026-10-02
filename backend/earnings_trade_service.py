@@ -57,41 +57,51 @@ def get_summary(symbol: str) -> dict:
 
     import earnings_equity_service as eq
     import earnings_options_service as op
+    from concurrent.futures import ThreadPoolExecutor
 
-    equity = eq.get_analysis(symbol)
-    options = op.get_analysis(symbol)
+    def _quote():
+        try:
+            import live_market_service as market
+            q = market.get_quote(symbol) or {}
+            chart = market.get_chart(symbol, "3M")
+            return {"q": q, "spark": [b["close"] for b in (chart.get("bars") or [])][-60:]}
+        except Exception:  # noqa: BLE001
+            return {"q": {}, "spark": []}
 
-    # Quote (price + change) and a small sparkline.
-    price = change = change_pct = None
-    spark: list[float] = []
-    name = exchange = sector = None
-    try:
-        import live_market_service as market
-        q = market.get_quote(symbol) or {}
-        price, change, change_pct = _f(q.get("price")), _f(q.get("change")), _f(q.get("change_percent"))
-        name = q.get("name")
-        exchange = q.get("exchange")
-        tags = q.get("tags") or []
-        if tags:
-            sector = tags[0]
-        chart = market.get_chart(symbol, "3M")
-        spark = [b["close"] for b in (chart.get("bars") or [])][-60:]
-    except Exception:  # noqa: BLE001
-        pass
+    def _preview():
+        try:
+            import uw_earnings_calendar as uwcal
+            return uwcal.preview(symbol) or {}
+        except Exception:  # noqa: BLE001
+            return {}
 
-    # Earnings date + countdown + expected move, from the preview.
-    report_date = report_label = report_time = None
-    em_pct = None
-    try:
-        import uw_earnings_calendar as uwcal
-        pv = uwcal.preview(symbol) or {}
-        report_date = pv.get("next_report")
-        report_label = pv.get("next_report_label")
-        report_time = pv.get("next_report_time")
-        em_pct = _f(pv.get("expected_move_percent"))
-        sector = pv.get("sector") or sector
-    except Exception:  # noqa: BLE001
-        pass
+    # The two engines and the auxiliary reads are independent -- run them at once
+    # so the screen is not the sum of every provider round-trip in series.
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        f_equity = pool.submit(eq.get_analysis, symbol)
+        f_options = pool.submit(op.get_analysis, symbol)
+        f_quote = pool.submit(_quote)
+        f_preview = pool.submit(_preview)
+        f_hist = pool.submit(_historical_moves, symbol)
+        equity = f_equity.result()
+        options = f_options.result()
+        qd = f_quote.result()
+        pv = f_preview.result()
+        hm = f_hist.result()
+
+    q = qd["q"]
+    spark = qd["spark"]
+    price, change, change_pct = _f(q.get("price")), _f(q.get("change")), _f(q.get("change_percent"))
+    name = q.get("name")
+    exchange = q.get("exchange")
+    tags = q.get("tags") or []
+    sector = tags[0] if tags else None
+
+    report_date = pv.get("next_report")
+    report_label = pv.get("next_report_label")
+    report_time = pv.get("next_report_time")
+    em_pct = _f(pv.get("expected_move_percent"))
+    sector = pv.get("sector") or sector
 
     con = options.get("construction") or {}
     spot = _f(con.get("spot")) or price
@@ -128,7 +138,6 @@ def get_summary(symbol: str) -> dict:
         takeaways.append(f"Favorable {ed.lower()} setup for the equity earnings trade.")
     else:
         takeaways.append("No decisive directional edge for the stock into earnings.")
-    hm = _historical_moves(symbol)
     if hm:
         avg_abs = sum(abs(m["move_pct"]) for m in hm) / len(hm)
         takeaways.append(f"Historical post-earnings move averages {avg_abs:.1f}%.")

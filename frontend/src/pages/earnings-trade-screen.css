@@ -1,4 +1,16 @@
-/* Unified Earnings Trade screen. */
+/* Unified Earnings Trade screen. Mockup palette: real blue + violet accents
+   (the theme's --blue token is tan), on the app's dark panels. */
+.ets {
+  --ets-blue: #3b82f6;
+  --ets-blue-bg: rgba(59, 130, 246, 0.14);
+  --ets-violet: #8b5cf6;
+  --ets-violet-bg: rgba(139, 92, 246, 0.16);
+}
+/* Blue primary buttons on this screen (app btn-primary is tan here). */
+.ets .btn-primary {
+  background: var(--ets-blue); border-color: var(--ets-blue); color: #fff;
+}
+.ets .btn-primary:hover { background: #2f6fe0; border-color: #2f6fe0; }
 
 .ets-back {
   display: inline-flex; align-items: center; gap: 3px; font-size: 12px;
@@ -73,6 +85,7 @@
 .ets-badge.buy { color: var(--green); background: var(--green-bg); }
 .ets-badge.sell { color: var(--red); background: var(--red-bg); }
 .ets-badge.flat { color: var(--text-dim); background: var(--panel-2); }
+.ets-badge.strat { color: var(--ets-violet); background: var(--ets-violet-bg); }
 
 /* signal gauges */
 .ets-gauges { display: flex; justify-content: space-around; gap: 12px; }
@@ -97,7 +110,7 @@
 .ets-em-range span { font-size: 11px; color: var(--text-mute); display: block; }
 .ets-em-range b { font-size: 15px; color: var(--text); font-family: var(--mono); }
 .ets-em-bar { height: 6px; border-radius: var(--r-pill); position: relative;
-  background: linear-gradient(90deg, var(--blue), var(--purple, var(--blue))); }
+  background: linear-gradient(90deg, var(--ets-blue), var(--ets-violet)); }
 .ets-em-dot { position: absolute; left: 50%; top: 50%; width: 14px; height: 14px;
   background: #fff; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 0 3px var(--panel); }
 .ets-em-cur { text-align: center; font-size: 12px; color: var(--text-mute); margin-top: 8px; }
@@ -109,7 +122,7 @@
 .ets-timeline::before { content: ''; position: absolute; top: 5px; left: 6%; right: 6%; height: 2px; background: var(--border); }
 .ets-tl-step { display: flex; flex-direction: column; align-items: center; gap: 6px; z-index: 1; }
 .ets-tl-dot { width: 11px; height: 11px; border-radius: 50%; background: var(--border-2, var(--border)); border: 2px solid var(--panel); }
-.ets-tl-step.active .ets-tl-dot { background: var(--purple, var(--blue)); }
+.ets-tl-step.active .ets-tl-dot { background: var(--ets-violet); }
 .ets-tl-l { font-size: 10px; color: var(--text-mute); }
 .ets-tl-step.active .ets-tl-l { color: var(--text); font-weight: 600; }
 

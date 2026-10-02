@@ -18,8 +18,11 @@ import './earnings-trade-screen.css';
 const SETUP = (s: number | null) =>
   s == null ? '--' : s >= 75 ? 'Strong Setup' : s >= 55 ? 'Good Setup'
     : s >= 45 ? 'Neutral' : 'Weak Setup';
+// This theme's --blue token is actually tan, so use an explicit blue here to
+// match the mockup's palette.
+const ETS_BLUE = '#3b82f6';
 const SETUP_COLOR = (s: number | null) =>
-  s == null ? 'var(--text-mute)' : s >= 75 ? 'var(--green)' : s >= 55 ? 'var(--blue)'
+  s == null ? 'var(--text-mute)' : s >= 75 ? 'var(--green)' : s >= 55 ? ETS_BLUE
     : s >= 45 ? 'var(--amber)' : 'var(--red)';
 const DEC_TONE: Record<string, string> = {
   BUY: 'buy', SELL: 'sell', STRADDLE: 'buy', STRANGLE: 'buy', 'NO TRADE': 'flat',
@@ -242,7 +245,7 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
                     <Tooltip contentStyle={{ background: 'var(--panel)', border: '1px solid var(--border)', fontSize: 12 }} />
                     <ReferenceLine y={0} stroke="var(--border-2)" />
                     {em.current != null && <ReferenceLine x={Math.round(em.current)} stroke="var(--text-mute)" strokeDasharray="3 3" />}
-                    <Line dataKey="pl" stroke="var(--blue)" strokeWidth={1.8} dot={false} isAnimationActive={false} />
+                    <Line dataKey="pl" stroke="#3b82f6" strokeWidth={1.8} dot={false} isAnimationActive={false} />
                   </LineChart>
                 </ResponsiveContainer>
               ) : <div className="ets-empty-sm">No straddle data.</div>}
@@ -251,7 +254,7 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
             <div className="ets-card ets-strategy">
               <div className="ets-card-h">
                 <span>Recommended Strategy</span>
-                <span className="ets-badge buy">{strat.type || 'STRADDLE'}</span>
+                <span className="ets-badge strat">{strat.type || 'STRADDLE'}</span>
               </div>
               <div className="ets-strat-sub">Buy Call + Buy Put</div>
               <dl className="ets-strat-list">
