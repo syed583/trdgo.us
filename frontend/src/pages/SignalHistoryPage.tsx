@@ -110,8 +110,8 @@ export default function SignalHistoryPage({ ctx }: { ctx: PageContext }) {
                         const sig = c[key as string];
                         return (
                           <td key={i} className="sh-cell">
-                            <span className={`sh-chip ${(sig || 'none').toLowerCase()}`}
-                              title={sig ? `${typeLabel}: ${sig}` : 'no data'}>
+                            <span className={`sh-chip ${(sig || 'none').toLowerCase()} ${c.carried ? 'carried' : ''}`}
+                              title={sig ? `${typeLabel}: ${sig}${c.carried ? ' (carried forward)' : ''}` : 'no data'}>
                               {sig ? LABEL[sig] : '·'}
                             </span>
                           </td>

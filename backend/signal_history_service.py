@@ -101,22 +101,37 @@ def get_grid(symbols: list[str], days: int = 10,
             out_rows = []
             for sym in syms:
                 cells = []
+                # Forward-fill: a decision stays in effect until it changes, so a
+                # gap day carries the last known call (marked carried) rather than
+                # reading blank. Days before the symbol's first snapshot stay empty.
+                last_stock = last_opt = None
+                captured = 0
                 for d in dates:
                     hit = by.get(sym, {}).get(d)
                     if hit:
-                        cells.append({"date": d.isoformat(), "stock": hit[0],
-                                      "options": hit[1], "score": hit[2]})
+                        captured += 1
+                        st, op, sc = hit
+                        if st:
+                            last_stock = st
+                        if op:
+                            last_opt = op
+                        cells.append({"date": d.isoformat(), "stock": st or last_stock,
+                                      "options": op or last_opt, "score": sc,
+                                      "carried": False})
                     else:
-                        cells.append({"date": d.isoformat(), "stock": None,
-                                      "options": None, "score": None})
+                        cells.append({"date": d.isoformat(), "stock": last_stock,
+                                      "options": last_opt, "score": None,
+                                      "carried": last_stock is not None})
                 if any(c["stock"] or c["options"] for c in cells):
                     out_rows.append({
-                        "symbol": sym, "cells": cells,
+                        "symbol": sym, "cells": cells, "captured": captured,
                         "latest_stock": next((c["stock"] for c in reversed(cells)
                                               if c["stock"]), None),
                         "latest_options": next((c["options"] for c in reversed(cells)
                                                 if c["options"]), None),
                     })
+            # Most-covered symbols first, so filled rows lead the grid.
+            out_rows.sort(key=lambda r: -r["captured"])
 
             return {"status": "OK",
                     "dates": [d.isoformat() for d in dates],
