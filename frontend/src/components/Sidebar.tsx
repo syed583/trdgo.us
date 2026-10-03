@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import {
-  Activity, BarChart3, Brain, CalendarDays, Crosshair, Gauge, Layers, LineChart, Users,
+  Activity, Brain, CalendarDays, Crosshair, Gauge, Layers, LineChart, Users,
   LayoutDashboard, ListOrdered, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
   Scale, Settings, Sparkles, Star, Target, TrendingUp, UserCog, Waves, Waypoints, X,
 } from 'lucide-react';
@@ -50,7 +50,6 @@ const NAV_GROUPS: NavGroup[] = [
   ] },
   { heading: 'Earnings & news', items: [
     { to: '/earnings-calendar', label: 'Earnings Calendar', icon: <CalendarDays size={S} /> },
-    { to: '/earnings', label: 'Earnings Analysis', icon: <BarChart3 size={S} /> },
     { to: '/earnings-trade', label: 'Earnings Trade', icon: <Gauge size={S} /> },
     { to: '/news', label: 'News & Sentiment', icon: <Newspaper size={S} /> },
   ] },
