@@ -147,3 +147,13 @@
 .ue-sector { font-size: 10px; color: var(--text-dim); background: var(--bg-2); padding: 1px 7px; border-radius: var(--r-pill); }
 .ue-timing { font-size: 10px; color: var(--text-mute); }
 .ue-chev { color: var(--text-mute); }
+
+/* upcoming-earnings cards colored by current signal */
+.ue-row { border-left-width: 4px; }
+.ue-row.sig-buy { border-left-color: var(--green); }
+.ue-row.sig-sell { border-left-color: var(--red); }
+.ue-row.sig-neutral { border-left-color: var(--amber); }
+.ue-row.sig-none { border-left-color: var(--border); }
+.ue-row.sig-buy .ue-sym { color: var(--green); }
+.ue-row.sig-sell .ue-sym { color: var(--red); }
+.ue-row.sig-neutral .ue-sym { color: var(--amber); }

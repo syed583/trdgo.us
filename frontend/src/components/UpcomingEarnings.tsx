@@ -22,6 +22,17 @@ export default function UpcomingEarnings({
   );
   const rows: any[] = up.data?.rows || [];
 
+  // Latest Buy/Sell/Neutral per listed symbol, to color each card.
+  const symKey = rows.map((r) => r.symbol).sort().join(',');
+  const sig = useApi<any>(
+    (s) => (demo || !rows.length ? Promise.resolve(null)
+      : api2.signalsLatest(rows.map((r) => r.symbol), s)),
+    [demo, symKey],
+  );
+  const signals: Record<string, string> = sig.data?.signals || {};
+  const sigClass = (sym: string) =>
+    ({ BUY: 'buy', SELL: 'sell', NEUTRAL: 'neutral' } as any)[signals[sym]] || 'none';
+
   const groups = useMemo(() => {
     const needle = q.trim().toUpperCase();
     const filtered = needle
@@ -65,7 +76,9 @@ export default function UpcomingEarnings({
             <div className="ue-day-h">{day}</div>
             <div className="ue-grid">
               {items.map((r) => (
-                <button key={r.symbol + r.date} className="ue-row" onClick={() => open(r.symbol)}>
+                <button key={r.symbol + r.date} className={`ue-row sig-${sigClass(r.symbol)}`}
+                  onClick={() => open(r.symbol)}
+                  title={signals[r.symbol] ? `Signal: ${signals[r.symbol]}` : undefined}>
                   <div className="ue-row-l">
                     <span className="ue-sym">{r.symbol}</span>
                     <span className="ue-co">{r.company || ''}</span>

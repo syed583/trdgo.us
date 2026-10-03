@@ -1176,6 +1176,29 @@ def trade_plan(symbol: str, horizon: str = "SWING") -> dict:
                      market.session_ttl(60, 900))
 
 
+@router.get("/signals/latest")
+def signals_latest(symbols: str = "") -> dict:
+    """Latest Buy/Sell/Neutral per symbol (for coloring lists)."""
+    import signal_history_service as sh
+
+    syms = [s.strip().upper() for s in (symbols or "").split(",") if s.strip()][:120]
+    out = swr.serve(f"siglatest:{','.join(sorted(syms))[:300]}",
+                    lambda: sh.latest_signals(syms),
+                    market.session_ttl(120, 1800))
+    # Capture any symbol we have no signal for, in the background, so the list
+    # colors in over the next loads instead of staying grey.
+    missing = [s for s in syms if s not in (out.get("signals") or {})]
+    if missing:
+        try:
+            import snapshot_service as snap
+            import threading
+            threading.Thread(target=lambda: snap.capture(missing[:60]),
+                             daemon=True).start()
+        except Exception:  # noqa: BLE001
+            pass
+    return out
+
+
 @router.get("/signal-history")
 def signal_history(request: Request, days: int = 10, end: str = "") -> dict:
     """Last N sessions of Buy/Sell/Neutral per watched stock (grid)."""

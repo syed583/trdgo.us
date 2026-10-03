@@ -72,6 +72,31 @@ def _live_signals(symbol: str):
         return None, None, None
 
 
+def latest_signals(symbols: list[str]) -> dict:
+    """{symbol: BUY/SELL/NEUTRAL} from each symbol's most recent snapshot."""
+    syms = [s.upper() for s in (symbols or []) if s]
+    if not syms:
+        return {"status": "OK", "signals": {}, "source": SOURCE}
+    try:
+        from database import SessionLocal
+        from models_snapshots import ScoreSnapshot
+        db = SessionLocal()
+        try:
+            rows = (db.query(ScoreSnapshot.symbol, ScoreSnapshot.snapshot_date,
+                             ScoreSnapshot.decision)
+                    .filter(ScoreSnapshot.symbol.in_(syms))
+                    .order_by(ScoreSnapshot.snapshot_date.desc()).all())
+            out: dict[str, str] = {}
+            for sym, _d, dec in rows:
+                if sym not in out:          # first = latest (desc order)
+                    out[sym] = _signal(dec)
+            return {"status": "OK", "signals": out, "source": SOURCE}
+        finally:
+            db.close()
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "ERROR", "detail": type(exc).__name__, "signals": {}}
+
+
 def get_grid(symbols: list[str], days: int = 10,
              end: Optional[str] = None, include_live: bool = False) -> dict:
     """
