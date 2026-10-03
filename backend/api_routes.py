@@ -1187,7 +1187,7 @@ def signals_latest(symbols: str = "", source: str = "directional") -> dict:
     import signal_history_service as sh
     import threading
 
-    syms = [s.strip().upper() for s in (symbols or "").split(",") if s.strip()][:120]
+    syms = [s.strip().upper() for s in (symbols or "").split(",") if s.strip()][:300]
 
     if source == "earnings":
         out = swr.serve(f"siglatest:earn:{','.join(sorted(syms))[:300]}",

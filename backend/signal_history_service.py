@@ -148,12 +148,17 @@ def warm_earnings(symbols: list[str]) -> None:
 
         def one(sym: str) -> None:
             try:
-                swr.serve(f"earn:equity:{sym}", lambda: eq.get_analysis(sym), 1800.0)
+                # 6h cache: an earnings decision is driven by estimates /
+                # guidance / history that don't move intraday, so re-warming the
+                # whole upcoming universe a few times a day stays well within the
+                # UW daily budget while keeping every card coloured.
+                swr.serve(f"earn:equity:{sym}", lambda: eq.get_analysis(sym), 21600.0)
             except Exception:  # noqa: BLE001
                 pass
 
-        targets = [s.upper() for s in (symbols or []) if s][:80]
-        with ThreadPoolExecutor(max_workers=6) as pool:
+        # Cover the whole ~3-week upcoming list, not just the soonest names.
+        targets = [s.upper() for s in (symbols or []) if s][:300]
+        with ThreadPoolExecutor(max_workers=8) as pool:
             list(pool.map(one, targets))
     except Exception:  # noqa: BLE001
         pass

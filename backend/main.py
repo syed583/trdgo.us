@@ -310,9 +310,10 @@ def _warm_earnings_universe() -> None:
             try:
                 import uw_earnings_calendar as uwcal
                 import signal_history_service as sh
-                # Match the list's window (UpcomingEarnings fetches 10 days) so
-                # the full visible set can realistically be kept warm.
-                rows = (uwcal.calendar(days=10) or {}).get("rows") or []
+                # Match the list's window (UpcomingEarnings fetches 21 days).
+                # The whole visible set is kept warm; the long cache in
+                # warm_earnings keeps re-warming within the UW daily budget.
+                rows = (uwcal.calendar(days=21) or {}).get("rows") or []
                 syms = sorted({r.get("symbol", "").upper()
                                for r in rows if r.get("symbol")})
                 # Color the cards (earn:equity decision)...
