@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import type { PageContext } from '../App';
@@ -41,6 +41,13 @@ export default function SignalHistoryPage({ ctx }: { ctx: PageContext }) {
         subtitle={<>The last 10 sessions of the model's call — <b>Buy</b>,{' '}
           <b>Sell</b> or <b>Neutral</b> — for each watched stock. Analysis, not advice.</>}
       />
+
+      {d?.fallback && (
+        <div className="sh-note">
+          Your watchlist has no captured signals yet — showing the default basket.
+          We're capturing your watchlist now; check back shortly.
+        </div>
+      )}
 
       <div className="sh-controls">
         <div className="sh-filter">
@@ -88,7 +95,8 @@ export default function SignalHistoryPage({ ctx }: { ctx: PageContext }) {
             </thead>
             <tbody>
               {rows.map((r) => (
-                [['stock', r.latest_stock, 'Stock'], ['options', r.latest_options, 'Options']]
+                <Fragment key={r.symbol}>
+                {([['stock', r.latest_stock, 'Stock'], ['options', r.latest_options, 'Options']] as const)
                   .map(([key, latest, typeLabel], ri) => (
                     <tr key={`${r.symbol}-${key}`} className={ri === 0 ? 'sh-rowtop' : ''}>
                       {ri === 0 && (
@@ -115,7 +123,8 @@ export default function SignalHistoryPage({ ctx }: { ctx: PageContext }) {
                         </span>
                       </td>
                     </tr>
-                  ))
+                  ))}
+                </Fragment>
               ))}
             </tbody>
           </table>

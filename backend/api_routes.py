@@ -1181,12 +1181,26 @@ def signal_history(request: Request, days: int = 10, end: str = "") -> dict:
     """Last N sessions of Buy/Sell/Neutral per watched stock (grid)."""
     import signal_history_service as sh
 
-    syms = _watch_symbols(request)
-    if not syms:
-        syms = list(DEFAULT_STRIP)
-    return swr.serve(f"sighist:{','.join(sorted(syms))[:200]}:{days}:{end}",
-                     lambda: sh.get_grid(syms, days=days, end=end or None),
-                     market.session_ttl(300, 1800))
+    syms = _watch_symbols(request) or list(DEFAULT_STRIP)
+    out = swr.serve(f"sighist:{','.join(sorted(syms))[:200]}:{days}:{end}",
+                    lambda: sh.get_grid(syms, days=days, end=end or None),
+                    market.session_ttl(300, 1800))
+
+    # Watchlist has no snapshots yet: capture it in the background so it fills,
+    # and meanwhile show the default basket (which is captured daily) so the page
+    # is never blank.
+    if not (out.get("rows")):
+        try:
+            import snapshot_service as snap
+            import threading
+            threading.Thread(target=lambda: snap.capture(syms), daemon=True).start()
+        except Exception:  # noqa: BLE001
+            pass
+        out = swr.serve(f"sighist:def:{days}:{end}",
+                        lambda: sh.get_grid(list(DEFAULT_STRIP), days=days, end=end or None),
+                        market.session_ttl(300, 1800))
+        out["fallback"] = True
+    return out
 
 
 @router.get("/earnings/trade/{symbol}")

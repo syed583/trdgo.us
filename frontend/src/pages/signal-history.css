@@ -65,3 +65,7 @@
 .sh-rowtop td { border-bottom: none; }
 tr:not(.sh-rowtop) td { border-bottom: 2px solid var(--border); }
 .sh-table tbody tr:hover .sh-sym { color: var(--blue); }
+.sh-note {
+  font-size: 12px; color: var(--amber); background: var(--amber-bg);
+  border: 1px solid var(--amber); border-radius: var(--r); padding: 8px 12px; margin-bottom: 12px;
+}
