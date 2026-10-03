@@ -24,6 +24,34 @@ def _signal(decision: Optional[str]) -> str:
     return "NEUTRAL"
 
 
+# The options-positioning parameters stored in each snapshot's signals blob.
+_OPT_KEYS = ("options_flow", "unusual_activity", "oi_positioning",
+             "gamma_exposure", "volume_pcr", "flow_by_expiry",
+             "daily_oi_change", "disparity")
+
+
+def _opt_signal(signals_text: Optional[str]) -> Optional[str]:
+    """A Buy/Sell/Neutral lean from the day's options parameters, or None."""
+    if not signals_text:
+        return None
+    try:
+        import json
+        sigs = json.loads(signals_text)
+        if not isinstance(sigs, dict):
+            return None
+        vals = []
+        for k in _OPT_KEYS:
+            s = sigs.get(k)
+            if isinstance(s, dict) and s.get("available") and s.get("bias") is not None:
+                vals.append(float(s["bias"]))
+        if not vals:
+            return None
+        avg = sum(vals) / len(vals)
+        return "BUY" if avg > 0.15 else "SELL" if avg < -0.15 else "NEUTRAL"
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def get_grid(symbols: list[str], days: int = 10,
              end: Optional[str] = None) -> dict:
     """
@@ -61,31 +89,34 @@ def get_grid(symbols: list[str], days: int = 10,
                         "detail": "No score snapshots captured yet.", "source": SOURCE}
 
             rows = (db.query(ScoreSnapshot.symbol, ScoreSnapshot.snapshot_date,
-                             ScoreSnapshot.decision, ScoreSnapshot.direction_score)
+                             ScoreSnapshot.decision, ScoreSnapshot.direction_score,
+                             ScoreSnapshot.signals)
                     .filter(ScoreSnapshot.symbol.in_(syms),
                             ScoreSnapshot.snapshot_date.in_(dates)).all())
-            # symbol -> {date: (signal, score)}
+            # symbol -> {date: (stock_signal, options_signal, score)}
             by: dict[str, dict] = {}
-            for sym, d, dec, sc in rows:
-                by.setdefault(sym, {})[d] = (_signal(dec), sc)
+            for sym, d, dec, sc, sigs in rows:
+                by.setdefault(sym, {})[d] = (_signal(dec), _opt_signal(sigs), sc)
 
             out_rows = []
             for sym in syms:
                 cells = []
-                counts = {"BUY": 0, "SELL": 0, "NEUTRAL": 0}
                 for d in dates:
                     hit = by.get(sym, {}).get(d)
                     if hit:
-                        counts[hit[0]] += 1
-                        cells.append({"date": d.isoformat(), "signal": hit[0],
-                                      "score": hit[1]})
+                        cells.append({"date": d.isoformat(), "stock": hit[0],
+                                      "options": hit[1], "score": hit[2]})
                     else:
-                        cells.append({"date": d.isoformat(), "signal": None,
-                                      "score": None})
-                if any(c["signal"] for c in cells):
-                    out_rows.append({"symbol": sym, "cells": cells, "counts": counts,
-                                     "latest": next((c["signal"] for c in reversed(cells)
-                                                     if c["signal"]), None)})
+                        cells.append({"date": d.isoformat(), "stock": None,
+                                      "options": None, "score": None})
+                if any(c["stock"] or c["options"] for c in cells):
+                    out_rows.append({
+                        "symbol": sym, "cells": cells,
+                        "latest_stock": next((c["stock"] for c in reversed(cells)
+                                              if c["stock"]), None),
+                        "latest_options": next((c["options"] for c in reversed(cells)
+                                                if c["options"]), None),
+                    })
 
             return {"status": "OK",
                     "dates": [d.isoformat() for d in dates],

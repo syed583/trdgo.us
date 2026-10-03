@@ -81,30 +81,41 @@ export default function SignalHistoryPage({ ctx }: { ctx: PageContext }) {
             <thead>
               <tr>
                 <th className="sh-sym-h">Stock</th>
+                <th className="sh-type-h"></th>
                 {dates.map((dt) => <th key={dt} className="sh-day-h">{dayLabel(dt)}</th>)}
                 <th className="sh-latest-h">Now</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.symbol}>
-                  <td className="sh-sym" onClick={() => navigate(`/trade-plan/${r.symbol}${ctx.search}`)}>
-                    {r.symbol}
-                  </td>
-                  {r.cells.map((c: any, i: number) => (
-                    <td key={i} className="sh-cell">
-                      <span className={`sh-chip ${(c.signal || 'none').toLowerCase()}`}
-                        title={c.signal ? `${c.signal}${c.score != null ? ` · ${Math.round(c.score)}` : ''}` : 'no data'}>
-                        {c.signal ? LABEL[c.signal] : '·'}
-                      </span>
-                    </td>
-                  ))}
-                  <td className="sh-cell">
-                    <span className={`sh-chip strong ${(r.latest || 'none').toLowerCase()}`}>
-                      {r.latest ? LABEL[r.latest] : '·'}
-                    </span>
-                  </td>
-                </tr>
+                [['stock', r.latest_stock, 'Stock'], ['options', r.latest_options, 'Options']]
+                  .map(([key, latest, typeLabel], ri) => (
+                    <tr key={`${r.symbol}-${key}`} className={ri === 0 ? 'sh-rowtop' : ''}>
+                      {ri === 0 && (
+                        <td className="sh-sym" rowSpan={2}
+                          onClick={() => navigate(`/trade-plan/${r.symbol}${ctx.search}`)}>
+                          {r.symbol}
+                        </td>
+                      )}
+                      <td className={`sh-type ${key}`}>{typeLabel}</td>
+                      {r.cells.map((c: any, i: number) => {
+                        const sig = c[key as string];
+                        return (
+                          <td key={i} className="sh-cell">
+                            <span className={`sh-chip ${(sig || 'none').toLowerCase()}`}
+                              title={sig ? `${typeLabel}: ${sig}` : 'no data'}>
+                              {sig ? LABEL[sig] : '·'}
+                            </span>
+                          </td>
+                        );
+                      })}
+                      <td className="sh-cell">
+                        <span className={`sh-chip strong ${((latest as string) || 'none').toLowerCase()}`}>
+                          {latest ? LABEL[latest as string] : '·'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
               ))}
             </tbody>
           </table>
