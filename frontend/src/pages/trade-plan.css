@@ -187,8 +187,8 @@
 .tp-lv.chase .tp-lv-ic { color: var(--amber); }
 .tp-lv.stop { border-left-color: var(--red); }
 .tp-lv.stop .tp-lv-ic { color: var(--red); }
-.tp-lv.tp1, .tp-lv.tp2 { border-left-color: var(--green); }
-.tp-lv.tp1 .tp-lv-ic, .tp-lv.tp2 .tp-lv-ic { color: var(--green); }
+.tp-lv.tp1, .tp-lv.tp2, .tp-lv.tp3 { border-left-color: var(--green); }
+.tp-lv.tp1 .tp-lv-ic, .tp-lv.tp2 .tp-lv-ic, .tp-lv.tp3 .tp-lv-ic { color: var(--green); }
 .tp-lv.spot { border-left-color: var(--text-mute); }
 
 .tp-validity {

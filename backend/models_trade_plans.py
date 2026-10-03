@@ -28,7 +28,7 @@ def _utcnow() -> datetime:
 
 # How a plan can end up. PENDING: issued, price has not entered the zone.
 # ACTIVE: price traded into/through the entry zone. Then one of the terminals.
-STATUSES = ("PENDING", "ACTIVE", "TP1_HIT", "TP2_HIT", "SL_HIT",
+STATUSES = ("PENDING", "ACTIVE", "TP1_HIT", "TP2_HIT", "TP3_HIT", "SL_HIT",
             "EXPIRED", "INVALIDATED")
 
 
@@ -56,6 +56,7 @@ class TradePlan(Base):
     stop = Column(Float, nullable=True)
     tp1 = Column(Float, nullable=True)
     tp2 = Column(Float, nullable=True)
+    tp3 = Column(Float, nullable=True)
     reward_risk = Column(Float, nullable=True)
 
     read = Column(Text, nullable=True)
@@ -77,7 +78,7 @@ class TradePlan(Base):
 
 
 # The kinds of change worth a notification.
-EVENT_TYPES = ("BIAS_FLIP", "NEW_SETUP", "TP1_HIT", "TP2_HIT", "SL_HIT",
+EVENT_TYPES = ("BIAS_FLIP", "NEW_SETUP", "TP1_HIT", "TP2_HIT", "TP3_HIT", "SL_HIT",
                "EXPIRED", "INVALIDATED")
 
 

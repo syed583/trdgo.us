@@ -19,12 +19,13 @@ const STATUS_LABEL: Record<string, string> = {
   ACTIVE: 'In the entry zone',
   TP1_HIT: 'Target 1 hit',
   TP2_HIT: 'Target 2 hit',
+  TP3_HIT: 'Target 3 hit',
   SL_HIT: 'Stopped out',
   EXPIRED: 'Expired untouched',
   INVALIDATED: 'Invalidated',
 };
 const STATUS_TONE: Record<string, string> = {
-  PENDING: 'wait', ACTIVE: 'live', TP1_HIT: 'win', TP2_HIT: 'win',
+  PENDING: 'wait', ACTIVE: 'live', TP1_HIT: 'win', TP2_HIT: 'win', TP3_HIT: 'win',
   SL_HIT: 'loss', EXPIRED: 'flat', INVALIDATED: 'flat',
 };
 
@@ -103,7 +104,7 @@ function verdict(d: any): { tone: string; action: string; detail: string } {
       detail: 'No clear setup right now — the model does not point decisively enough.' };
 
   if (st === 'SL_HIT') return { tone: 'loss', action: 'Stopped out', detail: d.tracking.outcome_note };
-  if (st === 'TP1_HIT' || st === 'TP2_HIT')
+  if (st === 'TP1_HIT' || st === 'TP2_HIT' || st === 'TP3_HIT')
     return { tone: 'win', action: 'Target reached', detail: d.tracking.outcome_note };
   if (st === 'EXPIRED') return { tone: 'flat', action: 'Expired', detail: d.tracking.outcome_note };
   if (st === 'INVALIDATED') return { tone: 'flat', action: 'Invalidated', detail: d.tracking.outcome_note };
@@ -141,7 +142,7 @@ function PriceLadder({ d }: { d: any }) {
   const EPS = 1e-6;
 
   const anchors = Array.from(
-    new Set([d.stop, d.entry?.low, d.entry?.high, d.spot, d.targets?.tp1, d.targets?.tp2]
+    new Set([d.stop, d.entry?.low, d.entry?.high, d.spot, d.targets?.tp1, d.targets?.tp2, d.targets?.tp3]
       .filter((x) => x != null) as number[]),
   ).sort((a, b) => a - b);
   if (anchors.length < 2) return null;
@@ -167,6 +168,7 @@ function PriceLadder({ d }: { d: any }) {
     { v: d.spot, cls: 'spot', label: 'Spot' },
     { v: d.targets.tp1, cls: 'tp', label: 'TP1' },
     { v: d.targets.tp2, cls: 'tp', label: 'TP2' },
+    { v: d.targets.tp3, cls: 'tp', label: 'TP3' },
   ].filter((m) => m.v != null);
 
   return (
@@ -362,6 +364,13 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
                 <div>
                   <div className="tp-lv-l">Target 2</div>
                   <div className="tp-lv-v"><Price v={d.targets.tp2} /></div>
+                </div>
+              </div>
+              <div className="tp-lv tp3">
+                <div className="tp-lv-ic"><Target size={16} /></div>
+                <div>
+                  <div className="tp-lv-l">Target 3</div>
+                  <div className="tp-lv-v"><Price v={d.targets.tp3} /></div>
                 </div>
               </div>
               <div className="tp-lv spot">

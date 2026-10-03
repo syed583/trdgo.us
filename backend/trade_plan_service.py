@@ -36,9 +36,9 @@ EASTERN = ZoneInfo("America/New_York")
 #   dnc  = do-not-chase distance above spot
 #   struct = blend in resistance / call wall / expected move
 HORIZON_PARAMS = {
-    "TODAY":    {"dip": 0.3, "stop": 0.5, "tp1": 0.8, "tp2": 1.5, "dnc": 0.2, "struct": False, "rr": 1.2},
-    "TOMORROW": {"dip": 0.4, "stop": 0.7, "tp1": 1.2, "tp2": 2.2, "dnc": 0.3, "struct": True, "rr": 1.3},
-    "SWING":    {"dip": 0.6, "stop": 0.7, "tp1": 1.5, "tp2": 3.0, "dnc": 0.4, "struct": True, "rr": 1.5},
+    "TODAY":    {"dip": 0.3, "stop": 0.5, "tp1": 0.8, "tp2": 1.5, "tp3": 2.4, "dnc": 0.2, "struct": False, "rr": 1.2},
+    "TOMORROW": {"dip": 0.4, "stop": 0.7, "tp1": 1.2, "tp2": 2.2, "tp3": 3.4, "dnc": 0.3, "struct": True, "rr": 1.3},
+    "SWING":    {"dip": 0.6, "stop": 0.7, "tp1": 1.5, "tp2": 3.0, "tp3": 4.5, "dnc": 0.4, "struct": True, "rr": 1.5},
 }
 RR_MIN = 1.5            # below this the location is poor -- say "wait", don't force it
 ATR_PERIOD = 14
@@ -275,6 +275,7 @@ def get_plan(symbol: str, horizon: str = "SWING", with_read: bool = True) -> dic
         tp1, tp2 = max(tp1_ref), max(tp2_ref)
         if tp2 <= tp1:
             tp2 = tp1 + hp["tp1"] * atr
+        tp3 = max(spot + hp["tp3"] * atr, tp2 + hp["tp1"] * atr)
         risk, reward = entry_mid - stop, tp1 - entry_mid
     else:
         bias = "SHORT"
@@ -295,6 +296,7 @@ def get_plan(symbol: str, horizon: str = "SWING", with_read: bool = True) -> dic
         tp1, tp2 = min(tp1_ref), min(tp2_ref)
         if tp2 >= tp1:
             tp2 = tp1 - hp["tp1"] * atr
+        tp3 = min(spot - hp["tp3"] * atr, tp2 - hp["tp1"] * atr)
         risk, reward = stop - entry_mid, entry_mid - tp1
 
     rr = round(reward / risk, 2) if risk and risk > 0 else None
@@ -310,7 +312,7 @@ def get_plan(symbol: str, horizon: str = "SWING", with_read: bool = True) -> dic
         "do_not_chase": _r(do_not_chase),
         "do_not_chase_label": ("Do not buy above" if long else "Do not sell below"),
         "stop": _r(stop),
-        "targets": {"tp1": _r(tp1), "tp2": _r(tp2)},
+        "targets": {"tp1": _r(tp1), "tp2": _r(tp2), "tp3": _r(tp3)},
         "reward_risk": rr,
         "rr_min": rr_min,
         "status": "OK" if (rr and rr >= rr_min) else "WEAK_SETUP",
@@ -366,6 +368,16 @@ def _ensure_table() -> None:
             from database import engine
             from models_trade_plans import create_all
             create_all(engine)
+            # Lightweight self-migration for columns added after a table exists
+            # (create_all never ALTERs). Safe to run every cold start.
+            try:
+                from sqlalchemy import text
+                with engine.begin() as conn:
+                    conn.execute(text(
+                        "ALTER TABLE trade_plans ADD COLUMN IF NOT EXISTS tp3 "
+                        "DOUBLE PRECISION"))
+            except Exception:  # noqa: BLE001 - older engines / sqlite ignore
+                pass
             _ready = True
 
 
@@ -429,6 +441,8 @@ def _evaluate(row, price: Optional[float]):
         if long:
             if row.stop is not None and price <= row.stop:
                 _close(row, "SL_HIT", f"Price {p} hit the stop {row.stop}.", now)
+            elif row.tp3 is not None and price >= row.tp3:
+                _close(row, "TP3_HIT", f"Price {p} reached target 3 {row.tp3}.", now)
             elif row.tp2 is not None and price >= row.tp2:
                 _close(row, "TP2_HIT", f"Price {p} reached target 2 {row.tp2}.", now)
             elif row.tp1 is not None and price >= row.tp1:
@@ -436,6 +450,8 @@ def _evaluate(row, price: Optional[float]):
         else:
             if row.stop is not None and price >= row.stop:
                 _close(row, "SL_HIT", f"Price {p} hit the stop {row.stop}.", now)
+            elif row.tp3 is not None and price <= row.tp3:
+                _close(row, "TP3_HIT", f"Price {p} reached target 3 {row.tp3}.", now)
             elif row.tp2 is not None and price <= row.tp2:
                 _close(row, "TP2_HIT", f"Price {p} reached target 2 {row.tp2}.", now)
             elif row.tp1 is not None and price <= row.tp1:
@@ -483,7 +499,7 @@ def _serialise(row) -> dict:
         "spot_at_issue": row.spot_at_issue,
         "entry": {"low": row.entry_low, "high": row.entry_high},
         "do_not_chase": row.do_not_chase, "stop": row.stop,
-        "targets": {"tp1": row.tp1, "tp2": row.tp2},
+        "targets": {"tp1": row.tp1, "tp2": row.tp2, "tp3": row.tp3},
         "reward_risk": row.reward_risk,
         "entered": bool(row.entered),
         "last_price": row.last_price, "best_price": row.best_price,
@@ -542,6 +558,7 @@ def _track(plan: dict) -> Optional[dict]:
                 entry_low=plan["entry"]["low"], entry_high=plan["entry"]["high"],
                 do_not_chase=plan.get("do_not_chase"), stop=plan.get("stop"),
                 tp1=plan["targets"]["tp1"], tp2=plan["targets"]["tp2"],
+                tp3=plan["targets"].get("tp3"),
                 reward_risk=plan.get("reward_risk"), read=plan.get("read"),
                 status="PENDING", entered=0, last_price=price, best_price=price,
             )
