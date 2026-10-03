@@ -1176,6 +1176,19 @@ def trade_plan(symbol: str, horizon: str = "SWING") -> dict:
                      market.session_ttl(60, 900))
 
 
+@router.get("/signal-history")
+def signal_history(request: Request, days: int = 10) -> dict:
+    """Last N sessions of Buy/Sell/Neutral per watched stock (grid)."""
+    import signal_history_service as sh
+
+    syms = _watch_symbols(request)
+    if not syms:
+        syms = list(DEFAULT_STRIP)
+    return swr.serve(f"sighist:{','.join(sorted(syms))[:200]}:{days}",
+                     lambda: sh.get_grid(syms, days=days),
+                     market.session_ttl(300, 1800))
+
+
 @router.get("/earnings/trade/{symbol}")
 def earnings_trade(symbol: str) -> dict:
     """Combined Earnings Trade summary (equity + options + calendar + strategy)."""

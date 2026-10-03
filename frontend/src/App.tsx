@@ -16,6 +16,7 @@ const EarningsPage = lazy(() => import('./pages/EarningsPage'));
 const OptionsFlowPage = lazy(() => import('./pages/OptionsFlowPage'));
 const OiBuildupPage = lazy(() => import('./pages/OiBuildupPage'));
 const TradePlanPage = lazy(() => import('./pages/TradePlanPage'));
+const SignalHistoryPage = lazy(() => import('./pages/SignalHistoryPage'));
 const EarningsEquityPage = lazy(() => import('./pages/EarningsEquityPage'));
 const EarningsOptionsPage = lazy(() => import('./pages/EarningsOptionsPage'));
 const EarningsTradePage = lazy(() => import('./pages/EarningsTradePage'));
@@ -273,6 +274,7 @@ function Shell() {
 
           {/* Signals now live inside the Trade Plan screen. */}
           <Route path="/signals" element={<Navigate to={`/trade-plan/${DEFAULT_SYMBOL}${location.search}`} replace />} />
+          <Route path="/signal-history" element={<SignalHistoryPage ctx={ctx} />} />
 
           <Route path="/earnings-trade" element={<EarningsTradePage ctx={ctx} />} />
           <Route path="/earnings-trade/:symbol" element={<EarningsTradePage ctx={ctx} />} />

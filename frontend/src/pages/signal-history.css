@@ -1,0 +1,42 @@
+/* Signal History grid. */
+.sh-legend { display: flex; gap: 18px; margin-bottom: 14px; font-size: 12px; color: var(--text-mute); }
+.sh-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sh-dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.sh-dot.buy { background: var(--green); }
+.sh-dot.sell { background: var(--red); }
+.sh-dot.neutral { background: var(--amber); }
+.sh-dot.none { background: var(--panel-2); border: 1px solid var(--border); }
+
+.sh-empty {
+  text-align: center; color: var(--text-mute); font-size: 13px; padding: 44px 20px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r);
+}
+.sh-table-wrap {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--r); overflow-x: auto;
+}
+.sh-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.sh-table th {
+  font-weight: 500; color: var(--text-mute); font-size: 11px; padding: 10px 8px;
+  border-bottom: 1px solid var(--border); white-space: nowrap; text-align: center;
+}
+.sh-sym-h { text-align: left !important; position: sticky; left: 0; background: var(--panel); }
+.sh-latest-h { color: var(--text-dim); }
+.sh-table td { padding: 6px 8px; border-bottom: 1px solid var(--border-2, var(--border)); text-align: center; }
+.sh-sym {
+  text-align: left; font-weight: 700; color: var(--text); cursor: pointer;
+  position: sticky; left: 0; background: var(--panel); font-family: var(--font);
+}
+.sh-sym:hover { color: var(--blue); }
+.sh-cell { }
+.sh-chip {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: var(--r-sm); font-size: 11px;
+  font-weight: 700; font-family: var(--mono);
+}
+.sh-chip.buy { background: var(--green-bg); color: var(--green); }
+.sh-chip.sell { background: var(--red-bg); color: var(--red); }
+.sh-chip.neutral { background: var(--amber-bg); color: var(--amber); }
+.sh-chip.none { background: var(--panel-2); color: var(--text-mute); }
+.sh-chip.strong { width: 26px; height: 26px; font-size: 12px; box-shadow: 0 0 0 1.5px currentColor inset; }
+.sh-foot { font-size: 11px; color: var(--text-mute); padding: 10px 12px; margin: 0; }

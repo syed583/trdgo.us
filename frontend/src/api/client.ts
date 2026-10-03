@@ -652,6 +652,8 @@ export const api2 = {
     request<any>(`/api/earnings/options/${encodeURIComponent(symbol)}`, s),
   earningsAlerts: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/earnings/alerts/${encodeURIComponent(symbol)}`, s),
+  signalHistory: (days = 10, s?: AbortSignal) =>
+    request<any>(`/api/signal-history?days=${days}`, s),
   signals: (limit = 60, s?: AbortSignal) =>
     request<any>(`/api/signals?limit=${limit}`, s),
   signalsUnread: (s?: AbortSignal) => request<any>('/api/signals/unread', s),

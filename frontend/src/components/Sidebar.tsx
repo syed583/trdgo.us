@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import {
-  Activity, Brain, CalendarDays, Crosshair, Gauge, Layers, LineChart, Users,
+  Activity, Brain, CalendarDays, Crosshair, Gauge, History, Layers, LineChart, Users,
   LayoutDashboard, ListOrdered, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
   Scale, Settings, Sparkles, Star, Target, TrendingUp, UserCog, Waves, Waypoints, X,
 } from 'lucide-react';
@@ -35,6 +35,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/ai-insights', label: 'Analysis', icon: <Brain size={S} /> },
     { to: '/ai-trade', label: 'Trdgo Stock', icon: <Sparkles size={S} /> },
     { to: '/trade-plan', label: 'Trade Plan', icon: <Crosshair size={S} /> },
+    { to: '/signal-history', label: 'Signal History', icon: <History size={S} /> },
     { to: '/model-performance', label: 'Analysis Based', icon: <Target size={S} /> },
     { to: '/peers', label: 'Sector Comparison', icon: <Scale size={S} /> },
   ] },
