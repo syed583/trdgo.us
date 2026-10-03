@@ -295,6 +295,33 @@ def _start_signal_scanner() -> None:
 
 
 @app.on_event("startup")
+def _warm_earnings_universe() -> None:
+    """
+    Pre-compute the earnings decision for the upcoming-earnings universe so the
+    Earnings Trade list is coloured instantly. Runs shortly after boot, then
+    every ~30 min, in the background.
+    """
+    import threading
+    import time
+
+    def loop() -> None:
+        time.sleep(25)
+        while True:
+            try:
+                import uw_earnings_calendar as uwcal
+                import signal_history_service as sh
+                rows = (uwcal.calendar(days=21) or {}).get("rows") or []
+                syms = sorted({r.get("symbol", "").upper()
+                               for r in rows if r.get("symbol")})
+                sh.warm_earnings(syms)
+            except Exception:  # noqa: BLE001
+                pass
+            time.sleep(1800)
+
+    threading.Thread(target=loop, name="earnings-warmer", daemon=True).start()
+
+
+@app.on_event("startup")
 def _warm_default_strip() -> None:
     """
     Start scoring the default ticker basket as soon as the server is up.

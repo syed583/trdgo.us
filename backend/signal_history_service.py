@@ -144,12 +144,17 @@ def warm_earnings(symbols: list[str]) -> None:
     try:
         import swr
         import earnings_equity_service as eq
-        for sym in [s.upper() for s in (symbols or []) if s][:60]:
+        from concurrent.futures import ThreadPoolExecutor
+
+        def one(sym: str) -> None:
             try:
-                swr.serve(f"earn:equity:{sym}",
-                          lambda s=sym: eq.get_analysis(s), 1800.0)
+                swr.serve(f"earn:equity:{sym}", lambda: eq.get_analysis(sym), 1800.0)
             except Exception:  # noqa: BLE001
-                continue
+                pass
+
+        targets = [s.upper() for s in (symbols or []) if s][:80]
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            list(pool.map(one, targets))
     except Exception:  # noqa: BLE001
         pass
 
