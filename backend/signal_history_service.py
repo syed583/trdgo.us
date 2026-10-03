@@ -115,6 +115,45 @@ def latest_signals(symbols: list[str], compute_missing: bool = True) -> dict:
     return {"status": "OK", "signals": out, "source": SOURCE}
 
 
+def earnings_signals(symbols: list[str]) -> dict:
+    """
+    {symbol: BUY/SELL/NEUTRAL} from the EARNINGS equity engine's decision -- the
+    same call shown on the Earnings Trade screen -- read from its cache so the
+    list colour matches the detail page. Uncached symbols are reported as missing
+    for the caller to warm in the background.
+    """
+    syms = [s.upper() for s in (symbols or []) if s]
+    out: dict[str, str] = {}
+    missing: list[str] = []
+    try:
+        import swr
+        for sym in syms:
+            v = swr.peek(f"earn:equity:{sym}")
+            dec = (v or {}).get("decision") if isinstance(v, dict) else None
+            if dec:
+                out[sym] = "BUY" if "BUY" in dec else "SELL" if "SELL" in dec else "NEUTRAL"
+            else:
+                missing.append(sym)
+    except Exception:  # noqa: BLE001
+        missing = syms
+    return {"status": "OK", "signals": out, "missing": missing, "source": SOURCE}
+
+
+def warm_earnings(symbols: list[str]) -> None:
+    """Compute+cache the earnings equity decision for symbols (background use)."""
+    try:
+        import swr
+        import earnings_equity_service as eq
+        for sym in [s.upper() for s in (symbols or []) if s][:60]:
+            try:
+                swr.serve(f"earn:equity:{sym}",
+                          lambda s=sym: eq.get_analysis(s), 1800.0)
+            except Exception:  # noqa: BLE001
+                continue
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def get_grid(symbols: list[str], days: int = 10,
              end: Optional[str] = None, include_live: bool = False) -> dict:
     """

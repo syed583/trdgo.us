@@ -26,7 +26,7 @@ export default function UpcomingEarnings({
   const symKey = rows.map((r) => r.symbol).sort().join(',');
   const sig = useApi<any>(
     (s) => (demo || !rows.length ? Promise.resolve(null)
-      : api2.signalsLatest(rows.map((r) => r.symbol), s)),
+      : api2.signalsLatest(rows.map((r) => r.symbol), 'earnings', s)),
     [demo, symKey],
     // Poll so cards colour in as the backend captures the missing symbols.
     { refreshMs: demo ? undefined : 15_000 },

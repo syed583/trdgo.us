@@ -652,8 +652,9 @@ export const api2 = {
     request<any>(`/api/earnings/options/${encodeURIComponent(symbol)}`, s),
   earningsAlerts: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/earnings/alerts/${encodeURIComponent(symbol)}`, s),
-  signalsLatest: (symbols: string[], s?: AbortSignal) =>
-    request<any>(`/api/signals/latest?symbols=${encodeURIComponent(symbols.join(','))}`, s),
+  signalsLatest: (symbols: string[], source = 'directional', s?: AbortSignal) =>
+    request<any>(`/api/signals/latest?symbols=${encodeURIComponent(symbols.join(','))}`
+      + `&source=${source}`, s),
   signalHistory: (days = 10, end = '', s?: AbortSignal) =>
     request<any>(`/api/signal-history?days=${days}`
       + (end ? `&end=${encodeURIComponent(end)}` : ''), s),

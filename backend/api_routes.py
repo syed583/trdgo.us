@@ -1177,26 +1177,37 @@ def trade_plan(symbol: str, horizon: str = "SWING") -> dict:
 
 
 @router.get("/signals/latest")
-def signals_latest(symbols: str = "") -> dict:
-    """Latest Buy/Sell/Neutral per symbol (for coloring lists)."""
+def signals_latest(symbols: str = "", source: str = "directional") -> dict:
+    """
+    Latest Buy/Sell/Neutral per symbol, for coloring lists. source="earnings"
+    uses the earnings-equity decision (matches the Earnings Trade screen); the
+    default uses the general directional decision. Missing symbols are warmed in
+    the background so later polls fill in.
+    """
     import signal_history_service as sh
+    import threading
 
     syms = [s.strip().upper() for s in (symbols or "").split(",") if s.strip()][:120]
-    # Fast path: return whatever signals we already have (snapshots), cached
-    # briefly. Anything missing is captured in the background and shows up on the
-    # next poll, so the request never blocks on dozens of live computes.
-    out = swr.serve(f"siglatest:{','.join(sorted(syms))[:300]}",
-                    lambda: sh.latest_signals(syms, compute_missing=False),
-                    20.0)
-    missing = [s for s in syms if s not in (out.get("signals") or {})]
-    if missing:
-        try:
-            import snapshot_service as snap
-            import threading
-            threading.Thread(target=lambda: snap.capture(missing[:60]),
+
+    if source == "earnings":
+        out = swr.serve(f"siglatest:earn:{','.join(sorted(syms))[:300]}",
+                        lambda: sh.earnings_signals(syms), 20.0)
+        missing = out.get("missing") or []
+        if missing:
+            threading.Thread(target=lambda: sh.warm_earnings(missing),
                              daemon=True).start()
-        except Exception:  # noqa: BLE001
-            pass
+    else:
+        out = swr.serve(f"siglatest:{','.join(sorted(syms))[:300]}",
+                        lambda: sh.latest_signals(syms, compute_missing=False), 20.0)
+        missing = [s for s in syms if s not in (out.get("signals") or {})]
+        if missing:
+            try:
+                import snapshot_service as snap
+                threading.Thread(target=lambda: snap.capture(missing[:60]),
+                                 daemon=True).start()
+            except Exception:  # noqa: BLE001
+                pass
+
     out = dict(out)
     out["pending"] = len(missing)
     return out

@@ -174,6 +174,22 @@ def serve(key: str, fn: Callable[[], Any], fresh_for: float) -> Any:
     return {"status": "LOADING", "detail": "Still building; try again shortly."}
 
 
+def peek(key: str) -> Any:
+    """The held value for ``key`` if present (in-process or DB), without building."""
+    with _lock:
+        held = _values.get(key)
+    if held is not None:
+        return held[1]
+    if db_cache is not None:
+        try:
+            stored = db_cache.get(key)
+        except Exception:  # noqa: BLE001
+            stored = None
+        if stored is not None:
+            return stored[1]
+    return None
+
+
 def register(key: str, fn: Callable[[], Any], fresh_for: float) -> None:
     """Make ``key`` known to the warmer before anyone has asked for it."""
     with _lock:
