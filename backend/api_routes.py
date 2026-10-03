@@ -1182,21 +1182,10 @@ def signals_latest(symbols: str = "") -> dict:
     import signal_history_service as sh
 
     syms = [s.strip().upper() for s in (symbols or "").split(",") if s.strip()][:120]
-    out = swr.serve(f"siglatest:{','.join(sorted(syms))[:300]}",
-                    lambda: sh.latest_signals(syms),
-                    market.session_ttl(120, 1800))
-    # Capture any symbol we have no signal for, in the background, so the list
-    # colors in over the next loads instead of staying grey.
-    missing = [s for s in syms if s not in (out.get("signals") or {})]
-    if missing:
-        try:
-            import snapshot_service as snap
-            import threading
-            threading.Thread(target=lambda: snap.capture(missing[:60]),
-                             daemon=True).start()
-        except Exception:  # noqa: BLE001
-            pass
-    return out
+    # Snapshot first, live decision for the rest, so the whole list colours.
+    return swr.serve(f"siglatest:{','.join(sorted(syms))[:300]}",
+                     lambda: sh.latest_signals(syms, compute_missing=True),
+                     market.session_ttl(180, 1800))
 
 
 @router.get("/signal-history")

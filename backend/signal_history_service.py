@@ -72,11 +72,17 @@ def _live_signals(symbol: str):
         return None, None, None
 
 
-def latest_signals(symbols: list[str]) -> dict:
-    """{symbol: BUY/SELL/NEUTRAL} from each symbol's most recent snapshot."""
+def latest_signals(symbols: list[str], compute_missing: bool = True) -> dict:
+    """
+    {symbol: BUY/SELL/NEUTRAL} for each symbol -- from its most recent snapshot,
+    and (when compute_missing) the live decision for any symbol without one, so a
+    list can be fully coloured. Live reads run in parallel and the whole result
+    is cached by the caller.
+    """
     syms = [s.upper() for s in (symbols or []) if s]
     if not syms:
         return {"status": "OK", "signals": {}, "source": SOURCE}
+    out: dict[str, str] = {}
     try:
         from database import SessionLocal
         from models_snapshots import ScoreSnapshot
@@ -86,15 +92,27 @@ def latest_signals(symbols: list[str]) -> dict:
                              ScoreSnapshot.decision)
                     .filter(ScoreSnapshot.symbol.in_(syms))
                     .order_by(ScoreSnapshot.snapshot_date.desc()).all())
-            out: dict[str, str] = {}
             for sym, _d, dec in rows:
                 if sym not in out:          # first = latest (desc order)
                     out[sym] = _signal(dec)
-            return {"status": "OK", "signals": out, "source": SOURCE}
         finally:
             db.close()
-    except Exception as exc:  # noqa: BLE001
-        return {"status": "ERROR", "detail": type(exc).__name__, "signals": {}}
+    except Exception:  # noqa: BLE001
+        pass
+
+    missing = [s for s in syms if s not in out]
+    if compute_missing and missing:
+        try:
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                for sym, res in zip(missing, pool.map(_live_signals, missing[:80])):
+                    st = res[0]
+                    if st:
+                        out[sym] = st
+        except Exception:  # noqa: BLE001
+            pass
+
+    return {"status": "OK", "signals": out, "source": SOURCE}
 
 
 def get_grid(symbols: list[str], days: int = 10,

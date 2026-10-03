@@ -148,12 +148,36 @@
 .ue-timing { font-size: 10px; color: var(--text-mute); }
 .ue-chev { color: var(--text-mute); }
 
-/* upcoming-earnings cards colored by current signal */
+/* upcoming-earnings cards colored by current signal, with a gentle pulse */
 .ue-row { border-left-width: 4px; }
-.ue-row.sig-buy { border-left-color: var(--green); }
-.ue-row.sig-sell { border-left-color: var(--red); }
-.ue-row.sig-neutral { border-left-color: var(--amber); }
 .ue-row.sig-none { border-left-color: var(--border); }
+.ue-row.sig-buy {
+  border-left-color: var(--green);
+  background: color-mix(in srgb, var(--green) 10%, var(--panel));
+  animation: ue-pulse-buy 1.6s ease-in-out infinite;
+}
+.ue-row.sig-sell {
+  border-left-color: var(--red);
+  background: color-mix(in srgb, var(--red) 10%, var(--panel));
+  animation: ue-pulse-sell 1.6s ease-in-out infinite;
+}
+.ue-row.sig-neutral {
+  border-left-color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 10%, var(--panel));
+  animation: ue-pulse-neutral 1.6s ease-in-out infinite;
+}
 .ue-row.sig-buy .ue-sym { color: var(--green); }
 .ue-row.sig-sell .ue-sym { color: var(--red); }
 .ue-row.sig-neutral .ue-sym { color: var(--amber); }
+@keyframes ue-pulse-buy {
+  50% { box-shadow: 0 0 10px 1px color-mix(in srgb, var(--green) 55%, transparent); }
+}
+@keyframes ue-pulse-sell {
+  50% { box-shadow: 0 0 10px 1px color-mix(in srgb, var(--red) 55%, transparent); }
+}
+@keyframes ue-pulse-neutral {
+  50% { box-shadow: 0 0 10px 1px color-mix(in srgb, var(--amber) 55%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ue-row.sig-buy, .ue-row.sig-sell, .ue-row.sig-neutral { animation: none; }
+}
