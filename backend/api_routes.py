@@ -1182,10 +1182,24 @@ def signals_latest(symbols: str = "") -> dict:
     import signal_history_service as sh
 
     syms = [s.strip().upper() for s in (symbols or "").split(",") if s.strip()][:120]
-    # Snapshot first, live decision for the rest, so the whole list colours.
-    return swr.serve(f"siglatest:{','.join(sorted(syms))[:300]}",
-                     lambda: sh.latest_signals(syms, compute_missing=True),
-                     market.session_ttl(180, 1800))
+    # Fast path: return whatever signals we already have (snapshots), cached
+    # briefly. Anything missing is captured in the background and shows up on the
+    # next poll, so the request never blocks on dozens of live computes.
+    out = swr.serve(f"siglatest:{','.join(sorted(syms))[:300]}",
+                    lambda: sh.latest_signals(syms, compute_missing=False),
+                    20.0)
+    missing = [s for s in syms if s not in (out.get("signals") or {})]
+    if missing:
+        try:
+            import snapshot_service as snap
+            import threading
+            threading.Thread(target=lambda: snap.capture(missing[:60]),
+                             daemon=True).start()
+        except Exception:  # noqa: BLE001
+            pass
+    out = dict(out)
+    out["pending"] = len(missing)
+    return out
 
 
 @router.get("/signal-history")

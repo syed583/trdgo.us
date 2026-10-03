@@ -28,6 +28,8 @@ export default function UpcomingEarnings({
     (s) => (demo || !rows.length ? Promise.resolve(null)
       : api2.signalsLatest(rows.map((r) => r.symbol), s)),
     [demo, symKey],
+    // Poll so cards colour in as the backend captures the missing symbols.
+    { refreshMs: demo ? undefined : 15_000 },
   );
   const signals: Record<string, string> = sig.data?.signals || {};
   const sigClass = (sym: string) =>
