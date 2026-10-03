@@ -52,8 +52,28 @@ def _opt_signal(signals_text: Optional[str]) -> Optional[str]:
         return None
 
 
+def _live_signals(symbol: str):
+    """The current (live) Stock + Options lean, matching the rest of the app."""
+    try:
+        import directional_score_service as dss
+        out = dss.get_directional_score(symbol) or {}
+        stock = _signal(out.get("decision")) if out.get("decision") else None
+        vals = []
+        for s in out.get("signals", []):
+            if (s.get("name") in _OPT_KEYS and s.get("available")
+                    and s.get("bias") is not None):
+                vals.append(float(s["bias"]))
+        opt = None
+        if vals:
+            a = sum(vals) / len(vals)
+            opt = "BUY" if a > 0.15 else "SELL" if a < -0.15 else "NEUTRAL"
+        return stock, opt, out.get("direction_score")
+    except Exception:  # noqa: BLE001
+        return None, None, None
+
+
 def get_grid(symbols: list[str], days: int = 10,
-             end: Optional[str] = None) -> dict:
+             end: Optional[str] = None, include_live: bool = False) -> dict:
     """
     A symbol x last-N-sessions grid of Buy/Sell/Neutral decisions.
 
@@ -130,6 +150,38 @@ def get_grid(symbols: list[str], days: int = 10,
                         "latest_options": next((c["options"] for c in reversed(cells)
                                                 if c["options"]), None),
                     })
+            # When viewing up to today, make the latest column reflect the live
+            # current decision for any symbol that has no fresh snapshot that day,
+            # so the grid agrees with the Trade Plan / analysis screens.
+            if include_live and dates:
+                last_i = len(dates) - 1
+                for row in out_rows:
+                    cell = row["cells"][last_i]
+                    if cell.get("carried") or cell.get("stock") is None:
+                        st, op, sc = _live_signals(row["symbol"])
+                        if st or op:
+                            cell.update({"stock": st or cell.get("stock"),
+                                         "options": op or cell.get("options"),
+                                         "score": sc, "carried": False, "live": True})
+                            if st:
+                                row["latest_stock"] = st
+                            if op:
+                                row["latest_options"] = op
+                # Symbols that had no snapshot at all but now have a live read.
+                have = {r["symbol"] for r in out_rows}
+                for sym in syms:
+                    if sym in have:
+                        continue
+                    st, op, sc = _live_signals(sym)
+                    if st or op:
+                        cells = [{"date": d.isoformat(), "stock": None,
+                                  "options": None, "score": None, "carried": False}
+                                 for d in dates]
+                        cells[-1] = {"date": dates[-1].isoformat(), "stock": st,
+                                     "options": op, "score": sc, "carried": False, "live": True}
+                        out_rows.append({"symbol": sym, "cells": cells, "captured": 0,
+                                         "latest_stock": st, "latest_options": op})
+
             # Most-covered symbols first, so filled rows lead the grid.
             out_rows.sort(key=lambda r: -r["captured"])
 

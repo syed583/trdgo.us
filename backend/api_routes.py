@@ -1182,8 +1182,9 @@ def signal_history(request: Request, days: int = 10, end: str = "") -> dict:
     import signal_history_service as sh
 
     syms = _watch_symbols(request) or list(DEFAULT_STRIP)
-    out = swr.serve(f"sighist:{','.join(sorted(syms))[:200]}:{days}:{end}",
-                    lambda: sh.get_grid(syms, days=days, end=end or None),
+    live = not end   # latest column reflects the live decision when up-to-today
+    out = swr.serve(f"sighist:{','.join(sorted(syms))[:200]}:{days}:{end}:{int(live)}",
+                    lambda: sh.get_grid(syms, days=days, end=end or None, include_live=live),
                     market.session_ttl(300, 1800))
 
     # Watchlist has no snapshots yet: capture it in the background so it fills,
@@ -1196,8 +1197,9 @@ def signal_history(request: Request, days: int = 10, end: str = "") -> dict:
             threading.Thread(target=lambda: snap.capture(syms), daemon=True).start()
         except Exception:  # noqa: BLE001
             pass
-        out = swr.serve(f"sighist:def:{days}:{end}",
-                        lambda: sh.get_grid(list(DEFAULT_STRIP), days=days, end=end or None),
+        out = swr.serve(f"sighist:def:{days}:{end}:{int(live)}",
+                        lambda: sh.get_grid(list(DEFAULT_STRIP), days=days,
+                                            end=end or None, include_live=live),
                         market.session_ttl(300, 1800))
         out["fallback"] = True
     return out
