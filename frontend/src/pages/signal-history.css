@@ -40,3 +40,16 @@
 .sh-chip.none { background: var(--panel-2); color: var(--text-mute); }
 .sh-chip.strong { width: 26px; height: 26px; font-size: 12px; box-shadow: 0 0 0 1.5px currentColor inset; }
 .sh-foot { font-size: 11px; color: var(--text-mute); padding: 10px 12px; margin: 0; }
+
+/* filter controls */
+.sh-controls { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-bottom: 14px; }
+.sh-filter { display: flex; align-items: center; gap: 7px; }
+.sh-filter label { font-size: 11px; color: var(--text-mute); text-transform: uppercase; letter-spacing: 0.03em; }
+.sh-filter select, .sh-filter input {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--r);
+  color: var(--text); padding: 5px 9px; font-size: 12.5px; font-family: var(--font);
+}
+.sh-filter select:focus, .sh-filter input:focus { outline: none; border-color: var(--blue); }
+.sh-clear { background: none; border: none; color: var(--text-mute); cursor: pointer; display: flex; padding: 2px; }
+.sh-clear:hover { color: var(--red); }
+.sh-controls .sh-legend { margin-bottom: 0; margin-left: auto; }

@@ -24,8 +24,14 @@ def _signal(decision: Optional[str]) -> str:
     return "NEUTRAL"
 
 
-def get_grid(symbols: list[str], days: int = 10) -> dict:
-    """A symbol x last-N-sessions grid of Buy/Sell/Neutral decisions."""
+def get_grid(symbols: list[str], days: int = 10,
+             end: Optional[str] = None) -> dict:
+    """
+    A symbol x last-N-sessions grid of Buy/Sell/Neutral decisions.
+
+    `days` is how many sessions to show (max 30); `end` (YYYY-MM-DD) caps the
+    window so the user can look back from a chosen date instead of today.
+    """
     days = max(1, min(int(days or 10), 30))
     syms = [s.upper() for s in (symbols or []) if s]
     if not syms:
@@ -37,10 +43,16 @@ def get_grid(symbols: list[str], days: int = 10) -> dict:
         db = SessionLocal()
         try:
             # The last `days` session dates for which any of these symbols has a
-            # snapshot, newest first -> then shown oldest..newest.
-            date_rows = (db.query(ScoreSnapshot.snapshot_date)
-                         .filter(ScoreSnapshot.symbol.in_(syms))
-                         .distinct()
+            # snapshot (on/before `end` if given), newest first -> shown oldest..newest.
+            dq = (db.query(ScoreSnapshot.snapshot_date)
+                  .filter(ScoreSnapshot.symbol.in_(syms)))
+            if end:
+                from datetime import date as _date
+                try:
+                    dq = dq.filter(ScoreSnapshot.snapshot_date <= _date.fromisoformat(end))
+                except ValueError:
+                    pass
+            date_rows = (dq.distinct()
                          .order_by(ScoreSnapshot.snapshot_date.desc())
                          .limit(days).all())
             dates = sorted({r[0] for r in date_rows})

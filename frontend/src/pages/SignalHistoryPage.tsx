@@ -1,9 +1,13 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { X } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import { PageHead } from './shared';
 import './signal-history.css';
+
+const SESSION_OPTS = [5, 10, 15, 20, 30];
 
 const LABEL: Record<string, string> = { BUY: 'B', SELL: 'S', NEUTRAL: 'N' };
 
@@ -18,10 +22,12 @@ function dayLabel(iso: string): string {
 export default function SignalHistoryPage({ ctx }: { ctx: PageContext }) {
   const { demo } = ctx;
   const navigate = useNavigate();
+  const [sessions, setSessions] = useState(10);
+  const [end, setEnd] = useState('');   // YYYY-MM-DD "up to" date, '' = latest
 
   const q = useApi<any>(
-    (s) => (demo ? Promise.resolve(null) : api2.signalHistory(10, s)),
-    [demo],
+    (s) => (demo ? Promise.resolve(null) : api2.signalHistory(sessions, end, s)),
+    [demo, sessions, end],
     { refreshMs: demo ? undefined : 300_000 },
   );
   const d = q.data;
@@ -36,11 +42,29 @@ export default function SignalHistoryPage({ ctx }: { ctx: PageContext }) {
           <b>Sell</b> or <b>Neutral</b> — for each watched stock. Analysis, not advice.</>}
       />
 
-      <div className="sh-legend">
-        <span><i className="sh-dot buy" /> Buy</span>
-        <span><i className="sh-dot sell" /> Sell</span>
-        <span><i className="sh-dot neutral" /> Neutral</span>
-        <span><i className="sh-dot none" /> No data</span>
+      <div className="sh-controls">
+        <div className="sh-filter">
+          <label>Sessions</label>
+          <select value={sessions} onChange={(e) => setSessions(Number(e.target.value))}>
+            {SESSION_OPTS.map((n) => <option key={n} value={n}>Last {n}</option>)}
+          </select>
+        </div>
+        <div className="sh-filter">
+          <label>Up to date</label>
+          <input type="date" value={end} max={new Date().toISOString().slice(0, 10)}
+            onChange={(e) => setEnd(e.target.value)} />
+          {end && (
+            <button className="sh-clear" onClick={() => setEnd('')} title="Clear date">
+              <X size={13} />
+            </button>
+          )}
+        </div>
+        <div className="sh-legend">
+          <span><i className="sh-dot buy" /> Buy</span>
+          <span><i className="sh-dot sell" /> Sell</span>
+          <span><i className="sh-dot neutral" /> Neutral</span>
+          <span><i className="sh-dot none" /> No data</span>
+        </div>
       </div>
 
       {demo ? (
