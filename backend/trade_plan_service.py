@@ -516,19 +516,10 @@ def _track(plan: dict) -> Optional[dict]:
                         .order_by(TradePlan.issued_at.desc())
                         .first())
 
-            # A fresh, actionable plan whose bias flips the open one retires it.
-            if (open_row is not None and plan.get("status") == "OK"
-                    and plan.get("bias") and open_row.bias != plan["bias"]):
-                old_bias = open_row.bias
-                _close(open_row, "INVALIDATED",
-                       f"Bias flipped to {plan['bias']}; a new plan was issued.",
-                       datetime.now(timezone.utc))
-                _log_event(db, symbol, horizon, "BIAS_FLIP",
-                           f"View changed: {old_bias} → {plan['bias']}.",
-                           from_bias=old_bias, to_bias=plan["bias"], price=price)
-                db.commit()
-                open_row = None
-
+            # An issued plan is fixed: once BUY/SELL is given, its direction and
+            # levels do not change if the model's view flips -- it stays live
+            # until its stop or a target is hit (or its validity window ends).
+            # So a bias flip never retires or re-issues an open plan.
             if open_row is not None:
                 ev = _evaluate(open_row, price)
                 if ev:
