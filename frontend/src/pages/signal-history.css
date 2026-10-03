@@ -70,3 +70,6 @@ tr:not(.sh-rowtop) td { border-bottom: 2px solid var(--border); }
   border: 1px solid var(--amber); border-radius: var(--r); padding: 8px 12px; margin-bottom: 12px;
 }
 .sh-chip.carried { opacity: 0.45; }
+.sh-source { margin: 6px 0 4px; padding-left: 18px; }
+.sh-source li { margin: 2px 0; line-height: 1.45; }
+.sh-foot b { color: var(--text-dim); }

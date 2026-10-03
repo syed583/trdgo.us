@@ -128,8 +128,19 @@ export default function SignalHistoryPage({ ctx }: { ctx: PageContext }) {
               ))}
             </tbody>
           </table>
-          <p className="sh-foot">Each cell is the model's decision that session (click a
-            ticker for its Trade Plan). Built from the app's own daily score snapshots.</p>
+          <div className="sh-foot">
+            <b>Source:</b> real data — nothing fabricated.
+            <ul className="sh-source">
+              <li><b>Daily columns</b> — the model's recorded decision that session
+                (stored score snapshots).</li>
+              <li><b>Latest column</b> — the live current decision, the same one the
+                Trade Plan shows.</li>
+              <li><b>Dimmed cells</b> — a real prior decision carried forward across a
+                gap day (a call holds until it changes).</li>
+              <li><b>Blank ·</b> — no data captured for that stock that day.</li>
+            </ul>
+            Click a ticker for its Trade Plan.
+          </div>
         </div>
       )}
     </div>
