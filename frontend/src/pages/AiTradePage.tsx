@@ -93,7 +93,7 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
     <div className="page">
       <div className="at-head">
         <div>
-          <h1>AI Trade</h1>
+          <h1>Trdgo Stock</h1>
           <p className="at-basis">
             <b>{HORIZON_COPY[horizon].label} outlook.</b>{' '}
             {HORIZON_COPY[horizon].basis}

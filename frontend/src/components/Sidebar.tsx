@@ -33,7 +33,7 @@ interface NavGroup {
 const NAV_GROUPS: NavGroup[] = [
   { heading: 'Analysis', items: [
     { to: '/ai-insights', label: 'Analysis', icon: <Brain size={S} /> },
-    { to: '/ai-trade', label: 'AI Trade', icon: <Sparkles size={S} /> },
+    { to: '/ai-trade', label: 'Trdgo Stock', icon: <Sparkles size={S} /> },
     { to: '/trade-plan', label: 'Trade Plan', icon: <Crosshair size={S} /> },
     { to: '/model-performance', label: 'Model Performance', icon: <Target size={S} /> },
     { to: '/peers', label: 'Peer Comparison', icon: <Scale size={S} /> },
