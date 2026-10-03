@@ -16,7 +16,7 @@ export default function UpcomingEarnings({
   const [q, setQ] = useState('');
 
   const up = useApi<any>(
-    (s) => (demo ? Promise.resolve(null) : api2.earningsUpcoming(21, s)),
+    (s) => (demo ? Promise.resolve(null) : api2.earningsUpcoming(10, s)),
     [demo],
     { refreshMs: demo ? undefined : 300_000 },
   );
@@ -61,7 +61,7 @@ export default function UpcomingEarnings({
             placeholder="Filter ticker or company…" />
         </div>
       </div>
-      <p className="ue-sub">Companies reporting in the next ~3 weeks. Pick one to
+      <p className="ue-sub">Companies reporting in the next ~2 weeks. Pick one to
         score its earnings trade.</p>
 
       {demo ? (

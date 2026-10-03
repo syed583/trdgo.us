@@ -310,7 +310,9 @@ def _warm_earnings_universe() -> None:
             try:
                 import uw_earnings_calendar as uwcal
                 import signal_history_service as sh
-                rows = (uwcal.calendar(days=21) or {}).get("rows") or []
+                # Match the list's window (UpcomingEarnings fetches 10 days) so
+                # the full visible set can realistically be kept warm.
+                rows = (uwcal.calendar(days=10) or {}).get("rows") or []
                 syms = sorted({r.get("symbol", "").upper()
                                for r in rows if r.get("symbol")})
                 sh.warm_earnings(syms)
