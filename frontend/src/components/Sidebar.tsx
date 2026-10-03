@@ -35,8 +35,8 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/ai-insights', label: 'Analysis', icon: <Brain size={S} /> },
     { to: '/ai-trade', label: 'Trdgo Stock', icon: <Sparkles size={S} /> },
     { to: '/trade-plan', label: 'Trade Plan', icon: <Crosshair size={S} /> },
-    { to: '/model-performance', label: 'Model Performance', icon: <Target size={S} /> },
-    { to: '/peers', label: 'Peer Comparison', icon: <Scale size={S} /> },
+    { to: '/model-performance', label: 'Analysis Based', icon: <Target size={S} /> },
+    { to: '/peers', label: 'Sector Comparison', icon: <Scale size={S} /> },
   ] },
   { heading: 'Markets', items: [
     { to: '/market', label: 'Market Overview', icon: <TrendingUp size={S} /> },

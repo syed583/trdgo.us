@@ -96,7 +96,7 @@ export default function ModelPerformancePage({ ctx }: { ctx: PageContext }) {
 
   return (
     <div className="page">
-      <PageHead title={scopeSym ? `Model Performance · ${scopeSym}` : 'Model Performance'}
+      <PageHead title={scopeSym ? `Analysis Based · ${scopeSym}` : 'Analysis Based'}
         subtitle={scopeSym
           ? `${scopeSym}'s own track record — how the model's calls on this stock have played out.`
           : "Does the score actually predict? Hit rate, calibration and per-parameter edge — all measured from the app's own past calls."} />

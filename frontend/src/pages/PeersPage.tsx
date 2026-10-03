@@ -85,7 +85,7 @@ export default function PeersPage({ ctx }: { ctx: PageContext }) {
 
   return (
     <div className="page">
-      <PageHead title={`Peers · ${symbol}`}
+      <PageHead title={`Sector Comparison · ${symbol}`}
         subtitle="How this name stacks up against its sector — score, today's move, IV rank and relative strength vs SPY." />
 
       <Explainer />
