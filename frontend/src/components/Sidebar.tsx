@@ -175,7 +175,7 @@ export default function Sidebar({
         {groups.map((group) => (
           <div className="nav-group" key={group.heading || 'main'}>
             {group.heading && !collapsed && (
-              <div className="nav-group-label">{group.heading}</div>
+              <div className={`nav-group-label${group.heading === 'Earnings & news' ? ' blink' : ''}`}>{group.heading}</div>
             )}
             {group.items.map((item) => (
               <NavLink

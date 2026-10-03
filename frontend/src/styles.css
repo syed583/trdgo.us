@@ -263,6 +263,15 @@ table { border-collapse: collapse; width: 100%; }
   font-size: 11px; font-weight: 600;
   color: var(--text-mute); padding: 6px 9px 3px;
 }
+/* Attention-grabbing pulse for a highlighted group heading. */
+.nav-group-label.blink {
+  color: var(--green); font-weight: 700;
+  animation: nav-blink 1.1s ease-in-out infinite;
+}
+@keyframes nav-blink { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) {
+  .nav-group-label.blink { animation: none; }
+}
 /* Collapsed to icons, a thin divider stands in for the group label. */
 .sidebar.collapsed .nav-group + .nav-group {
   margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
