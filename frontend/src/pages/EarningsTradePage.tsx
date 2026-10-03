@@ -55,7 +55,9 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
 
   const q = useApi<any>(
     (s) => (on ? api2.earningsTrade(symbol, s) : Promise.resolve(null)),
-    [symbol, demo, pathSym], { refreshMs: on ? 60_000 : undefined, enabled: on });
+    // Poll fairly often: a cold build can return a transient LOADING payload,
+    // and the next poll then picks up the finished analysis on screen.
+    [symbol, demo, pathSym], { refreshMs: on ? 15_000 : undefined, enabled: on });
   const chart = useApi<any>(
     (s) => (on ? api.chart(symbol, '3M', s) : Promise.resolve(null)),
     [symbol, demo, pathSym], { enabled: on });
@@ -112,7 +114,10 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
         <div className="ets-empty">Disabled in demo mode.</div>
       ) : q.initialLoading ? (
         <div className="ets-empty">Loading the earnings trade analysis…</div>
-      ) : !d || d.status !== 'OK' ? (
+      ) : !d || d.status === 'LOADING' || d.status === 'DATA_UNAVAILABLE' ? (
+        <div className="ets-empty">Building the earnings trade analysis… this can
+          take a moment for a stock we haven't scored yet.</div>
+      ) : d.status !== 'OK' ? (
         <div className="ets-empty">{d?.detail || 'No analysis available.'}</div>
       ) : (
         <>

@@ -159,6 +159,26 @@ def warm_earnings(symbols: list[str]) -> None:
         pass
 
 
+def warm_trade(symbols: list[str]) -> None:
+    """Pre-build+cache the full Earnings Trade detail so clicking a card is instant."""
+    try:
+        import swr
+        import earnings_trade_service as ets
+        from concurrent.futures import ThreadPoolExecutor
+
+        def one(sym: str) -> None:
+            try:
+                swr.serve(f"earn:trade:{sym}", lambda: ets.get_summary(sym), 1800.0)
+            except Exception:  # noqa: BLE001
+                pass
+
+        targets = [s.upper() for s in (symbols or []) if s][:80]
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            list(pool.map(one, targets))
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def get_grid(symbols: list[str], days: int = 10,
              end: Optional[str] = None, include_live: bool = False) -> dict:
     """

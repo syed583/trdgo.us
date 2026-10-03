@@ -315,7 +315,12 @@ def _warm_earnings_universe() -> None:
                 rows = (uwcal.calendar(days=10) or {}).get("rows") or []
                 syms = sorted({r.get("symbol", "").upper()
                                for r in rows if r.get("symbol")})
+                # Color the cards (earn:equity decision)...
                 sh.warm_earnings(syms)
+                # ...and pre-build each card's detail (earn:trade) so a click
+                # returns instantly instead of paying a cold ~multi-engine build
+                # that can exceed the first-request wait and show "No analysis".
+                sh.warm_trade(syms)
             except Exception:  # noqa: BLE001
                 pass
             time.sleep(1800)
