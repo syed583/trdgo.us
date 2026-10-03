@@ -242,3 +242,25 @@
 
 .tp-spin { animation: tp-rotate 0.9s linear infinite; }
 @keyframes tp-rotate { to { transform: rotate(360deg); } }
+
+/* enter -> exit summary band */
+.tp-enterexit {
+  display: flex; align-items: stretch; gap: 10px; flex-wrap: wrap;
+  margin: 4px 0 16px;
+}
+.tp-ee {
+  flex: 1; min-width: 120px; display: flex; flex-direction: column; gap: 3px;
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-left-width: 3px; border-radius: var(--r); padding: 9px 12px;
+}
+.tp-ee-l { font-size: 10.5px; color: var(--text-mute); text-transform: uppercase; letter-spacing: 0.03em; }
+.tp-ee-v { font-size: 16px; font-weight: 700; font-family: var(--mono); color: var(--text); }
+.tp-ee.enter { border-left-color: var(--blue); }
+.tp-ee.exit-win { border-left-color: var(--green); }
+.tp-ee.exit-win .tp-ee-v { color: var(--green); }
+.tp-ee.exit-loss { border-left-color: var(--red); }
+.tp-ee.exit-loss .tp-ee-v { color: var(--red); }
+.tp-ee.exit-time { border-left-color: var(--text-mute); }
+.tp-ee.exit-time .tp-ee-v { font-size: 13px; font-family: var(--font); font-weight: 600; }
+.tp-ee-arrow { align-self: center; color: var(--text-mute); font-size: 18px; }
+@media (max-width: 720px) { .tp-ee-arrow { display: none; } }

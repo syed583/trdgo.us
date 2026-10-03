@@ -330,6 +330,29 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
 
             <PriceLadder d={d} />
 
+            {/* Clear enter -> exit summary. */}
+            <div className="tp-enterexit">
+              <div className="tp-ee enter">
+                <span className="tp-ee-l">Enter ({long ? 'Buy' : 'Sell'})</span>
+                <span className="tp-ee-v">
+                  <Price v={d.entry?.low} /> – <Price v={d.entry?.high} />
+                </span>
+              </div>
+              <span className="tp-ee-arrow">→</span>
+              <div className="tp-ee exit-win">
+                <span className="tp-ee-l">Exit — profit (target)</span>
+                <span className="tp-ee-v"><Price v={d.targets?.tp1} /></span>
+              </div>
+              <div className="tp-ee exit-loss">
+                <span className="tp-ee-l">Exit — loss (stop)</span>
+                <span className="tp-ee-v"><Price v={d.stop} /></span>
+              </div>
+              <div className="tp-ee exit-time">
+                <span className="tp-ee-l">Exit — time</span>
+                <span className="tp-ee-v">{d.validity?.label || '--'}</span>
+              </div>
+            </div>
+
             <div className="tp-levels">
               <div className="tp-lv entry">
                 <div className="tp-lv-ic"><LogIn size={16} /></div>
