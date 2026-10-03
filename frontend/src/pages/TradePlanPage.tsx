@@ -213,7 +213,21 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
     [symbol, demo],
     { refreshMs: demo ? undefined : 6_000 },
   );
+  // Model track record so the plan carries how reliable the signal has been:
+  // this ticker's scorecard, falling back to the overall one for this horizon.
+  const symCard = useApi<any>(
+    (s) => (demo ? Promise.resolve(null) : api2.callScorecard(horizon, 120, symbol, s)),
+    [symbol, horizon, demo],
+  );
+  const allCard = useApi<any>(
+    (s) => (demo ? Promise.resolve(null) : api2.callScorecard(horizon, 120, undefined, s)),
+    [horizon, demo],
+  );
   const q = quote.data;
+  const sym = symCard.data?.overall;
+  const scope = (sym && sym.calls > 0) ? { d: symCard.data, label: symbol }
+    : { d: allCard.data, label: 'all tracked' };
+  const track = scope.d?.overall;
   const live = !!q && q.market?.is_open === true;
 
   const d = plan.data;
@@ -352,6 +366,34 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
                 <span className="tp-ee-v">{d.validity?.label || '--'}</span>
               </div>
             </div>
+
+            {/* Model track record: how this score has actually performed. */}
+            {track && track.calls > 0 && (
+              <div className="tp-model">
+                <span className="tp-model-ic"><Target size={14} /></span>
+                <div className="tp-model-stat">
+                  <span className="tp-model-l">Model hit rate</span>
+                  <span className={`tp-model-v ${(track.hit_rate ?? 0) >= 55 ? 'pos'
+                    : (track.hit_rate ?? 0) <= 45 ? 'neg' : ''}`}>
+                    {track.hit_rate != null ? `${num(track.hit_rate, 0)}%` : '--'}
+                  </span>
+                </div>
+                <div className="tp-model-stat">
+                  <span className="tp-model-l">Avg excess vs SPY</span>
+                  <span className={`tp-model-v ${(track.avg_excess_pct ?? 0) >= 0 ? 'pos' : 'neg'}`}>
+                    {track.avg_excess_pct != null
+                      ? `${track.avg_excess_pct >= 0 ? '+' : ''}${num(track.avg_excess_pct, 2)}%` : '--'}
+                  </span>
+                </div>
+                <div className="tp-model-stat">
+                  <span className="tp-model-l">Sample</span>
+                  <span className="tp-model-v">{track.calls} {scope.label} · {horizon}</span>
+                </div>
+                {!scope.d?.enough_data && (
+                  <span className="tp-model-note">limited sample</span>
+                )}
+              </div>
+            )}
 
             <div className="tp-levels">
               <div className="tp-lv entry">
