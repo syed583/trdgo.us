@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   ArrowUpRight, ArrowDownRight, RefreshCw, Info, ShieldAlert,
-  Target, LogIn, Ban, Clock,
+  Target, LogIn, Ban, Clock, Plus, X, Star,
 } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api, api2 } from '../api/client';
@@ -195,7 +196,29 @@ function PriceLadder({ d }: { d: any }) {
 
 export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
   const { symbol, demo } = ctx;
+  const navigate = useNavigate();
   const [horizon, setHorizon] = useState('SWING');
+  const [addQ, setAddQ] = useState('');
+
+  // Personal watchlist shown as a quick-switch bar at the top: pick a ticker to
+  // load its plan, or add more. Every signed-in user manages their own.
+  const wl = useApi<any>((s) => (demo ? Promise.resolve(null) : api2.watchlist(s)), [demo]);
+  const wlRows: any[] = wl.data?.rows || [];
+  const goSym = (s: string) => navigate(`/trade-plan/${s.toUpperCase()}${ctx.search}`);
+  const addStock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const t = addQ.trim().toUpperCase();
+    if (!t) return;
+    setAddQ('');
+    try { await api2.watchlistAdd(t); } catch { /* ignore */ }
+    wl.refresh();
+    goSym(t);
+  };
+  const removeStock = async (e: React.MouseEvent, s: string) => {
+    e.stopPropagation();
+    try { await api2.watchlistRemove(s); } catch { /* ignore */ }
+    wl.refresh();
+  };
 
   const plan = useApi<any>(
     (s) => (demo ? Promise.resolve(null) : api2.tradePlan(symbol, horizon, s)),
@@ -263,6 +286,38 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
           reward:risk those levels imply. <b>Analysis, not advice.</b></>}
         right={controls}
       />
+
+      {!demo && (
+        <div className="tp-watchlist">
+          <span className="tp-wl-icon"><Star size={14} /> Watchlist</span>
+          <div className="tp-wl-chips">
+            {wlRows.map((r) => (
+              <button key={r.symbol}
+                className={`tp-wl-chip ${r.symbol === symbol ? 'active' : ''}`}
+                onClick={() => goSym(r.symbol)} title={`Open ${r.symbol} plan`}>
+                <span className="tp-wl-sym">{r.symbol}</span>
+                {r.change_percent != null && (
+                  <span className={`tp-wl-chg ${r.change_percent >= 0 ? 'pos' : 'neg'}`}>
+                    {r.change_percent >= 0 ? '+' : ''}{num(r.change_percent, 2)}%
+                  </span>
+                )}
+                <span className="tp-wl-x" onClick={(e) => removeStock(e, r.symbol)}
+                  title={`Remove ${r.symbol}`}><X size={11} /></span>
+              </button>
+            ))}
+            {!wlRows.length && !wl.loading && (
+              <span className="tp-wl-empty">No stocks yet — add one →</span>
+            )}
+          </div>
+          <form className="tp-wl-add" onSubmit={addStock}>
+            <input value={addQ} onChange={(e) => setAddQ(e.target.value)}
+              placeholder="Add ticker…" aria-label="Add ticker to watchlist" />
+            <button type="submit" aria-label="Add" title="Add to watchlist">
+              <Plus size={14} />
+            </button>
+          </form>
+        </div>
+      )}
 
       {demo ? (
         <div className="tp-empty">Trade Plan is disabled in demo mode.</div>
