@@ -52,6 +52,8 @@ const NAV_GROUPS: NavGroup[] = [
   { heading: 'Earnings & news', items: [
     { to: '/earnings-calendar', label: 'Earnings Calendar', icon: <CalendarDays size={S} /> },
     { to: '/earnings-trade', label: 'Earnings Trade', icon: <Gauge size={S} /> },
+    { to: '/earnings-stock-history', label: 'Stock History', icon: <History size={S} /> },
+    { to: '/earnings-options-history', label: 'Options History', icon: <ListOrdered size={S} /> },
     { to: '/news', label: 'News & Sentiment', icon: <Newspaper size={S} /> },
   ] },
   { heading: 'Lists', items: [

@@ -262,6 +262,23 @@ def earnings_upcoming(days: int = 14, start: str = "") -> dict:
                      lambda: uwcal.calendar(start=start or None, days=days), 900)
 
 
+@router.get("/earnings/signal-history")
+def earnings_signal_history(kind: str = "stock", days: int = 10, end: str = "") -> dict:
+    """
+    Past Earnings Trade signal per upcoming-earnings name: a symbol x sessions
+    grid of Buy/Sell/Neutral. `kind` is "stock" (the equity call) or "options"
+    (the options positioning lean). Today's column is filled live from cache.
+    """
+    import earnings_signal_history_service as esh
+    import uw_earnings_calendar as uwcal
+
+    k = "options" if kind == "options" else "stock"
+    rows = (uwcal.calendar(days=21) or {}).get("rows") or []
+    syms = sorted({r.get("symbol", "").upper() for r in rows if r.get("symbol")})
+    return swr.serve(f"earnsighist:{k}:{end}:{days}",
+                     lambda: esh.get_grid(syms, k, days, end or None), 60.0)
+
+
 @router.get("/earnings/calendar/context")
 def earnings_calendar_context() -> dict:
     """Counts, sector mix, beat rate and post-earnings moves for the screen."""

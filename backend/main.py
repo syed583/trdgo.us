@@ -345,6 +345,33 @@ def _warm_earnings_universe() -> None:
 
 
 @_bg
+def _capture_earnings_signals() -> None:
+    """
+    Record the Earnings Trade signal (stock + options lean) for the upcoming
+    universe once a session, so the Stock/Options History tabs accumulate a
+    record. Reads from the warmed earnings cache, so it runs after the warmer.
+    """
+    import threading
+    import time
+
+    def loop() -> None:
+        time.sleep(120)  # let the earnings warmer populate the cache first
+        while True:
+            try:
+                import uw_earnings_calendar as uwcal
+                import earnings_signal_history_service as esh
+                rows = (uwcal.calendar(days=21) or {}).get("rows") or []
+                syms = sorted({r.get("symbol", "").upper()
+                               for r in rows if r.get("symbol")})
+                esh.capture(syms)
+            except Exception:  # noqa: BLE001
+                pass
+            time.sleep(6 * 3600)
+
+    threading.Thread(target=loop, name="earnings-signal-capture", daemon=True).start()
+
+
+@_bg
 def _warm_default_strip() -> None:
     """
     Start scoring the default ticker basket as soon as the server is up.
