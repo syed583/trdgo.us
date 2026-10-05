@@ -213,16 +213,31 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
               <div className="ets-em-cur">Current ${em.current != null ? num(em.current, 2) : '--'}</div>
             </div>
 
-            <div className="ets-card">
-              <div className="ets-card-h"><span><CalendarDays size={15} /> Earnings Calendar</span></div>
-              <div className="ets-cal-date"><CalendarDays size={14} /> {earn.label || earn.date || '—'}</div>
-              <div className="ets-cal-time">{earn.time || ''}</div>
-              <div className="ets-timeline">
-                {['Today', '7d before', `Earnings`, '1d after'].map((t, i) => (
-                  <div key={t} className={`ets-tl-step ${i === 2 ? 'active' : ''}`}>
-                    <span className="ets-tl-dot" /><span className="ets-tl-l">{t}</span>
-                  </div>
-                ))}
+            <div className="ets-card ets-alerts-card">
+              <div className="ets-card-h">
+                <span><AlertTriangle size={15} /> News &amp; Risk Alerts</span>
+                {alerts.data?.counts && (
+                  <span className="ets-badge sell">
+                    {(alerts.data.counts.RED || 0) + (alerts.data.counts.AMBER || 0)} alerts
+                  </span>
+                )}
+              </div>
+              <div className="ets-alerts">
+                {(alerts.data?.alerts || []).filter((a: any) => a.severity !== 'GREY').slice(0, 4)
+                  .map((a: any, i: number) => (
+                    <div key={i} className="ets-alert">
+                      <span className={`ets-alert-tag ${a.severity === 'RED' ? 'red' : 'amber'}`}>
+                        {a.severity === 'RED' ? 'High' : 'Medium'}
+                      </span>
+                      <div>
+                        <div className="ets-alert-t">{a.title}</div>
+                        <div className="ets-alert-d">{a.date || a.source || ''}</div>
+                      </div>
+                    </div>
+                  ))}
+                {!(alerts.data?.alerts || []).some((a: any) => a.severity !== 'GREY') && (
+                  <div className="ets-empty-sm">No high-impact alerts.</div>
+                )}
               </div>
             </div>
           </div>
@@ -308,31 +323,16 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
               </ul>
             </div>
 
-            <div className="ets-card ets-alerts-card">
-              <div className="ets-card-h">
-                <span><AlertTriangle size={15} /> News &amp; Risk Alerts</span>
-                {alerts.data?.counts && (
-                  <span className="ets-badge sell">
-                    {(alerts.data.counts.RED || 0) + (alerts.data.counts.AMBER || 0)} alerts
-                  </span>
-                )}
-              </div>
-              <div className="ets-alerts">
-                {(alerts.data?.alerts || []).filter((a: any) => a.severity !== 'GREY').slice(0, 4)
-                  .map((a: any, i: number) => (
-                    <div key={i} className="ets-alert">
-                      <span className={`ets-alert-tag ${a.severity === 'RED' ? 'red' : 'amber'}`}>
-                        {a.severity === 'RED' ? 'High' : 'Medium'}
-                      </span>
-                      <div>
-                        <div className="ets-alert-t">{a.title}</div>
-                        <div className="ets-alert-d">{a.date || a.source || ''}</div>
-                      </div>
-                    </div>
-                  ))}
-                {!(alerts.data?.alerts || []).some((a: any) => a.severity !== 'GREY') && (
-                  <div className="ets-empty-sm">No high-impact alerts.</div>
-                )}
+            <div className="ets-card">
+              <div className="ets-card-h"><span><CalendarDays size={15} /> Earnings Calendar</span></div>
+              <div className="ets-cal-date"><CalendarDays size={14} /> {earn.label || earn.date || '—'}</div>
+              <div className="ets-cal-time">{earn.time || ''}</div>
+              <div className="ets-timeline">
+                {['Today', '7d before', `Earnings`, '1d after'].map((t, i) => (
+                  <div key={t} className={`ets-tl-step ${i === 2 ? 'active' : ''}`}>
+                    <span className="ets-tl-dot" /><span className="ets-tl-l">{t}</span>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
