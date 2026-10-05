@@ -1194,7 +1194,12 @@ def signals_latest(symbols: str = "", source: str = "directional") -> dict:
                         lambda: sh.earnings_signals(syms), 20.0)
         missing = out.get("missing") or []
         if missing:
-            threading.Thread(target=lambda: sh.warm_earnings(missing),
+            # Warm only a small batch per poll so a single page open does not
+            # spawn ~200 heavy computes at once and starve the server. The page
+            # polls every 15s, so successive polls warm the next batch and the
+            # cards colour in waves while staying responsive.
+            batch = missing[:24]
+            threading.Thread(target=lambda: sh.warm_earnings(batch),
                              daemon=True).start()
     else:
         out = swr.serve(f"siglatest:{','.join(sorted(syms))[:300]}",

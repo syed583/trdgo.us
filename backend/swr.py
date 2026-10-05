@@ -190,6 +190,29 @@ def peek(key: str) -> Any:
     return None
 
 
+def peek_many(keys: list[str]) -> dict[str, Any]:
+    """
+    Held values for many keys without building -- in-process first, then any
+    still-missing keys in a SINGLE DB read (not one round trip per key).
+    """
+    out: dict[str, Any] = {}
+    ks = [k for k in (keys or []) if k]
+    with _lock:
+        for k in ks:
+            held = _values.get(k)
+            if held is not None:
+                out[k] = held[1]
+    missing = [k for k in ks if k not in out]
+    if missing and db_cache is not None:
+        try:
+            stored = db_cache.get_many(missing)
+        except Exception:  # noqa: BLE001
+            stored = {}
+        for k, (_at, value) in stored.items():
+            out[k] = value
+    return out
+
+
 def register(key: str, fn: Callable[[], Any], fresh_for: float) -> None:
     """Make ``key`` known to the warmer before anyone has asked for it."""
     with _lock:

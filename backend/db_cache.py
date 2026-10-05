@@ -93,6 +93,35 @@ def get(key: str) -> Optional[tuple[float, Any]]:
         db.close()
 
 
+def get_many(keys: list[str]) -> dict[str, tuple[float, Any]]:
+    """
+    The stored (updated_epoch, value) for each key present, in ONE query.
+
+    Reading N keys with ``get`` is N round trips to a remote DB -- colouring a
+    ~200-stock list that way took over a minute. This fetches them all at once.
+    """
+    out: dict[str, tuple[float, Any]] = {}
+    ks = [k for k in (keys or []) if k]
+    if not ks or _disabled() or not _ensure_table():
+        return out
+    db = SessionLocal()
+    try:
+        rows = db.execute(
+            text("SELECT cache_key, value, updated_at FROM swr_cache "
+                 "WHERE cache_key = ANY(:ks)"),
+            {"ks": ks}).all()
+        for k, v, t in rows:
+            try:
+                out[k] = (float(t), json.loads(v))
+            except Exception:  # noqa: BLE001 - skip a single corrupt row
+                pass
+    except Exception:  # noqa: BLE001 - a read miss is just a miss
+        return out
+    finally:
+        db.close()
+    return out
+
+
 def _write(key: str, value: Any, when: float) -> None:
     if not _ensure_table():
         return

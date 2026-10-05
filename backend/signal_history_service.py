@@ -127,8 +127,11 @@ def earnings_signals(symbols: list[str]) -> dict:
     missing: list[str] = []
     try:
         import swr
+        # One bulk read for every symbol -- peeking key-by-key was one DB round
+        # trip per symbol and took >60s for a full ~200-stock list.
+        cached = swr.peek_many([f"earn:equity:{sym}" for sym in syms])
         for sym in syms:
-            v = swr.peek(f"earn:equity:{sym}")
+            v = cached.get(f"earn:equity:{sym}")
             dec = (v or {}).get("decision") if isinstance(v, dict) else None
             if dec:
                 out[sym] = "BUY" if "BUY" in dec else "SELL" if "SELL" in dec else "NEUTRAL"
@@ -157,8 +160,12 @@ def warm_earnings(symbols: list[str]) -> None:
                 pass
 
         # Cover the whole ~3-week upcoming list, not just the soonest names.
+        # Keep the worker count low: each get_analysis is CPU+network heavy, and
+        # too many at once starves the web server so the very page that triggered
+        # the warm times out. Fewer workers = page stays responsive, colors fill
+        # in a bit more gradually.
         targets = [s.upper() for s in (symbols or []) if s][:300]
-        with ThreadPoolExecutor(max_workers=8) as pool:
+        with ThreadPoolExecutor(max_workers=3) as pool:
             list(pool.map(one, targets))
     except Exception:  # noqa: BLE001
         pass
@@ -178,7 +185,7 @@ def warm_trade(symbols: list[str]) -> None:
                 pass
 
         targets = [s.upper() for s in (symbols or []) if s][:80]
-        with ThreadPoolExecutor(max_workers=5) as pool:
+        with ThreadPoolExecutor(max_workers=2) as pool:
             list(pool.map(one, targets))
     except Exception:  # noqa: BLE001
         pass
