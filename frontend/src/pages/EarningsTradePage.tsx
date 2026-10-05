@@ -27,6 +27,10 @@ const SETUP_COLOR = (s: number | null) =>
 const DEC_TONE: Record<string, string> = {
   BUY: 'buy', SELL: 'sell', STRADDLE: 'buy', STRANGLE: 'buy', 'NO TRADE': 'flat',
 };
+// Analyst-estimate lean -> colour: bullish green, bearish red, neutral amber.
+const LEAN_TONE: Record<string, string> = {
+  Bullish: 'buy', Bearish: 'sell', Neutral: 'flat',
+};
 
 function Gauge({ score, label, title }: { score: number | null; label: string; title: string }) {
   const c = SETUP_COLOR(score);
@@ -241,6 +245,28 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
               </div>
             </div>
           </div>
+
+          {/* Forecast: forward-looking analyst estimates (EPS / revenue / guidance). */}
+          {(d.forecast || []).length > 0 && (
+            <div className="ets-row">
+              <div className="ets-card ets-forecast">
+                <div className="ets-card-h">
+                  <span><TrendingUp size={15} /> Forecast · Analyst Estimates</span>
+                </div>
+                <div className="ets-fc-grid">
+                  {d.forecast.map((f: any) => (
+                    <div key={f.name} className="ets-fc-item" title={f.detail || ''}>
+                      <div className="ets-fc-label">{f.label}</div>
+                      <div className={`ets-fc-lean ${f.available ? (LEAN_TONE[f.leaning] || 'flat') : 'na'}`}>
+                        {f.available ? (f.leaning || '—') : 'No data'}
+                      </div>
+                      <div className="ets-fc-pts">{f.available ? f.points_label : ''}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Row 2: price chart / payoff / strategy */}
           <div className="ets-row ets-row-chart">

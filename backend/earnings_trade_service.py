@@ -148,6 +148,19 @@ def get_summary(symbol: str) -> dict:
     # Overall headline decision: the equity call, or the straddle when equity is flat.
     overall = ed if ed in ("BUY", "SELL") else (od if od in ("STRADDLE", "STRANGLE") else "NO TRADE")
 
+    # Forward-looking "forecast": analysts' EPS and revenue estimates plus the
+    # next-quarter guidance, with the recent post-earnings reaction. Taken from
+    # the equity engine already computed above, so the detail page shows the
+    # outlook without paying for a second analysis call.
+    _FC_ORDER = ("eps_estimates", "revenue_estimates", "guidance", "historical_reaction")
+    _by_name = {p.get("name"): p for p in (equity.get("params") or [])}
+    forecast = [
+        {"name": n, "label": p.get("label"), "leaning": p.get("leaning"),
+         "points_label": p.get("points_label"), "available": p.get("available"),
+         "detail": p.get("detail")}
+        for n in _FC_ORDER if (p := _by_name.get(n))
+    ]
+
     return {
         "status": "OK", "symbol": symbol, "source": SOURCE,
         "name": name, "exchange": exchange, "sector": sector,
@@ -165,4 +178,5 @@ def get_summary(symbol: str) -> dict:
         "strategy": strategy,
         "historical_moves": hm,
         "takeaways": takeaways,
+        "forecast": forecast,
     }
