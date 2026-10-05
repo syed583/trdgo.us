@@ -120,6 +120,13 @@
 .at-row.buy .at-decision { background: rgba(33, 208, 122, .14); color: var(--green); }
 .at-row.sell .at-decision { background: rgba(239, 83, 80, .14); color: var(--red); }
 
+/* Colour each row as a box by its side -- a left accent and a faint tint, so a
+   Buy (green) / Sell (red) reads at a glance, matching the earnings cards. */
+.at-row.buy { border-left: 3px solid var(--green); background: rgba(33, 208, 122, .06); }
+.at-row.sell { border-left: 3px solid var(--red); background: rgba(239, 83, 80, .06); }
+.at-row.buy:hover { background: rgba(33, 208, 122, .12); }
+.at-row.sell:hover { background: rgba(239, 83, 80, .12); }
+
 .at-bar {
   height: 7px; border-radius: var(--r-sm); background: var(--panel-2); overflow: hidden;
 }
@@ -153,19 +160,27 @@
    keeps the two columns level instead of one towering over the other and
    pushing the footer far down the page. */
 .at-mini { display: flex; flex-direction: column; max-height: 440px; overflow-y: auto; }
+/* "No edge" and "Withheld" are both do-not-trade reads, so each row is a yellow
+   box: a left accent and a yellow verdict pill, the amber counterpart of the
+   green/red Buy/Sell rows above. */
 .at-mini-row {
   display: grid; align-items: baseline; gap: 8px;
   grid-template-columns: 52px minmax(0, 1fr) 46px;
-  width: 100%; padding: 6px 0; text-align: left;
-  border: 0; border-bottom: 1px solid var(--border);
-  background: none; font: inherit; cursor: pointer;
+  width: 100%; padding: 6px 0 6px 9px; text-align: left;
+  border: 0; border-left: 3px solid var(--amber, #d9a441);
+  border-bottom: 1px solid var(--border);
+  background: rgba(217, 164, 65, .06);
+  font: inherit; cursor: pointer;
 }
 .at-mini-row:last-child { border-bottom: 0; }
+.at-mini-row:hover { background: rgba(217, 164, 65, .12); }
 .at-mini-row:hover b { color: var(--blue); }
 .at-mini-row b { font-size: 13px; font-weight: 750; color: var(--text); }
 .at-mini-call {
-  display: inline-flex; align-items: center; gap: 5px;
-  font-size: 12px; color: var(--text-mute);
+  display: inline-flex; align-items: center; gap: 5px; justify-self: start;
+  padding: 2px 6px; border-radius: var(--r-sm);
+  background: rgba(217, 164, 65, .16); color: var(--amber, #d9a441);
+  font-size: 10px; font-weight: 800; letter-spacing: .2px; white-space: nowrap;
 }
 .at-mini-row em {
   justify-self: end; font-style: normal; font-size: 12px; font-weight: 700;
