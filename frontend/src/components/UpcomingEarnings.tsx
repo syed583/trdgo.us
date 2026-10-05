@@ -5,6 +5,14 @@ import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import './earnings-trade.css';
 
+/** Compact market-cap: $1.2T / $34.5B / $820M. */
+function fmtCap(v: number): string {
+  if (v >= 1e12) return `$${(v / 1e12).toFixed(2)}T`;
+  if (v >= 1e9) return `$${(v / 1e9).toFixed(1)}B`;
+  if (v >= 1e6) return `$${(v / 1e6).toFixed(0)}M`;
+  return `$${Math.round(v)}`;
+}
+
 /**
  * The landing view for the earnings engines: the stocks actually reporting soon.
  * Pick one and it opens that ticker's full analysis on the same engine (`base`).
@@ -86,6 +94,12 @@ export default function UpcomingEarnings({
                     <span className="ue-co">{r.company || ''}</span>
                   </div>
                   <div className="ue-row-r">
+                    {(r.prior_close != null || r.market_cap != null) && (
+                      <span className="ue-quote">
+                        {r.prior_close != null && <b>${Number(r.prior_close).toFixed(2)}</b>}
+                        {r.market_cap != null && <em>{fmtCap(Number(r.market_cap))}</em>}
+                      </span>
+                    )}
                     {r.sector && <span className="ue-sector">{r.sector}</span>}
                     {r.short_label && <span className="ue-timing">{r.short_label}</span>}
                     <ChevronRight size={15} className="ue-chev" />

@@ -146,6 +146,10 @@
 .ue-row-r { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .ue-sector { font-size: 10px; color: var(--text-dim); background: var(--bg-2); padding: 1px 7px; border-radius: var(--r-pill); }
 .ue-timing { font-size: 10px; color: var(--text-mute); }
+/* Last price + market cap, right-aligned, on each upcoming-earnings card. */
+.ue-quote { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; min-width: 56px; }
+.ue-quote b { font-size: 12px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.ue-quote em { font-style: normal; font-size: 10px; color: var(--text-mute); font-variant-numeric: tabular-nums; }
 .ue-chev { color: var(--text-mute); }
 
 /* upcoming-earnings cards colored by current signal, with a gentle pulse */
