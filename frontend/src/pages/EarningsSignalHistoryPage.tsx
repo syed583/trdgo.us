@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
@@ -30,19 +30,24 @@ export default function EarningsSignalHistoryPage({
   const navigate = useNavigate();
   const [sessions, setSessions] = useState(10);
   const [end, setEnd] = useState('');
+  const [query, setQuery] = useState('');
 
-  const q = useApi<any>(
+  const res = useApi<any>(
     (s) => (demo ? Promise.resolve(null) : api2.earningsSignalHistory(kind, sessions, end, s)),
     [demo, kind, sessions, end],
     { refreshMs: demo ? undefined : 120_000 },
   );
-  const d = q.data;
+  const d = res.data;
   const dates: string[] = d?.dates || [];
-  const rows: any[] = d?.rows || [];
+  const allRows: any[] = d?.rows || [];
+  const rows = useMemo(() => {
+    const needle = query.trim().toUpperCase();
+    return needle ? allRows.filter((r) => (r.symbol || '').includes(needle)) : allRows;
+  }, [allRows, query]);
   const what = kind === 'options' ? 'options positioning' : 'equity';
 
   return (
-    <div className="page sh">
+    <div className="page sh esh">
       <PageHead
         title={title}
         subtitle={<>The Earnings Trade {what} call — <b>Buy</b>, <b>Sell</b> or{' '}
@@ -51,6 +56,16 @@ export default function EarningsSignalHistoryPage({
       />
 
       <div className="sh-controls">
+        <div className="sh-filter sh-search">
+          <Search size={13} />
+          <input value={query} onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search ticker…" aria-label="Search ticker" />
+          {query && (
+            <button className="sh-clear" onClick={() => setQuery('')} title="Clear search">
+              <X size={13} />
+            </button>
+          )}
+        </div>
         <div className="sh-filter">
           <label>Sessions</label>
           <select value={sessions} onChange={(e) => setSessions(Number(e.target.value))}>
@@ -77,13 +92,15 @@ export default function EarningsSignalHistoryPage({
 
       {demo ? (
         <div className="sh-empty">Disabled in demo mode.</div>
-      ) : q.initialLoading ? (
+      ) : res.initialLoading ? (
         <div className="sh-empty">Loading earnings signal history…</div>
-      ) : d?.status !== 'OK' || !rows.length ? (
+      ) : d?.status !== 'OK' || !allRows.length ? (
         <div className="sh-empty">
           {d?.detail || 'No earnings signals captured yet — today fills in from the '
             + 'live decision and the record builds over the next sessions.'}
         </div>
+      ) : !rows.length ? (
+        <div className="sh-empty">No tickers match “{query}”.</div>
       ) : (
         <div className="sh-table-wrap">
           <table className="sh-table">

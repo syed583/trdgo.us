@@ -70,6 +70,21 @@ tr:not(.sh-rowtop) td { border-bottom: 2px solid var(--border); }
   border: 1px solid var(--amber); border-radius: var(--r); padding: 8px 12px; margin-bottom: 12px;
 }
 .sh-chip.carried { opacity: 0.45; }
+
+/* In-page ticker search (Earnings Stock/Options History). */
+.sh-search { gap: 6px; }
+.sh-search svg { color: var(--text-mute); flex: 0 0 auto; }
+.sh-search input { min-width: 150px; }
+
+/* Earnings history tabs: a clean vertical list like Signal History. The table is
+   only as wide as its content (so a couple of captured sessions don't stretch
+   the symbol column across the whole page) and grows rightward / scrolls as the
+   daily record accumulates. */
+.esh .sh-table { width: auto; min-width: min(100%, 420px); }
+.esh .sh-sym, .esh .sh-sym-h { min-width: 68px; }
+.esh .sh-sym { font-size: 12.5px; font-weight: 700; }
+.esh .sh-day-h, .esh .sh-latest-h { min-width: 48px; }
+.esh .sh-table td { padding: 5px 10px; }
 .sh-source { margin: 6px 0 4px; padding-left: 18px; }
 .sh-source li { margin: 2px 0; line-height: 1.45; }
 .sh-foot b { color: var(--text-dim); }
