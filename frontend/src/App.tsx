@@ -276,10 +276,12 @@ function Shell() {
           {/* Signals now live inside the Trade Plan screen. */}
           <Route path="/signals" element={<Navigate to={`/trade-plan/${DEFAULT_SYMBOL}${location.search}`} replace />} />
           <Route path="/signal-history" element={<SignalHistoryPage ctx={ctx} />} />
+          <Route path="/earnings-signals" element={<EarningsSignalHistoryPage ctx={ctx} />} />
+          {/* Old split routes now point at the combined grid. */}
           <Route path="/earnings-stock-history"
-            element={<EarningsSignalHistoryPage ctx={ctx} kind="stock" title="Stock History" />} />
+            element={<Navigate to={`/earnings-signals${location.search}`} replace />} />
           <Route path="/earnings-options-history"
-            element={<EarningsSignalHistoryPage ctx={ctx} kind="options" title="Options History" />} />
+            element={<Navigate to={`/earnings-signals${location.search}`} replace />} />
 
           <Route path="/earnings-trade" element={<EarningsTradePage ctx={ctx} />} />
           <Route path="/earnings-trade/:symbol" element={<EarningsTradePage ctx={ctx} />} />

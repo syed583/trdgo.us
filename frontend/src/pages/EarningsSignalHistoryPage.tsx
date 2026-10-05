@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
 import type { PageContext } from '../App';
@@ -18,14 +18,12 @@ function dayLabel(iso: string): string {
 }
 
 /**
- * Past Earnings Trade signal for the upcoming-earnings names -- one row per
- * stock, a cell per session, Buy / Sell / Neutral. `kind` selects which call:
- * the equity "stock" decision, or the "options" positioning lean. Today's
- * column is live; the earlier sessions accumulate as the daily capture runs.
+ * Earnings signal history: per upcoming-earnings name, the Earnings Trade call
+ * over recent sessions -- a Stock row (the equity decision) and an Options row
+ * (the options positioning lean) stacked per ticker, like Signal History.
+ * Today's column is live; earlier sessions accumulate as the daily capture runs.
  */
-export default function EarningsSignalHistoryPage({
-  ctx, kind, title,
-}: { ctx: PageContext; kind: 'stock' | 'options'; title: string }) {
+export default function EarningsSignalHistoryPage({ ctx }: { ctx: PageContext }) {
   const { demo } = ctx;
   const navigate = useNavigate();
   const [sessions, setSessions] = useState(10);
@@ -33,8 +31,8 @@ export default function EarningsSignalHistoryPage({
   const [query, setQuery] = useState('');
 
   const res = useApi<any>(
-    (s) => (demo ? Promise.resolve(null) : api2.earningsSignalHistory(kind, sessions, end, s)),
-    [demo, kind, sessions, end],
+    (s) => (demo ? Promise.resolve(null) : api2.earningsSignalHistory(sessions, end, s)),
+    [demo, sessions, end],
     { refreshMs: demo ? undefined : 120_000 },
   );
   const d = res.data;
@@ -44,14 +42,14 @@ export default function EarningsSignalHistoryPage({
     const needle = query.trim().toUpperCase();
     return needle ? allRows.filter((r) => (r.symbol || '').includes(needle)) : allRows;
   }, [allRows, query]);
-  const what = kind === 'options' ? 'options positioning' : 'equity';
 
   return (
     <div className="page sh esh">
       <PageHead
-        title={title}
-        subtitle={<>The Earnings Trade {what} call — <b>Buy</b>, <b>Sell</b> or{' '}
-          <b>Neutral</b> — per upcoming-earnings name, over recent sessions.
+        title="Signal History"
+        subtitle={<>The Earnings Trade call per upcoming-earnings name over recent
+          sessions — a <b>Stock</b> row (equity) and an <b>Options</b> row
+          (positioning), each <b>Buy</b> / <b>Sell</b> / <b>Neutral</b>.
           Analysis, not advice.</>}
       />
 
@@ -107,31 +105,43 @@ export default function EarningsSignalHistoryPage({
             <thead>
               <tr>
                 <th className="sh-sym-h">Stock</th>
+                <th className="sh-type-h"></th>
                 {dates.map((dt) => <th key={dt} className="sh-day-h">{dayLabel(dt)}</th>)}
                 <th className="sh-latest-h">Now</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.symbol}>
-                  <td className="sh-sym"
-                    onClick={() => navigate(`/earnings-trade/${r.symbol}${ctx.search}`)}>
-                    {r.symbol}
-                  </td>
-                  {r.cells.map((c: any, i: number) => (
-                    <td key={i} className="sh-cell">
-                      <span className={`sh-chip ${(c.signal || 'none').toLowerCase()} ${c.carried ? 'carried' : ''}`}
-                        title={c.signal ? `${c.signal}${c.carried ? ' (carried forward)' : ''}${c.live ? ' (live)' : ''}` : 'no data'}>
-                        {c.signal ? LABEL[c.signal] : '·'}
-                      </span>
-                    </td>
+                <Fragment key={r.symbol}>
+                {([['stock', r.latest_stock, 'Stock'], ['options', r.latest_options, 'Options']] as const)
+                  .map(([key, latest, typeLabel], ri) => (
+                    <tr key={`${r.symbol}-${key}`} className={ri === 0 ? 'sh-rowtop' : ''}>
+                      {ri === 0 && (
+                        <td className="sh-sym" rowSpan={2}
+                          onClick={() => navigate(`/earnings-trade/${r.symbol}${ctx.search}`)}>
+                          {r.symbol}
+                        </td>
+                      )}
+                      <td className={`sh-type ${key}`}>{typeLabel}</td>
+                      {r.cells.map((c: any, i: number) => {
+                        const sig = c[key as string];
+                        return (
+                          <td key={i} className="sh-cell">
+                            <span className={`sh-chip ${(sig || 'none').toLowerCase()} ${c.carried ? 'carried' : ''}`}
+                              title={sig ? `${typeLabel}: ${sig}${c.carried ? ' (carried forward)' : ''}${c.live ? ' (live)' : ''}` : 'no data'}>
+                              {sig ? LABEL[sig] : '·'}
+                            </span>
+                          </td>
+                        );
+                      })}
+                      <td className="sh-cell">
+                        <span className={`sh-chip strong ${((latest as string) || 'none').toLowerCase()}`}>
+                          {latest ? LABEL[latest as string] : '·'}
+                        </span>
+                      </td>
+                    </tr>
                   ))}
-                  <td className="sh-cell">
-                    <span className={`sh-chip strong ${(r.latest || 'none').toLowerCase()}`}>
-                      {r.latest ? LABEL[r.latest] : '·'}
-                    </span>
-                  </td>
-                </tr>
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -139,10 +149,11 @@ export default function EarningsSignalHistoryPage({
             <b>Source:</b> the Earnings Trade engine — the same call the colored
             cards and the detail page show.
             <ul className="sh-source">
-              <li><b>Daily columns</b> — the {what} decision recorded that session.</li>
-              <li><b>Now column</b> — the live current decision.</li>
-              <li><b>Dimmed cells</b> — a prior decision carried forward across a gap day.</li>
-              <li><b>Blank ·</b> — no decision captured that day.</li>
+              <li><b>Stock row</b> — the equity Buy/Sell/Neutral decision that session.</li>
+              <li><b>Options row</b> — the options positioning lean that session.</li>
+              <li><b>Now column</b> — the live current call.</li>
+              <li><b>Dimmed cells</b> — a prior call carried forward across a gap day.</li>
+              <li><b>Blank ·</b> — no call captured that day.</li>
             </ul>
             Click a ticker for its Earnings Trade.
           </div>

@@ -263,20 +263,20 @@ def earnings_upcoming(days: int = 14, start: str = "") -> dict:
 
 
 @router.get("/earnings/signal-history")
-def earnings_signal_history(kind: str = "stock", days: int = 10, end: str = "") -> dict:
+def earnings_signal_history(days: int = 10, end: str = "") -> dict:
     """
     Past Earnings Trade signal per upcoming-earnings name: a symbol x sessions
-    grid of Buy/Sell/Neutral. `kind` is "stock" (the equity call) or "options"
-    (the options positioning lean). Today's column is filled live from cache.
+    grid with both the stock (equity) call and the options positioning lean per
+    cell, so the page stacks a Stock and an Options row per ticker. Today's
+    column is filled live from cache.
     """
     import earnings_signal_history_service as esh
     import uw_earnings_calendar as uwcal
 
-    k = "options" if kind == "options" else "stock"
     rows = (uwcal.calendar(days=21) or {}).get("rows") or []
     syms = sorted({r.get("symbol", "").upper() for r in rows if r.get("symbol")})
-    return swr.serve(f"earnsighist:{k}:{end}:{days}",
-                     lambda: esh.get_grid(syms, k, days, end or None), 60.0)
+    return swr.serve(f"earnsighist:{end}:{days}",
+                     lambda: esh.get_grid(syms, days, end or None), 60.0)
 
 
 @router.get("/earnings/calendar/context")

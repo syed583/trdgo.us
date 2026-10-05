@@ -133,23 +133,22 @@ def capture(symbols: list[str]) -> int:
         return 0
 
 
-def get_grid(symbols: list[str], kind: str = "stock", days: int = 10,
+def get_grid(symbols: list[str], days: int = 10,
              end: Optional[str] = None, include_live: bool = True) -> dict:
     """
-    symbol x last-N-sessions grid of the Earnings Trade signal.
+    symbol x last-N-sessions grid of the Earnings Trade signal, with BOTH the
+    stock (equity) call and the options positioning lean per cell -- so the page
+    can stack a Stock row and an Options row per ticker, like Signal History.
 
-    `kind` picks the column shown: "stock" (the equity Buy/Sell/Neutral) or
-    "options" (the options positioning lean). Today's cell is filled live from
-    the cached analysis when `include_live`, so the grid is useful before the
-    daily capture has run.
+    Today's cell is filled live from the cached analysis when `include_live`, so
+    the grid is useful before the daily capture has run.
     """
-    col = "options" if kind == "options" else "stock"
     days = max(1, min(int(days or 10), 30))
     syms = [s.upper() for s in (symbols or []) if s]
     if not syms:
-        return {"status": "NO_SYMBOLS", "dates": [], "rows": [], "kind": col, "source": SOURCE}
+        return {"status": "NO_SYMBOLS", "dates": [], "rows": [], "source": SOURCE}
     if not _ensure_table():
-        return {"status": "ERROR", "dates": [], "rows": [], "kind": col, "source": SOURCE}
+        return {"status": "ERROR", "dates": [], "rows": [], "source": SOURCE}
 
     try:
         from datetime import date as _date
@@ -181,52 +180,59 @@ def get_grid(symbols: list[str], kind: str = "stock", days: int = 10,
 
             if not dates:
                 return {"status": "NO_DATA", "dates": [], "rows": [],
-                        "detail": "No earnings signals captured yet.",
-                        "kind": col, "source": SOURCE}
+                        "detail": "No earnings signals captured yet.", "source": SOURCE}
 
             cells_q = db.execute(text(
-                f"SELECT symbol, snapshot_date, {col} FROM earnings_signal_snapshots "
+                "SELECT symbol, snapshot_date, stock, options FROM earnings_signal_snapshots "
                 "WHERE symbol = ANY(:syms) AND snapshot_date = ANY(:dates)"),
                 {"syms": syms, "dates": dates}).all()
             by: dict[str, dict] = {}
-            for sym, d, val in cells_q:
-                by.setdefault(sym, {})[d] = val
+            for sym, d, st, op in cells_q:
+                by.setdefault(sym, {})[d] = (st, op)
 
             today = _date.today()
             out_rows = []
             for sym in syms:
-                last = None
+                last_st = last_op = None
                 captured = 0
                 cells = []
                 for d in dates:
-                    val = by.get(sym, {}).get(d)
+                    hit = by.get(sym, {}).get(d)
+                    st, op = (hit if hit else (None, None))
                     is_live = False
-                    if val is None and d == today and sym in live:
-                        lv = live[sym][1 if col == "options" else 0]
-                        if lv:
-                            val = lv
-                            is_live = True
-                    if val:
+                    if (st is None and op is None) and d == today and sym in live:
+                        lst, lop = live[sym]
+                        if lst or lop:
+                            st, op, is_live = lst, lop, True
+                    if st or op:
                         captured += 1
-                        last = val
-                        cells.append({"date": d.isoformat(), "signal": val,
+                        if st:
+                            last_st = st
+                        if op:
+                            last_op = op
+                        cells.append({"date": d.isoformat(),
+                                      "stock": st or last_st, "options": op or last_op,
                                       "carried": False, "live": is_live})
                     else:
-                        cells.append({"date": d.isoformat(), "signal": last,
-                                      "carried": last is not None, "live": False})
-                if any(c["signal"] for c in cells):
+                        cells.append({"date": d.isoformat(),
+                                      "stock": last_st, "options": last_op,
+                                      "carried": last_st is not None or last_op is not None,
+                                      "live": False})
+                if any(c["stock"] or c["options"] for c in cells):
                     out_rows.append({
                         "symbol": sym, "cells": cells, "captured": captured,
-                        "latest": next((c["signal"] for c in reversed(cells)
-                                        if c["signal"]), None),
+                        "latest_stock": next((c["stock"] for c in reversed(cells)
+                                              if c["stock"]), None),
+                        "latest_options": next((c["options"] for c in reversed(cells)
+                                                if c["options"]), None),
                     })
 
             out_rows.sort(key=lambda r: -r["captured"])
-            return {"status": "OK", "kind": col,
+            return {"status": "OK",
                     "dates": [d.isoformat() for d in dates],
                     "rows": out_rows, "source": SOURCE}
         finally:
             db.close()
     except Exception as exc:  # noqa: BLE001
         return {"status": "ERROR", "detail": type(exc).__name__,
-                "dates": [], "rows": [], "kind": col, "source": SOURCE}
+                "dates": [], "rows": [], "source": SOURCE}
