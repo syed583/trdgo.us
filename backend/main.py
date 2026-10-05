@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Depends, HTTPException
@@ -46,14 +47,16 @@ from api_routes import router as api_router
 # FASTAPI APP
 # ---------------------------------------------------------
 
-app = FastAPI(
-    title="US-Stock Reader Market Intelligence API",
-    description=(
-        "Backend API for US-Stock Reader market analysis "
-        "& Earnings Intelligence"
-    ),
-    version="1.0.0"
-)
+# Startup tasks register into this list and run from the lifespan handler below,
+# which replaces the deprecated @_startup. Each task is a plain
+# sync function that returns quickly (it kicks off its own background thread).
+_startup_handlers: list = []
+
+
+def _startup(fn):
+    """Register an essential startup task (schema, services) to run on boot."""
+    _startup_handlers.append(fn)
+    return fn
 
 
 def _bg(fn):
@@ -61,13 +64,36 @@ def _bg(fn):
     Register a background warmer/scanner startup task -- unless DISABLE_WARMERS
     is set. Turning them off lets a local dev backend run lean (no background
     provider/DB load), which matters when it shares the production database and
-    must stay well under the connection limit. Schema creation and other
-    essential startup tasks keep the plain @app.on_event("startup").
+    must stay well under the connection limit. Essential startup tasks use
+    @_startup instead and always run.
     """
     import os as _os
     if (_os.getenv("DISABLE_WARMERS") or "").strip():
         return fn
-    return app.on_event("startup")(fn)
+    _startup_handlers.append(fn)
+    return fn
+
+
+@asynccontextmanager
+async def _lifespan(_app):
+    """Run every registered startup task once, then hand off to the server."""
+    for _fn in _startup_handlers:
+        try:
+            _fn()
+        except Exception:  # noqa: BLE001 - one bad task must not stop the boot
+            logging.exception("startup task failed: %s", getattr(_fn, "__name__", _fn))
+    yield
+
+
+app = FastAPI(
+    title="US-Stock Reader Market Intelligence API",
+    description=(
+        "Backend API for US-Stock Reader market analysis "
+        "& Earnings Intelligence"
+    ),
+    version="1.0.0",
+    lifespan=_lifespan,
+)
 
 
 # The dashboard is served by Vite on a different origin during development,
@@ -114,7 +140,7 @@ class _GzipExceptStreams(GZipMiddleware):
 app.add_middleware(_GzipExceptStreams, minimum_size=1024)
 
 
-@app.on_event("startup")
+@_startup
 def _create_schema() -> None:
     """
     Create any table this app expects and the database does not have.
