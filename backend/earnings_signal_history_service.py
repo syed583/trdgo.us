@@ -202,8 +202,9 @@ def get_grid(symbols: list[str], days: int = 10,
 
             out_rows = []
             for sym in syms:
-                # Real (captured or live) value for this symbol per axis date.
-                real: dict = {}
+                last_st = last_op = None
+                captured = 0
+                cells = []
                 for d in dates:
                     hit = by.get(sym, {}).get(d)
                     st, op = (hit if hit else (None, None))
@@ -213,20 +214,7 @@ def get_grid(symbols: list[str], days: int = 10,
                         if lst or lop:
                             st, op, is_live = lst, lop, True
                     if st or op:
-                        real[d] = (st, op, is_live)
-
-                captured = len(real)
-                # The earliest real value, used to back-fill the days before the
-                # first capture so the whole row is full (carried, dimmed) rather
-                # than blank -- it holds the stock's call until a real one differs.
-                first_st = next((real[d][0] for d in dates if d in real and real[d][0]), None)
-                first_op = next((real[d][1] for d in dates if d in real and real[d][1]), None)
-
-                cells = []
-                last_st, last_op = first_st, first_op
-                for d in dates:
-                    if d in real:
-                        st, op, is_live = real[d]
+                        captured += 1
                         if st:
                             last_st = st
                         if op:
@@ -235,8 +223,6 @@ def get_grid(symbols: list[str], days: int = 10,
                                       "stock": st or last_st, "options": op or last_op,
                                       "carried": False, "live": is_live})
                     else:
-                        # Carried: forward-filled from an earlier real value, or
-                        # back-filled from the first real value for leading gaps.
                         cells.append({"date": d.isoformat(),
                                       "stock": last_st, "options": last_op,
                                       "carried": last_st is not None or last_op is not None,
