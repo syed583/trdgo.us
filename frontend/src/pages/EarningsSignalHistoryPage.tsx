@@ -34,6 +34,13 @@ export default function EarningsSignalHistoryPage({ ctx }: { ctx: PageContext })
   const { demo } = ctx;
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
+  // Legend doubles as a filter on the current (Now) call; empty = show all.
+  const [active, setActive] = useState<Set<string>>(new Set());
+  const toggle = (sig: string) => setActive((prev) => {
+    const next = new Set(prev);
+    if (next.has(sig)) next.delete(sig); else next.add(sig);
+    return next;
+  });
 
   const res = useApi<any>(
     (s) => (demo ? Promise.resolve(null) : api2.earningsSignalHistory(8, s)),
@@ -44,8 +51,10 @@ export default function EarningsSignalHistoryPage({ ctx }: { ctx: PageContext })
   const allRows: any[] = d?.rows || [];
   const rows = useMemo(() => {
     const needle = query.trim().toUpperCase();
-    return needle ? allRows.filter((r) => (r.symbol || '').includes(needle)) : allRows;
-  }, [allRows, query]);
+    let out = needle ? allRows.filter((r) => (r.symbol || '').includes(needle)) : allRows;
+    if (active.size) out = out.filter((r) => r.now && active.has(r.now));
+    return out;
+  }, [allRows, query, active]);
   // Only as many columns as there is real history for -- no empty padding.
   const n = useMemo(
     () => Math.max(1, ...allRows.map((r: any) => r.events || 0)),
@@ -73,10 +82,23 @@ export default function EarningsSignalHistoryPage({ ctx }: { ctx: PageContext })
           )}
         </div>
         <div className="sh-legend">
-          <span><i className="sh-dot buy" /> Up (Buy)</span>
-          <span><i className="sh-dot sell" /> Down (Sell)</span>
-          <span><i className="sh-dot neutral" /> Flat</span>
-          <span><i className="sh-dot none" /> No report</span>
+          {([['BUY', 'buy', 'Up (Buy)'], ['SELL', 'sell', 'Down (Sell)'],
+             ['NEUTRAL', 'neutral', 'Flat']] as const).map(([sig, cls, label]) => (
+            <button key={sig} type="button"
+              className={`sh-leg-btn ${active.has(sig) ? 'on' : ''}`}
+              aria-pressed={active.has(sig)}
+              title={`Show only ${label} now`}
+              onClick={() => toggle(sig)}>
+              <i className={`sh-dot ${cls}`} /> {label}
+            </button>
+          ))}
+          <span className="sh-leg-static"><i className="sh-dot none" /> No report</span>
+          {active.size > 0 && (
+            <button type="button" className="sh-clear sh-leg-clear"
+              onClick={() => setActive(new Set())} title="Clear filter">
+              <X size={13} /> clear
+            </button>
+          )}
         </div>
       </div>
 

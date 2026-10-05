@@ -93,6 +93,17 @@ tr:not(.sh-rowtop) td { border-bottom: 2px solid var(--border); }
   display: block; margin-top: 3px; font-size: 9.5px; color: var(--text-mute);
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
+
+/* Clickable legend = filter on the current (Now) call. */
+.sh-leg-btn {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  background: none; border: 1px solid transparent; border-radius: var(--r-pill);
+  padding: 3px 9px; font: inherit; font-size: 12px; color: var(--text-mute);
+}
+.sh-leg-btn:hover { background: var(--panel-2); color: var(--text); }
+.sh-leg-btn.on { border-color: var(--border-2, var(--border)); background: var(--panel-2); color: var(--text); font-weight: 650; }
+.sh-leg-static { display: inline-flex; align-items: center; gap: 6px; padding: 3px 0; }
+.sh-leg-clear { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; }
 .sh-source { margin: 6px 0 4px; padding-left: 18px; }
 .sh-source li { margin: 2px 0; line-height: 1.45; }
 .sh-foot b { color: var(--text-dim); }
