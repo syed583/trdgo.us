@@ -1186,6 +1186,12 @@ def signals_latest(symbols: str = "", source: str = "directional") -> dict:
     """
     import signal_history_service as sh
     import threading
+    import os
+
+    # A lean dev backend (DISABLE_WARMERS) must not kick heavy on-demand warming:
+    # it would grab the small DB pool and starve the very request that triggered
+    # it. With it set, the route just serves whatever colours are already cached.
+    _warm_off = bool((os.getenv("DISABLE_WARMERS") or "").strip())
 
     syms = [s.strip().upper() for s in (symbols or "").split(",") if s.strip()][:300]
 
@@ -1193,7 +1199,7 @@ def signals_latest(symbols: str = "", source: str = "directional") -> dict:
         out = swr.serve(f"siglatest:earn:{','.join(sorted(syms))[:300]}",
                         lambda: sh.earnings_signals(syms), 20.0)
         missing = out.get("missing") or []
-        if missing:
+        if missing and not _warm_off:
             # Warm only a small batch per poll so a single page open does not
             # spawn ~200 heavy computes at once and starve the server. The page
             # polls every 15s, so successive polls warm the next batch and the
@@ -1205,7 +1211,7 @@ def signals_latest(symbols: str = "", source: str = "directional") -> dict:
         out = swr.serve(f"siglatest:{','.join(sorted(syms))[:300]}",
                         lambda: sh.latest_signals(syms, compute_missing=False), 20.0)
         missing = [s for s in syms if s not in (out.get("signals") or {})]
-        if missing:
+        if missing and not _warm_off:
             try:
                 import snapshot_service as snap
                 threading.Thread(target=lambda: snap.capture(missing[:60]),

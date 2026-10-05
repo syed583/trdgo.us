@@ -208,8 +208,14 @@ def peek_many(keys: list[str]) -> dict[str, Any]:
             stored = db_cache.get_many(missing)
         except Exception:  # noqa: BLE001
             stored = {}
-        for k, (_at, value) in stored.items():
-            out[k] = value
+        # Pull each DB hit into the in-process cache too, so the next peek for it
+        # is a dict lookup rather than another round trip. This matters most when
+        # the DB is far away (a local backend against a remote Supabase): the
+        # first list load pays the latency once, then polls are instant.
+        with _lock:
+            for k, (at, value) in stored.items():
+                out[k] = value
+                _values.setdefault(k, (at, value))
     return out
 
 

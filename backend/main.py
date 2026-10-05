@@ -55,6 +55,21 @@ app = FastAPI(
     version="1.0.0"
 )
 
+
+def _bg(fn):
+    """
+    Register a background warmer/scanner startup task -- unless DISABLE_WARMERS
+    is set. Turning them off lets a local dev backend run lean (no background
+    provider/DB load), which matters when it shares the production database and
+    must stay well under the connection limit. Schema creation and other
+    essential startup tasks keep the plain @app.on_event("startup").
+    """
+    import os as _os
+    if (_os.getenv("DISABLE_WARMERS") or "").strip():
+        return fn
+    return app.on_event("startup")(fn)
+
+
 # The dashboard is served by Vite on a different origin during development,
 # so the browser needs an explicit CORS grant to reach these routes.
 app.add_middleware(
@@ -191,7 +206,7 @@ def _create_schema() -> None:
         print(f"schema: provider key override not loaded ({exc})")
 
 
-@app.on_event("startup")
+@_bg
 def _start_edgar_watcher() -> None:
     """Watch EDGAR's live feed for filings by the companies on the board."""
     import edgar_live_service as live
@@ -199,7 +214,7 @@ def _start_edgar_watcher() -> None:
     live.start()
 
 
-@app.on_event("startup")
+@_bg
 def _start_etf_daily_holdings() -> None:
     """
     Read the sector SPDRs' daily books.
@@ -212,7 +227,7 @@ def _start_etf_daily_holdings() -> None:
     etfs.start()
 
 
-@app.on_event("startup")
+@_bg
 def _start_fund_filing_watcher() -> None:
     """Read 13F filings as funds file them, rather than weeks later."""
     import funds_live_service as funds
@@ -220,7 +235,7 @@ def _start_fund_filing_watcher() -> None:
     funds.start()
 
 
-@app.on_event("startup")
+@_bg
 def _start_slow_screen_warmer() -> None:
     """
     Build the slowest screens before anyone opens them, then keep them fresh.
@@ -284,7 +299,7 @@ def _start_slow_screen_warmer() -> None:
     threading.Thread(target=warm, daemon=True, name="slow-screen-warmer").start()
 
 
-@app.on_event("startup")
+@_bg
 def _start_signal_scanner() -> None:
     """Watch the watchlist for view-flips and plan hits, in the background."""
     try:
@@ -294,7 +309,7 @@ def _start_signal_scanner() -> None:
         pass
 
 
-@app.on_event("startup")
+@_bg
 def _warm_earnings_universe() -> None:
     """
     Pre-compute the earnings decision for the upcoming-earnings universe so the
@@ -329,7 +344,7 @@ def _warm_earnings_universe() -> None:
     threading.Thread(target=loop, name="earnings-warmer", daemon=True).start()
 
 
-@app.on_event("startup")
+@_bg
 def _warm_default_strip() -> None:
     """
     Start scoring the default ticker basket as soon as the server is up.
@@ -347,7 +362,7 @@ def _warm_default_strip() -> None:
         pass
 
 
-@app.on_event("startup")
+@_bg
 def _start_snapshot_loop() -> None:
     """
     Capture the day's scores once per session, in the background.
@@ -388,7 +403,7 @@ def _start_snapshot_loop() -> None:
         target=loop, daemon=True, name="snapshots").start()).start()
 
 
-@app.on_event("startup")
+@_bg
 def _start_calendar_sync() -> None:
     """
     Refresh the earnings calendar once a day, in the background.
@@ -446,7 +461,7 @@ def _start_calendar_sync() -> None:
         target=loop, daemon=True, name="calendar-sync").start()).start()
 
 
-@app.on_event("startup")
+@_bg
 def _start_call_scorecard() -> None:
     """
     Judge stored calls once their session has closed.
@@ -472,7 +487,7 @@ def _start_call_scorecard() -> None:
         target=loop, daemon=True, name="call-scorecard").start()).start()
 
 
-@app.on_event("startup")
+@_bg
 def _start_market_pulse_warmer() -> None:
     """
     Keep the market overview built.
@@ -503,7 +518,7 @@ def _start_market_pulse_warmer() -> None:
         target=loop, daemon=True, name="market-pulse-warm").start()).start()
 
 
-@app.on_event("startup")
+@_bg
 def _start_ai_trade_board() -> None:
     """
     Keep the AI Trade board scoring, continuously.
