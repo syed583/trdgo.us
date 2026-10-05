@@ -217,11 +217,13 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
               <div className="ets-em-cur">Current ${em.current != null ? num(em.current, 2) : '--'}</div>
             </div>
 
-            <div className="ets-card ets-alerts-card">
+            <div className={`ets-card ets-alerts-card ${
+              ((alerts.data?.counts?.RED || 0) + (alerts.data?.counts?.AMBER || 0)) > 0
+                ? 'has-alerts' : ''}`}>
               <div className="ets-card-h">
                 <span><AlertTriangle size={15} /> News &amp; Risk Alerts</span>
                 {alerts.data?.counts && (
-                  <span className="ets-badge sell">
+                  <span className="ets-badge alert-count">
                     {(alerts.data.counts.RED || 0) + (alerts.data.counts.AMBER || 0)} alerts
                   </span>
                 )}

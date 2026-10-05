@@ -165,6 +165,14 @@
 
 /* alerts */
 .ets-alert { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border-2, var(--border)); }
+/* When there are alerts, make the card read red as a warning. */
+.ets-alerts-card.has-alerts {
+  border-color: var(--red);
+  border-left: 3px solid var(--red);
+  background: color-mix(in srgb, var(--red) 6%, var(--panel));
+}
+.ets-badge.alert-count { color: #fff; background: var(--red); }
+
 .ets-alert-tag { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: var(--r-sm); height: fit-content; }
 .ets-alert-tag.red { color: var(--red); background: var(--red-bg); }
 .ets-alert-tag.amber { color: var(--amber); background: var(--amber-bg); }
