@@ -90,7 +90,8 @@ export default function EarningsSignalHistoryPage({ ctx }: { ctx: PageContext })
 
       {demo ? (
         <div className="sh-empty">Disabled in demo mode.</div>
-      ) : res.initialLoading ? (
+      ) : res.initialLoading || d?.status === 'LOADING'
+          || (res.loading && !allRows.length) ? (
         <div className="sh-empty">Loading earnings signal history…</div>
       ) : d?.status !== 'OK' || !allRows.length ? (
         <div className="sh-empty">
