@@ -164,7 +164,10 @@
 .ets-check { color: var(--green); font-weight: 800; }
 
 /* alerts */
-.ets-alert { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border-2, var(--border)); }
+/* Scroll the alerts list when there are more than fit, instead of capping it. */
+.ets-alerts { max-height: 260px; overflow-y: auto; }
+.ets-alert { display: flex; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--border-2, var(--border)); }
+.ets-alert:last-child { border-bottom: 0; }
 /* When there are alerts, make the card read red as a warning. */
 .ets-alerts-card.has-alerts {
   border-color: var(--red);

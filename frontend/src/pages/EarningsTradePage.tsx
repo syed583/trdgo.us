@@ -229,7 +229,7 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
                 )}
               </div>
               <div className="ets-alerts">
-                {(alerts.data?.alerts || []).filter((a: any) => a.severity !== 'GREY').slice(0, 4)
+                {(alerts.data?.alerts || []).filter((a: any) => a.severity !== 'GREY')
                   .map((a: any, i: number) => (
                     <div key={i} className="ets-alert">
                       <span className={`ets-alert-tag ${a.severity === 'RED' ? 'red' : 'amber'}`}>
