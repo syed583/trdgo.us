@@ -156,31 +156,41 @@ def get_grid(symbols: list[str], days: int = 10,
         from database import SessionLocal
         db = SessionLocal()
         try:
-            params: dict = {"syms": syms}
-            where_end = ""
+            from datetime import timedelta
+            today = _date.today()
+            anchor = today
             if end:
                 try:
-                    params["end"] = _date.fromisoformat(end)
-                    where_end = " AND snapshot_date <= :end"
+                    anchor = _date.fromisoformat(end)
                 except ValueError:
-                    pass
-            date_rows = db.execute(text(
+                    anchor = today
+
+            # The column axis is the last N trading days (Mon-Fri) ending at the
+            # anchor, so "Last 30" always shows a 30-column grid that fills in as
+            # each session is captured -- rather than only the days we happen to
+            # have so far. Any captured weekend day in range is merged in too.
+            axis: list = []
+            cur = anchor
+            while len(axis) < days:
+                if cur.weekday() < 5:
+                    axis.append(cur)
+                cur -= timedelta(days=1)
+            axis_set = set(axis)
+            floor = min(axis)
+
+            where_end = " AND snapshot_date <= :end" if end else ""
+            cap_dates = db.execute(text(
                 "SELECT DISTINCT snapshot_date FROM earnings_signal_snapshots "
-                f"WHERE symbol = ANY(:syms){where_end} "
-                "ORDER BY snapshot_date DESC LIMIT :lim"),
-                {**params, "lim": days}).all()
-            dates = sorted({r[0] for r in date_rows})
+                f"WHERE symbol = ANY(:syms) AND snapshot_date >= :floor{where_end}"),
+                {"syms": syms, "floor": floor,
+                 **({"end": anchor} if end else {})}).all()
+            for (cd,) in cap_dates:
+                if cd <= anchor:
+                    axis_set.add(cd)
+            dates = sorted(axis_set)[-days:]
 
-            # Always include today when viewing up to now, so the live column shows
-            # even before any capture has been written.
+            # Live (today) column, when viewing up to now.
             live = _live(syms) if include_live and not end else {}
-            if live and (not dates or dates[-1] != _date.today()):
-                dates = sorted(set(dates) | {_date.today()})
-                dates = dates[-days:]
-
-            if not dates:
-                return {"status": "NO_DATA", "dates": [], "rows": [],
-                        "detail": "No earnings signals captured yet.", "source": SOURCE}
 
             cells_q = db.execute(text(
                 "SELECT symbol, snapshot_date, stock, options FROM earnings_signal_snapshots "
@@ -190,7 +200,6 @@ def get_grid(symbols: list[str], days: int = 10,
             for sym, d, st, op in cells_q:
                 by.setdefault(sym, {})[d] = (st, op)
 
-            today = _date.today()
             out_rows = []
             for sym in syms:
                 last_st = last_op = None
