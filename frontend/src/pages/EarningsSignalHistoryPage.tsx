@@ -7,7 +7,6 @@ import { useApi } from '../hooks/useApi';
 import { PageHead } from './shared';
 import './signal-history.css';
 
-const COUNT_OPTS = [4, 6, 8];
 const LABEL: Record<string, string> = { BUY: 'B', SELL: 'S', NEUTRAL: 'N' };
 
 function dayLabel(iso?: string | null): string {
@@ -34,21 +33,24 @@ function colHead(i: number, n: number): string {
 export default function EarningsSignalHistoryPage({ ctx }: { ctx: PageContext }) {
   const { demo } = ctx;
   const navigate = useNavigate();
-  const [count, setCount] = useState(4);
   const [query, setQuery] = useState('');
 
   const res = useApi<any>(
-    (s) => (demo ? Promise.resolve(null) : api2.earningsSignalHistory(count, s)),
-    [demo, count],
+    (s) => (demo ? Promise.resolve(null) : api2.earningsSignalHistory(8, s)),
+    [demo],
     { refreshMs: demo ? undefined : 120_000 },
   );
   const d = res.data;
-  const n: number = d?.n || count;
   const allRows: any[] = d?.rows || [];
   const rows = useMemo(() => {
     const needle = query.trim().toUpperCase();
     return needle ? allRows.filter((r) => (r.symbol || '').includes(needle)) : allRows;
   }, [allRows, query]);
+  // Only as many columns as there is real history for -- no empty padding.
+  const n = useMemo(
+    () => Math.max(1, ...allRows.map((r: any) => r.events || 0)),
+    [allRows],
+  );
 
   return (
     <div className="page sh esh">
@@ -69,12 +71,6 @@ export default function EarningsSignalHistoryPage({ ctx }: { ctx: PageContext })
               <X size={13} />
             </button>
           )}
-        </div>
-        <div className="sh-filter">
-          <label>Earnings</label>
-          <select value={count} onChange={(e) => setCount(Number(e.target.value))}>
-            {COUNT_OPTS.map((c) => <option key={c} value={c}>Last {c}</option>)}
-          </select>
         </div>
         <div className="sh-legend">
           <span><i className="sh-dot buy" /> Up (Buy)</span>
@@ -114,7 +110,7 @@ export default function EarningsSignalHistoryPage({ ctx }: { ctx: PageContext })
                     onClick={() => navigate(`/earnings-trade/${r.symbol}${ctx.search}`)}>
                     {r.symbol}
                   </td>
-                  {r.cells.map((c: any, i: number) => (
+                  {r.cells.slice(r.cells.length - n).map((c: any, i: number) => (
                     <td key={i} className="sh-cell sh-rx">
                       {c.signal ? (
                         <>

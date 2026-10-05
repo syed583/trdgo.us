@@ -197,9 +197,17 @@ def get_grid(symbols: list[str], n: int = 4, include_live: bool = True) -> dict:
         return {"status": "NO_SYMBOLS", "n": n, "rows": [], "source": SOURCE}
 
     live = _live(syms) if include_live else {}
+    # One bulk read for every symbol's cached reactions -- peeking key-by-key was
+    # one DB round trip per symbol and timed out for larger N.
+    try:
+        import swr
+        rx = swr.peek_many([f"earnrx:{s}" for s in syms])
+    except Exception:  # noqa: BLE001
+        rx = {}
     out_rows = []
     for sym in syms:
-        moves = _moves(sym)
+        mv_cached = rx.get(f"earnrx:{sym}")
+        moves = mv_cached if isinstance(mv_cached, list) else []
         # Newest last; keep the last n and left-pad so the most recent aligns right.
         tail = moves[-n:] if moves else []
         pad = [None] * (n - len(tail))
