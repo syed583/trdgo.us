@@ -133,115 +133,88 @@ def capture(symbols: list[str]) -> int:
         return 0
 
 
-def get_grid(symbols: list[str], days: int = 10,
-             end: Optional[str] = None, include_live: bool = True) -> dict:
-    """
-    symbol x last-N-sessions grid of the Earnings Trade signal, with BOTH the
-    stock (equity) call and the options positioning lean per cell -- so the page
-    can stack a Stock row and an Options row per ticker, like Signal History.
+# Real post-earnings move -> direction. A move inside this band is treated as no
+# clear reaction (Neutral); above it the stock rose (Buy) or fell (Sell).
+_FLAT_PCT = 0.5
 
-    Today's cell is filled live from the cached analysis when `include_live`, so
-    the grid is useful before the daily capture has run.
+
+def _direction(move_pct) -> Optional[str]:
+    try:
+        v = float(move_pct)
+    except (TypeError, ValueError):
+        return None
+    if v > _FLAT_PCT:
+        return "BUY"
+    if v < -_FLAT_PCT:
+        return "SELL"
+    return "NEUTRAL"
+
+
+def _moves(symbol: str) -> list:
+    """Cached real post-earnings moves for a symbol (newest last), or []."""
+    try:
+        import swr
+        v = swr.peek(f"earnrx:{symbol}")
+        return v if isinstance(v, list) else []
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def warm_reactions(symbols: list[str]) -> None:
+    """Compute+cache each symbol's real past-earnings moves (background use)."""
+    try:
+        import swr
+        import earnings_trade_service as ets
+        from concurrent.futures import ThreadPoolExecutor
+
+        def one(sym: str) -> None:
+            try:
+                swr.serve(f"earnrx:{sym}",
+                          lambda: ets._historical_moves(sym, limit=8), 86400.0)
+            except Exception:  # noqa: BLE001
+                pass
+
+        targets = [s.upper() for s in (symbols or []) if s][:300]
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            list(pool.map(one, targets))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def get_grid(symbols: list[str], n: int = 4, include_live: bool = True) -> dict:
     """
-    days = max(1, min(int(days or 10), 30))
+    Per upcoming-earnings name, its REAL past earnings events: `n` columns, each
+    the actual post-earnings move as a Buy (up) / Sell (down) / Neutral (flat)
+    direction, newest on the right, plus a Now column with the current live call.
+
+    Nothing is invented -- a stock with fewer past reports has empty leading
+    cells (it simply has no earlier earnings), and the move % and date ride along
+    on each cell.
+    """
+    n = max(1, min(int(n or 4), 12))
     syms = [s.upper() for s in (symbols or []) if s]
     if not syms:
-        return {"status": "NO_SYMBOLS", "dates": [], "rows": [], "source": SOURCE}
-    if not _ensure_table():
-        return {"status": "ERROR", "dates": [], "rows": [], "source": SOURCE}
+        return {"status": "NO_SYMBOLS", "n": n, "rows": [], "source": SOURCE}
 
-    try:
-        from datetime import date as _date
-        from sqlalchemy import text
-        from database import SessionLocal
-        db = SessionLocal()
-        try:
-            from datetime import timedelta
-            today = _date.today()
-            anchor = today
-            if end:
-                try:
-                    anchor = _date.fromisoformat(end)
-                except ValueError:
-                    anchor = today
+    live = _live(syms) if include_live else {}
+    out_rows = []
+    for sym in syms:
+        moves = _moves(sym)
+        # Newest last; keep the last n and left-pad so the most recent aligns right.
+        tail = moves[-n:] if moves else []
+        pad = [None] * (n - len(tail))
+        cells = []
+        for m in pad:
+            cells.append({"date": None, "label": None, "move_pct": None, "signal": None})
+        for m in tail:
+            mv = m.get("move_pct") if isinstance(m, dict) else None
+            cells.append({"date": (m or {}).get("date"), "label": (m or {}).get("label"),
+                          "move_pct": mv, "signal": _direction(mv)})
+        now = live.get(sym, (None, None))[0]
+        events = len(tail)
+        if events or now:
+            out_rows.append({"symbol": sym, "cells": cells, "events": events, "now": now})
 
-            # The column axis is the last N trading days (Mon-Fri) ending at the
-            # anchor, so "Last 30" always shows a 30-column grid that fills in as
-            # each session is captured -- rather than only the days we happen to
-            # have so far. Any captured weekend day in range is merged in too.
-            axis: list = []
-            cur = anchor
-            while len(axis) < days:
-                if cur.weekday() < 5:
-                    axis.append(cur)
-                cur -= timedelta(days=1)
-            axis_set = set(axis)
-            floor = min(axis)
-
-            where_end = " AND snapshot_date <= :end" if end else ""
-            cap_dates = db.execute(text(
-                "SELECT DISTINCT snapshot_date FROM earnings_signal_snapshots "
-                f"WHERE symbol = ANY(:syms) AND snapshot_date >= :floor{where_end}"),
-                {"syms": syms, "floor": floor,
-                 **({"end": anchor} if end else {})}).all()
-            for (cd,) in cap_dates:
-                if cd <= anchor:
-                    axis_set.add(cd)
-            dates = sorted(axis_set)[-days:]
-
-            # Live (today) column, when viewing up to now.
-            live = _live(syms) if include_live and not end else {}
-
-            cells_q = db.execute(text(
-                "SELECT symbol, snapshot_date, stock, options FROM earnings_signal_snapshots "
-                "WHERE symbol = ANY(:syms) AND snapshot_date = ANY(:dates)"),
-                {"syms": syms, "dates": dates}).all()
-            by: dict[str, dict] = {}
-            for sym, d, st, op in cells_q:
-                by.setdefault(sym, {})[d] = (st, op)
-
-            out_rows = []
-            for sym in syms:
-                last_st = last_op = None
-                captured = 0
-                cells = []
-                for d in dates:
-                    hit = by.get(sym, {}).get(d)
-                    st, op = (hit if hit else (None, None))
-                    is_live = False
-                    if (st is None and op is None) and d == today and sym in live:
-                        lst, lop = live[sym]
-                        if lst or lop:
-                            st, op, is_live = lst, lop, True
-                    if st or op:
-                        captured += 1
-                        if st:
-                            last_st = st
-                        if op:
-                            last_op = op
-                        cells.append({"date": d.isoformat(),
-                                      "stock": st or last_st, "options": op or last_op,
-                                      "carried": False, "live": is_live})
-                    else:
-                        cells.append({"date": d.isoformat(),
-                                      "stock": last_st, "options": last_op,
-                                      "carried": last_st is not None or last_op is not None,
-                                      "live": False})
-                if any(c["stock"] or c["options"] for c in cells):
-                    out_rows.append({
-                        "symbol": sym, "cells": cells, "captured": captured,
-                        "latest_stock": next((c["stock"] for c in reversed(cells)
-                                              if c["stock"]), None),
-                        "latest_options": next((c["options"] for c in reversed(cells)
-                                                if c["options"]), None),
-                    })
-
-            out_rows.sort(key=lambda r: -r["captured"])
-            return {"status": "OK",
-                    "dates": [d.isoformat() for d in dates],
-                    "rows": out_rows, "source": SOURCE}
-        finally:
-            db.close()
-    except Exception as exc:  # noqa: BLE001
-        return {"status": "ERROR", "detail": type(exc).__name__,
-                "dates": [], "rows": [], "source": SOURCE}
+    # Most history first.
+    out_rows.sort(key=lambda r: -r["events"])
+    return {"status": "OK", "n": n, "rows": out_rows, "source": SOURCE}

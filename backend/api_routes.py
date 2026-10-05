@@ -263,20 +263,32 @@ def earnings_upcoming(days: int = 14, start: str = "") -> dict:
 
 
 @router.get("/earnings/signal-history")
-def earnings_signal_history(days: int = 10, end: str = "") -> dict:
+def earnings_signal_history(n: int = 4) -> dict:
     """
-    Past Earnings Trade signal per upcoming-earnings name: a symbol x sessions
-    grid with both the stock (equity) call and the options positioning lean per
-    cell, so the page stacks a Stock and an Options row per ticker. Today's
-    column is filled live from cache.
+    Per upcoming-earnings name, its REAL past earnings events: `n` columns, each
+    the actual post-earnings move (up=Buy / down=Sell / flat=Neutral), newest on
+    the right, plus a Now column with the current call. Missing reactions are
+    warmed in the background so later polls fill in.
     """
+    import os
+    import threading
     import earnings_signal_history_service as esh
     import uw_earnings_calendar as uwcal
 
     rows = (uwcal.calendar(days=21) or {}).get("rows") or []
     syms = sorted({r.get("symbol", "").upper() for r in rows if r.get("symbol")})
-    return swr.serve(f"earnsighist:{end}:{days}",
-                     lambda: esh.get_grid(syms, days, end or None), 60.0)
+    out = swr.serve(f"earnsighist:{n}", lambda: esh.get_grid(syms, n), 60.0)
+
+    # Warm any symbols whose real past-earnings moves aren't cached yet (unless a
+    # lean dev backend has warmers off).
+    if not (os.getenv("DISABLE_WARMERS") or "").strip():
+        missing = [r["symbol"] for r in out.get("rows", []) if not r.get("events")]
+        missing += [s for s in syms if s not in {r["symbol"] for r in out.get("rows", [])}]
+        if missing:
+            batch = missing[:40]
+            threading.Thread(target=lambda: esh.warm_reactions(batch),
+                             daemon=True).start()
+    return out
 
 
 @router.get("/earnings/calendar/context")

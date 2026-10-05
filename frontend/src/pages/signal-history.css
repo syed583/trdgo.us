@@ -85,6 +85,14 @@ tr:not(.sh-rowtop) td { border-bottom: 2px solid var(--border); }
 .esh .sh-sym { font-size: 12.5px; font-weight: 700; }
 .esh .sh-day-h, .esh .sh-latest-h { min-width: 48px; }
 .esh .sh-table td { padding: 5px 10px; }
+
+/* Past-earnings cell: the direction chip with the real report date under it. */
+.sh-rx { vertical-align: top; }
+.sh-rx .sh-chip { display: inline-flex; }
+.sh-rx-date {
+  display: block; margin-top: 3px; font-size: 9.5px; color: var(--text-mute);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
 .sh-source { margin: 6px 0 4px; padding-left: 18px; }
 .sh-source li { margin: 2px 0; line-height: 1.45; }
 .sh-foot b { color: var(--text-dim); }

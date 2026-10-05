@@ -355,7 +355,7 @@ def _capture_earnings_signals() -> None:
     import time
 
     def loop() -> None:
-        time.sleep(120)  # let the earnings warmer populate the cache first
+        time.sleep(90)
         while True:
             try:
                 import uw_earnings_calendar as uwcal
@@ -363,10 +363,13 @@ def _capture_earnings_signals() -> None:
                 rows = (uwcal.calendar(days=21) or {}).get("rows") or []
                 syms = sorted({r.get("symbol", "").upper()
                                for r in rows if r.get("symbol")})
+                # Real past-earnings reactions for the Signal History grid, plus
+                # today's live decision snapshot (kept for continuity).
+                esh.warm_reactions(syms)
                 esh.capture(syms)
             except Exception:  # noqa: BLE001
                 pass
-            time.sleep(6 * 3600)
+            time.sleep(12 * 3600)
 
     threading.Thread(target=loop, name="earnings-signal-capture", daemon=True).start()
 
