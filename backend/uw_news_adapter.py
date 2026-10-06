@@ -65,6 +65,30 @@ def get_sentiment(symbol: str, limit: int = 20) -> dict:
     # "BEARISH, score 0" off a single word in a single headline, which reads
     # on screen exactly like a considered reading of the news.
     if len(scored) < MIN_SCORED:
+        # The keyword estimate is too thin (financial headlines often carry no
+        # obvious up/down word). Have Claude read the headlines for a real tone
+        # instead of giving up -- it understands meaning the word-list cannot.
+        if items:
+            try:
+                import claude_service
+                if claude_service.configured():
+                    heads = [i.get("headline") for i in items if i.get("headline")]
+                    ct = claude_service.news_tone(symbol, heads)
+                    txt = (ct or {}).get("text", "").strip()
+                    if (ct or {}).get("status") == "OK" and txt:
+                        head = txt.split(":", 1)[0].strip().lower()
+                        score = {"positive": 72, "negative": 28}.get(head, 50)
+                        label = ("BULLISH" if head == "positive"
+                                 else "BEARISH" if head == "negative" else "NEUTRAL")
+                        return {
+                            "symbol": symbol, "score": score, "label": label,
+                            "headlines_scored": len(items), "headlines_total": len(items),
+                            "items": per_item, "status": "OK",
+                            "detail": txt,
+                            "source": "Claude · headline read",
+                        }
+            except Exception:  # noqa: BLE001 - fall back to the honest message
+                pass
         return {
             "symbol": symbol, "score": None, "label": "NEUTRAL",
             "headlines_scored": 0, "headlines_total": len(items),
