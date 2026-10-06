@@ -151,10 +151,13 @@ def earnings_signals(symbols: list[str]) -> dict:
             from database import SessionLocal
             db = SessionLocal()
             try:
+                # Compare to the most recent captured baseline on-or-before today
+                # (not just yesterday), so a call that flips vs that baseline shows
+                # the same day the model moves -- not only after a full day passes.
                 rows = db.execute(text(
                     "SELECT DISTINCT ON (symbol) symbol, stock "
                     "FROM earnings_signal_snapshots "
-                    "WHERE symbol = ANY(:syms) AND snapshot_date < :today "
+                    "WHERE symbol = ANY(:syms) AND snapshot_date <= :today "
                     "ORDER BY symbol, snapshot_date DESC"),
                     {"syms": list(out.keys()), "today": _date.today()}).all()
                 for sym, st in rows:
