@@ -58,6 +58,15 @@ export default function UpcomingEarnings({
   const signals: Record<string, string> = sig.data?.signals || {};
   // Previous session's call per symbol, present only when it changed.
   const prevSig: Record<string, string> = sig.data?.prev || {};
+  // How it changed: 'intraday' (moved since today's capture) vs 'session'
+  // (day-over-day), and the date the current call is compared against.
+  const changeKind: Record<string, string> = sig.data?.change_kind || {};
+  const changeSince: Record<string, string> = sig.data?.change_since || {};
+  const sinceLabel = (iso?: string) => {
+    if (!iso) return '';
+    const d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  };
   const CLS: any = { BUY: 'buy', SELL: 'sell', NEUTRAL: 'neutral' };
   const sigClass = (sym: string) => CLS[signals[sym]] || 'none';
   // RGB of each signal colour, for the half/half gradient on a changed card.
@@ -115,33 +124,57 @@ export default function UpcomingEarnings({
           .map((r) => r.symbol)
           .filter((s) => prevSig[s] && signals[s] && prevSig[s] !== signals[s]);
         if (!changed.length) return null;
+        const intraday = changed.filter((s) => changeKind[s] === 'intraday');
+        const session = changed.filter((s) => changeKind[s] !== 'intraday');
+
+        // One chip + its "why?" affordance.
+        const chip = (s: string) => (
+          <span key={s} className="ue-notice-chipwrap">
+            <button className="ue-notice-chip" onClick={() => open(s)}>
+              <b>{s}</b> {prevSig[s]}→{signals[s]}
+            </button>
+            <button type="button" className={`ue-why-btn${whyFor === s ? ' on' : ''}`}
+              title="Why did this change?" onClick={() => toggleWhy(s)}>
+              <HelpCircle size={13} /> why?
+            </button>
+          </span>
+        );
+
+        // A titled group of changed chips (collapsed to 8 unless expanded).
         const LIMIT = 8;
-        const shown = showAllChanged ? changed : changed.slice(0, LIMIT);
-        const hidden = changed.length - shown.length;
+        const groupBlock = (list: string[], kind: 'intraday' | 'session') => {
+          if (!list.length) return null;
+          const shown = showAllChanged ? list : list.slice(0, LIMIT);
+          const hidden = list.length - shown.length;
+          return (
+            <div className={`ue-chg-group ${kind}`}>
+              <span className="ue-chg-tag">
+                {kind === 'intraday'
+                  ? `Intraday · moved today (${list.length})`
+                  : `Since last session (${list.length})`}
+              </span>
+              <span className="ue-notice-list">
+                {shown.map(chip)}
+                {list.length > LIMIT && (
+                  <button type="button" className="ue-notice-toggle"
+                    onClick={() => setShowAllChanged((v) => !v)}>
+                    {showAllChanged ? 'Show less' : `+${hidden} more`}
+                  </button>
+                )}
+              </span>
+            </div>
+          );
+        };
+
         return (
           <div className="ue-notice">
-            <Bell size={14} />
-            <span className="ue-notice-h">{changed.length} earnings {changed.length === 1
-              ? 'stock' : 'stocks'} changed signal</span>
-            <span className="ue-notice-list">
-              {shown.map((s) => (
-                <span key={s} className="ue-notice-chipwrap">
-                  <button className="ue-notice-chip" onClick={() => open(s)}>
-                    <b>{s}</b> {prevSig[s]}→{signals[s]}
-                  </button>
-                  <button type="button" className={`ue-why-btn${whyFor === s ? ' on' : ''}`}
-                    title="Why did this change?" onClick={() => toggleWhy(s)}>
-                    <HelpCircle size={13} /> why?
-                  </button>
-                </span>
-              ))}
-              {changed.length > LIMIT && (
-                <button type="button" className="ue-notice-toggle"
-                  onClick={() => setShowAllChanged((v) => !v)}>
-                  {showAllChanged ? 'Show less' : `+${hidden} more`}
-                </button>
-              )}
-            </span>
+            <div className="ue-notice-top">
+              <Bell size={14} />
+              <span className="ue-notice-h">{changed.length} earnings {changed.length === 1
+                ? 'stock' : 'stocks'} changed signal</span>
+            </div>
+            {groupBlock(intraday, 'intraday')}
+            {groupBlock(session, 'session')}
             {whyFor && (() => {
               const d = whyCache[whyFor];
               const cur = signals[whyFor];
@@ -149,11 +182,13 @@ export default function UpcomingEarnings({
               const why: any[] = (d?.equity?.why || [])
                 .filter((p: any) => p.available);
               const drivers = (want ? why.filter((p) => p.leaning === want) : why).slice(0, 4);
+              const when = changeKind[whyFor] === 'intraday'
+                ? 'moved intraday' : `changed since ${sinceLabel(changeSince[whyFor])}`;
               return (
                 <div className="ue-why">
                   <div className="ue-why-h">
-                    <b>{whyFor}</b> now <b>{cur}</b> (was {prevSig[whyFor]}) —{' '}
-                    {want ? `what's pushing it ${cur.toLowerCase()}:` : 'no decisive edge now:'}
+                    <b>{whyFor}</b> {prevSig[whyFor]}→<b>{cur}</b> ({when}) —{' '}
+                    {want ? `what's pushing it ${cur.toLowerCase()} now:` : 'no decisive edge now:'}
                   </div>
                   {d?.loading ? (
                     <div className="ue-why-note">Loading the drivers…</div>
@@ -202,13 +237,20 @@ export default function UpcomingEarnings({
             <div className="ue-grid">
               {items.map((r) => {
                 const style = splitFor(r.symbol);
+                // Intraday flips blink (fresh, moved today); day-over-day flips
+                // show the split with a calm steady glow, no blink.
+                const chg = style
+                  ? (changeKind[r.symbol] === 'intraday'
+                    ? 'sig-changed sig-changed-intraday'
+                    : 'sig-changed sig-changed-session')
+                  : '';
                 return (
                 <button key={r.symbol + r.date}
-                  className={`ue-row sig-${sigClass(r.symbol)} ${style ? 'sig-changed' : ''}`}
+                  className={`ue-row sig-${sigClass(r.symbol)} ${chg}`}
                   style={style}
                   onClick={() => open(r.symbol)}
                   title={style
-                    ? `Changed: ${prevSig[r.symbol]} → ${signals[r.symbol]}`
+                    ? `${changeKind[r.symbol] === 'intraday' ? 'Intraday' : 'Since ' + sinceLabel(changeSince[r.symbol])}: ${prevSig[r.symbol]} → ${signals[r.symbol]}`
                     : (signals[r.symbol] ? `Signal: ${signals[r.symbol]}` : undefined)}>
                   <div className="ue-row-l">
                     <span className="ue-sym">{r.symbol}</span>

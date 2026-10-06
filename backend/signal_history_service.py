@@ -144,6 +144,8 @@ def earnings_signals(symbols: list[str]) -> dict:
     # only when it differs from the current one -- so the list can show a stock
     # whose earnings call CHANGED (e.g. Buy -> Neutral) as a split colour.
     prev: dict[str, str] = {}
+    kind: dict[str, str] = {}   # 'intraday' (moved since today's capture) or 'session'
+    since: dict[str, str] = {}  # the capture date the current call is compared against
     if out:
         try:
             from datetime import date as _date
@@ -171,6 +173,7 @@ def earnings_signals(symbols: list[str]) -> dict:
                     {"syms": list(out.keys()),
                      "since": _date.today() - _td(days=30)}).all()
                 # Group each symbol's captures newest-first.
+                today = _date.today()
                 hist: dict[str, list] = {}
                 for sym, st, d in rows:
                     hist.setdefault(sym, []).append((d, st))
@@ -180,23 +183,31 @@ def earnings_signals(symbols: list[str]) -> dict:
                         continue
                     latest_d, latest_v = series[0]
                     if latest_v and latest_v != cur:
-                        # Same-day flip: the live call has moved away from today's
-                        # own capture since it was taken.
+                        # The live call has moved away from the latest capture.
+                        # If that capture was today's, it's an INTRADAY flip (moved
+                        # since this session's snapshot); otherwise it's a change
+                        # since an earlier day with no capture yet today.
                         prev[sym] = latest_v
+                        kind[sym] = "intraday" if latest_d == today else "session"
+                        since[sym] = latest_d.isoformat()
                     else:
                         # Steady vs the latest capture -> compare to the value on the
                         # immediately preceding capture date (the previous session).
                         # Only that one date, so a long-ago flip that has since been
-                        # steady is NOT re-reported.
-                        prior = next((v for d, v in series if d != latest_d), None)
-                        if prior and prior != cur:
-                            prev[sym] = prior
+                        # steady is NOT re-reported. This is a day-over-day change.
+                        prd = next(((d, v) for d, v in series if d != latest_d),
+                                   (None, None))
+                        if prd[1] and prd[1] != cur:
+                            prev[sym] = prd[1]
+                            kind[sym] = "session"
+                            since[sym] = prd[0].isoformat()
             finally:
                 db.close()
         except Exception:  # noqa: BLE001 - no history just means no change shown
             pass
 
     return {"status": "OK", "signals": out, "prev": prev,
+            "change_kind": kind, "change_since": since,
             "missing": missing, "source": SOURCE}
 
 
