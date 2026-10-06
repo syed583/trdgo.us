@@ -23,6 +23,7 @@ export default function UpcomingEarnings({
   const navigate = useNavigate();
   const [q, setQ] = useState('');
   const [showAllChanged, setShowAllChanged] = useState(false);
+  const [changeTab, setChangeTab] = useState<'intraday' | 'session'>('intraday');
   // Lazy "why did it flip?" per changed stock: the current drivers leaning the
   // new way. Snapshots only store the decision, so we explain the new call's
   // live drivers rather than diffing yesterday's parameters.
@@ -140,31 +141,14 @@ export default function UpcomingEarnings({
           </span>
         );
 
-        // A titled group of changed chips (collapsed to 8 unless expanded).
+        // Default the active tab to whichever kind actually has changes.
+        const active = changeTab === 'session'
+          ? (session.length ? 'session' : 'intraday')
+          : (intraday.length ? 'intraday' : 'session');
+        const list = active === 'intraday' ? intraday : session;
         const LIMIT = 8;
-        const groupBlock = (list: string[], kind: 'intraday' | 'session') => {
-          if (!list.length) return null;
-          const shown = showAllChanged ? list : list.slice(0, LIMIT);
-          const hidden = list.length - shown.length;
-          return (
-            <div className={`ue-chg-group ${kind}`}>
-              <span className="ue-chg-tag">
-                {kind === 'intraday'
-                  ? `Intraday · moved today (${list.length})`
-                  : `Since last session (${list.length})`}
-              </span>
-              <span className="ue-notice-list">
-                {shown.map(chip)}
-                {list.length > LIMIT && (
-                  <button type="button" className="ue-notice-toggle"
-                    onClick={() => setShowAllChanged((v) => !v)}>
-                    {showAllChanged ? 'Show less' : `+${hidden} more`}
-                  </button>
-                )}
-              </span>
-            </div>
-          );
-        };
+        const shown = showAllChanged ? list : list.slice(0, LIMIT);
+        const hidden = list.length - shown.length;
 
         return (
           <div className="ue-notice">
@@ -173,8 +157,37 @@ export default function UpcomingEarnings({
               <span className="ue-notice-h">{changed.length} earnings {changed.length === 1
                 ? 'stock' : 'stocks'} changed signal</span>
             </div>
-            {groupBlock(intraday, 'intraday')}
-            {groupBlock(session, 'session')}
+            <div className="ue-chg-tabs" role="tablist">
+              <button type="button" role="tab"
+                className={`ue-chg-tab intraday${active === 'intraday' ? ' on' : ''}`}
+                onClick={() => { setChangeTab('intraday'); setShowAllChanged(false); }}>
+                Intraday · moved today <span className="ue-chg-count">{intraday.length}</span>
+              </button>
+              <button type="button" role="tab"
+                className={`ue-chg-tab session${active === 'session' ? ' on' : ''}`}
+                onClick={() => { setChangeTab('session'); setShowAllChanged(false); }}>
+                Last 30 days <span className="ue-chg-count">{session.length}</span>
+              </button>
+            </div>
+            <div className="ue-chg-panel">
+              {!list.length ? (
+                <span className="ue-why-note">
+                  {active === 'intraday'
+                    ? 'No calls have moved intraday since today’s capture.'
+                    : 'No day-over-day changes in the last 30 days.'}
+                </span>
+              ) : (
+                <span className="ue-notice-list">
+                  {shown.map(chip)}
+                  {list.length > LIMIT && (
+                    <button type="button" className="ue-notice-toggle"
+                      onClick={() => setShowAllChanged((v) => !v)}>
+                      {showAllChanged ? 'Show less' : `+${hidden} more`}
+                    </button>
+                  )}
+                </span>
+              )}
+            </div>
             {whyFor && (() => {
               const d = whyCache[whyFor];
               const cur = signals[whyFor];

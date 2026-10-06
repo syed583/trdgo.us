@@ -173,19 +173,28 @@
 .ue-notice-h { font-size: 12.5px; font-weight: 700; }
 .ue-notice-list { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
-/* Intraday vs day-over-day change groups, visually distinct. */
-.ue-chg-group {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-  padding: 7px 9px; border-radius: var(--r); border: 1px solid transparent;
+/* Intraday vs last-30-days change tabs. */
+.ue-chg-tabs { display: flex; gap: 6px; }
+.ue-chg-tab {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  font: inherit; font-size: 11.5px; font-weight: 700;
+  padding: 5px 12px; border-radius: var(--r-pill);
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text-mute);
 }
-.ue-chg-group.intraday { background: rgba(236, 72, 153, .07); border-color: rgba(236, 72, 153, .35); }
-.ue-chg-group.session  { background: rgba(217, 164, 65, .07); border-color: rgba(217, 164, 65, .35); }
-.ue-chg-tag {
-  font-size: 10px; font-weight: 800; letter-spacing: 0.03em; text-transform: uppercase;
-  padding: 2px 8px; border-radius: var(--r-pill); white-space: nowrap;
+.ue-chg-tab:hover { color: var(--text); }
+.ue-chg-count {
+  font-size: 10.5px; font-weight: 800; font-family: var(--mono);
+  padding: 0 6px; border-radius: var(--r-pill); background: var(--bg-2); color: var(--text-dim);
 }
-.ue-chg-group.intraday .ue-chg-tag { color: #ec4899; background: rgba(236, 72, 153, .15); }
-.ue-chg-group.session  .ue-chg-tag { color: var(--amber); background: rgba(217, 164, 65, .16); }
+.ue-chg-tab.intraday.on {
+  color: #ec4899; background: rgba(236, 72, 153, .12); border-color: rgba(236, 72, 153, .5);
+}
+.ue-chg-tab.intraday.on .ue-chg-count { color: #ec4899; background: rgba(236, 72, 153, .18); }
+.ue-chg-tab.session.on {
+  color: var(--amber); background: rgba(217, 164, 65, .12); border-color: rgba(217, 164, 65, .5);
+}
+.ue-chg-tab.session.on .ue-chg-count { color: var(--amber); background: rgba(217, 164, 65, .18); }
+.ue-chg-panel { display: flex; }
 .ue-notice-chip {
   display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-pill);
