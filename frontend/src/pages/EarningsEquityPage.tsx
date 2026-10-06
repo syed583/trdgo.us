@@ -69,7 +69,8 @@ export default function EarningsEquityPage({ ctx }: { ctx: PageContext }) {
               <div><span>Max planned risk</span><b>{t.max_planned_risk_percent != null ? `~${num(t.max_planned_risk_percent, 2)}%` : '--'}</b></div>
               <div className="es-trade-wide"><span>Planned exit</span><b>{t.planned_exit || '--'}</b></div>
             </div>
-            <h3 className="es-sub">Evidence breakdown (100 pts)</h3>
+            <h3 className="es-sub">Evidence breakdown ({(r.params || [])
+              .reduce((t: number, p: any) => t + (p.weight || 0), 0)} pts)</h3>
             <ParamList params={r.params} />
             <div className="es-foot">{r.note}</div>
           </div>

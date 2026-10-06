@@ -74,7 +74,8 @@ export default function EarningsOptionsPage({ ctx }: { ctx: PageContext }) {
               <div className="es-trade-wide"><span>Exit</span><b>{c.exit || '--'}</b></div>
               <div className="es-trade-wide"><span>Max premium at risk</span><b>{c.max_premium_at_risk || '--'}</b></div>
             </div>
-            <h3 className="es-sub">Evidence breakdown (100 pts)</h3>
+            <h3 className="es-sub">Evidence breakdown ({(r.params || [])
+              .reduce((t: number, p: any) => t + (p.weight || 0), 0)} pts)</h3>
             <ParamList params={r.params} />
             <div className="es-foot">{r.note}</div>
           </div>

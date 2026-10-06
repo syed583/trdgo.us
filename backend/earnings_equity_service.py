@@ -252,19 +252,19 @@ def get_analysis(symbol: str) -> dict:
     eps_bias, rev_bias = _estimate_bias(symbol)
 
     params = [
-        eng.Param("eps_estimates", "EPS Estimates & Revisions", 15, eps_bias,
+        eng.Param("eps_estimates", "EPS Estimates & Revisions", 18, eps_bias,
                   detail="Analysts' expected EPS growth and last-week revisions (UW).",
                   unavailable_reason="" if eps_bias is not None else "No analyst EPS estimates."),
         eng.Param("revenue_estimates", "Revenue Estimates & Revisions", 15, rev_bias,
                   detail="Year-over-year growth of the average revenue estimate (UW).",
                   unavailable_reason="" if rev_bias is not None else "No analyst revenue estimates."),
-        eng.Param("guidance", "Forward Guidance & Outlook", 15, _guidance_bias(symbol),
+        eng.Param("guidance", "Forward Guidance & Outlook", 10, _guidance_bias(symbol),
                   detail="Next-quarter YoY outlook from analyst estimates (UW).",
                   unavailable_reason="No forward quarterly estimates."),
-        eng.Param("historical_reaction", "Historical Earnings Reaction", 15,
+        eng.Param("historical_reaction", "Historical Earnings Reaction", 10,
                   _history_bias(symbol),
                   detail="Beat rate and post-earnings drift over recent quarters."),
-        eng.Param("price_action", "Price Action & Technical Trend", 10,
+        eng.Param("price_action", "Price Action & Technical Trend", 12,
                   s("price_action", "ema_trend", "rsi", "key_levels"),
                   detail="Trend, moving averages, RSI and key levels."),
         eng.Param("options_positioning", "Options Flow & Institutional Positioning", 10,
@@ -274,11 +274,13 @@ def get_analysis(symbol: str) -> dict:
         eng.Param("dark_pool", "Dark Pool Activity", 5, _darkpool_bias(symbol),
                   detail="Off-lit buy vs sell pressure (direction is indicative)."),
         eng.Param("unusual_options", "Unusual Options Activity", 5,
-                  s("flow_by_expiry", "volume_pcr"),
+                  s("flow_by_expiry"),
                   detail="Volume above open interest / near-term positioning."),
-        eng.Param("disparity", "Options Disparity", 5, s("disparity"),
-                  detail="Price vs options-implied fair value."),
-        eng.Param("sector_market", "Sector & Market Trend", 5, _sector_bias(symbol),
+        eng.Param("disparity", "Options Disparity & Put/Call Ratio", 5,
+                  s("disparity", "volume_pcr"),
+                  detail="Price vs options-implied fair value, and the session "
+                         "put/call volume ratio (low P/C = bullish)."),
+        eng.Param("sector_market", "Sector & Market Trend", 8, _sector_bias(symbol),
                   detail="Index breadth / market tailwind."),
     ]
 
