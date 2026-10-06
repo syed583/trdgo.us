@@ -32,7 +32,9 @@ def _historical_moves(symbol: str, limit: int = 0) -> list[dict]:
         if not dates:
             return []
         # Deep candle window so even old reports have a prior close to compare to.
-        bars = uw._rows(uw.candles(symbol, "1d", limit=3000))
+        # UW caps the daily candle request at ~2500; 3000 returns nothing at all,
+        # which silently emptied the whole post-earnings history.
+        bars = uw._rows(uw.candles(symbol, "1d", limit=2500))
         bars = [b for b in bars if b.get("date") and _f(b.get("close")) is not None]
         bars.sort(key=lambda b: b["date"])
         closes = [(b["date"], _f(b["close"])) for b in bars]
