@@ -210,7 +210,20 @@
 }
 .ue-chg-tab.session.on .ue-chg-count { color: var(--amber); background: rgba(217, 164, 65, .18); }
 .ue-chg-panel { display: flex; }
-/* Pre-earnings signal timeline grid */
+/* Pre-earnings signal timeline: a strip beneath each earnings card. */
+.ue-grid-timeline { grid-template-columns: 1fr !important; }
+.ue-cardwrap {
+  display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r);
+  overflow: hidden;
+}
+.ue-cardwrap .ue-row { border: none; border-radius: 0; }
+.tl-strip {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 5px 12px 8px; border-top: 1px dashed var(--border);
+}
+
+/* (legacy) Pre-earnings signal timeline grid */
 .tl { display: flex; flex-direction: column; gap: 3px; }
 .tl-head, .tl-row {
   display: grid; grid-template-columns: 120px 1fr; align-items: center; gap: 10px;

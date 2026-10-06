@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CalendarDays, Search, ChevronRight, Bell, HelpCircle } from 'lucide-react';
 import { api2 } from '../api/client';
@@ -18,24 +18,19 @@ function fmtCap(v: number): string {
  * Pick one and it opens that ticker's full analysis on the same engine (`base`).
  */
 export default function UpcomingEarnings({
-  base, title, demo, search, changeTab: changeTabProp, onChangeTab, onCounts,
+  base, title, demo, search, timeline,
 }: {
   base: string; title: string; demo?: boolean; search: string;
-  // Optional: let a parent (the page header) own the tabs. 'all' = full list,
-  // 'timeline' = pre-earnings day-by-day signal grid. ('intraday'/'session' are
-  // used only by the standalone in-banner tabs on the equity/options landings.)
-  changeTab?: 'all' | 'timeline' | 'intraday' | 'session';
-  onChangeTab?: (t: any) => void;
-  onCounts?: (c: { intraday: number; session: number }) => void;
+  // timeline: show each stock's past-15-day Stock/Options signal track inline on
+  // its card (used on the Earnings Trade landing). The standalone equity/options
+  // landings leave it off and keep the simple change banner.
+  timeline?: boolean;
 }) {
   const navigate = useNavigate();
   const [q, setQ] = useState('');
   const [showAllChanged, setShowAllChanged] = useState(false);
-  const [changeTabInternal, setChangeTabInternal] = useState<any>('intraday');
-  // Controlled by the parent when it supplies the tabs; else use local state.
-  const changeTab = changeTabProp ?? changeTabInternal;
-  const setChangeTab = onChangeTab ?? setChangeTabInternal;
-  const tabsAtTop = !!onChangeTab;  // parent renders the tabs -> it drives list filtering
+  const [changeTab, setChangeTab] = useState<'intraday' | 'session'>('intraday');
+  const tabsAtTop = false;  // standalone banner only; the Trade page uses `timeline`
   // Lazy "why did it flip?" per changed stock: the current drivers leaning the
   // new way. Snapshots only store the decision, so we explain the new call's
   // live drivers rather than diffing yesterday's parameters.
@@ -69,7 +64,7 @@ export default function UpcomingEarnings({
     { refreshMs: demo ? undefined : 15_000 },
   );
   // Pre-earnings signal timeline (only when that tab is active).
-  const timelineOn = tabsAtTop && changeTab === 'timeline';
+  const timelineOn = !!timeline;
   const tl = useApi<any>(
     (s) => (timelineOn && rows.length && !demo
       ? api2.earningsSignalTimeline(rows.map((r) => r.symbol), 15, s)
@@ -86,15 +81,11 @@ export default function UpcomingEarnings({
   const changeKind: Record<string, string> = sig.data?.change_kind || {};
   const changeSince: Record<string, string> = sig.data?.change_since || {};
 
-  // The changed symbols, split by kind -- shared by the banner and reported up
-  // to the parent so page-level tabs can show the counts.
+  // The changed symbols, split by kind -- used by the standalone banner.
   const changed = rows.map((r) => r.symbol)
     .filter((s) => prevSig[s] && signals[s] && prevSig[s] !== signals[s]);
   const intradayChanged = changed.filter((s) => changeKind[s] === 'intraday');
   const sessionChanged = changed.filter((s) => changeKind[s] !== 'intraday');
-  useEffect(() => {
-    onCounts?.({ intraday: intradayChanged.length, session: sessionChanged.length });
-  }, [intradayChanged.length, sessionChanged.length, onCounts]);
   const sinceLabel = (iso?: string) => {
     if (!iso) return '';
     const d = new Date(iso + 'T00:00:00');
@@ -123,27 +114,19 @@ export default function UpcomingEarnings({
     };
   };
 
-  // When the page header owns the tabs, Intraday / Last-10-days filter the list
-  // down to only that kind's changed stocks -- the two views stay separate.
-  const tabFilterSet = useMemo(() => {
-    if (!tabsAtTop || changeTab === 'all') return null;
-    return new Set(changeTab === 'intraday' ? intradayChanged : sessionChanged);
-  }, [tabsAtTop, changeTab, intradayChanged, sessionChanged]);
-
   const groups = useMemo(() => {
     const needle = q.trim().toUpperCase();
-    let filtered = needle
+    const filtered = needle
       ? rows.filter((r) => (r.symbol || '').toUpperCase().includes(needle)
         || (r.company || '').toUpperCase().includes(needle))
       : rows;
-    if (tabFilterSet) filtered = filtered.filter((r) => tabFilterSet.has(r.symbol));
     const byDay: Record<string, any[]> = {};
     for (const r of filtered) {
       const k = r.date_label || r.date || '—';
       (byDay[k] = byDay[k] || []).push(r);
     }
     return Object.entries(byDay);
-  }, [rows, q, tabFilterSet]);
+  }, [rows, q]);
 
   const open = (sym: string) => navigate(`${base}/${sym}${search}`);
 
@@ -224,49 +207,24 @@ export default function UpcomingEarnings({
     );
   };
 
-  // The pre-earnings signal timeline: one row per stock, with a Stk line and an
-  // Opt line of daily cells across the last 15 days (built from the snapshots).
-  const renderTimeline = () => {
-    const cols: string[] = tl.data?.cols || [];
-    const tlRows: Record<string, any> = tl.data?.rows || {};
-    if (tl.initialLoading) return <div className="es-empty">Loading the timeline…</div>;
-    if (!cols.length) return <div className="es-empty">No timeline data yet.</div>;
-    const dayLabel = (iso: string) => {
-      const d = new Date(iso + 'T00:00:00');
-      return `${d.getMonth() + 1}/${d.getDate()}`;
-    };
+  // The past-15-day Stk/Opt signal track for one stock, rendered as a strip
+  // beneath its card. Built from the daily snapshots (grey = no capture).
+  const tlCols: string[] = tl.data?.cols || [];
+  const tlRowsData: Record<string, any> = tl.data?.rows || {};
+  const renderStrip = (sym: string) => {
+    const row = tlRowsData[sym];
+    if (!timeline || !row || !tlCols.length) return null;
     const cls = (v: any) => `tl-cell sig-${CLS[v] || 'na'}`;
-    const present = rows.filter((r) => tlRows[r.symbol]);
     return (
-      <div className="tl">
-        <p className="ue-sub">Each stock's daily Stock (Stk) and Options (Opt) call
-          over the last 15 days, up to its report. Fills in as the daily capture
-          runs — green=Buy, red=Sell, amber=Neutral, grey=no capture that day.</p>
-        <div className="tl-head">
-          <span className="tl-sym" />
-          <span className="tl-cols">
-            {cols.map((c) => <span key={c} className="tl-col">{dayLabel(c)}</span>)}
-          </span>
-        </div>
-        {present.map((r) => {
-          const row = tlRows[r.symbol];
-          return (
-            <button key={r.symbol} className="tl-row" onClick={() => open(r.symbol)}>
-              <span className="tl-sym"><b>{r.symbol}</b>
-                <em>{r.date_label || r.short_label || ''}</em></span>
-              <span className="tl-tracks">
-                <span className="tl-line"><span className="tl-lbl">Stk</span>
-                  {row.stock.map((v: any, i: number) => (
-                    <i key={i} className={cls(v)} title={`${cols[i]}: ${v || '—'}`} />))}
-                </span>
-                <span className="tl-line"><span className="tl-lbl">Opt</span>
-                  {row.options.map((v: any, i: number) => (
-                    <i key={i} className={cls(v)} title={`${cols[i]}: ${v || '—'}`} />))}
-                </span>
-              </span>
-            </button>
-          );
-        })}
+      <div className="tl-strip">
+        <span className="tl-line"><span className="tl-lbl">Stk</span>
+          {row.stock.map((v: any, i: number) => (
+            <i key={i} className={cls(v)} title={`${tlCols[i]}: ${v || '—'}`} />))}
+        </span>
+        <span className="tl-line"><span className="tl-lbl">Opt</span>
+          {row.options.map((v: any, i: number) => (
+            <i key={i} className={cls(v)} title={`${tlCols[i]}: ${v || '—'}`} />))}
+        </span>
       </div>
     );
   };
@@ -285,9 +243,9 @@ export default function UpcomingEarnings({
         score its earnings trade.</p>
 
       {(() => {
-        // Standalone only (tabs live in this banner). When the page header owns
-        // the tabs, the list is filtered instead -- no inline banner.
-        if (tabsAtTop || !changed.length) return null;
+        // Standalone banner (equity/options landings). On the Trade page the
+        // timeline strips replace it, so no banner there.
+        if (timeline || !changed.length) return null;
         const intraday = intradayChanged;
         const session = sessionChanged;
 
@@ -362,8 +320,8 @@ export default function UpcomingEarnings({
         );
       })()}
 
-      {/* Header-tab mode: the "why?" panel renders standalone above the list. */}
-      {tabsAtTop && renderWhyPanel()}
+      {/* Timeline mode: the "why?" panel renders standalone above the list. */}
+      {timeline && renderWhyPanel()}
 
       {demo ? (
         <div className="es-empty">Disabled in demo mode.</div>
@@ -371,21 +329,15 @@ export default function UpcomingEarnings({
         <div className="es-empty">Loading the earnings calendar…</div>
       ) : !rows.length ? (
         <div className="es-empty">No scheduled reports in the window.</div>
-      ) : timelineOn ? (
-        renderTimeline()
       ) : !groups.length ? (
         <div className="es-empty">
-          {q ? `No matches for “${q}”.`
-            : tabFilterSet ? (changeTab === 'intraday'
-              ? 'No calls have moved intraday since today’s capture.'
-              : 'No day-over-day signal changes in the last 10 days.')
-              : 'No scheduled reports in the window.'}
+          {q ? `No matches for “${q}”.` : 'No scheduled reports in the window.'}
         </div>
       ) : (
         groups.map(([day, items]) => (
           <div key={day} className="ue-day">
             <div className="ue-day-h">{day}</div>
-            <div className="ue-grid">
+            <div className={`ue-grid${timeline ? ' ue-grid-timeline' : ''}`}>
               {items.map((r) => {
                 const style = splitFor(r.symbol);
                 // Intraday flips blink (fresh, moved today); day-over-day flips
@@ -396,7 +348,8 @@ export default function UpcomingEarnings({
                     : 'sig-changed sig-changed-session')
                   : '';
                 return (
-                <button key={r.symbol + r.date}
+                <div key={r.symbol + r.date} className="ue-cardwrap">
+                <button
                   className={`ue-row sig-${sigClass(r.symbol)} ${chg}`}
                   style={style}
                   onClick={() => open(r.symbol)}
@@ -414,7 +367,7 @@ export default function UpcomingEarnings({
                         {r.market_cap != null && <em>{fmtCap(Number(r.market_cap))}</em>}
                       </span>
                     )}
-                    {tabsAtTop && style && (
+                    {timeline && style && (
                       <span className="ue-row-why" role="button" tabIndex={0}
                         title="Why did this change?"
                         onClick={(e) => { e.stopPropagation(); toggleWhy(r.symbol); }}>
@@ -426,6 +379,8 @@ export default function UpcomingEarnings({
                     <ChevronRight size={15} className="ue-chev" />
                   </div>
                 </button>
+                {renderStrip(r.symbol)}
+                </div>
                 );
               })}
             </div>

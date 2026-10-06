@@ -52,28 +52,14 @@ function Gauge({ score, label, title }: { score: number | null; label: string; t
 // The landing view: the two change tabs (Intraday / Last 10 days) live in the
 // page header and drive the Upcoming-earnings list's change banner below.
 function EarningsTradeLanding({ demo, search }: { demo?: boolean; search: string }) {
-  const [changeTab, setChangeTab] = useState<'all' | 'timeline'>('all');
   return (
     <div className="page ets">
       <div className="ets-landing-head">
         <h1>Earnings Trade</h1>
         <p>Combined equity + options earnings analysis. Pick a stock reporting soon.</p>
-        <div className="ue-chg-tabs ets-chg-tabs" role="tablist">
-          <button type="button" role="tab"
-            className={`ue-chg-tab all${changeTab === 'all' ? ' on' : ''}`}
-            onClick={() => setChangeTab('all')}>
-            All earnings
-          </button>
-          <button type="button" role="tab"
-            className={`ue-chg-tab timeline${changeTab === 'timeline' ? ' on' : ''}`}
-            onClick={() => setChangeTab('timeline')}>
-            Pre-earnings timeline · 15d
-          </button>
-        </div>
       </div>
       <UpcomingEarnings base="/earnings-trade" title="Upcoming earnings"
-        demo={demo} search={search}
-        changeTab={changeTab} onChangeTab={setChangeTab} />
+        demo={demo} search={search} timeline />
     </div>
   );
 }
