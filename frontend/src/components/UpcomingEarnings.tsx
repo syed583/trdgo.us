@@ -18,13 +18,14 @@ function fmtCap(v: number): string {
  * Pick one and it opens that ticker's full analysis on the same engine (`base`).
  */
 export default function UpcomingEarnings({
-  base, title, demo, search, timeline,
+  base, title, demo, search, timeline, hideChanges,
 }: {
   base: string; title: string; demo?: boolean; search: string;
-  // timeline: show each stock's past-15-day Stock/Options signal track inline on
-  // its card (used on the Earnings Trade landing). The standalone equity/options
-  // landings leave it off and keep the simple change banner.
+  // timeline: show each stock's past-15-day signal track inline on its card.
   timeline?: boolean;
+  // hideChanges: no "changed signal" banner and no split/blink on cards (the
+  // Earnings Trade landing wants a plain list).
+  hideChanges?: boolean;
 }) {
   const navigate = useNavigate();
   const [q, setQ] = useState('');
@@ -243,9 +244,9 @@ export default function UpcomingEarnings({
         score its earnings trade.</p>
 
       {(() => {
-        // Standalone banner (equity/options landings). On the Trade page the
-        // timeline strips replace it, so no banner there.
-        if (timeline || !changed.length) return null;
+        // Standalone banner (equity/options landings). Suppressed on the Trade
+        // page (timeline strips, or a plain list via hideChanges).
+        if (timeline || hideChanges || !changed.length) return null;
         const intraday = intradayChanged;
         const session = sessionChanged;
 
@@ -339,7 +340,7 @@ export default function UpcomingEarnings({
             <div className="ue-day-h">{day}</div>
             <div className={`ue-grid${timeline ? ' ue-grid-timeline' : ''}`}>
               {items.map((r) => {
-                const style = splitFor(r.symbol);
+                const style = hideChanges ? undefined : splitFor(r.symbol);
                 // Intraday flips blink (fresh, moved today); day-over-day flips
                 // show the split with a calm steady glow, no blink.
                 const chg = style
