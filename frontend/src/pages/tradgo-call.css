@@ -28,3 +28,20 @@
 .tc-gate-link:hover { text-decoration: underline; }
 
 .tc-vol { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--text-mute); }
+
+/* Ticker search */
+.tc-search {
+  display: flex; align-items: center; gap: 8px; margin: 0 0 16px; padding: 8px 12px;
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--r-pill);
+  color: var(--text-mute);
+}
+.tc-search input {
+  flex: 1; background: none; border: none; outline: none; color: var(--text);
+  font-size: 14px; text-transform: uppercase;
+}
+.tc-search input::placeholder { text-transform: none; }
+.tc-search-btn {
+  background: var(--green); color: #06281b; border: none; border-radius: var(--r-pill);
+  padding: 6px 16px; font: inherit; font-weight: 700; font-size: 13px; cursor: pointer;
+}
+.tc-search-btn:hover { filter: brightness(1.05); }

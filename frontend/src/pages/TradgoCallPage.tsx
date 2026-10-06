@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Search } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
@@ -28,6 +29,11 @@ function Param({ p }: { p: any }) {
 export default function TradgoCallPage({ ctx }: { ctx: PageContext }) {
   const { symbol, demo } = ctx;
   const navigate = useNavigate();
+  const [entry, setEntry] = useState('');
+  const go = (sym: string) => {
+    const t = (sym || '').trim().toUpperCase();
+    if (t) navigate(`/tradgo-call/${encodeURIComponent(t)}${ctx.search}`);
+  };
   const q = useApi<any>(
     (s) => (demo ? Promise.resolve(null) : api2.tradgoCall(symbol, s)),
     [symbol, demo],
@@ -45,6 +51,14 @@ export default function TradgoCallPage({ ctx }: { ctx: PageContext }) {
       <PageHead title={`Tradgo Call · ${symbol}`}
         subtitle={<>Short-term direction model (days to ~3–4 weeks), scored −100 to
           +100. Volatility is sizing only. <b>Research, not advice.</b></>} />
+
+      <form className="tc-search" onSubmit={(e) => { e.preventDefault(); go(entry); }}>
+        <Search size={15} />
+        <input value={entry} onChange={(e) => setEntry(e.target.value)}
+          placeholder="Enter a ticker (e.g. AAPL) to get its Buy / Sell call…"
+          autoCapitalize="characters" spellCheck={false} />
+        <button type="submit" className="tc-search-btn">Get call</button>
+      </form>
 
       {demo ? (
         <div className="es-empty">Disabled in demo mode.</div>
