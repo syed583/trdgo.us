@@ -1,5 +1,5 @@
-import { Link, useParams } from 'react-router-dom';
-import { ChevronLeft } from 'lucide-react';
+import { Link, useParams, useNavigate } from 'react-router-dom';
+import { ChevronLeft, ArrowLeft } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
@@ -12,6 +12,7 @@ import '../components/earnings-trade.css';
 export default function EarningsOptionsPage({ ctx }: { ctx: PageContext }) {
   const { symbol, demo } = ctx;
   const { symbol: pathSym } = useParams();
+  const navigate = useNavigate();
   const on = !!pathSym && !demo;
 
   const q = useApi<any>(
@@ -37,9 +38,14 @@ export default function EarningsOptionsPage({ ctx }: { ctx: PageContext }) {
 
   return (
     <div className="page es">
-      <Link to={`/earnings-options${ctx.search}`} className="es-back">
-        <ChevronLeft size={14} /> Upcoming earnings
-      </Link>
+      <div className="es-backrow">
+        <button type="button" className="es-back es-back-btn" onClick={() => navigate(-1)}>
+          <ArrowLeft size={14} /> Back
+        </button>
+        <Link to={`/earnings-options${ctx.search}`} className="es-back">
+          <ChevronLeft size={14} /> Upcoming earnings
+        </Link>
+      </div>
       <PageHead
         title={`Earnings — Options · ${symbol}`}
         subtitle={<>Engine 2: a 100-point evidence score for a long straddle /
