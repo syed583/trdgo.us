@@ -242,11 +242,15 @@
 .tl-tracks { display: flex; flex-direction: column; gap: 3px; }
 .tl-line { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
 .tl-lbl { font-size: 9px; font-weight: 700; color: var(--text-mute); text-transform: uppercase; width: 24px; flex: 0 0 auto; }
-.tl-cell { width: 13px; height: 13px; flex: 0 0 auto; border-radius: 2px; background: var(--bg-2); }
-.tl-cell.sig-buy { background: var(--green); }
-.tl-cell.sig-sell { background: var(--red); }
-.tl-cell.sig-neutral { background: var(--amber); }
-.tl-cell.sig-na { background: var(--bg-2); opacity: 0.5; }
+.tl-cell {
+  width: 13px; height: 13px; flex: 0 0 auto; border-radius: 2px;
+  background: var(--panel-2); border: 1px solid var(--border);
+}
+.tl-cell.sig-buy { background: var(--green); border-color: var(--green); }
+.tl-cell.sig-sell { background: var(--red); border-color: var(--red); }
+.tl-cell.sig-neutral { background: var(--amber); border-color: var(--amber); }
+/* no capture that day: a visible empty box, so all 15 days read as a row */
+.tl-cell.sig-na { background: var(--bg-2); border-style: dashed; }
 
 /* "why?" affordance on a changed card (header-tab mode) */
 .ue-row-why {
