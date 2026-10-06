@@ -381,16 +381,23 @@ def _capture_earnings_signals() -> None:
     import time
 
     def loop() -> None:
-        time.sleep(90)
+        time.sleep(120)
         while True:
             try:
                 import uw_earnings_calendar as uwcal
                 import earnings_signal_history_service as esh
+                import signal_history_service as sh
                 rows = (uwcal.calendar(days=21) or {}).get("rows") or []
                 syms = sorted({r.get("symbol", "").upper()
                                for r in rows if r.get("symbol")})
+                # Make sure every stock's earnings decision is cached BEFORE the
+                # snapshot, so the capture covers the whole universe -- not just
+                # the few the warmer happened to finish first. Otherwise most
+                # stocks get no baseline and never show a session-over-session
+                # change. warm_earnings is cheap when the 6h cache is already warm.
+                sh.warm_earnings(syms)
                 # Real past-earnings reactions for the Signal History grid, plus
-                # today's live decision snapshot (kept for continuity).
+                # today's decision snapshot for the whole universe.
                 esh.warm_reactions(syms)
                 esh.capture(syms)
             except Exception:  # noqa: BLE001
