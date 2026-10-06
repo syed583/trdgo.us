@@ -21,19 +21,19 @@ export default function UpcomingEarnings({
   base, title, demo, search, changeTab: changeTabProp, onChangeTab, onCounts,
 }: {
   base: string; title: string; demo?: boolean; search: string;
-  // Optional: let a parent (the page header) own the Intraday/Last-10-days tabs.
-  changeTab?: 'intraday' | 'session';
-  onChangeTab?: (t: 'intraday' | 'session') => void;
+  // Optional: let a parent (the page header) own the All/Intraday/Last-10-days tabs.
+  changeTab?: 'all' | 'intraday' | 'session';
+  onChangeTab?: (t: 'all' | 'intraday' | 'session') => void;
   onCounts?: (c: { intraday: number; session: number }) => void;
 }) {
   const navigate = useNavigate();
   const [q, setQ] = useState('');
   const [showAllChanged, setShowAllChanged] = useState(false);
-  const [changeTabInternal, setChangeTabInternal] = useState<'intraday' | 'session'>('intraday');
+  const [changeTabInternal, setChangeTabInternal] = useState<'all' | 'intraday' | 'session'>('intraday');
   // Controlled by the parent when it supplies the tabs; else use local state.
   const changeTab = changeTabProp ?? changeTabInternal;
   const setChangeTab = onChangeTab ?? setChangeTabInternal;
-  const tabsAtTop = !!onChangeTab;  // parent renders the tabs -> hide the inline ones
+  const tabsAtTop = !!onChangeTab;  // parent renders the tabs -> it drives list filtering
   // Lazy "why did it flip?" per changed stock: the current drivers leaning the
   // new way. Snapshots only store the decision, so we explain the new call's
   // live drivers rather than diffing yesterday's parameters.
@@ -111,21 +111,106 @@ export default function UpcomingEarnings({
     };
   };
 
+  // When the page header owns the tabs, Intraday / Last-10-days filter the list
+  // down to only that kind's changed stocks -- the two views stay separate.
+  const tabFilterSet = useMemo(() => {
+    if (!tabsAtTop || changeTab === 'all') return null;
+    return new Set(changeTab === 'intraday' ? intradayChanged : sessionChanged);
+  }, [tabsAtTop, changeTab, intradayChanged, sessionChanged]);
+
   const groups = useMemo(() => {
     const needle = q.trim().toUpperCase();
-    const filtered = needle
+    let filtered = needle
       ? rows.filter((r) => (r.symbol || '').toUpperCase().includes(needle)
         || (r.company || '').toUpperCase().includes(needle))
       : rows;
+    if (tabFilterSet) filtered = filtered.filter((r) => tabFilterSet.has(r.symbol));
     const byDay: Record<string, any[]> = {};
     for (const r of filtered) {
       const k = r.date_label || r.date || '—';
       (byDay[k] = byDay[k] || []).push(r);
     }
     return Object.entries(byDay);
-  }, [rows, q]);
+  }, [rows, q, tabFilterSet]);
 
   const open = (sym: string) => navigate(`${base}/${sym}${search}`);
+
+  // The "why did it flip?" panel for the currently-expanded changed stock.
+  const renderWhyPanel = () => {
+    if (!whyFor) return null;
+    const d = whyCache[whyFor];
+    const cur = signals[whyFor];
+    const want = cur === 'BUY' ? 'Bullish' : cur === 'SELL' ? 'Bearish' : null;
+    const why: any[] = (d?.equity?.why || []).filter((p: any) => p.available);
+    const drivers = (want ? why.filter((p) => p.leaning === want) : why).slice(0, 4);
+    const when = changeKind[whyFor] === 'intraday'
+      ? 'moved intraday' : `changed since ${sinceLabel(changeSince[whyFor])}`;
+    const score = d?.equity?.score;
+    const cov = d?.equity?.coverage;
+    const forN = why.filter((p: any) => p.leaning === want).length;
+    const againstN = why.filter((p: any) => p.leaning
+      === (want === 'Bullish' ? 'Bearish' : 'Bullish')).length;
+    const moves: any[] = (d?.historical_moves || [])
+      .filter((m: any) => typeof m?.move_pct === 'number');
+    const ups = moves.filter((m) => m.move_pct > 0);
+    const downs = moves.filter((m) => m.move_pct < 0);
+    const avg = (a: any[]) => a.length
+      ? a.reduce((s, m) => s + m.move_pct, 0) / a.length : null;
+    const aligned = cur === 'BUY' ? ups.length : cur === 'SELL' ? downs.length : null;
+    const pct1 = (v: number | null) => v == null ? '--' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
+    return (
+      <div className="ue-why">
+        <div className="ue-why-h">
+          <b>{whyFor}</b> {prevSig[whyFor]}→<b>{cur}</b> ({when}) —{' '}
+          {want ? `what's pushing it ${cur.toLowerCase()} now:` : 'no decisive edge now:'}
+        </div>
+        {!d?.loading && !d?.error && (
+          <div className="ue-why-stats">
+            <div className="ue-why-stat">
+              <span>Conviction</span>
+              <b>{score != null ? `${Math.round(score)}/100` : '--'}</b>
+              <em>{cov != null ? `${Math.round(cov)}% coverage` : 'coverage n/a'}
+                {want ? ` · ${forN} for / ${againstN} against` : ''}</em>
+            </div>
+            <div className="ue-why-stat">
+              <span>Past earnings ({moves.length})</span>
+              <b>{aligned != null && moves.length
+                ? `${aligned}/${moves.length} ${cur === 'BUY' ? 'up' : 'down'}`
+                : moves.length ? `${ups.length}↑ / ${downs.length}↓` : '--'}</b>
+              <em>{moves.length
+                ? `avg ${pct1(avg(ups))} up · ${pct1(avg(downs))} down`
+                : 'no history'}</em>
+            </div>
+          </div>
+        )}
+        {d?.loading ? (
+          <div className="ue-why-note">Loading the drivers…</div>
+        ) : d?.error ? (
+          <div className="ue-why-note">Couldn't load the reasons.</div>
+        ) : !drivers.length ? (
+          <div className="ue-why-note">
+            No single dominant driver — it's the balance of the full
+            scorecard. Open {whyFor} for the complete breakdown.
+          </div>
+        ) : (
+          <ul className="ue-why-list">
+            {drivers.map((p, i) => (
+              <li key={i}>
+                <span className={`ue-why-dot ${p.leaning === 'Bullish' ? 'pos'
+                  : p.leaning === 'Bearish' ? 'neg' : 'neu'}`} />
+                <span className="ue-why-label">{p.label}</span>
+                <span className="ue-why-pts">{p.points_label}</span>
+                {p.detail && <span className="ue-why-detail">{p.detail}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+        <button className="ue-why-open" onClick={() => open(whyFor!)}>
+          See full breakdown →
+        </button>
+      </div>
+    );
+  };
 
   return (
     <div className="ue">
@@ -141,10 +226,9 @@ export default function UpcomingEarnings({
         score its earnings trade.</p>
 
       {(() => {
-        // Standalone (tabs in the banner): nothing to show when no changes.
-        // Controlled (tabs at the page top): always render so the selected tab's
-        // empty-state note shows.
-        if (!tabsAtTop && !changed.length) return null;
+        // Standalone only (tabs live in this banner). When the page header owns
+        // the tabs, the list is filtered instead -- no inline banner.
+        if (tabsAtTop || !changed.length) return null;
         const intraday = intradayChanged;
         const session = sessionChanged;
 
@@ -214,88 +298,13 @@ export default function UpcomingEarnings({
                 </span>
               )}
             </div>
-            {whyFor && (() => {
-              const d = whyCache[whyFor];
-              const cur = signals[whyFor];
-              const want = cur === 'BUY' ? 'Bullish' : cur === 'SELL' ? 'Bearish' : null;
-              const why: any[] = (d?.equity?.why || [])
-                .filter((p: any) => p.available);
-              const drivers = (want ? why.filter((p) => p.leaning === want) : why).slice(0, 4);
-              const when = changeKind[whyFor] === 'intraday'
-                ? 'moved intraday' : `changed since ${sinceLabel(changeSince[whyFor])}`;
-              // Conviction: score vs the Buy>=58 / Sell<=42 thresholds, coverage,
-              // and how many scored drivers agree vs disagree with the new call.
-              const score = d?.equity?.score;
-              const cov = d?.equity?.coverage;
-              const forN = why.filter((p: any) => p.leaning === want).length;
-              const againstN = why.filter((p: any) => p.leaning
-                === (want === 'Bullish' ? 'Bearish' : 'Bullish')).length;
-              // Historical hit-rate: real past post-earnings 1-day moves.
-              const moves: any[] = (d?.historical_moves || [])
-                .filter((m: any) => typeof m?.move_pct === 'number');
-              const ups = moves.filter((m) => m.move_pct > 0);
-              const downs = moves.filter((m) => m.move_pct < 0);
-              const avg = (a: any[]) => a.length
-                ? a.reduce((s, m) => s + m.move_pct, 0) / a.length : null;
-              const aligned = cur === 'BUY' ? ups.length
-                : cur === 'SELL' ? downs.length : null;
-              const pct1 = (v: number | null) => v == null ? '--' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
-              return (
-                <div className="ue-why">
-                  <div className="ue-why-h">
-                    <b>{whyFor}</b> {prevSig[whyFor]}→<b>{cur}</b> ({when}) —{' '}
-                    {want ? `what's pushing it ${cur.toLowerCase()} now:` : 'no decisive edge now:'}
-                  </div>
-                  {!d?.loading && !d?.error && (
-                    <div className="ue-why-stats">
-                      <div className="ue-why-stat">
-                        <span>Conviction</span>
-                        <b>{score != null ? `${Math.round(score)}/100` : '--'}</b>
-                        <em>{cov != null ? `${Math.round(cov)}% coverage` : 'coverage n/a'}
-                          {want ? ` · ${forN} for / ${againstN} against` : ''}</em>
-                      </div>
-                      <div className="ue-why-stat">
-                        <span>Past earnings ({moves.length})</span>
-                        <b>{aligned != null && moves.length
-                          ? `${aligned}/${moves.length} ${cur === 'BUY' ? 'up' : 'down'}`
-                          : moves.length ? `${ups.length}↑ / ${downs.length}↓` : '--'}</b>
-                        <em>{moves.length
-                          ? `avg ${pct1(avg(ups))} up · ${pct1(avg(downs))} down`
-                          : 'no history'}</em>
-                      </div>
-                    </div>
-                  )}
-                  {d?.loading ? (
-                    <div className="ue-why-note">Loading the drivers…</div>
-                  ) : d?.error ? (
-                    <div className="ue-why-note">Couldn't load the reasons.</div>
-                  ) : !drivers.length ? (
-                    <div className="ue-why-note">
-                      No single dominant driver — it's the balance of the full
-                      scorecard. Open {whyFor} for the complete breakdown.
-                    </div>
-                  ) : (
-                    <ul className="ue-why-list">
-                      {drivers.map((p, i) => (
-                        <li key={i}>
-                          <span className={`ue-why-dot ${p.leaning === 'Bullish' ? 'pos'
-                            : p.leaning === 'Bearish' ? 'neg' : 'neu'}`} />
-                          <span className="ue-why-label">{p.label}</span>
-                          <span className="ue-why-pts">{p.points_label}</span>
-                          {p.detail && <span className="ue-why-detail">{p.detail}</span>}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <button className="ue-why-open" onClick={() => open(whyFor!)}>
-                    See full breakdown →
-                  </button>
-                </div>
-              );
-            })()}
+            {renderWhyPanel()}
           </div>
         );
       })()}
+
+      {/* Header-tab mode: the "why?" panel renders standalone above the list. */}
+      {tabsAtTop && renderWhyPanel()}
 
       {demo ? (
         <div className="es-empty">Disabled in demo mode.</div>
@@ -304,7 +313,13 @@ export default function UpcomingEarnings({
       ) : !rows.length ? (
         <div className="es-empty">No scheduled reports in the window.</div>
       ) : !groups.length ? (
-        <div className="es-empty">No matches for “{q}”.</div>
+        <div className="es-empty">
+          {q ? `No matches for “${q}”.`
+            : tabFilterSet ? (changeTab === 'intraday'
+              ? 'No calls have moved intraday since today’s capture.'
+              : 'No day-over-day signal changes in the last 10 days.')
+              : 'No scheduled reports in the window.'}
+        </div>
       ) : (
         groups.map(([day, items]) => (
           <div key={day} className="ue-day">
@@ -336,6 +351,13 @@ export default function UpcomingEarnings({
                       <span className="ue-quote">
                         {r.prior_close != null && <b>${Number(r.prior_close).toFixed(2)}</b>}
                         {r.market_cap != null && <em>{fmtCap(Number(r.market_cap))}</em>}
+                      </span>
+                    )}
+                    {tabsAtTop && style && (
+                      <span className="ue-row-why" role="button" tabIndex={0}
+                        title="Why did this change?"
+                        onClick={(e) => { e.stopPropagation(); toggleWhy(r.symbol); }}>
+                        why?
                       </span>
                     )}
                     {r.sector && <span className="ue-sector">{r.sector}</span>}
