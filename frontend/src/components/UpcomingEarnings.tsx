@@ -1,6 +1,6 @@
 import { useMemo, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarDays, Search, ChevronRight, Bell } from 'lucide-react';
+import { CalendarDays, Search, ChevronRight, Bell, HelpCircle } from 'lucide-react';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import './earnings-trade.css';
@@ -23,6 +23,21 @@ export default function UpcomingEarnings({
   const navigate = useNavigate();
   const [q, setQ] = useState('');
   const [showAllChanged, setShowAllChanged] = useState(false);
+  // Lazy "why did it flip?" per changed stock: the current drivers leaning the
+  // new way. Snapshots only store the decision, so we explain the new call's
+  // live drivers rather than diffing yesterday's parameters.
+  const [whyFor, setWhyFor] = useState<string | null>(null);
+  const [whyCache, setWhyCache] = useState<Record<string, any>>({});
+  const toggleWhy = (sym: string) => {
+    if (whyFor === sym) { setWhyFor(null); return; }
+    setWhyFor(sym);
+    if (!whyCache[sym]) {
+      setWhyCache((c) => ({ ...c, [sym]: { loading: true } }));
+      api2.earningsTrade(sym)
+        .then((d) => setWhyCache((c) => ({ ...c, [sym]: d })))
+        .catch(() => setWhyCache((c) => ({ ...c, [sym]: { error: true } })));
+    }
+  };
 
   const up = useApi<any>(
     (s) => (demo ? Promise.resolve(null) : api2.earningsUpcoming(21, s)),
@@ -110,9 +125,15 @@ export default function UpcomingEarnings({
               ? 'stock' : 'stocks'} changed signal</span>
             <span className="ue-notice-list">
               {shown.map((s) => (
-                <button key={s} className="ue-notice-chip" onClick={() => open(s)}>
-                  <b>{s}</b> {prevSig[s]}→{signals[s]}
-                </button>
+                <span key={s} className="ue-notice-chipwrap">
+                  <button className="ue-notice-chip" onClick={() => open(s)}>
+                    <b>{s}</b> {prevSig[s]}→{signals[s]}
+                  </button>
+                  <button type="button" className={`ue-why-btn${whyFor === s ? ' on' : ''}`}
+                    title="Why did this change?" onClick={() => toggleWhy(s)}>
+                    <HelpCircle size={13} /> why?
+                  </button>
+                </span>
               ))}
               {changed.length > LIMIT && (
                 <button type="button" className="ue-notice-toggle"
@@ -121,6 +142,47 @@ export default function UpcomingEarnings({
                 </button>
               )}
             </span>
+            {whyFor && (() => {
+              const d = whyCache[whyFor];
+              const cur = signals[whyFor];
+              const want = cur === 'BUY' ? 'Bullish' : cur === 'SELL' ? 'Bearish' : null;
+              const why: any[] = (d?.equity?.why || [])
+                .filter((p: any) => p.available);
+              const drivers = (want ? why.filter((p) => p.leaning === want) : why).slice(0, 4);
+              return (
+                <div className="ue-why">
+                  <div className="ue-why-h">
+                    <b>{whyFor}</b> now <b>{cur}</b> (was {prevSig[whyFor]}) —{' '}
+                    {want ? `what's pushing it ${cur.toLowerCase()}:` : 'no decisive edge now:'}
+                  </div>
+                  {d?.loading ? (
+                    <div className="ue-why-note">Loading the drivers…</div>
+                  ) : d?.error ? (
+                    <div className="ue-why-note">Couldn't load the reasons.</div>
+                  ) : !drivers.length ? (
+                    <div className="ue-why-note">
+                      No single dominant driver — it's the balance of the full
+                      scorecard. Open {whyFor} for the complete breakdown.
+                    </div>
+                  ) : (
+                    <ul className="ue-why-list">
+                      {drivers.map((p, i) => (
+                        <li key={i}>
+                          <span className={`ue-why-dot ${p.leaning === 'Bullish' ? 'pos'
+                            : p.leaning === 'Bearish' ? 'neg' : 'neu'}`} />
+                          <span className="ue-why-label">{p.label}</span>
+                          <span className="ue-why-pts">{p.points_label}</span>
+                          {p.detail && <span className="ue-why-detail">{p.detail}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <button className="ue-why-open" onClick={() => open(whyFor!)}>
+                    See full breakdown →
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         );
       })()}

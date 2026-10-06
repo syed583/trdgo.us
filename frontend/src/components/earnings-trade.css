@@ -186,6 +186,44 @@
 }
 .ue-notice-toggle:hover { background: rgba(236, 72, 153, .12); color: var(--text); }
 
+/* "why did it flip?" affordance on each changed chip + its reason panel */
+.ue-notice-chipwrap { display: inline-flex; align-items: stretch; }
+.ue-notice-chipwrap .ue-notice-chip { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.ue-why-btn {
+  display: inline-flex; align-items: center; gap: 3px; cursor: pointer;
+  font: inherit; font-size: 10.5px; font-weight: 600;
+  color: var(--text-mute); background: var(--panel-2);
+  border: 1px solid var(--border); border-left: none;
+  border-radius: 0 var(--r-pill) var(--r-pill) 0; padding: 3px 8px;
+}
+.ue-why-btn:hover { color: #ec4899; border-color: rgba(236, 72, 153, .5); }
+.ue-why-btn.on { color: #ec4899; background: rgba(236, 72, 153, .12); border-color: rgba(236, 72, 153, .5); }
+
+.ue-why {
+  margin-top: 10px; padding: 10px 12px; background: var(--panel);
+  border: 1px solid rgba(236, 72, 153, .4); border-radius: var(--r);
+}
+.ue-why-h { font-size: 12px; color: var(--text); margin-bottom: 8px; }
+.ue-why-h b { font-weight: 700; }
+.ue-why-note { font-size: 11.5px; color: var(--text-mute); line-height: 1.4; }
+.ue-why-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ue-why-list li {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: baseline;
+  gap: 8px; font-size: 11.5px;
+}
+.ue-why-dot { width: 7px; height: 7px; border-radius: 50%; align-self: center; }
+.ue-why-dot.pos { background: var(--green); }
+.ue-why-dot.neg { background: var(--red); }
+.ue-why-dot.neu { background: var(--text-mute); }
+.ue-why-label { font-weight: 600; color: var(--text); }
+.ue-why-pts { font-family: var(--mono); color: var(--text-dim); white-space: nowrap; }
+.ue-why-detail { grid-column: 2 / -1; color: var(--text-mute); font-size: 11px; line-height: 1.4; }
+.ue-why-open {
+  margin-top: 8px; cursor: pointer; font: inherit; font-size: 11px; font-weight: 600;
+  color: var(--blue); background: none; border: none; padding: 0;
+}
+.ue-why-open:hover { text-decoration: underline; }
+
 /* upcoming-earnings cards colored by current signal (solid, no pulse) */
 .ue-row { border-left-width: 4px; }
 .ue-row.sig-none { border-left-color: var(--border); }
