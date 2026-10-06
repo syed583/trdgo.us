@@ -39,6 +39,12 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/model-performance', label: 'Analysis Based', icon: <Target size={S} /> },
     { to: '/peers', label: 'Sector Comparison', icon: <Scale size={S} /> },
   ] },
+  { heading: 'Earnings & news', items: [
+    { to: '/earnings-calendar', label: 'Earnings Calendar', icon: <CalendarDays size={S} /> },
+    { to: '/earnings-trade', label: 'Earnings Trade', icon: <Gauge size={S} /> },
+    { to: '/earnings-signals', label: 'Signal History', icon: <History size={S} /> },
+    { to: '/news', label: 'News & Sentiment', icon: <Newspaper size={S} /> },
+  ] },
   { heading: 'Markets', items: [
     { to: '/market', label: 'Market Overview', icon: <TrendingUp size={S} /> },
     { to: '/dashboard', label: 'Overview', icon: <LayoutDashboard size={S} /> },
@@ -48,12 +54,6 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/volatility', label: 'Volatility', icon: <LineChart size={S} /> },
     { to: '/dark-pool', label: 'Dark Pool', icon: <Waves size={S} /> },
     { to: '/market-insiders', label: 'Market Insiders', icon: <UserCog size={S} /> },
-  ] },
-  { heading: 'Earnings & news', items: [
-    { to: '/earnings-calendar', label: 'Earnings Calendar', icon: <CalendarDays size={S} /> },
-    { to: '/earnings-trade', label: 'Earnings Trade', icon: <Gauge size={S} /> },
-    { to: '/earnings-signals', label: 'Signal History', icon: <History size={S} /> },
-    { to: '/news', label: 'News & Sentiment', icon: <Newspaper size={S} /> },
   ] },
   { heading: 'Lists', items: [
     { to: '/watchlist', label: 'Watchlist', icon: <Star size={S} /> },
