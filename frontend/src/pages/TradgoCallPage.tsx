@@ -39,35 +39,26 @@ export default function TradgoCallPage({ ctx }: { ctx: PageContext }) {
     if (t) navigate(`/tradgo-call/${encodeURIComponent(t)}${ctx.search}`);
   };
 
-  // No ticker yet -> the hero landing to pick one.
+  // No ticker yet -> the hero landing to pick one (same UI as Analysis).
   if (!pathSym) {
     return (
-      <div className="page es tc-landing">
-        <div className="tc-hero">
-          <h1>Tradgo Call</h1>
-          <p className="tc-hero-tag">Short-term direction in one score. <b>Buy / Sell /
-            Neutral</b>, −100 to +100.</p>
-          <p className="tc-hero-sub">A swing model for the next few days to ~3–4 weeks:
-            the options tape, trend and relative strength, market regime and ownership.
-            Volatility is sizing only. <b>Research, not advice.</b></p>
-          <form className="tc-hero-search" onSubmit={(e) => { e.preventDefault(); go(entry); }}>
-            <Search size={16} />
-            <input value={entry} onChange={(e) => setEntry(e.target.value)}
-              placeholder="Search ticker (e.g. NVDA)" autoCapitalize="characters"
-              spellCheck={false} aria-label="Ticker" />
-            <button type="submit" className="tc-search-btn" disabled={!entry.trim()}>Analyze</button>
-          </form>
-          <div className="tc-try">Try:
-            {TRY.map((t) => (
-              <button key={t} type="button" onClick={() => go(t)}>{t}</button>
-            ))}
-          </div>
-          <div className="tc-stats">
-            <div><b>18</b><span>Scored Parameters</span></div>
-            <div><b>−100…+100</b><span>Direction Score</span></div>
-            <div><b>Days–4w</b><span>Swing Horizon</span></div>
-            <div><b>Live</b><span>Prices &amp; Flow</span></div>
-          </div>
+      <div className="an-hero">
+        <h1>Tradgo Call<br />Short-Term Direction</h1>
+        <p className="an-tag">Buy / Sell / Neutral in one score, −100 to +100.</p>
+        <form className="an-search" onSubmit={(e) => { e.preventDefault(); go(entry); }}>
+          <Search size={15} />
+          <input value={entry} onChange={(e) => setEntry(e.target.value.toUpperCase())}
+            placeholder="Search ticker (e.g. NVDA)" aria-label="Ticker" spellCheck={false} autoFocus />
+          <button type="submit" className="an-go" disabled={!entry.trim()}>Analyze</button>
+        </form>
+        <div className="an-try">Try:
+          {TRY.map((t) => <button key={t} onClick={() => go(t)}>{t}</button>)}
+        </div>
+        <div className="an-stats">
+          <div><b>18</b><span>Scored Parameters</span></div>
+          <div><b>±100</b><span>Direction Score</span></div>
+          <div><b>Days–4w</b><span>Swing Horizon</span></div>
+          <div><b>Live</b><span>Prices &amp; Flow</span></div>
         </div>
       </div>
     );

@@ -109,3 +109,8 @@
 }
 @keyframes ts-nodepulse { 0%,100% { box-shadow: 0 0 6px -2px var(--c); } 50% { box-shadow: 0 0 16px -1px var(--c); } }
 .ts-node-ic { color: var(--c); display: inline-flex; }
+
+/* Indeterminate progress for the analyzing scan (no real percent) */
+.ap-track.ts-indeterminate { position: relative; overflow: hidden; }
+.ap-track.ts-indeterminate > i { position: absolute; width: 35%; animation: ts-slide 1.3s ease-in-out infinite; }
+@keyframes ts-slide { 0% { left: -35%; } 100% { left: 100%; } }
