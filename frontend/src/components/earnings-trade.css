@@ -262,6 +262,13 @@
 .ue-chgnote-top > svg { color: #ec4899; flex: 0 0 auto; }
 .ue-chgnote-h { font-weight: 700; }
 .ue-chgnote-list { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+/* The changed-stock chips pulse pink, matching the blinking cards below. */
+.ue-chgnote .ue-notice-chip {
+  border: 1px solid #ec4899; animation: ue-pink-blink 1.05s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ue-chgnote .ue-notice-chip { animation: none; box-shadow: 0 0 0 2px rgba(236,72,153,.4); }
+}
 
 /* "why?" affordance on a changed card */
 .ue-row-why {
