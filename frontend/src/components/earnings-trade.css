@@ -201,21 +201,27 @@
 .ue-row.sig-neutral .ue-sym { color: var(--amber); }
 
 /* Signal changed since the last session: the card is split half the old colour,
-   half the new (set inline). Only these cards BLINK -- a pink wash pulses over
-   the split to pull the eye to the stocks whose call just flipped; unchanged
-   cards stay still. */
+   half the new (set inline). Only these cards BLINK -- a pink border + glow
+   pulses to pull the eye to the stocks whose call just flipped, while the
+   half/half fill underneath stays fully visible. Unchanged cards stay still. */
 .ue-row.sig-changed {
-  position: relative; overflow: hidden; border-left-width: 4px;
-}
-.ue-row.sig-changed::after {
-  content: ''; position: absolute; inset: 0; pointer-events: none;
-  border-radius: inherit; background: rgba(236, 72, 153, 0);
-  animation: ue-pink-blink 1s ease-in-out infinite;
+  position: relative; border-left-width: 4px;
+  border-color: #ec4899;
+  animation: ue-pink-blink 1.05s ease-in-out infinite;
 }
 @keyframes ue-pink-blink {
-  0%, 100% { background: rgba(236, 72, 153, 0); }
-  50% { background: rgba(236, 72, 153, .30); }
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(236, 72, 153, 0);
+    border-color: rgba(236, 72, 153, .45);
+  }
+  50% {
+    box-shadow: 0 0 0 3px rgba(236, 72, 153, .55);
+    border-color: #ec4899;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ue-row.sig-changed::after { animation: none; }
+  .ue-row.sig-changed {
+    animation: none; border-color: #ec4899;
+    box-shadow: 0 0 0 2px rgba(236, 72, 153, .4);
+  }
 }

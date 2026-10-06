@@ -55,7 +55,12 @@ export default function UpcomingEarnings({
     const prv = CLS[prevSig[sym]];
     if (!prv || prv === cur || cur === 'none') return undefined;
     return {
-      background: `linear-gradient(135deg, rgba(${RGB[prv]},.20) 0 50%, rgba(${RGB[cur]},.20) 50% 100%)`,
+      // Hard-edged half/half so the flip is unmistakable: left half the OLD
+      // call's colour, right half the NEW, with a crisp divider between them.
+      background: `linear-gradient(100deg,`
+        + ` rgba(${RGB[prv]},.42) 0%, rgba(${RGB[prv]},.42) 48%,`
+        + ` rgba(255,255,255,.55) 49.5%, rgba(255,255,255,.55) 50.5%,`
+        + ` rgba(${RGB[cur]},.42) 52%, rgba(${RGB[cur]},.42) 100%)`,
       borderLeftColor: `rgb(${RGB[prv]})`,
     };
   };
