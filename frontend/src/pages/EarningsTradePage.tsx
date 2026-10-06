@@ -49,6 +49,65 @@ function Gauge({ score, label, title }: { score: number | null; label: string; t
   );
 }
 
+// The "15-Day Signal" subtab: the stock's daily Stock/Options call over the last
+// 15 days, with the date. A day whose call changed from the previous captured day
+// shows a half/half split pill (old→new) with a pink pulse.
+function Signal15View({ symbol }: { symbol: string }) {
+  const q = useApi<any>(
+    (s) => api2.earningsSignalTimeline([symbol], 15, s),
+    [symbol],
+    { refreshMs: 60_000 },
+  );
+  const cols: string[] = q.data?.cols || [];
+  const row = q.data?.rows?.[symbol];
+  const RGB: Record<string, string> = {
+    BUY: '46,184,122', SELL: '242,70,90', NEUTRAL: '217,164,65',
+  };
+  const fmt = (iso: string) => {
+    const dd = new Date(iso + 'T00:00:00');
+    return dd.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+  const prevVal = (arr: any[], i: number) => {
+    for (let j = i - 1; j >= 0; j--) if (arr[j] != null) return arr[j];
+    return null;
+  };
+  const pill = (arr: any[], i: number) => {
+    const v = arr[i];
+    if (v == null) return <span className="s15-pill s15-empty">—</span>;
+    const prev = prevVal(arr, i);
+    if (prev != null && prev !== v) {
+      const style = {
+        background: `linear-gradient(100deg, rgba(${RGB[prev]},.5) 0 47%,`
+          + ` #fff 49% 51%, rgba(${RGB[v]},.5) 53% 100%)`,
+      };
+      return <span className="s15-pill s15-changed" style={style as any}
+        title={`${prev} → ${v}`}>{prev}→{v}</span>;
+    }
+    const cls = v === 'BUY' ? 'buy' : v === 'SELL' ? 'sell' : 'neutral';
+    return <span className={`s15-pill sig-${cls}`}>{v}</span>;
+  };
+  if (q.initialLoading) return <div className="ets-empty">Loading the 15-day signal…</div>;
+  if (!row || !cols.length) return <div className="ets-empty">No signal history yet.</div>;
+  return (
+    <div className="s15-card">
+      <div className="s15-head"><span>Date</span><span>Stock</span><span>Options</span></div>
+      {cols.map((_c, idx) => {
+        const i = cols.length - 1 - idx;   // newest day first
+        return (
+          <div key={cols[i]} className="s15-row">
+            <span className="s15-date">{fmt(cols[i])}</span>
+            {pill(row.stock, i)}
+            {pill(row.options, i)}
+          </div>
+        );
+      })}
+      <div className="ets-disclaimer">Daily captured Stock / Options call over the
+        last 15 days. A split pill with a pink pulse marks a day the call changed
+        from the previous captured day. Empty days fill in as the daily capture runs.</div>
+    </div>
+  );
+}
+
 // The landing view: the two change tabs (Intraday / Last 10 days) live in the
 // page header and drive the Upcoming-earnings list's change banner below.
 function EarningsTradeLanding({ demo, search }: { demo?: boolean; search: string }) {
@@ -72,6 +131,7 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
   // list-view early return; the data calls are disabled until a ticker is picked.
   const on = !!pathSym && !demo;
   const [whyOpen, setWhyOpen] = useState(false);
+  const [view, setView] = useState<'trade' | 'signal15'>('trade');
 
   const q = useApi<any>(
     (s) => (on ? api2.earningsTrade(symbol, s) : Promise.resolve(null)),
@@ -188,13 +248,19 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
 
           {/* Sub-tabs */}
           <div className="ets-subtabs">
-            <span className="ets-subtab active">Earnings Trade</span>
+            <button type="button" className={`ets-subtab${view === 'trade' ? ' active' : ''}`}
+              onClick={() => setView('trade')}>Earnings Trade</button>
+            <button type="button" className={`ets-subtab${view === 'signal15' ? ' active' : ''}`}
+              onClick={() => setView('signal15')}>15-Day Signal</button>
             <Link className="ets-subtab" to={`/earnings-equity/${symbol}${ctx.search}`}>Equity detail</Link>
             <Link className="ets-subtab" to={`/earnings-options/${symbol}${ctx.search}`}>Options detail</Link>
             <Link className="ets-subtab" to={`/options-flow/${symbol}${ctx.search}`}>Options Chain</Link>
             <Link className="ets-subtab" to={`/news/${symbol}${ctx.search}`}>News &amp; Sentiment</Link>
           </div>
 
+          {view === 'signal15' ? (
+            <Signal15View symbol={symbol} />
+          ) : (<>
           {/* Row 1: signal / expected move / calendar */}
           <div className="ets-row ets-row-3">
             <div className="ets-card">
@@ -411,6 +477,7 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
 
           <div className="ets-disclaimer">Analysis, not financial advice. Scores are
             computed from the full parameter set in the engine; only the summary is shown.</div>
+          </>)}
         </>
       )}
     </div>

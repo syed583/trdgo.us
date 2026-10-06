@@ -208,3 +208,18 @@
 .ets-alert-d { font-size: 11px; color: var(--text-mute); margin-top: 2px; }
 
 .ets-disclaimer { font-size: 11px; color: var(--text-mute); font-style: italic; text-align: center; margin-top: 4px; }
+
+/* 15-Day Signal subtab: daily Stock/Options call with dates */
+.s15-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 14px 18px; }
+.s15-head, .s15-row { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px; align-items: center; }
+.s15-head { font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-mute); padding-bottom: 8px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.s15-row { padding: 7px 0; border-bottom: 1px solid var(--border); }
+.s15-row:last-of-type { border-bottom: none; }
+.s15-date { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.s15-pill { justify-self: start; font-size: 11px; font-weight: 700; padding: 4px 11px; border-radius: 999px; }
+.s15-pill.sig-buy { color: var(--green); background: rgba(46,184,122,.18); }
+.s15-pill.sig-sell { color: var(--red); background: rgba(242,70,90,.18); }
+.s15-pill.sig-neutral { color: var(--amber); background: rgba(217,164,65,.20); }
+.s15-empty { color: var(--text-mute); background: var(--bg-2); }
+.s15-changed { color: var(--text); border: 1px solid #ec4899; animation: ue-pink-blink 1.05s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .s15-changed { animation: none; box-shadow: 0 0 0 2px rgba(236,72,153,.4); } }
