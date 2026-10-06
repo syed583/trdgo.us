@@ -36,15 +36,27 @@ if (DATABASE_URL or "").startswith("postgresql"):
     # a different backend that never saw the PREPARE. Disable them when talking
     # to the transaction pooler. Detected by port so switching DATABASE_URL from
     # :5432 to :6543 is all that's needed -- no code change at deploy time.
-    if ":6543" in (DATABASE_URL or ""):
-        _connect_args["prepare_threshold"] = None
+_txn_pooler = ":6543" in (DATABASE_URL or "")
+if _txn_pooler:
+    _connect_args["prepare_threshold"] = None
 
 # Pool sizes are overridable via env so a second process sharing the same
 # Supabase (e.g. a local dev backend run while the VPS is live) can be given a
 # tiny pool and stay under the 15-connection pooler limit instead of competing
-# with production for it. Defaults match the production single-process sizing.
-_pool_size = int(os.getenv("DB_POOL_SIZE") or 5)
-_max_overflow = int(os.getenv("DB_MAX_OVERFLOW") or 3)
+# with production for it.
+#
+# Defaults depend on which pooler is in use. The SESSION pooler (5432) caps the
+# whole project at 15 client connections, so stay small (5 + 3). The TRANSACTION
+# pooler (6543) multiplexes many clients, so use a larger pool and keep
+# connections longer -- that way requests rarely pay the slow (~seconds) cost of
+# opening a brand-new pooled connection, which is the main source of slowness.
+_default_size, _default_overflow = (15, 10) if _txn_pooler else (5, 3)
+_pool_size = int(os.getenv("DB_POOL_SIZE") or _default_size)
+_max_overflow = int(os.getenv("DB_MAX_OVERFLOW") or _default_overflow)
+# The session pooler drops idle connections quickly, so recycle inside that
+# window; the transaction pooler keeps them, so hold them far longer to avoid
+# re-opening (slow) connections on every recycle.
+_pool_recycle = 1800 if _txn_pooler else 280
 
 engine = create_engine(
     DATABASE_URL,
@@ -52,7 +64,7 @@ engine = create_engine(
     pool_size=_pool_size,
     max_overflow=_max_overflow,
     pool_timeout=30,
-    pool_recycle=280,
+    pool_recycle=_pool_recycle,
     connect_args=_connect_args,
 )
 
