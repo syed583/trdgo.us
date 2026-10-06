@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
@@ -117,32 +117,10 @@ export default function TradgoCallPage({ ctx }: { ctx: PageContext }) {
               </div>
             </div>
 
-            {r.earnings_gate && (
-              <div className="tc-gate">
-                <AlertTriangle size={15} />
-                <span>Earnings in <b>{r.earnings_gate.days_to}d</b> ({r.earnings_gate.label
-                  || r.earnings_gate.date}). {r.earnings_gate.note}{' '}
-                  <button className="tc-gate-link" onClick={() => navigate(`/earnings-trade/${symbol}${ctx.search}`)}>
-                    Open pre-earnings model →
-                  </button></span>
-              </div>
-            )}
-
-            <h3 className="es-sub">Market &amp; Price (80 pts)</h3>
-            <div className="es-params">{(r.market_params || []).map((p: any) => <Param key={p.name} p={p} />)}</div>
-
-            <h3 className="es-sub">Company &amp; Ownership (20 pts)</h3>
-            <div className="es-params">{(r.company_params || []).map((p: any) => <Param key={p.name} p={p} />)}</div>
-
-            {(r.volatility?.implied_volatility || r.volatility?.expected_move) && (
-              <>
-                <h3 className="es-sub">Volatility — sizing only (no directional vote)</h3>
-                <div className="tc-vol">
-                  {r.volatility.implied_volatility && <div>{r.volatility.implied_volatility}</div>}
-                  {r.volatility.expected_move && <div>{r.volatility.expected_move}</div>}
-                </div>
-              </>
-            )}
+            <h3 className="es-sub">Scored Parameters (100 pts)</h3>
+            <div className="es-params">
+              {(r.params || r.market_params || []).map((p: any) => <Param key={p.name} p={p} />)}
+            </div>
 
             <div className="es-foot">{r.note}</div>
           </div>
