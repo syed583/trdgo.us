@@ -292,12 +292,13 @@ def earnings_signal_history(n: int = 4) -> dict:
 
 
 @router.get("/earnings/signal-timeline")
-def earnings_signal_timeline(symbols: str = "", days: int = 15) -> dict:
-    """Day-by-day stock + options signal run-up to earnings, from the snapshots."""
+def earnings_signal_timeline(symbols: str = "", days: int = 15, backfill: bool = False) -> dict:
+    """Day-by-day stock + options signal run-up to earnings, from the snapshots.
+    backfill=true estimates uncaptured days from price history (single-stock)."""
     import signal_history_service as sh
     syms = [s.strip().upper() for s in (symbols or "").split(",") if s.strip()][:300]
-    key = f"earntl:{days}:{','.join(sorted(syms))[:300]}"
-    return swr.serve(key, lambda: sh.earnings_timeline(syms, days), 60.0)
+    key = f"earntl:{days}:{'bf:' if backfill else ''}{','.join(sorted(syms))[:300]}"
+    return swr.serve(key, lambda: sh.earnings_timeline(syms, days, backfill), 60.0)
 
 
 @router.get("/earnings/calendar/context")

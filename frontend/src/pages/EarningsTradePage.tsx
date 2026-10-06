@@ -54,12 +54,14 @@ function Gauge({ score, label, title }: { score: number | null; label: string; t
 // shows a half/half split pill (old→new) with a pink pulse.
 function Signal15View({ symbol }: { symbol: string }) {
   const q = useApi<any>(
-    (s) => api2.earningsSignalTimeline([symbol], 15, s),
+    (s) => api2.earningsSignalTimeline([symbol], 15, true, s),
     [symbol],
     { refreshMs: 60_000 },
   );
   const cols: string[] = q.data?.cols || [];
   const row = q.data?.rows?.[symbol];
+  const stockSrc: any[] = row?.stock_src || [];
+  const optSrc: any[] = row?.options_src || [];
   const RGB: Record<string, string> = {
     BUY: '46,184,122', SELL: '242,70,90', NEUTRAL: '217,164,65',
   };
@@ -71,20 +73,26 @@ function Signal15View({ symbol }: { symbol: string }) {
     for (let j = i - 1; j >= 0; j--) if (arr[j] != null) return arr[j];
     return null;
   };
-  const pill = (arr: any[], i: number) => {
+  const pill = (arr: any[], src: any[], i: number) => {
     const v = arr[i];
     if (v == null) return <span className="s15-pill s15-empty">—</span>;
+    const est = src[i] === 'est';
+    const estCls = est ? ' s15-est' : '';
+    const estMark = est ? '~' : '';
     const prev = prevVal(arr, i);
     if (prev != null && prev !== v) {
       const style = {
         background: `linear-gradient(100deg, rgba(${RGB[prev]},.5) 0 47%,`
           + ` #fff 49% 51%, rgba(${RGB[v]},.5) 53% 100%)`,
       };
-      return <span className="s15-pill s15-changed" style={style as any}
-        title={`${prev} → ${v}`}>{prev}→{v}</span>;
+      // Blink only captured changes; estimates change quietly.
+      return <span className={`s15-pill s15-changed${est ? '' : ' s15-blink'}${estCls}`}
+        style={style as any}
+        title={`${prev} → ${v}${est ? ' (estimated)' : ''}`}>{estMark}{prev}→{v}</span>;
     }
     const cls = v === 'BUY' ? 'buy' : v === 'SELL' ? 'sell' : 'neutral';
-    return <span className={`s15-pill sig-${cls}`}>{v}</span>;
+    return <span className={`s15-pill sig-${cls}${estCls}`}
+      title={est ? 'Estimated from price history' : 'Captured signal'}>{estMark}{v}</span>;
   };
   if (q.initialLoading) return <div className="ets-empty">Loading the 15-day signal…</div>;
   if (!row || !cols.length) return <div className="ets-empty">No signal history yet.</div>;
@@ -96,14 +104,15 @@ function Signal15View({ symbol }: { symbol: string }) {
         return (
           <div key={cols[i]} className="s15-row">
             <span className="s15-date">{fmt(cols[i])}</span>
-            {pill(row.stock, i)}
-            {pill(row.options, i)}
+            {pill(row.stock, stockSrc, i)}
+            {pill(row.options, optSrc, i)}
           </div>
         );
       })}
-      <div className="ets-disclaimer">Daily captured Stock / Options call over the
-        last 15 days. A split pill with a pink pulse marks a day the call changed
-        from the previous captured day. Empty days fill in as the daily capture runs.</div>
+      <div className="ets-disclaimer">Daily Stock / Options call over the last 15 days.
+        Solid = captured that day; “~” italic/dashed = estimated from price history
+        (trend for the stock, realised volatility for options) because no snapshot
+        was captured then. A pink-pulsing split marks a captured day the call changed.</div>
     </div>
   );
 }

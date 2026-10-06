@@ -211,13 +211,61 @@ def earnings_signals(symbols: list[str]) -> dict:
             "missing": missing, "source": SOURCE}
 
 
-def earnings_timeline(symbols: list[str], days: int = 15) -> dict:
+def _backfill_estimates(symbol: str, cols: list, stock: list, options: list) -> tuple:
+    """
+    Estimate the stock/options call for days with no captured snapshot, from the
+    price history that IS available as-of each day: a trend read for the stock,
+    and a realised-volatility read for the options straddle. These are clearly
+    marked 'est' (not the real multi-factor capture) so the UI can distinguish
+    them. Captured days are left untouched and marked 'cap'.
+    """
+    import math
+    import bisect
+    s_src = ["cap" if v is not None else None for v in stock]
+    o_src = ["cap" if v is not None else None for v in options]
+    try:
+        import unusualwhales_service as uw
+        bars = [b for b in uw._rows(uw.candles(symbol, "1d", limit=160))
+                if b.get("date") and b.get("close") not in (None, "")]
+        bars.sort(key=lambda b: b["date"])
+        dates = [str(b["date"])[:10] for b in bars]
+        closes = [float(b["close"]) for b in bars]
+    except Exception:  # noqa: BLE001
+        return s_src, o_src
+    if len(closes) < 25:
+        return s_src, o_src
+    for i, c in enumerate(cols):
+        j = bisect.bisect_right(dates, c) - 1   # last trading day on/before c
+        if j < 20:
+            continue
+        upto = closes[:j + 1]
+        if stock[i] is None:
+            price, ma20, ma5 = upto[-1], sum(upto[-20:]) / 20, sum(upto[-5:]) / 5
+            dev = (price - ma20) / ma20 if ma20 else 0.0
+            stock[i] = ("BUY" if (dev > 0.02 and ma5 >= ma20)
+                        else "SELL" if (dev < -0.02 and ma5 <= ma20) else "NEUTRAL")
+            s_src[i] = "est"
+        if options[i] is None and len(upto) >= 60:
+            def rvol(n: int):
+                seg = upto[-n:]
+                rets = [math.log(seg[k] / seg[k - 1]) for k in range(1, len(seg)) if seg[k - 1] > 0]
+                return (sum(r * r for r in rets) / len(rets)) ** 0.5 if rets else None
+            rv, rv60 = rvol(20), rvol(60)
+            if rv is not None and rv60:
+                # Elevated recent realised vol -> bigger moves -> straddle-favourable.
+                options[i] = "BUY" if rv > rv60 * 1.15 else "NEUTRAL"
+                o_src[i] = "est"
+    return s_src, o_src
+
+
+def earnings_timeline(symbols: list[str], days: int = 15, backfill: bool = False) -> dict:
     """
     The day-by-day signal run-up to earnings: for each symbol, its captured
     stock and options call on each of the last `days` calendar days. Built from
-    the daily earnings_signal_snapshots, so each day the picture extends -- a
-    stock can read NO TRADE one day, flip to NEUTRAL on a news/parameter hit the
-    next, then BUY, and the whole evolution shows up to the report date.
+    the daily earnings_signal_snapshots, so each day the picture extends.
+
+    With backfill=True (single-stock detail view), days without a snapshot are
+    estimated from the price history as-of that day and marked 'est'.
     """
     from datetime import date as _date, timedelta as _td
     syms = [s.upper() for s in (symbols or []) if s][:300]
@@ -243,10 +291,14 @@ def earnings_timeline(symbols: list[str], days: int = 15) -> dict:
                 by.setdefault(sym, {})[d.isoformat()] = (st, op)
             for sym in syms:
                 m = by.get(sym, {})
-                rows[sym] = {
-                    "stock": [(m.get(c) or (None, None))[0] for c in cols],
-                    "options": [(m.get(c) or (None, None))[1] for c in cols],
-                }
+                stock = [(m.get(c) or (None, None))[0] for c in cols]
+                options = [(m.get(c) or (None, None))[1] for c in cols]
+                entry = {"stock": stock, "options": options}
+                if backfill:
+                    s_src, o_src = _backfill_estimates(sym, cols, stock, options)
+                    entry["stock_src"] = s_src
+                    entry["options_src"] = o_src
+                rows[sym] = entry
         finally:
             db.close()
     except Exception:  # noqa: BLE001

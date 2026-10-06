@@ -68,7 +68,7 @@ export default function UpcomingEarnings({
   const timelineOn = !!timeline;
   const tl = useApi<any>(
     (s) => (timelineOn && rows.length && !demo
-      ? api2.earningsSignalTimeline(rows.map((r) => r.symbol), 15, s)
+      ? api2.earningsSignalTimeline(rows.map((r) => r.symbol), 15, false, s)
       : Promise.resolve(null)),
     [timelineOn, symKey, demo],
     { refreshMs: timelineOn && !demo ? 60_000 : undefined },
