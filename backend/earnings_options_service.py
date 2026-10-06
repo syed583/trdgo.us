@@ -118,6 +118,39 @@ def _atm_straddle(symbol: str, spot: Optional[float],
         return None
 
 
+def _vix_regime_bias() -> Optional[float]:
+    """Market Regime / VIX: elevated VIX = bigger moves = favours a straddle."""
+    try:
+        import live_market_service as market
+        idx = market.get_indices() or {}
+        vix = next((i for i in (idx.get("indices") or []) if i.get("label") == "VIX"), None)
+        v = _f((vix or {}).get("price"))
+        return None if v is None else _clamp((v - 18.0) / 10.0)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _move_uncertainty_bias(symbol: str) -> Optional[float]:
+    """Move Uncertainty: wide analyst EPS spread (dispersion) = more uncertainty,
+    which favours a long straddle (a bigger move is more likely)."""
+    try:
+        import unusualwhales_service as uw
+        rows = uw._rows(uw.earnings_estimates(symbol))
+        fq = sorted((r for r in rows if r.get("horizon") == "fiscal quarter" and r.get("date")),
+                    key=lambda r: r.get("date"))
+        if not fq:
+            return None
+        r = fq[0]
+        hi, lo, avg = (_f(r.get("eps_estimate_high")), _f(r.get("eps_estimate_low")),
+                       _f(r.get("eps_estimate_average")))
+        if hi is None or lo is None or not avg:
+            return None
+        disp = abs(hi - lo) / abs(avg)
+        return _clamp((disp - 0.15) / 0.35)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def get_analysis(symbol: str) -> dict:
     symbol = (symbol or "").upper().strip()
     if not symbol:
@@ -219,6 +252,8 @@ def get_analysis(symbol: str) -> dict:
 
     # Greeks + Theta are one parameter now.
     b_greeks_theta = _avg(b_greeks, b_theta)
+    b_regime = _vix_regime_bias()
+    b_moveunc = _move_uncertainty_bias(symbol)
 
     params = [
         eng.Param("implied_vs_realized", "Implied Move vs Historical Realized Move", 25, b_emp,
@@ -230,9 +265,10 @@ def get_analysis(symbol: str) -> dict:
         eng.Param("iv_rank", "IV Rank / Percentile", 8, b_iv,
                   detail=(f"IV {iv}% (rank {round(iv_rank*100) if iv_rank is not None else '--'}%); "
                           "cheaper IV / lower rank favours the buyer.")),
-        eng.Param("move_uncertainty", "Move Uncertainty (estimate dispersion + peer moves)", 8, None,
-                  detail="Estimate dispersion and peer post-earnings moves.",
-                  unavailable_reason="Move-uncertainty inputs not wired up yet."),
+        eng.Param("move_uncertainty", "Move Uncertainty (estimate dispersion + peer moves)", 8, b_moveunc,
+                  detail="Analyst EPS spread (dispersion); a wider spread means a "
+                         "bigger move is more likely.",
+                  unavailable_reason="" if b_moveunc is not None else "No analyst EPS spread."),
         eng.Param("flow_oi", "Options Flow + OI Change", 7, b_flowoi,
                   detail="Per-print flow and overnight OI build / positioning (magnitude)."),
         eng.Param("greeks_theta", "Greeks + Theta", 5, b_greeks_theta,
@@ -245,9 +281,9 @@ def get_analysis(symbol: str) -> dict:
                           if straddle and straddle.get("spread_pct") is not None
                           else "No NBBO on the ATM chain."),
                   unavailable_reason="" if b_liq is not None else "No ATM NBBO."),
-        eng.Param("market_regime", "Market Regime / VIX", 5, None,
-                  detail="Broad volatility regime (VIX).",
-                  unavailable_reason="Market-regime/VIX input not wired up yet."),
+        eng.Param("market_regime", "Market Regime / VIX", 5, b_regime,
+                  detail="Broad volatility regime (VIX); elevated VIX favours a move.",
+                  unavailable_reason="" if b_regime is not None else "No VIX reading."),
         eng.Param("skew", "Put/Call Skew", 4, b_disp,
                   detail="Options disparity / put-call skew (magnitude)."),
         eng.Param("unusual_options", "Unusual Options Activity", 3, b_unusual,

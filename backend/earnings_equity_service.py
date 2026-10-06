@@ -238,6 +238,36 @@ def _trade_refs(symbol: str) -> dict:
     return refs
 
 
+def _short_insider_bias(symbol: str, insider_bias: Optional[float]) -> Optional[float]:
+    """
+    Short Interest + Insider: insider open-market direction, plus a mild bullish
+    tilt from squeeze potential (high short interest / days-to-cover). Short
+    interest is a slow, twice-a-month reading, so it is a confirmation, not a
+    driver -- it never dominates the insider direction.
+    """
+    tilt: Optional[float] = None
+    try:
+        import uw_screener_service as scr
+        si = scr.short_interest(symbol)
+        if si.get("status") == "OK":
+            dtc = _f(si.get("days_to_cover"))
+            pof = _f(si.get("short_percent_of_float"))
+            sqz = []
+            if dtc is not None:
+                sqz.append(min(1.0, dtc / 10.0))          # ~10 days to cover = high
+            if pof is not None:
+                p = pof / 100.0 if pof > 1 else pof
+                sqz.append(min(1.0, p / 0.20))             # ~20% of float = high
+            if sqz:
+                tilt = 0.5 * (sum(sqz) / len(sqz))         # squeeze = mild bullish
+    except Exception:  # noqa: BLE001
+        tilt = None
+    parts = [b for b in (insider_bias, tilt) if b is not None]
+    if not parts:
+        return None
+    return max(-1.0, min(1.0, sum(parts) / len(parts)))
+
+
 def get_analysis(symbol: str) -> dict:
     """The full equity earnings analysis for one ticker."""
     symbol = (symbol or "").upper().strip()
@@ -285,9 +315,9 @@ def get_analysis(symbol: str) -> dict:
                   detail="Results and reactions of peers that already reported.",
                   unavailable_reason="Peer read-through not wired up yet."),
         eng.Param("short_insider", "Short Interest + Insider", 6,
-                  s("insider_activity"),
-                  detail="Squeeze potential and insider open-market activity.",
-                  unavailable_reason="" if s("insider_activity") is not None
+                  (_short_insider := _short_insider_bias(symbol, s("insider_activity"))),
+                  detail="Squeeze potential (short interest) and insider open-market activity.",
+                  unavailable_reason="" if _short_insider is not None
                   else "No short-interest / insider signal."),
     ]
 
