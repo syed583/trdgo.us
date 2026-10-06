@@ -178,6 +178,13 @@
 .ue-notice-chip:hover { border-color: #ec4899; color: var(--text); }
 .ue-notice-chip b { font-weight: 700; color: var(--text); }
 .ue-notice-more { font-size: 11px; color: var(--text-mute); align-self: center; }
+.ue-notice-toggle {
+  align-self: center; cursor: pointer; font: inherit; font-size: 11px;
+  font-weight: 700; color: #ec4899; background: var(--panel);
+  border: 1px solid rgba(236, 72, 153, .5); border-radius: var(--r-pill);
+  padding: 3px 10px;
+}
+.ue-notice-toggle:hover { background: rgba(236, 72, 153, .12); color: var(--text); }
 
 /* upcoming-earnings cards colored by current signal (solid, no pulse) */
 .ue-row { border-left-width: 4px; }

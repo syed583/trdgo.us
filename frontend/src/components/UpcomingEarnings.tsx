@@ -22,6 +22,7 @@ export default function UpcomingEarnings({
 }: { base: string; title: string; demo?: boolean; search: string }) {
   const navigate = useNavigate();
   const [q, setQ] = useState('');
+  const [showAllChanged, setShowAllChanged] = useState(false);
 
   const up = useApi<any>(
     (s) => (demo ? Promise.resolve(null) : api2.earningsUpcoming(21, s)),
@@ -99,18 +100,26 @@ export default function UpcomingEarnings({
           .map((r) => r.symbol)
           .filter((s) => prevSig[s] && signals[s] && prevSig[s] !== signals[s]);
         if (!changed.length) return null;
+        const LIMIT = 8;
+        const shown = showAllChanged ? changed : changed.slice(0, LIMIT);
+        const hidden = changed.length - shown.length;
         return (
           <div className="ue-notice">
             <Bell size={14} />
             <span className="ue-notice-h">{changed.length} earnings {changed.length === 1
               ? 'stock' : 'stocks'} changed signal</span>
             <span className="ue-notice-list">
-              {changed.slice(0, 8).map((s) => (
+              {shown.map((s) => (
                 <button key={s} className="ue-notice-chip" onClick={() => open(s)}>
                   <b>{s}</b> {prevSig[s]}→{signals[s]}
                 </button>
               ))}
-              {changed.length > 8 && <span className="ue-notice-more">+{changed.length - 8} more</span>}
+              {changed.length > LIMIT && (
+                <button type="button" className="ue-notice-toggle"
+                  onClick={() => setShowAllChanged((v) => !v)}>
+                  {showAllChanged ? 'Show less' : `+${hidden} more`}
+                </button>
+              )}
             </span>
           </div>
         );
