@@ -15,6 +15,11 @@ export default function NewsPage({ ctx }: { ctx: PageContext }) {
 
   const news = useApi<any>((s) => api2.news(symbol, 40, s), [symbol]);
   const sentiment = useApi<any>((s) => api2.sentiment(symbol, s), [symbol]);
+  // The corporate alerts the Earnings Trade card shows -- SEC EDGAR filings,
+  // insider (Form 4) and institutional (13F) activity -- surfaced here too.
+  const alerts = useApi<any>((s) => api2.earningsAlerts(symbol, s), [symbol]);
+  const alertRows: any[] = (alerts.data?.alerts || [])
+    .filter((a: any) => a.severity !== 'GREY');
 
   const allItems: any[] = news.data?.items || [];
   const sent = sentiment.data;
@@ -146,6 +151,36 @@ export default function NewsPage({ ctx }: { ctx: PageContext }) {
                 </>
               ) : (
                 <Unavailable status={sent?.status} detail={sent?.detail} compact />
+              )}
+          </Panel>
+
+          <Panel title="Filings & Risk Alerts" noBody
+            right={alerts.data?.counts && (
+              <StatusChip status={alertRows.length ? 'OK' : undefined} />
+            )}>
+            {alerts.initialLoading ? <Loading />
+              : alertRows.length ? (
+                <div className="nd-alerts">
+                  {alertRows.slice(0, 12).map((a: any, i: number) => (
+                    <div key={i} className="nd-alert">
+                      <span className={`nd-alert-tag ${a.severity === 'RED' ? 'red' : 'amber'}`}>
+                        {a.severity === 'RED' ? 'High' : 'Medium'}
+                      </span>
+                      <div className="nd-alert-body">
+                        <div className="nd-alert-t">{a.title}</div>
+                        {a.detail && <div className="nd-alert-d">{a.detail}</div>}
+                        <div className="nd-alert-s">{a.source || 'Filing'}
+                          {a.date ? ` · ${a.date}` : ''}</div>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="hint">SEC EDGAR filings, insider (Form 4) and
+                    institutional (13F) activity — public filings only.</div>
+                </div>
+              ) : (
+                <div className="hint" style={{ padding: '12px' }}>
+                  No notable filings or risk alerts for {symbol}.
+                </div>
               )}
           </Panel>
 
