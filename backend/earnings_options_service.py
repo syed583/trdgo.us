@@ -143,7 +143,13 @@ def get_analysis(symbol: str) -> dict:
 
     iv = _f(stats.get("iv"))
     rv = _f(stats.get("rv"))
-    iv_rank = _f(stats.get("iv_rank"))           # 0..1
+    iv_rank = _f(stats.get("iv_rank"))           # normalise to 0..1
+    # Some UW vol endpoints return IV rank as a percentile (0..100), others as a
+    # fraction (0..1). Treat anything above 1.5 as a 0..100 value. Without this
+    # the IV lean was (0.5 - 66.5)*2 -> clamped to -1, pinning the IV parameter
+    # fully bearish every time and dragging the options score to NO TRADE.
+    if iv_rank is not None and iv_rank > 1.5:
+        iv_rank = iv_rank / 100.0
     iv_low, iv_high = _f(stats.get("iv_low")), _f(stats.get("iv_high"))
     rv_low, rv_high = _f(stats.get("rv_low")), _f(stats.get("rv_high"))
 
