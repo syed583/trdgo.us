@@ -1,6 +1,6 @@
 import { useMemo, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarDays, Search, ChevronRight } from 'lucide-react';
+import { CalendarDays, Search, ChevronRight, Bell } from 'lucide-react';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import './earnings-trade.css';
@@ -88,6 +88,28 @@ export default function UpcomingEarnings({
       </div>
       <p className="ue-sub">Companies reporting in the next ~3 weeks. Pick one to
         score its earnings trade.</p>
+
+      {(() => {
+        const changed = rows
+          .map((r) => r.symbol)
+          .filter((s) => prevSig[s] && signals[s] && prevSig[s] !== signals[s]);
+        if (!changed.length) return null;
+        return (
+          <div className="ue-notice">
+            <Bell size={14} />
+            <span className="ue-notice-h">{changed.length} earnings {changed.length === 1
+              ? 'stock' : 'stocks'} changed signal</span>
+            <span className="ue-notice-list">
+              {changed.slice(0, 8).map((s) => (
+                <button key={s} className="ue-notice-chip" onClick={() => open(s)}>
+                  <b>{s}</b> {prevSig[s]}→{signals[s]}
+                </button>
+              ))}
+              {changed.length > 8 && <span className="ue-notice-more">+{changed.length - 8} more</span>}
+            </span>
+          </div>
+        );
+      })()}
 
       {demo ? (
         <div className="es-empty">Disabled in demo mode.</div>

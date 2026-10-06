@@ -152,6 +152,26 @@
 .ue-quote em { font-style: normal; font-size: 10px; color: var(--text-mute); font-variant-numeric: tabular-nums; }
 .ue-chev { color: var(--text-mute); }
 
+/* Notice banner: which earnings stocks changed signal since last session. */
+.ue-notice {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 0 0 12px; padding: 8px 12px;
+  background: color-mix(in srgb, #ec4899 10%, var(--panel));
+  border: 1px solid color-mix(in srgb, #ec4899 45%, var(--border));
+  border-radius: var(--r); color: var(--text);
+}
+.ue-notice > svg { color: #ec4899; flex: 0 0 auto; }
+.ue-notice-h { font-size: 12.5px; font-weight: 700; }
+.ue-notice-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.ue-notice-chip {
+  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-pill);
+  padding: 3px 9px; font: inherit; font-size: 11px; color: var(--text-dim);
+}
+.ue-notice-chip:hover { border-color: #ec4899; color: var(--text); }
+.ue-notice-chip b { font-weight: 700; color: var(--text); }
+.ue-notice-more { font-size: 11px; color: var(--text-mute); align-self: center; }
+
 /* upcoming-earnings cards colored by current signal (solid, no pulse) */
 .ue-row { border-left-width: 4px; }
 .ue-row.sig-none { border-left-color: var(--border); }
@@ -172,17 +192,21 @@
 .ue-row.sig-neutral .ue-sym { color: var(--amber); }
 
 /* Signal changed since the last session: the card is split half the old colour,
-   half the new (set inline). Only these cards BLINK -- a pulsing glow draws the
-   eye to the stocks whose call just flipped; unchanged cards stay still. */
+   half the new (set inline). Only these cards BLINK -- a pink wash pulses over
+   the split to pull the eye to the stocks whose call just flipped; unchanged
+   cards stay still. */
 .ue-row.sig-changed {
-  border-left-width: 4px;
-  animation: ue-changed-blink 1.1s ease-in-out infinite;
+  position: relative; overflow: hidden; border-left-width: 4px;
 }
-@keyframes ue-changed-blink {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
-  50% { box-shadow: 0 0 0 3px rgba(139, 92, 246, .45),
-                    0 0 14px 2px rgba(139, 92, 246, .35); }
+.ue-row.sig-changed::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  border-radius: inherit; background: rgba(236, 72, 153, 0);
+  animation: ue-pink-blink 1s ease-in-out infinite;
+}
+@keyframes ue-pink-blink {
+  0%, 100% { background: rgba(236, 72, 153, 0); }
+  50% { background: rgba(236, 72, 153, .30); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ue-row.sig-changed { animation: none; }
+  .ue-row.sig-changed::after { animation: none; }
 }
