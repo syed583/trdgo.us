@@ -30,7 +30,7 @@ from __future__ import annotations
 from typing import Optional
 
 import earnings_engine as eng
-from earnings_equity_service import _directional_signals, _darkpool_bias, _f, _avg
+from earnings_equity_service import _directional_signals, _f, _avg
 
 SOURCE = "Trdgo earnings model"
 
@@ -203,11 +203,10 @@ def get_analysis(symbol: str) -> dict:
         v = _avg(*(sig.get(n) for n in names))
         return None if v is None else _clamp(abs(v))
 
-    b_unusual = mag("flow_by_expiry", "volume_pcr", "options_flow")
-    b_disp = mag("disparity")
     b_flowoi = mag("daily_oi_change", "oi_positioning")
-    dpb = _darkpool_bias(symbol)
-    b_dp = None if dpb is None else _clamp(abs(dpb))
+    # Removed as weak/redundant for the straddle call: Unusual Options Activity
+    # (magnitude-only, overlapped flow_oi), Options Disparity (skew; overlapped
+    # IV), and Dark Pool Confirmation (least directional edge).
 
     params = [
         eng.Param("iv", "Implied Volatility", 10, b_iv,
@@ -241,14 +240,8 @@ def get_analysis(symbol: str) -> dict:
                           if straddle and straddle.get("spread_pct") is not None
                           else "No NBBO on the ATM chain."),
                   unavailable_reason="" if b_liq is not None else "No ATM NBBO."),
-        eng.Param("unusual_options", "Unusual Options Activity", 5, b_unusual,
-                  detail="Volume above open interest / near-term positioning."),
-        eng.Param("disparity", "Options Disparity", 5, b_disp,
-                  detail="Price vs options-implied fair value (magnitude)."),
         eng.Param("flow_oi", "Options Flow & OI Changes", 5, b_flowoi,
                   detail="Net flow and overnight OI build (magnitude)."),
-        eng.Param("dark_pool", "Dark Pool Confirmation", 5, b_dp,
-                  detail="Off-lit activity confirming interest (magnitude)."),
     ]
 
     # For a buyer there is no "short" side: the negative end is simply NO TRADE.
