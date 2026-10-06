@@ -59,7 +59,7 @@ function EarningsTradeLanding({ demo, search }: { demo?: boolean; search: string
         <p>Combined equity + options earnings analysis. Pick a stock reporting soon.</p>
       </div>
       <UpcomingEarnings base="/earnings-trade" title="Upcoming earnings"
-        demo={demo} search={search} timeline />
+        demo={demo} search={search} />
     </div>
   );
 }
