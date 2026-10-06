@@ -106,6 +106,7 @@
 .ets-why-dot.buy { background: var(--green); }
 .ets-why-dot.sell { background: var(--red); }
 .ets-why-dot.flat { background: var(--amber); }
+.ets-why-dot.none { background: var(--text-mute); opacity: .4; }
 .ets-why-t { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
 .ets-why-t b { font-size: 12px; font-weight: 650; color: var(--text); }
 .ets-why-t em { font-style: normal; font-size: 11px; color: var(--text-mute); font-variant-numeric: tabular-nums; white-space: nowrap; }

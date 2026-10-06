@@ -218,12 +218,13 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
                         {(side?.why || []).map((w: any, i: number) => (
                           <div key={i} className="ets-why-row">
                             <span className={`ets-why-dot ${
-                              w.leaning === 'Bullish' ? 'buy'
-                                : w.leaning === 'Bearish' ? 'sell' : 'flat'}`} />
+                              w.available === false ? 'none'
+                                : w.leaning === 'Bullish' ? 'buy'
+                                  : w.leaning === 'Bearish' ? 'sell' : 'flat'}`} />
                             <div>
                               <div className="ets-why-t">
                                 <b>{w.label}</b>
-                                <em>{w.points_label}</em>
+                                <em>{w.available === false ? 'no data' : w.points_label}</em>
                               </div>
                               {w.detail && <div className="ets-why-d">{w.detail}</div>}
                             </div>
@@ -234,8 +235,8 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
                         )}
                       </div>
                     ))}
-                  <div className="ets-note">The score sums every parameter's points;
-                    these are the ones that moved it most.</div>
+                  <div className="ets-note">Every parameter the engine scored,
+                    strongest mover first. The score is the sum of their points.</div>
                 </div>
               )}
             </div>

@@ -148,18 +148,19 @@ def get_summary(symbol: str) -> dict:
     # Overall headline decision: the equity call, or the straddle when equity is flat.
     overall = ed if ed in ("BUY", "SELL") else (od if od in ("STRADDLE", "STRANGLE") else "NO TRADE")
 
-    # The biggest reasons behind each gauge, so the screen can explain *why* the
-    # score is what it is -- the parameters that moved it most, with their own
-    # plain-English note.
-    def _drivers(params, k: int = 5) -> list:
-        avail = [p for p in (params or [])
-                 if p.get("available") and p.get("points") is not None]
-        avail.sort(key=lambda p: -abs(float(p.get("points") or 0)))
+    # Every parameter behind each gauge, so the screen explains the full score --
+    # all the evidence we scored, strongest mover first, each with its own
+    # plain-English note. Unavailable ones are kept too, marked as no-data.
+    def _drivers(params) -> list:
+        rows = list(params or [])
+        rows.sort(key=lambda p: (0 if p.get("available") else 1,
+                                 -abs(float(p.get("points") or 0))))
         return [{"label": p.get("label") or p.get("name"),
                  "leaning": p.get("leaning"),
                  "points_label": p.get("points_label"),
-                 "detail": p.get("detail")}
-                for p in avail[:k]]
+                 "available": p.get("available"),
+                 "detail": p.get("detail") or p.get("unavailable_reason")}
+                for p in rows]
 
     equity_why = _drivers(equity.get("params"))
     options_why = _drivers(options.get("params"))
