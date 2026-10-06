@@ -243,6 +243,16 @@ export default function UpcomingEarnings({
       <p className="ue-sub">Companies reporting in the next ~3 weeks. Pick one to
         score its earnings trade.</p>
 
+      {/* Plain-list mode: a one-line notice (no Intraday tabs) + the why panel. */}
+      {hideChanges && changed.length > 0 && (
+        <div className="ue-chgnote">
+          <Bell size={13} />
+          <span>{changed.length} earnings {changed.length === 1 ? 'stock' : 'stocks'} changed
+            signal — highlighted below. Tap <b>why?</b> on a card for the reason.</span>
+        </div>
+      )}
+      {hideChanges && renderWhyPanel()}
+
       {(() => {
         // Standalone banner (equity/options landings). Suppressed on the Trade
         // page (timeline strips, or a plain list via hideChanges).
@@ -370,7 +380,7 @@ export default function UpcomingEarnings({
                         {r.market_cap != null && <em>{fmtCap(Number(r.market_cap))}</em>}
                       </span>
                     )}
-                    {timeline && style && (
+                    {style && (
                       <span className="ue-row-why" role="button" tabIndex={0}
                         title="Why did this change?"
                         onClick={(e) => { e.stopPropagation(); toggleWhy(r.symbol); }}>
