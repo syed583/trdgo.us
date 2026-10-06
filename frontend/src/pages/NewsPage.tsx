@@ -119,22 +119,30 @@ export default function NewsPage({ ctx }: { ctx: PageContext }) {
                         : sent.label === 'BEARISH' ? 'var(--red)' : 'var(--amber)',
                     }}>{sent.label}</div>
                   </div>
+                  {String(sent.source || '').includes('Claude') && sent.detail && (
+                    <div className="sent-read">{sent.detail}</div>
+                  )}
                   <div className="kv">
-                    <div className="kv-row">
-                      <span className="k">Positive terms</span>
-                      <span className="v pos">{sent.positive_terms}</span>
-                    </div>
-                    <div className="kv-row">
-                      <span className="k">Negative terms</span>
-                      <span className="v neg">{sent.negative_terms}</span>
-                    </div>
+                    {!String(sent.source || '').includes('Claude') && (
+                      <>
+                        <div className="kv-row">
+                          <span className="k">Positive terms</span>
+                          <span className="v pos">{sent.positive_terms}</span>
+                        </div>
+                        <div className="kv-row">
+                          <span className="k">Negative terms</span>
+                          <span className="v neg">{sent.negative_terms}</span>
+                        </div>
+                      </>
+                    )}
                     <div className="kv-row">
                       <span className="k">Headlines scored</span>
                       <span className="v">{sent.headlines_scored}/{sent.headlines_total}</span>
                     </div>
                   </div>
-                  <div className="hint">{sent.method}. Derived only from
-                    entitled headline text — no model, no external source.</div>
+                  <div className="hint">{String(sent.source || '').includes('Claude')
+                    ? 'Read by Claude from the headline text only — no prices or outside facts added.'
+                    : `${sent.method}. Derived only from entitled headline text — no model, no external source.`}</div>
                 </>
               ) : (
                 <Unavailable status={sent?.status} detail={sent?.detail} compact />
