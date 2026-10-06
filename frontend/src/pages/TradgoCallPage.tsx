@@ -34,6 +34,13 @@ export default function TradgoCallPage({ ctx }: { ctx: PageContext }) {
   const { symbol: pathSym } = useParams();
   const navigate = useNavigate();
   const [entry, setEntry] = useState('');
+  // Hooks must run unconditionally (before any early return) -- disabled when
+  // there's no ticker in the URL.
+  const q = useApi<any>(
+    (s) => (!pathSym || demo ? Promise.resolve(null) : api2.tradgoCall(symbol, s)),
+    [symbol, demo, pathSym],
+    { refreshMs: !pathSym || demo ? undefined : 60_000 },
+  );
   const go = (sym: string) => {
     const t = (sym || '').trim().toUpperCase();
     if (t) navigate(`/tradgo-call/${encodeURIComponent(t)}${ctx.search}`);
@@ -55,7 +62,7 @@ export default function TradgoCallPage({ ctx }: { ctx: PageContext }) {
           {TRY.map((t) => <button key={t} onClick={() => go(t)}>{t}</button>)}
         </div>
         <div className="an-stats">
-          <div><b>18</b><span>Scored Parameters</span></div>
+          <div><b>15</b><span>Scored Parameters</span></div>
           <div><b>±100</b><span>Direction Score</span></div>
           <div><b>Days–4w</b><span>Swing Horizon</span></div>
           <div><b>Live</b><span>Prices &amp; Flow</span></div>
@@ -63,11 +70,6 @@ export default function TradgoCallPage({ ctx }: { ctx: PageContext }) {
       </div>
     );
   }
-  const q = useApi<any>(
-    (s) => (demo ? Promise.resolve(null) : api2.tradgoCall(symbol, s)),
-    [symbol, demo],
-    { refreshMs: demo ? undefined : 60_000 },
-  );
   const r = q.data;
   const score: number | null = r?.score ?? null;
   const dec = r?.decision || '--';
