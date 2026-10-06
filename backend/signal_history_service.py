@@ -151,14 +151,17 @@ def earnings_signals(symbols: list[str]) -> dict:
             from database import SessionLocal
             db = SessionLocal()
             try:
-                # Find, per symbol, the most recent captured value that DIFFERS
-                # from the current call. That is the "previous" signal to show as
-                # the old half of a split card. Taking the latest snapshot <= today
-                # did NOT work: today's own daily capture equals the current call,
-                # so DISTINCT ON always returned today's row and the change was
-                # cancelled out. Scanning recent history for the latest differing
-                # value instead catches both same-day flips (today's capture differs
-                # from the freshly recomputed call) and day-over-day flips.
+                # "Previous session's call" = the value captured on the snapshot
+                # date just BEFORE the latest one for that symbol. Compare the
+                # current call to THAT, and flag a change only when they differ.
+                #
+                # Not "the latest snapshot <= today": today's own daily capture
+                # equals the current call, so that always cancelled out and nothing
+                # ever showed. And not "the most recent value that differs in the
+                # last 30 days": that over-reports -- a flip a month ago that has
+                # since been steady would be flagged as if it just changed. Anchor
+                # to the immediately preceding capture so "changed" means changed
+                # since the last session, with a 30-day cap just to bound the scan.
                 from datetime import timedelta as _td
                 rows = db.execute(text(
                     "SELECT symbol, stock, snapshot_date "
@@ -167,12 +170,27 @@ def earnings_signals(symbols: list[str]) -> dict:
                     "ORDER BY symbol, snapshot_date DESC"),
                     {"syms": list(out.keys()),
                      "since": _date.today() - _td(days=30)}).all()
-                for sym, st, _d in rows:
-                    if sym in prev:
-                        continue  # already took the most recent differing value
+                # Group each symbol's captures newest-first.
+                hist: dict[str, list] = {}
+                for sym, st, d in rows:
+                    hist.setdefault(sym, []).append((d, st))
+                for sym, series in hist.items():
                     cur = out.get(sym)
-                    if st and cur and st != cur:
-                        prev[sym] = st
+                    if not cur:
+                        continue
+                    latest_d, latest_v = series[0]
+                    if latest_v and latest_v != cur:
+                        # Same-day flip: the live call has moved away from today's
+                        # own capture since it was taken.
+                        prev[sym] = latest_v
+                    else:
+                        # Steady vs the latest capture -> compare to the value on the
+                        # immediately preceding capture date (the previous session).
+                        # Only that one date, so a long-ago flip that has since been
+                        # steady is NOT re-reported.
+                        prior = next((v for d, v in series if d != latest_d), None)
+                        if prior and prior != cur:
+                            prev[sym] = prior
             finally:
                 db.close()
         except Exception:  # noqa: BLE001 - no history just means no change shown
