@@ -252,7 +252,7 @@ def get_analysis(symbol: str) -> dict:
     eps_bias, rev_bias = _estimate_bias(symbol)
 
     params = [
-        eng.Param("eps_estimates", "EPS Estimates & Revisions", 18, eps_bias,
+        eng.Param("eps_estimates", "EPS Estimates & Revisions", 20, eps_bias,
                   detail="Analysts' expected EPS growth and last-week revisions (UW).",
                   unavailable_reason="" if eps_bias is not None else "No analyst EPS estimates."),
         eng.Param("revenue_estimates", "Revenue Estimates & Revisions", 15, rev_bias,
