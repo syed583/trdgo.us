@@ -210,7 +210,7 @@ def get_analysis(symbol: str) -> dict:
     b_dp = None if dpb is None else _clamp(abs(dpb))
 
     params = [
-        eng.Param("iv", "Implied Volatility", 10, b_iv,
+        eng.Param("iv", "Implied Volatility (IV)", 10, b_iv,
                   detail=(f"IV {iv}% (rank {round(iv_rank*100) if iv_rank is not None else '--'}%); "
                           "cheaper IV favours the buyer.")),
         eng.Param("iv_crush", "IV Crush Risk", 15, b_crush,
