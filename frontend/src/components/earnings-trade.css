@@ -156,8 +156,8 @@
 .ue-notice {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   margin: 0 0 12px; padding: 8px 12px;
-  background: color-mix(in srgb, #ec4899 10%, var(--panel));
-  border: 1px solid color-mix(in srgb, #ec4899 45%, var(--border));
+  background: rgba(236, 72, 153, .10);
+  border: 1px solid rgba(236, 72, 153, .5);
   border-radius: var(--r); color: var(--text);
 }
 .ue-notice > svg { color: #ec4899; flex: 0 0 auto; }
@@ -175,17 +175,19 @@
 /* upcoming-earnings cards colored by current signal (solid, no pulse) */
 .ue-row { border-left-width: 4px; }
 .ue-row.sig-none { border-left-color: var(--border); }
+/* rgba tints (not color-mix) so the fill shows on every browser -- color-mix
+   isn't universally supported and silently left the cards white. */
 .ue-row.sig-buy {
   border-left-color: var(--green);
-  background: color-mix(in srgb, var(--green) 10%, var(--panel));
+  background: rgba(46, 184, 122, .13);
 }
 .ue-row.sig-sell {
   border-left-color: var(--red);
-  background: color-mix(in srgb, var(--red) 10%, var(--panel));
+  background: rgba(242, 70, 90, .12);
 }
 .ue-row.sig-neutral {
   border-left-color: var(--amber);
-  background: color-mix(in srgb, var(--amber) 10%, var(--panel));
+  background: rgba(217, 164, 65, .14);
 }
 .ue-row.sig-buy .ue-sym { color: var(--green); }
 .ue-row.sig-sell .ue-sym { color: var(--red); }
