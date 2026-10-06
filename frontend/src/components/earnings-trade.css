@@ -218,6 +218,11 @@
   overflow: hidden;
 }
 .ue-cardwrap .ue-row { border: none; border-radius: 0; }
+/* Changed card: the wrapper (not the clipped inner row) blinks pink. */
+.ue-cardwrap.cw-changed { border-color: #ec4899; animation: ue-pink-blink 1.05s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .ue-cardwrap.cw-changed { animation: none; box-shadow: 0 0 0 2px rgba(236,72,153,.45); }
+}
 .tl-strip {
   display: flex; flex-direction: column; gap: 3px;
   padding: 5px 12px 8px; border-top: 1px dashed var(--border);

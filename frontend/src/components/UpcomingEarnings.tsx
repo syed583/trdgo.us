@@ -381,7 +381,7 @@ export default function UpcomingEarnings({
                 const style = splitFor(r.symbol);
                 const chg = style ? 'sig-changed sig-changed-intraday' : '';
                 return (
-                <div key={r.symbol + r.date} className="ue-cardwrap">
+                <div key={r.symbol + r.date} className={`ue-cardwrap${style ? ' cw-changed' : ''}`}>
                 <button
                   className={`ue-row sig-${sigClass(r.symbol)} ${chg}`}
                   style={style}
