@@ -87,11 +87,34 @@ def test_one_matched_headline_is_not_a_tone(monkeypatch):
              "sentiment": "POSITIVE"}]
         + [{"headline": f"Routine item {i}", "sentiment_score": None,
             "sentiment": "NEUTRAL"} for i in range(24)]})
+    # With Claude unavailable the keyword path must stay honest: one matched
+    # headline is too small a sample to claim a tone.
+    import claude_service
+    monkeypatch.setattr(claude_service, "configured", lambda: False)
 
     out = uwnews.get_sentiment("NVDA")
     assert out["status"] == "INSUFFICIENT_DATA"
     assert out["score"] is None, "a label needs a sample behind it"
     assert "1 of 25" in out["detail"]
+
+
+def test_claude_reads_headlines_when_keywords_are_thin(monkeypatch):
+    # No headline carries a keyword, so the word-list estimate has nothing --
+    # Claude reads the headlines instead and that read becomes the tone.
+    monkeypatch.setattr(uwnews, "get_news", lambda s, limit=20: {
+        "status": "OK", "items": [
+            {"headline": f"Company reveals routine filing {i}",
+             "sentiment_score": None, "sentiment": "NEUTRAL"} for i in range(5)]})
+    import claude_service
+    monkeypatch.setattr(claude_service, "configured", lambda: True)
+    monkeypatch.setattr(claude_service, "news_tone",
+                        lambda sym, heads: {"status": "OK",
+                                            "text": "Positive: strong demand outlook."})
+
+    out = uwnews.get_sentiment("NVDA")
+    assert out["status"] == "OK"
+    assert out["label"] == "BULLISH" and out["score"] == 72
+    assert "Claude" in (out["source"] or "")
 
 
 def test_a_real_sample_is_scored_and_says_what_it_is(monkeypatch):
