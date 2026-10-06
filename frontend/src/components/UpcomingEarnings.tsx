@@ -166,7 +166,7 @@ export default function UpcomingEarnings({
               <button type="button" role="tab"
                 className={`ue-chg-tab session${active === 'session' ? ' on' : ''}`}
                 onClick={() => { setChangeTab('session'); setShowAllChanged(false); }}>
-                Last 30 days <span className="ue-chg-count">{session.length}</span>
+                Last 10 days <span className="ue-chg-count">{session.length}</span>
               </button>
             </div>
             <div className="ue-chg-panel">
@@ -174,7 +174,7 @@ export default function UpcomingEarnings({
                 <span className="ue-why-note">
                   {active === 'intraday'
                     ? 'No calls have moved intraday since today’s capture.'
-                    : 'No day-over-day changes in the last 30 days.'}
+                    : 'No day-over-day changes in the last 10 days.'}
                 </span>
               ) : (
                 <span className="ue-notice-list">

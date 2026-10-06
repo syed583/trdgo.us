@@ -23,15 +23,16 @@ def _f(v) -> Optional[float]:
         return None
 
 
-def _historical_moves(symbol: str, limit: int = 12) -> list[dict]:
-    """The 1-day price move around each of the last few earnings reports."""
+def _historical_moves(symbol: str, limit: int = 0) -> list[dict]:
+    """The 1-day price move around the reports. limit<=0 => all history available."""
     try:
         import unusualwhales_service as uw
         dates = sorted({r.get("report_date") for r in uw._rows(uw.earnings_history(symbol))
                         if r.get("report_date") and r.get("reported_eps") not in (None, "")})
         if not dates:
             return []
-        bars = uw._rows(uw.candles(symbol, "1d", limit=1500))
+        # Deep candle window so even old reports have a prior close to compare to.
+        bars = uw._rows(uw.candles(symbol, "1d", limit=3000))
         bars = [b for b in bars if b.get("date") and _f(b.get("close")) is not None]
         bars.sort(key=lambda b: b["date"])
         closes = [(b["date"], _f(b["close"])) for b in bars]
@@ -45,7 +46,7 @@ def _historical_moves(symbol: str, limit: int = 12) -> list[dict]:
             if prev:
                 out.append({"date": d, "label": d[:7],
                             "move_pct": round((cur - prev) / prev * 100, 2)})
-        return out[-limit:]
+        return out[-limit:] if limit and limit > 0 else out
     except Exception:  # noqa: BLE001
         return []
 

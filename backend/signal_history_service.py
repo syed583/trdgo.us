@@ -163,7 +163,7 @@ def earnings_signals(symbols: list[str]) -> dict:
                 # last 30 days": that over-reports -- a flip a month ago that has
                 # since been steady would be flagged as if it just changed. Anchor
                 # to the immediately preceding capture so "changed" means changed
-                # since the last session, with a 30-day cap just to bound the scan.
+                # since the last session, with a 10-day cap just to bound the scan.
                 from datetime import timedelta as _td
                 rows = db.execute(text(
                     "SELECT symbol, stock, snapshot_date "
@@ -171,7 +171,7 @@ def earnings_signals(symbols: list[str]) -> dict:
                     "WHERE symbol = ANY(:syms) AND snapshot_date >= :since "
                     "ORDER BY symbol, snapshot_date DESC"),
                     {"syms": list(out.keys()),
-                     "since": _date.today() - _td(days=30)}).all()
+                     "since": _date.today() - _td(days=10)}).all()
                 # Group each symbol's captures newest-first.
                 today = _date.today()
                 hist: dict[str, list] = {}
