@@ -173,6 +173,11 @@
 .ue-row.sig-buy .ue-sym { color: var(--green); }
 .ue-row.sig-sell .ue-sym { color: var(--red); }
 .ue-row.sig-neutral .ue-sym { color: var(--amber); }
+
+/* Signal changed since the last session: the card is split half the old colour,
+   half the new (set inline). Stop the single-colour pulse so the split shows,
+   and keep a visible left accent of the previous colour. */
+.ue-row.sig-changed { animation: none !important; border-left-width: 4px; }
 @keyframes ue-pulse-buy {
   50% { box-shadow: 0 0 10px 1px color-mix(in srgb, var(--green) 55%, transparent); }
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CalendarDays, Search, ChevronRight } from 'lucide-react';
 import { api2 } from '../api/client';
@@ -40,8 +40,25 @@ export default function UpcomingEarnings({
     { refreshMs: demo ? undefined : 15_000 },
   );
   const signals: Record<string, string> = sig.data?.signals || {};
-  const sigClass = (sym: string) =>
-    ({ BUY: 'buy', SELL: 'sell', NEUTRAL: 'neutral' } as any)[signals[sym]] || 'none';
+  // Previous session's call per symbol, present only when it changed.
+  const prevSig: Record<string, string> = sig.data?.prev || {};
+  const CLS: any = { BUY: 'buy', SELL: 'sell', NEUTRAL: 'neutral' };
+  const sigClass = (sym: string) => CLS[signals[sym]] || 'none';
+  // RGB of each signal colour, for the half/half gradient on a changed card.
+  const RGB: Record<string, string> = {
+    buy: '46,184,122', sell: '242,70,90', neutral: '217,164,65',
+  };
+  // Split style when the call changed from a previous session (e.g. Buy->Neutral):
+  // one half the old colour, the other half the new.
+  const splitFor = (sym: string): CSSProperties | undefined => {
+    const cur = sigClass(sym);
+    const prv = CLS[prevSig[sym]];
+    if (!prv || prv === cur || cur === 'none') return undefined;
+    return {
+      background: `linear-gradient(135deg, rgba(${RGB[prv]},.20) 0 50%, rgba(${RGB[cur]},.20) 50% 100%)`,
+      borderLeftColor: `rgb(${RGB[prv]})`,
+    };
+  };
 
   const groups = useMemo(() => {
     const needle = q.trim().toUpperCase();
@@ -85,10 +102,16 @@ export default function UpcomingEarnings({
           <div key={day} className="ue-day">
             <div className="ue-day-h">{day}</div>
             <div className="ue-grid">
-              {items.map((r) => (
-                <button key={r.symbol + r.date} className={`ue-row sig-${sigClass(r.symbol)}`}
+              {items.map((r) => {
+                const style = splitFor(r.symbol);
+                return (
+                <button key={r.symbol + r.date}
+                  className={`ue-row sig-${sigClass(r.symbol)} ${style ? 'sig-changed' : ''}`}
+                  style={style}
                   onClick={() => open(r.symbol)}
-                  title={signals[r.symbol] ? `Signal: ${signals[r.symbol]}` : undefined}>
+                  title={style
+                    ? `Changed: ${prevSig[r.symbol]} → ${signals[r.symbol]}`
+                    : (signals[r.symbol] ? `Signal: ${signals[r.symbol]}` : undefined)}>
                   <div className="ue-row-l">
                     <span className="ue-sym">{r.symbol}</span>
                     <span className="ue-co">{r.company || ''}</span>
@@ -105,7 +128,8 @@ export default function UpcomingEarnings({
                     <ChevronRight size={15} className="ue-chev" />
                   </div>
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         ))

@@ -139,7 +139,35 @@ def earnings_signals(symbols: list[str]) -> dict:
                 missing.append(sym)
     except Exception:  # noqa: BLE001
         missing = syms
-    return {"status": "OK", "signals": out, "missing": missing, "source": SOURCE}
+
+    # Previous session's call per symbol (most recent capture before today), but
+    # only when it differs from the current one -- so the list can show a stock
+    # whose earnings call CHANGED (e.g. Buy -> Neutral) as a split colour.
+    prev: dict[str, str] = {}
+    if out:
+        try:
+            from datetime import date as _date
+            from sqlalchemy import text
+            from database import SessionLocal
+            db = SessionLocal()
+            try:
+                rows = db.execute(text(
+                    "SELECT DISTINCT ON (symbol) symbol, stock "
+                    "FROM earnings_signal_snapshots "
+                    "WHERE symbol = ANY(:syms) AND snapshot_date < :today "
+                    "ORDER BY symbol, snapshot_date DESC"),
+                    {"syms": list(out.keys()), "today": _date.today()}).all()
+                for sym, st in rows:
+                    cur = out.get(sym)
+                    if st and cur and st != cur:
+                        prev[sym] = st
+            finally:
+                db.close()
+        except Exception:  # noqa: BLE001 - no history just means no change shown
+            pass
+
+    return {"status": "OK", "signals": out, "prev": prev,
+            "missing": missing, "source": SOURCE}
 
 
 def warm_earnings(symbols: list[str]) -> None:
