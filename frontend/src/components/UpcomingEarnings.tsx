@@ -197,12 +197,48 @@ export default function UpcomingEarnings({
               const drivers = (want ? why.filter((p) => p.leaning === want) : why).slice(0, 4);
               const when = changeKind[whyFor] === 'intraday'
                 ? 'moved intraday' : `changed since ${sinceLabel(changeSince[whyFor])}`;
+              // Conviction: score vs the Buy>=58 / Sell<=42 thresholds, coverage,
+              // and how many scored drivers agree vs disagree with the new call.
+              const score = d?.equity?.score;
+              const cov = d?.equity?.coverage;
+              const forN = why.filter((p: any) => p.leaning === want).length;
+              const againstN = why.filter((p: any) => p.leaning
+                === (want === 'Bullish' ? 'Bearish' : 'Bullish')).length;
+              // Historical hit-rate: real past post-earnings 1-day moves.
+              const moves: any[] = (d?.historical_moves || [])
+                .filter((m: any) => typeof m?.move_pct === 'number');
+              const ups = moves.filter((m) => m.move_pct > 0);
+              const downs = moves.filter((m) => m.move_pct < 0);
+              const avg = (a: any[]) => a.length
+                ? a.reduce((s, m) => s + m.move_pct, 0) / a.length : null;
+              const aligned = cur === 'BUY' ? ups.length
+                : cur === 'SELL' ? downs.length : null;
+              const pct1 = (v: number | null) => v == null ? '--' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
               return (
                 <div className="ue-why">
                   <div className="ue-why-h">
                     <b>{whyFor}</b> {prevSig[whyFor]}→<b>{cur}</b> ({when}) —{' '}
                     {want ? `what's pushing it ${cur.toLowerCase()} now:` : 'no decisive edge now:'}
                   </div>
+                  {!d?.loading && !d?.error && (
+                    <div className="ue-why-stats">
+                      <div className="ue-why-stat">
+                        <span>Conviction</span>
+                        <b>{score != null ? `${Math.round(score)}/100` : '--'}</b>
+                        <em>{cov != null ? `${Math.round(cov)}% coverage` : 'coverage n/a'}
+                          {want ? ` · ${forN} for / ${againstN} against` : ''}</em>
+                      </div>
+                      <div className="ue-why-stat">
+                        <span>Past earnings ({moves.length})</span>
+                        <b>{aligned != null && moves.length
+                          ? `${aligned}/${moves.length} ${cur === 'BUY' ? 'up' : 'down'}`
+                          : moves.length ? `${ups.length}↑ / ${downs.length}↓` : '--'}</b>
+                        <em>{moves.length
+                          ? `avg ${pct1(avg(ups))} up · ${pct1(avg(downs))} down`
+                          : 'no history'}</em>
+                      </div>
+                    </div>
+                  )}
                   {d?.loading ? (
                     <div className="ue-why-note">Loading the drivers…</div>
                   ) : d?.error ? (
