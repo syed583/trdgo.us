@@ -225,3 +225,8 @@
 .s15-blink { animation: ue-pink-blink 1.05s ease-in-out infinite; }
 .s15-est { font-style: italic; opacity: 0.8; border-style: dashed !important; }
 @media (prefers-reduced-motion: reduce) { .s15-blink { animation: none; box-shadow: 0 0 0 2px rgba(236,72,153,.4); } }
+
+/* Loading state with a spinner */
+.ets-loading { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.ets-spin { color: var(--blue); flex: 0 0 auto; animation: ets-spin 0.9s linear infinite; }
+@keyframes ets-spin { to { transform: rotate(360deg); } }

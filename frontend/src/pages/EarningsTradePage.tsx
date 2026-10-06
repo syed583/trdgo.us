@@ -6,6 +6,7 @@ import {
 } from 'recharts';
 import {
   CalendarDays, Plus, TrendingUp, Target, Lightbulb, AlertTriangle, ChevronRight,
+  Loader2,
 } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api, api2 } from '../api/client';
@@ -193,10 +194,15 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
       {demo ? (
         <div className="ets-empty">Disabled in demo mode.</div>
       ) : q.initialLoading ? (
-        <div className="ets-empty">Loading the earnings trade analysis…</div>
+        <div className="ets-empty ets-loading">
+          <Loader2 className="ets-spin" size={18} /> Loading the earnings trade analysis…
+        </div>
       ) : !d || d.status === 'LOADING' || d.status === 'DATA_UNAVAILABLE' ? (
-        <div className="ets-empty">Building the earnings trade analysis… this can
-          take a moment for a stock we haven't scored yet.</div>
+        <div className="ets-empty ets-loading">
+          <Loader2 className="ets-spin" size={18} />
+          Building the earnings trade analysis… this can take a moment for a stock
+          we haven't scored yet.
+        </div>
       ) : d.status !== 'OK' ? (
         <div className="ets-empty">{d?.detail || 'No analysis available.'}</div>
       ) : (
