@@ -186,6 +186,7 @@
 
 /* Intraday vs last-30-days change tabs. */
 .ue-chg-tabs { display: flex; gap: 6px; }
+.ets-chg-tabs { margin-top: 12px; }
 .ue-chg-tab {
   display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
   font: inherit; font-size: 11.5px; font-weight: 700;

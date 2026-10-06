@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CalendarDays, Search, ChevronRight, Bell, HelpCircle } from 'lucide-react';
 import { api2 } from '../api/client';
@@ -18,12 +18,22 @@ function fmtCap(v: number): string {
  * Pick one and it opens that ticker's full analysis on the same engine (`base`).
  */
 export default function UpcomingEarnings({
-  base, title, demo, search,
-}: { base: string; title: string; demo?: boolean; search: string }) {
+  base, title, demo, search, changeTab: changeTabProp, onChangeTab, onCounts,
+}: {
+  base: string; title: string; demo?: boolean; search: string;
+  // Optional: let a parent (the page header) own the Intraday/Last-10-days tabs.
+  changeTab?: 'intraday' | 'session';
+  onChangeTab?: (t: 'intraday' | 'session') => void;
+  onCounts?: (c: { intraday: number; session: number }) => void;
+}) {
   const navigate = useNavigate();
   const [q, setQ] = useState('');
   const [showAllChanged, setShowAllChanged] = useState(false);
-  const [changeTab, setChangeTab] = useState<'intraday' | 'session'>('intraday');
+  const [changeTabInternal, setChangeTabInternal] = useState<'intraday' | 'session'>('intraday');
+  // Controlled by the parent when it supplies the tabs; else use local state.
+  const changeTab = changeTabProp ?? changeTabInternal;
+  const setChangeTab = onChangeTab ?? setChangeTabInternal;
+  const tabsAtTop = !!onChangeTab;  // parent renders the tabs -> hide the inline ones
   // Lazy "why did it flip?" per changed stock: the current drivers leaning the
   // new way. Snapshots only store the decision, so we explain the new call's
   // live drivers rather than diffing yesterday's parameters.
@@ -63,6 +73,16 @@ export default function UpcomingEarnings({
   // (day-over-day), and the date the current call is compared against.
   const changeKind: Record<string, string> = sig.data?.change_kind || {};
   const changeSince: Record<string, string> = sig.data?.change_since || {};
+
+  // The changed symbols, split by kind -- shared by the banner and reported up
+  // to the parent so page-level tabs can show the counts.
+  const changed = rows.map((r) => r.symbol)
+    .filter((s) => prevSig[s] && signals[s] && prevSig[s] !== signals[s]);
+  const intradayChanged = changed.filter((s) => changeKind[s] === 'intraday');
+  const sessionChanged = changed.filter((s) => changeKind[s] !== 'intraday');
+  useEffect(() => {
+    onCounts?.({ intraday: intradayChanged.length, session: sessionChanged.length });
+  }, [intradayChanged.length, sessionChanged.length, onCounts]);
   const sinceLabel = (iso?: string) => {
     if (!iso) return '';
     const d = new Date(iso + 'T00:00:00');
@@ -121,12 +141,12 @@ export default function UpcomingEarnings({
         score its earnings trade.</p>
 
       {(() => {
-        const changed = rows
-          .map((r) => r.symbol)
-          .filter((s) => prevSig[s] && signals[s] && prevSig[s] !== signals[s]);
-        if (!changed.length) return null;
-        const intraday = changed.filter((s) => changeKind[s] === 'intraday');
-        const session = changed.filter((s) => changeKind[s] !== 'intraday');
+        // Standalone (tabs in the banner): nothing to show when no changes.
+        // Controlled (tabs at the page top): always render so the selected tab's
+        // empty-state note shows.
+        if (!tabsAtTop && !changed.length) return null;
+        const intraday = intradayChanged;
+        const session = sessionChanged;
 
         // One chip + its "why?" affordance.
         const chip = (s: string) => (
@@ -141,10 +161,12 @@ export default function UpcomingEarnings({
           </span>
         );
 
-        // Default the active tab to whichever kind actually has changes.
-        const active = changeTab === 'session'
-          ? (session.length ? 'session' : 'intraday')
-          : (intraday.length ? 'intraday' : 'session');
+        // Controlled: respect the parent's tab exactly. Standalone: default to
+        // whichever kind actually has changes.
+        const active = tabsAtTop ? changeTab
+          : (changeTab === 'session'
+            ? (session.length ? 'session' : 'intraday')
+            : (intraday.length ? 'intraday' : 'session'));
         const list = active === 'intraday' ? intraday : session;
         const LIMIT = 8;
         const shown = showAllChanged ? list : list.slice(0, LIMIT);
@@ -152,23 +174,27 @@ export default function UpcomingEarnings({
 
         return (
           <div className="ue-notice">
-            <div className="ue-notice-top">
-              <Bell size={14} />
-              <span className="ue-notice-h">{changed.length} earnings {changed.length === 1
-                ? 'stock' : 'stocks'} changed signal</span>
-            </div>
-            <div className="ue-chg-tabs" role="tablist">
-              <button type="button" role="tab"
-                className={`ue-chg-tab intraday${active === 'intraday' ? ' on' : ''}`}
-                onClick={() => { setChangeTab('intraday'); setShowAllChanged(false); }}>
-                Intraday · moved today <span className="ue-chg-count">{intraday.length}</span>
-              </button>
-              <button type="button" role="tab"
-                className={`ue-chg-tab session${active === 'session' ? ' on' : ''}`}
-                onClick={() => { setChangeTab('session'); setShowAllChanged(false); }}>
-                Last 10 days <span className="ue-chg-count">{session.length}</span>
-              </button>
-            </div>
+            {changed.length > 0 && (
+              <div className="ue-notice-top">
+                <Bell size={14} />
+                <span className="ue-notice-h">{changed.length} earnings {changed.length === 1
+                  ? 'stock' : 'stocks'} changed signal</span>
+              </div>
+            )}
+            {!tabsAtTop && (
+              <div className="ue-chg-tabs" role="tablist">
+                <button type="button" role="tab"
+                  className={`ue-chg-tab intraday${active === 'intraday' ? ' on' : ''}`}
+                  onClick={() => { setChangeTab('intraday'); setShowAllChanged(false); }}>
+                  Intraday · moved today <span className="ue-chg-count">{intraday.length}</span>
+                </button>
+                <button type="button" role="tab"
+                  className={`ue-chg-tab session${active === 'session' ? ' on' : ''}`}
+                  onClick={() => { setChangeTab('session'); setShowAllChanged(false); }}>
+                  Last 10 days <span className="ue-chg-count">{session.length}</span>
+                </button>
+              </div>
+            )}
             <div className="ue-chg-panel">
               {!list.length ? (
                 <span className="ue-why-note">

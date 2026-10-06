@@ -49,6 +49,36 @@ function Gauge({ score, label, title }: { score: number | null; label: string; t
   );
 }
 
+// The landing view: the two change tabs (Intraday / Last 10 days) live in the
+// page header and drive the Upcoming-earnings list's change banner below.
+function EarningsTradeLanding({ demo, search }: { demo?: boolean; search: string }) {
+  const [changeTab, setChangeTab] = useState<'intraday' | 'session'>('intraday');
+  const [counts, setCounts] = useState({ intraday: 0, session: 0 });
+  return (
+    <div className="page ets">
+      <div className="ets-landing-head">
+        <h1>Earnings Trade</h1>
+        <p>Combined equity + options earnings analysis. Pick a stock reporting soon.</p>
+        <div className="ue-chg-tabs ets-chg-tabs" role="tablist">
+          <button type="button" role="tab"
+            className={`ue-chg-tab intraday${changeTab === 'intraday' ? ' on' : ''}`}
+            onClick={() => setChangeTab('intraday')}>
+            Intraday · moved today <span className="ue-chg-count">{counts.intraday}</span>
+          </button>
+          <button type="button" role="tab"
+            className={`ue-chg-tab session${changeTab === 'session' ? ' on' : ''}`}
+            onClick={() => setChangeTab('session')}>
+            Last 10 days <span className="ue-chg-count">{counts.session}</span>
+          </button>
+        </div>
+      </div>
+      <UpcomingEarnings base="/earnings-trade" title="Upcoming earnings"
+        demo={demo} search={search}
+        changeTab={changeTab} onChangeTab={setChangeTab} onCounts={setCounts} />
+    </div>
+  );
+}
+
 export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
   const { symbol, demo } = ctx;
   const { symbol: pathSym } = useParams();
@@ -97,16 +127,7 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
 
   // List view (no ticker) -- all hooks above have run, safe to branch now.
   if (!pathSym) {
-    return (
-      <div className="page ets">
-        <div className="ets-landing-head">
-          <h1>Earnings Trade</h1>
-          <p>Combined equity + options earnings analysis. Pick a stock reporting soon.</p>
-        </div>
-        <UpcomingEarnings base="/earnings-trade" title="Upcoming earnings"
-          demo={demo} search={ctx.search} />
-      </div>
-    );
+    return <EarningsTradeLanding demo={demo} search={ctx.search} />;
   }
 
   return (
