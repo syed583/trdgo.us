@@ -79,3 +79,33 @@
 .tc-stats > div { display: flex; flex-direction: column; gap: 2px; }
 .tc-stats b { font-size: 20px; font-weight: 800; color: var(--green); }
 .tc-stats span { font-size: 12px; color: var(--text-mute); }
+
+/* Analyzing orbit (loading) */
+.ts-scan { display: flex; flex-direction: column; align-items: center; padding: 12px 0 32px; }
+.ts-head { text-align: center; margin-bottom: 8px; }
+.ts-head h2 { font-size: 26px; font-weight: 800; margin: 0; }
+.ts-head h2 b { color: var(--amber); }
+.ts-head p { font-size: 13px; color: var(--text-mute); margin: 4px 0 0; }
+.ts-orbit { position: relative; width: 480px; max-width: 92vw; aspect-ratio: 1 / 1; }
+.ts-lines { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ts-wire { stroke-width: 0.4; stroke-dasharray: 2 2; }
+.ts-pip { filter: drop-shadow(0 0 2px currentColor); }
+.ts-core {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 118px; height: 118px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  color: #bfe9ff;
+  background: radial-gradient(circle at 35% 30%, #4aa3ff 0%, #1f6fd6 45%, #0b2f66 100%);
+  box-shadow: 0 0 40px rgba(59,130,246,.45), inset -8px -10px 22px rgba(0,0,0,.35);
+  animation: ts-breathe 2.6s ease-in-out infinite;
+}
+@keyframes ts-breathe { 0%,100% { box-shadow: 0 0 34px rgba(59,130,246,.4), inset -8px -10px 22px rgba(0,0,0,.35);} 50% { box-shadow: 0 0 52px rgba(59,130,246,.65), inset -8px -10px 22px rgba(0,0,0,.35);} }
+.ts-node {
+  position: absolute; transform: translate(-50%, -50%);
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  background: var(--panel); border: 1.5px solid var(--c); border-radius: var(--r-pill);
+  padding: 5px 11px; font-size: 12px; font-weight: 700; color: var(--text);
+  box-shadow: 0 0 11px -2px var(--c);
+  animation: ts-nodepulse 1.8s ease-in-out infinite;
+}
+@keyframes ts-nodepulse { 0%,100% { box-shadow: 0 0 6px -2px var(--c); } 50% { box-shadow: 0 0 16px -1px var(--c); } }
+.ts-node-ic { color: var(--c); display: inline-flex; }

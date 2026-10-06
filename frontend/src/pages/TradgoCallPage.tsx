@@ -5,6 +5,7 @@ import type { PageContext } from '../App';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import { PageHead } from './shared';
+import TradgoScan from '../components/TradgoScan';
 import '../components/earnings-trade.css';
 import './tradgo-call.css';
 
@@ -100,7 +101,7 @@ export default function TradgoCallPage({ ctx }: { ctx: PageContext }) {
       {demo ? (
         <div className="es-empty">Disabled in demo mode.</div>
       ) : q.initialLoading ? (
-        <div className="es-empty">Computing the Tradgo Call…</div>
+        <TradgoScan symbol={symbol} />
       ) : !r || r.status !== 'OK' ? (
         <div className="es-empty">{r?.detail || 'No call available for this stock.'}</div>
       ) : (
