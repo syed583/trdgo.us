@@ -2003,6 +2003,16 @@ select.mini {
   .at-head h1, .mo-head h1, .wl-head h1, .nd-head h1 { font-size: 22px; }
   .at-head p, .mo-head p, .wl-head p, .nd-head p { font-size: 13px; }
 
+  /* The shared PageHead (Trade Plan, Signal History, News, …) also stacks, so
+     the title gets the full width instead of being squeezed to a vertical
+     sliver by its right-hand controls. */
+  .page-head { flex-direction: column; align-items: stretch; gap: 8px; }
+  .page-head-right { margin-left: 0; flex-wrap: wrap; justify-content: flex-start; }
+  .page-head h1 { font-size: 20px; }
+  .page-sub { font-size: 12.5px; }
+  /* Landing heroes (Earnings Trade, etc.) are big on desktop; rein them in. */
+  .ets-landing-head h1 { font-size: 22px; }
+
   /* A wide table is scrolled on purpose rather than crushed: the columns stay
      readable and the page itself does not move sideways. */
   .table-wrap, .panel-body > table, .tbl-scroll {
