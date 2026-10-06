@@ -21,15 +21,17 @@ export default function UpcomingEarnings({
   base, title, demo, search, changeTab: changeTabProp, onChangeTab, onCounts,
 }: {
   base: string; title: string; demo?: boolean; search: string;
-  // Optional: let a parent (the page header) own the All/Intraday/Last-10-days tabs.
-  changeTab?: 'all' | 'intraday' | 'session';
-  onChangeTab?: (t: 'all' | 'intraday' | 'session') => void;
+  // Optional: let a parent (the page header) own the tabs. 'all' = full list,
+  // 'timeline' = pre-earnings day-by-day signal grid. ('intraday'/'session' are
+  // used only by the standalone in-banner tabs on the equity/options landings.)
+  changeTab?: 'all' | 'timeline' | 'intraday' | 'session';
+  onChangeTab?: (t: any) => void;
   onCounts?: (c: { intraday: number; session: number }) => void;
 }) {
   const navigate = useNavigate();
   const [q, setQ] = useState('');
   const [showAllChanged, setShowAllChanged] = useState(false);
-  const [changeTabInternal, setChangeTabInternal] = useState<'all' | 'intraday' | 'session'>('intraday');
+  const [changeTabInternal, setChangeTabInternal] = useState<any>('intraday');
   // Controlled by the parent when it supplies the tabs; else use local state.
   const changeTab = changeTabProp ?? changeTabInternal;
   const setChangeTab = onChangeTab ?? setChangeTabInternal;
@@ -66,6 +68,16 @@ export default function UpcomingEarnings({
     // Poll so cards colour in as the backend captures the missing symbols.
     { refreshMs: demo ? undefined : 15_000 },
   );
+  // Pre-earnings signal timeline (only when that tab is active).
+  const timelineOn = tabsAtTop && changeTab === 'timeline';
+  const tl = useApi<any>(
+    (s) => (timelineOn && rows.length && !demo
+      ? api2.earningsSignalTimeline(rows.map((r) => r.symbol), 15, s)
+      : Promise.resolve(null)),
+    [timelineOn, symKey, demo],
+    { refreshMs: timelineOn && !demo ? 60_000 : undefined },
+  );
+
   const signals: Record<string, string> = sig.data?.signals || {};
   // Previous session's call per symbol, present only when it changed.
   const prevSig: Record<string, string> = sig.data?.prev || {};
@@ -212,6 +224,53 @@ export default function UpcomingEarnings({
     );
   };
 
+  // The pre-earnings signal timeline: one row per stock, with a Stk line and an
+  // Opt line of daily cells across the last 15 days (built from the snapshots).
+  const renderTimeline = () => {
+    const cols: string[] = tl.data?.cols || [];
+    const tlRows: Record<string, any> = tl.data?.rows || {};
+    if (tl.initialLoading) return <div className="es-empty">Loading the timeline…</div>;
+    if (!cols.length) return <div className="es-empty">No timeline data yet.</div>;
+    const dayLabel = (iso: string) => {
+      const d = new Date(iso + 'T00:00:00');
+      return `${d.getMonth() + 1}/${d.getDate()}`;
+    };
+    const cls = (v: any) => `tl-cell sig-${CLS[v] || 'na'}`;
+    const present = rows.filter((r) => tlRows[r.symbol]);
+    return (
+      <div className="tl">
+        <p className="ue-sub">Each stock's daily Stock (Stk) and Options (Opt) call
+          over the last 15 days, up to its report. Fills in as the daily capture
+          runs — green=Buy, red=Sell, amber=Neutral, grey=no capture that day.</p>
+        <div className="tl-head">
+          <span className="tl-sym" />
+          <span className="tl-cols">
+            {cols.map((c) => <span key={c} className="tl-col">{dayLabel(c)}</span>)}
+          </span>
+        </div>
+        {present.map((r) => {
+          const row = tlRows[r.symbol];
+          return (
+            <button key={r.symbol} className="tl-row" onClick={() => open(r.symbol)}>
+              <span className="tl-sym"><b>{r.symbol}</b>
+                <em>{r.date_label || r.short_label || ''}</em></span>
+              <span className="tl-tracks">
+                <span className="tl-line"><span className="tl-lbl">Stk</span>
+                  {row.stock.map((v: any, i: number) => (
+                    <i key={i} className={cls(v)} title={`${cols[i]}: ${v || '—'}`} />))}
+                </span>
+                <span className="tl-line"><span className="tl-lbl">Opt</span>
+                  {row.options.map((v: any, i: number) => (
+                    <i key={i} className={cls(v)} title={`${cols[i]}: ${v || '—'}`} />))}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <div className="ue">
       <div className="ue-head">
@@ -312,6 +371,8 @@ export default function UpcomingEarnings({
         <div className="es-empty">Loading the earnings calendar…</div>
       ) : !rows.length ? (
         <div className="es-empty">No scheduled reports in the window.</div>
+      ) : timelineOn ? (
+        renderTimeline()
       ) : !groups.length ? (
         <div className="es-empty">
           {q ? `No matches for “${q}”.`

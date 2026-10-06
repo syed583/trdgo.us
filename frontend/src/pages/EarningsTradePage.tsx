@@ -52,8 +52,7 @@ function Gauge({ score, label, title }: { score: number | null; label: string; t
 // The landing view: the two change tabs (Intraday / Last 10 days) live in the
 // page header and drive the Upcoming-earnings list's change banner below.
 function EarningsTradeLanding({ demo, search }: { demo?: boolean; search: string }) {
-  const [changeTab, setChangeTab] = useState<'all' | 'intraday' | 'session'>('all');
-  const [counts, setCounts] = useState({ intraday: 0, session: 0 });
+  const [changeTab, setChangeTab] = useState<'all' | 'timeline'>('all');
   return (
     <div className="page ets">
       <div className="ets-landing-head">
@@ -66,20 +65,15 @@ function EarningsTradeLanding({ demo, search }: { demo?: boolean; search: string
             All earnings
           </button>
           <button type="button" role="tab"
-            className={`ue-chg-tab intraday${changeTab === 'intraday' ? ' on' : ''}`}
-            onClick={() => setChangeTab('intraday')}>
-            Intraday · moved today <span className="ue-chg-count">{counts.intraday}</span>
-          </button>
-          <button type="button" role="tab"
-            className={`ue-chg-tab session${changeTab === 'session' ? ' on' : ''}`}
-            onClick={() => setChangeTab('session')}>
-            Last 10 days <span className="ue-chg-count">{counts.session}</span>
+            className={`ue-chg-tab timeline${changeTab === 'timeline' ? ' on' : ''}`}
+            onClick={() => setChangeTab('timeline')}>
+            Pre-earnings timeline · 15d
           </button>
         </div>
       </div>
       <UpcomingEarnings base="/earnings-trade" title="Upcoming earnings"
         demo={demo} search={search}
-        changeTab={changeTab} onChangeTab={setChangeTab} onCounts={setCounts} />
+        changeTab={changeTab} onChangeTab={setChangeTab} />
     </div>
   );
 }

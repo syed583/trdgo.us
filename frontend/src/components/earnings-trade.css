@@ -210,6 +210,31 @@
 }
 .ue-chg-tab.session.on .ue-chg-count { color: var(--amber); background: rgba(217, 164, 65, .18); }
 .ue-chg-panel { display: flex; }
+/* Pre-earnings signal timeline grid */
+.tl { display: flex; flex-direction: column; gap: 3px; }
+.tl-head, .tl-row {
+  display: grid; grid-template-columns: 120px 1fr; align-items: center; gap: 10px;
+}
+.tl-row {
+  width: 100%; text-align: left; cursor: pointer; font: inherit;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 6px 10px;
+}
+.tl-row:hover { border-color: var(--blue); }
+.tl-sym { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.tl-sym b { font-size: 13px; font-weight: 700; color: var(--text); }
+.tl-sym em { font-style: normal; font-size: 10px; color: var(--text-mute); }
+.tl-cols { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 3px; padding-left: 30px; }
+.tl-col { font-size: 9px; color: var(--text-mute); text-align: center; }
+.tl-tracks { display: flex; flex-direction: column; gap: 3px; }
+.tl-line { display: grid; grid-template-columns: 27px repeat(15, 1fr); align-items: center; gap: 3px; }
+.tl-lbl { font-size: 9px; font-weight: 700; color: var(--text-mute); text-transform: uppercase; }
+.tl-cell { height: 14px; border-radius: 2px; background: var(--bg-2); }
+.tl-cell.sig-buy { background: var(--green); }
+.tl-cell.sig-sell { background: var(--red); }
+.tl-cell.sig-neutral { background: var(--amber); }
+.tl-cell.sig-na { background: var(--bg-2); opacity: 0.5; }
+
 /* "why?" affordance on a changed card (header-tab mode) */
 .ue-row-why {
   font-size: 10.5px; font-weight: 700; color: #ec4899; cursor: pointer;

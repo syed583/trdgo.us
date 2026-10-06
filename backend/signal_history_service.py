@@ -211,6 +211,49 @@ def earnings_signals(symbols: list[str]) -> dict:
             "missing": missing, "source": SOURCE}
 
 
+def earnings_timeline(symbols: list[str], days: int = 15) -> dict:
+    """
+    The day-by-day signal run-up to earnings: for each symbol, its captured
+    stock and options call on each of the last `days` calendar days. Built from
+    the daily earnings_signal_snapshots, so each day the picture extends -- a
+    stock can read NO TRADE one day, flip to NEUTRAL on a news/parameter hit the
+    next, then BUY, and the whole evolution shows up to the report date.
+    """
+    from datetime import date as _date, timedelta as _td
+    syms = [s.upper() for s in (symbols or []) if s][:300]
+    days = max(1, min(60, int(days or 15)))
+    today = _date.today()
+    cols = [(today - _td(days=days - 1 - i)).isoformat() for i in range(days)]
+    rows: dict[str, dict] = {}
+    if not syms:
+        return {"status": "OK", "cols": cols, "rows": rows, "source": SOURCE}
+    try:
+        from sqlalchemy import text
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            res = db.execute(text(
+                "SELECT symbol, snapshot_date, stock, options "
+                "FROM earnings_signal_snapshots "
+                "WHERE symbol = ANY(:syms) AND snapshot_date >= :start "
+                "ORDER BY symbol, snapshot_date"),
+                {"syms": syms, "start": today - _td(days=days - 1)}).all()
+            by: dict[str, dict] = {}
+            for sym, d, st, op in res:
+                by.setdefault(sym, {})[d.isoformat()] = (st, op)
+            for sym in syms:
+                m = by.get(sym, {})
+                rows[sym] = {
+                    "stock": [(m.get(c) or (None, None))[0] for c in cols],
+                    "options": [(m.get(c) or (None, None))[1] for c in cols],
+                }
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001
+        pass
+    return {"status": "OK", "cols": cols, "rows": rows, "source": SOURCE}
+
+
 def warm_earnings(symbols: list[str]) -> None:
     """Compute+cache the earnings equity decision for symbols (background use)."""
     try:

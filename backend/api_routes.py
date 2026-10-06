@@ -291,6 +291,15 @@ def earnings_signal_history(n: int = 4) -> dict:
     return out
 
 
+@router.get("/earnings/signal-timeline")
+def earnings_signal_timeline(symbols: str = "", days: int = 15) -> dict:
+    """Day-by-day stock + options signal run-up to earnings, from the snapshots."""
+    import signal_history_service as sh
+    syms = [s.strip().upper() for s in (symbols or "").split(",") if s.strip()][:300]
+    key = f"earntl:{days}:{','.join(sorted(syms))[:300]}"
+    return swr.serve(key, lambda: sh.earnings_timeline(syms, days), 60.0)
+
+
 @router.get("/earnings/calendar/context")
 def earnings_calendar_context() -> dict:
     """Counts, sector mix, beat rate and post-earnings moves for the screen."""
