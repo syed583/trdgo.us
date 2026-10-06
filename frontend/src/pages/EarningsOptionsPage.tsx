@@ -76,7 +76,7 @@ export default function EarningsOptionsPage({ ctx }: { ctx: PageContext }) {
             </div>
             <h3 className="es-sub">Evidence breakdown ({(r.params || [])
               .reduce((t: number, p: any) => t + (p.weight || 0), 0)} pts)</h3>
-            <ParamList params={r.params} />
+            <ParamList params={r.params} pos="STRADDLE" neg="NO TRADE" />
             <div className="es-foot">{r.note}</div>
           </div>
 

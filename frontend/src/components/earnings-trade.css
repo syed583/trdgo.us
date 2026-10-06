@@ -54,6 +54,17 @@
 
 /* parameter breakdown */
 .es-params { display: flex; flex-direction: column; gap: 8px; }
+.es-legend {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
+  font-size: 11px; color: var(--text-mute); margin-bottom: 4px;
+}
+.es-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.es-legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+.es-legend-dot.pos { background: var(--green); }
+.es-legend-dot.neg { background: var(--red); }
+.es-legend-dot.neu { background: var(--text-mute); }
+.es-legend-bar { width: 16px; height: 4px; border-radius: var(--r-pill); background: var(--text-dim); }
+.es-legend-na { font-style: italic; opacity: 0.85; }
 .es-param {
   background: var(--panel-2); border: 1px solid var(--border);
   border-left-width: 3px; border-radius: var(--r); padding: 9px 12px;

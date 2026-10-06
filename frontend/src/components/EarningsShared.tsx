@@ -43,9 +43,17 @@ export function ScoreHeader({ r }: { r: any }) {
   );
 }
 
-export function ParamList({ params }: { params: any[] }) {
+export function ParamList({ params, pos = 'BUY', neg = 'SELL' }:
+  { params: any[]; pos?: string; neg?: string }) {
   return (
     <div className="es-params">
+      <div className="es-legend">
+        <span><i className="es-legend-dot pos" /> + pushes toward {pos}</span>
+        <span><i className="es-legend-dot neg" /> − pushes toward {neg}</span>
+        <span><i className="es-legend-dot neu" /> near 0 = neutral</span>
+        <span><i className="es-legend-bar" /> bar length = strength</span>
+        <span className="es-legend-na">“no data” = excluded from the score</span>
+      </div>
       {(params || []).map((p) => {
         const pts = p.points || 0;
         const frac = p.weight ? Math.min(1, Math.abs(pts) / p.weight) : 0;
