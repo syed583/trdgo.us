@@ -179,15 +179,15 @@
    isn't universally supported and silently left the cards white. */
 .ue-row.sig-buy {
   border-left-color: var(--green);
-  background: rgba(46, 184, 122, .13);
+  background: rgba(46, 184, 122, .28);
 }
 .ue-row.sig-sell {
   border-left-color: var(--red);
-  background: rgba(242, 70, 90, .12);
+  background: rgba(242, 70, 90, .26);
 }
 .ue-row.sig-neutral {
   border-left-color: var(--amber);
-  background: rgba(217, 164, 65, .14);
+  background: rgba(217, 164, 65, .30);
 }
 .ue-row.sig-buy .ue-sym { color: var(--green); }
 .ue-row.sig-sell .ue-sym { color: var(--red); }
