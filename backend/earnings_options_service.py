@@ -119,15 +119,25 @@ def _atm_straddle(symbol: str, spot: Optional[float],
 
 
 def _vix_regime_bias() -> Optional[float]:
-    """Market Regime / VIX: elevated VIX = bigger moves = favours a straddle."""
+    """Market Regime / VIX: elevated VIX = bigger moves = favours a straddle.
+    The indices feed rarely carries a spot VIX, so fall back to VIXY (the VIX
+    short-term ETF the app already uses as a proxy)."""
+    v: Optional[float] = None
     try:
         import live_market_service as market
         idx = market.get_indices() or {}
         vix = next((i for i in (idx.get("indices") or []) if i.get("label") == "VIX"), None)
-        v = _f((vix or {}).get("price"))
-        return None if v is None else _clamp((v - 18.0) / 10.0)
+        v = _f((vix or {}).get("value") or (vix or {}).get("price"))
     except Exception:  # noqa: BLE001
-        return None
+        v = None
+    if v is None:
+        try:
+            import unusualwhales_service as uw
+            rows = uw._rows(uw.candles("VIXY", "1d", limit=2))
+            v = _f((rows[-1] or {}).get("close")) if rows else None
+        except Exception:  # noqa: BLE001
+            v = None
+    return None if v is None else _clamp((v - 18.0) / 10.0)
 
 
 def _move_uncertainty_bias(symbol: str) -> Optional[float]:
