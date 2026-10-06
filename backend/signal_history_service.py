@@ -151,16 +151,25 @@ def earnings_signals(symbols: list[str]) -> dict:
             from database import SessionLocal
             db = SessionLocal()
             try:
-                # Compare to the most recent captured baseline on-or-before today
-                # (not just yesterday), so a call that flips vs that baseline shows
-                # the same day the model moves -- not only after a full day passes.
+                # Find, per symbol, the most recent captured value that DIFFERS
+                # from the current call. That is the "previous" signal to show as
+                # the old half of a split card. Taking the latest snapshot <= today
+                # did NOT work: today's own daily capture equals the current call,
+                # so DISTINCT ON always returned today's row and the change was
+                # cancelled out. Scanning recent history for the latest differing
+                # value instead catches both same-day flips (today's capture differs
+                # from the freshly recomputed call) and day-over-day flips.
+                from datetime import timedelta as _td
                 rows = db.execute(text(
-                    "SELECT DISTINCT ON (symbol) symbol, stock "
+                    "SELECT symbol, stock, snapshot_date "
                     "FROM earnings_signal_snapshots "
-                    "WHERE symbol = ANY(:syms) AND snapshot_date <= :today "
+                    "WHERE symbol = ANY(:syms) AND snapshot_date >= :since "
                     "ORDER BY symbol, snapshot_date DESC"),
-                    {"syms": list(out.keys()), "today": _date.today()}).all()
-                for sym, st in rows:
+                    {"syms": list(out.keys()),
+                     "since": _date.today() - _td(days=30)}).all()
+                for sym, st, _d in rows:
+                    if sym in prev:
+                        continue  # already took the most recent differing value
                     cur = out.get(sym)
                     if st and cur and st != cur:
                         prev[sym] = st
