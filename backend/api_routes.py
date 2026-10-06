@@ -291,6 +291,15 @@ def earnings_signal_history(n: int = 4) -> dict:
     return out
 
 
+@router.get("/tradgo-call/{symbol}")
+def tradgo_call(symbol: str) -> dict:
+    """Tradgo Call: the re-weighted short-term direction model (-100..+100)."""
+    import tradgo_call_service as tc
+    return swr.serve(f"tradgocall:{symbol.upper()}",
+                     lambda: tc.get_call(symbol),
+                     market.session_ttl(120, 1800))
+
+
 @router.get("/earnings/signal-timeline")
 def earnings_signal_timeline(symbols: str = "", days: int = 15, backfill: bool = False) -> dict:
     """Day-by-day stock + options signal run-up to earnings, from the snapshots.
