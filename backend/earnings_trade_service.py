@@ -148,6 +148,22 @@ def get_summary(symbol: str) -> dict:
     # Overall headline decision: the equity call, or the straddle when equity is flat.
     overall = ed if ed in ("BUY", "SELL") else (od if od in ("STRADDLE", "STRANGLE") else "NO TRADE")
 
+    # The biggest reasons behind each gauge, so the screen can explain *why* the
+    # score is what it is -- the parameters that moved it most, with their own
+    # plain-English note.
+    def _drivers(params, k: int = 5) -> list:
+        avail = [p for p in (params or [])
+                 if p.get("available") and p.get("points") is not None]
+        avail.sort(key=lambda p: -abs(float(p.get("points") or 0)))
+        return [{"label": p.get("label") or p.get("name"),
+                 "leaning": p.get("leaning"),
+                 "points_label": p.get("points_label"),
+                 "detail": p.get("detail")}
+                for p in avail[:k]]
+
+    equity_why = _drivers(equity.get("params"))
+    options_why = _drivers(options.get("params"))
+
     # Forward-looking "forecast": analysts' EPS and revenue estimates plus the
     # next-quarter guidance, with the recent post-earnings reaction. Taken from
     # the equity engine already computed above, so the detail page shows the
@@ -169,9 +185,9 @@ def get_summary(symbol: str) -> dict:
                      "days_to": days_to},
         "overall_decision": overall,
         "equity": {"score": equity.get("score"), "decision": equity.get("decision"),
-                   "coverage": equity.get("coverage_pct")},
+                   "coverage": equity.get("coverage_pct"), "why": equity_why},
         "options": {"score": options.get("score"), "decision": options.get("decision"),
-                    "coverage": options.get("coverage_pct")},
+                    "coverage": options.get("coverage_pct"), "why": options_why},
         "expected_move": {"percent": em_pct, "lower": lower, "upper": upper,
                           "current": spot, "dollars": (round(spot * em_pct / 100, 2)
                                                        if spot and em_pct else None)},

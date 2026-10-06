@@ -87,6 +87,30 @@
 .ets-badge.flat { color: var(--text-dim); background: var(--panel-2); }
 .ets-badge.strat { color: var(--ets-violet); background: var(--ets-violet-bg); }
 
+/* "Why these scores" -- the parameters that drove each gauge */
+.ets-why-toggle {
+  display: inline-flex; align-items: center; gap: 4px; margin-top: 12px;
+  background: none; border: 0; cursor: pointer; padding: 2px 0;
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--ets-violet, #8b5cf6);
+}
+.ets-why-toggle:hover { text-decoration: underline; }
+.ets-why { margin-top: 8px; display: grid; gap: 12px; }
+.ets-why-side { border-top: 1px solid var(--border); padding-top: 8px; }
+.ets-why-h {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 6px;
+}
+.ets-why-score { font-size: 11px; font-weight: 600; color: var(--text-mute); }
+.ets-why-row { display: flex; gap: 8px; padding: 4px 0; }
+.ets-why-dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; }
+.ets-why-dot.buy { background: var(--green); }
+.ets-why-dot.sell { background: var(--red); }
+.ets-why-dot.flat { background: var(--amber); }
+.ets-why-t { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
+.ets-why-t b { font-size: 12px; font-weight: 650; color: var(--text); }
+.ets-why-t em { font-style: normal; font-size: 11px; color: var(--text-mute); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ets-why-d { font-size: 11px; color: var(--text-dim); line-height: 1.45; margin-top: 1px; }
+
 /* forecast -- forward-looking analyst estimates */
 .ets-fc-grid {
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;

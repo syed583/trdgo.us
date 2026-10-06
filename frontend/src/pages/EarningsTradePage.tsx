@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import {
   Area, AreaChart, Bar, BarChart, Cell, Line, LineChart, ReferenceLine,
@@ -56,6 +56,7 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
   // Hooks must run every render (Rules of Hooks), so they stay above the
   // list-view early return; the data calls are disabled until a ticker is picked.
   const on = !!pathSym && !demo;
+  const [whyOpen, setWhyOpen] = useState(false);
 
   const q = useApi<any>(
     (s) => (on ? api2.earningsTrade(symbol, s) : Promise.resolve(null)),
@@ -199,8 +200,44 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
                 <Gauge title="Stock Trade" score={d.equity?.score} label={SETUP(d.equity?.score)} />
                 <Gauge title="Options Straddle" score={d.options?.score} label={SETUP(d.options?.score)} />
               </div>
-              <div className="ets-note">Based on the latest data and analysis across all
-                parameters (scored in the engine).</div>
+              <button className="ets-why-toggle" onClick={() => setWhyOpen((v) => !v)}
+                aria-expanded={whyOpen}>
+                {whyOpen ? 'Hide' : 'Why these scores?'}
+                <ChevronRight size={13}
+                  style={{ transform: whyOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
+              </button>
+              {whyOpen && (
+                <div className="ets-why">
+                  {([['Stock Trade', d.equity], ['Options Straddle', d.options]] as const)
+                    .map(([title, side]) => (
+                      <div key={title} className="ets-why-side">
+                        <div className="ets-why-h">{title}
+                          <span className="ets-why-score">{side?.score != null
+                            ? `${Math.round(side.score)}/100 · ${SETUP(side.score)}` : '--'}</span>
+                        </div>
+                        {(side?.why || []).map((w: any, i: number) => (
+                          <div key={i} className="ets-why-row">
+                            <span className={`ets-why-dot ${
+                              w.leaning === 'Bullish' ? 'buy'
+                                : w.leaning === 'Bearish' ? 'sell' : 'flat'}`} />
+                            <div>
+                              <div className="ets-why-t">
+                                <b>{w.label}</b>
+                                <em>{w.points_label}</em>
+                              </div>
+                              {w.detail && <div className="ets-why-d">{w.detail}</div>}
+                            </div>
+                          </div>
+                        ))}
+                        {!(side?.why || []).length && (
+                          <div className="ets-why-d">No parameter detail available.</div>
+                        )}
+                      </div>
+                    ))}
+                  <div className="ets-note">The score sums every parameter's points;
+                    these are the ones that moved it most.</div>
+                </div>
+              )}
             </div>
 
             <div className="ets-card">
