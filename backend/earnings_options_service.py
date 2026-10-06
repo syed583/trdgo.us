@@ -30,7 +30,7 @@ from __future__ import annotations
 from typing import Optional
 
 import earnings_engine as eng
-from earnings_equity_service import _directional_signals, _darkpool_bias, _f, _avg
+from earnings_equity_service import _directional_signals, _f, _avg
 
 SOURCE = "Trdgo earnings model"
 
@@ -203,52 +203,52 @@ def get_analysis(symbol: str) -> dict:
         v = _avg(*(sig.get(n) for n in names))
         return None if v is None else _clamp(abs(v))
 
-    b_unusual = mag("flow_by_expiry", "volume_pcr", "options_flow")
-    b_disp = mag("disparity")
-    b_flowoi = mag("daily_oi_change", "oi_positioning")
-    dpb = _darkpool_bias(symbol)
-    b_dp = None if dpb is None else _clamp(abs(dpb))
+    # Signals distributed to match the named parameters (no double-counting):
+    #   Unusual Options Activity   -> dated volume crowding
+    #   Options Flow + OI Change    -> per-print flow + OI build/positioning
+    #   Put/Call Disparity + Skew   -> options disparity + session put/call ratio
+    b_unusual = mag("flow_by_expiry")
+    b_flowoi = mag("options_flow", "daily_oi_change", "oi_positioning")
+    b_disp = mag("disparity", "volume_pcr")
 
     params = [
-        eng.Param("iv", "Implied Volatility (IV)", 10, b_iv,
+        eng.Param("iv", "Implied Volatility (IV) + IV Rank / Percentile", 10, b_iv,
                   detail=(f"IV {iv}% (rank {round(iv_rank*100) if iv_rank is not None else '--'}%); "
-                          "cheaper IV favours the buyer.")),
-        eng.Param("iv_crush", "IV Crush Risk", 15, b_crush,
+                          "cheaper IV / lower rank favours the buyer.")),
+        eng.Param("iv_crush", "IV Crush Risk", 10, b_crush,
                   detail=f"IV {iv}% vs realised {rv}%; rich options crush harder."),
-        eng.Param("em_vs_premium", "Expected Move vs Combined Premium", 15, b_emp,
+        eng.Param("em_vs_premium", "Expected Move vs Combined Option Premium", 15, b_emp,
                   detail="Realised vs implied move -- the straddle pays when realised wins."),
-        eng.Param("historical_move", "Historical Earnings Movement", 10, b_hist,
-                  detail="Where realised volatility sits in its range."),
-        eng.Param("combined_premium", "Combined Call + Put Premium", 10, b_prem,
+        eng.Param("historical_move", "Historical Earnings Option Performance (last 8-12 events)", 15, b_hist,
+                  detail="Where realised volatility sits in its range (recent earnings)."),
+        eng.Param("combined_premium", "Current ATM / Near-ATM Call + Put Premium", 10, b_prem,
                   detail="Premium cheapness (correlated with IV)."),
-        eng.Param("theta", "Theta Decay", 5, b_theta,
-                  detail=(f"ATM straddle theta {round(straddle['theta'], 2)}/day on "
-                          f"{straddle['premium']} premium (UW)." if straddle
-                          else "No chain for the ATM straddle."),
-                  unavailable_reason="" if b_theta is not None else "No ATM chain."),
-        eng.Param("greeks", "Delta, Gamma & Vega", 5, b_greeks,
+        eng.Param("flow_oi", "Options Flow + Open Interest Change", 10, b_flowoi,
+                  detail="Per-print flow and overnight OI build / positioning (magnitude)."),
+        eng.Param("disparity", "Put/Call Disparity + Skew", 5, b_disp,
+                  detail="Options disparity and the session put/call ratio (magnitude)."),
+        eng.Param("unusual_options", "Unusual Options Activity", 5, b_unusual,
+                  detail="Volume above open interest / near-term positioning."),
+        eng.Param("greeks", "Delta + Gamma + Vega", 5, b_greeks,
                   detail=(f"ATM straddle vega {round(straddle['vega'], 3)}, gamma "
                           f"{round(straddle['gamma'], 3)} (UW)." if straddle
                           else "No chain greeks."),
                   unavailable_reason="" if b_greeks is not None else "No ATM chain."),
-        eng.Param("strike_expiry", "Strike Selection & Expiry", 5, b_strike,
+        eng.Param("theta", "Theta / Weekly Time Decay", 5, b_theta,
+                  detail=(f"ATM straddle theta {round(straddle['theta'], 2)}/day on "
+                          f"{straddle['premium']} premium (UW)." if straddle
+                          else "No chain for the ATM straddle."),
+                  unavailable_reason="" if b_theta is not None else "No ATM chain."),
+        eng.Param("strike_expiry", "Strike Selection + Earnings-Appropriate Expiry", 5, b_strike,
                   detail=(f"ATM {straddle['call_strike']}C / {straddle['put_strike']}P, "
                           f"expiry {straddle['expiry']} (UW)." if straddle
                           else "No tradable chain."),
                   unavailable_reason="" if b_strike is not None else "No ATM chain."),
-        eng.Param("liquidity", "Options Liquidity & Bid/Ask Spread", 5, b_liq,
+        eng.Param("liquidity", "Liquidity + Bid/Ask Spread", 5, b_liq,
                   detail=(f"ATM spread {round(straddle['spread_pct']*100, 1)}% of premium (UW)."
                           if straddle and straddle.get("spread_pct") is not None
                           else "No NBBO on the ATM chain."),
                   unavailable_reason="" if b_liq is not None else "No ATM NBBO."),
-        eng.Param("unusual_options", "Unusual Options Activity", 5, b_unusual,
-                  detail="Volume above open interest / near-term positioning."),
-        eng.Param("disparity", "Options Disparity", 5, b_disp,
-                  detail="Price vs options-implied fair value (magnitude)."),
-        eng.Param("flow_oi", "Options Flow & OI Changes", 5, b_flowoi,
-                  detail="Net flow and overnight OI build (magnitude)."),
-        eng.Param("dark_pool", "Dark Pool Confirmation", 5, b_dp,
-                  detail="Off-lit activity confirming interest (magnitude)."),
     ]
 
     # For a buyer there is no "short" side: the negative end is simply NO TRADE.
