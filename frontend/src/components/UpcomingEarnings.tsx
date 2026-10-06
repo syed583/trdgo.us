@@ -340,7 +340,9 @@ export default function UpcomingEarnings({
             <div className="ue-day-h">{day}</div>
             <div className={`ue-grid${timeline ? ' ue-grid-timeline' : ''}`}>
               {items.map((r) => {
-                const style = hideChanges ? undefined : splitFor(r.symbol);
+                // Change status (half/half split + blink) shows on cards even
+                // when the banner is hidden -- hideChanges only hides the banner.
+                const style = splitFor(r.symbol);
                 // Intraday flips blink (fresh, moved today); day-over-day flips
                 // show the split with a calm steady glow, no blink.
                 const chg = style
