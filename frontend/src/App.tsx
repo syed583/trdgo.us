@@ -284,7 +284,7 @@ function Shell() {
           <Route path="/earnings-options-history"
             element={<Navigate to={`/earnings-signals${location.search}`} replace />} />
 
-          <Route path="/tradgo-call" element={<Navigate to={`/tradgo-call/${DEFAULT_SYMBOL}${location.search}`} replace />} />
+          <Route path="/tradgo-call" element={<TradgoCallPage ctx={ctx} />} />
           <Route path="/tradgo-call/:symbol" element={<TradgoCallPage ctx={ctx} />} />
           <Route path="/earnings-trade" element={<EarningsTradePage ctx={ctx} />} />
           <Route path="/earnings-trade/:symbol" element={<EarningsTradePage ctx={ctx} />} />
