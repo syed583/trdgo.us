@@ -243,14 +243,39 @@ export default function UpcomingEarnings({
       <p className="ue-sub">Companies reporting in the next ~3 weeks. Pick one to
         score its earnings trade.</p>
 
-      {/* Plain-list mode: a one-line notice (no Intraday tabs) + the why panel. */}
-      {hideChanges && changed.length > 0 && (
-        <div className="ue-chgnote">
-          <Bell size={13} />
-          <span>{changed.length} earnings {changed.length === 1 ? 'stock' : 'stocks'} changed
-            signal — highlighted below. Tap <b>why?</b> on a card for the reason.</span>
-        </div>
-      )}
+      {/* Plain-list mode: a notice listing which stocks changed (no Intraday
+          tabs) + the why panel. */}
+      {hideChanges && changed.length > 0 && (() => {
+        const shown = showAllChanged ? changed : changed.slice(0, 12);
+        return (
+          <div className="ue-chgnote">
+            <div className="ue-chgnote-top">
+              <Bell size={13} />
+              <span className="ue-chgnote-h">{changed.length} earnings {changed.length === 1
+                ? 'stock' : 'stocks'} changed signal</span>
+            </div>
+            <div className="ue-chgnote-list">
+              {shown.map((s) => (
+                <span key={s} className="ue-notice-chipwrap">
+                  <button className="ue-notice-chip" onClick={() => open(s)}>
+                    <b>{s}</b> {prevSig[s]}→{signals[s]}
+                  </button>
+                  <button type="button" className={`ue-why-btn${whyFor === s ? ' on' : ''}`}
+                    title="Why did this change?" onClick={() => toggleWhy(s)}>
+                    why?
+                  </button>
+                </span>
+              ))}
+              {changed.length > 12 && (
+                <button type="button" className="ue-notice-toggle"
+                  onClick={() => setShowAllChanged((v) => !v)}>
+                  {showAllChanged ? 'Show less' : `+${changed.length - 12} more`}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
       {hideChanges && renderWhyPanel()}
 
       {(() => {
@@ -350,16 +375,11 @@ export default function UpcomingEarnings({
             <div className="ue-day-h">{day}</div>
             <div className={`ue-grid${timeline ? ' ue-grid-timeline' : ''}`}>
               {items.map((r) => {
-                // Change status (half/half split + blink) shows on cards even
+                // Change status (half/half split + pink blink) shows on cards even
                 // when the banner is hidden -- hideChanges only hides the banner.
+                // Every changed call blinks pink.
                 const style = splitFor(r.symbol);
-                // Intraday flips blink (fresh, moved today); day-over-day flips
-                // show the split with a calm steady glow, no blink.
-                const chg = style
-                  ? (changeKind[r.symbol] === 'intraday'
-                    ? 'sig-changed sig-changed-intraday'
-                    : 'sig-changed sig-changed-session')
-                  : '';
+                const chg = style ? 'sig-changed sig-changed-intraday' : '';
                 return (
                 <div key={r.symbol + r.date} className="ue-cardwrap">
                 <button

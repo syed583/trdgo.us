@@ -252,14 +252,16 @@
 /* no capture that day: a visible empty box, so all 15 days read as a row */
 .tl-cell.sig-na { background: var(--bg-2); border-style: dashed; }
 
-/* One-line change notice (plain-list mode, no Intraday tabs) */
+/* Change notice (plain-list mode, no Intraday tabs): heading + changed chips */
 .ue-chgnote {
-  display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 8px 12px;
+  display: flex; flex-direction: column; gap: 8px; margin: 0 0 12px; padding: 10px 12px;
   background: rgba(236, 72, 153, .08); border: 1px solid rgba(236, 72, 153, .4);
   border-radius: var(--r); font-size: 12.5px; color: var(--text);
 }
-.ue-chgnote > svg { color: #ec4899; flex: 0 0 auto; }
-.ue-chgnote b { color: #ec4899; }
+.ue-chgnote-top { display: flex; align-items: center; gap: 8px; }
+.ue-chgnote-top > svg { color: #ec4899; flex: 0 0 auto; }
+.ue-chgnote-h { font-weight: 700; }
+.ue-chgnote-list { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
 /* "why?" affordance on a changed card */
 .ue-row-why {
