@@ -49,24 +49,35 @@ export default function EarningsSignalHistoryPage({ ctx }: { ctx: PageContext })
   );
   const d = res.data;
   const allRows: any[] = d?.rows || [];
-  const rows = useMemo(() => {
-    const needle = query.trim().toUpperCase();
+  const needle = query.trim().toUpperCase();
+  const localRows = useMemo(() => {
     let out = needle ? allRows.filter((r) => (r.symbol || '').includes(needle)) : allRows;
     if (active.size) out = out.filter((r) => r.now && active.has(r.now));
     return out;
-  }, [allRows, query, active]);
+  }, [allRows, needle, active]);
+
+  // A searched ticker that isn't in the window (e.g. just reported) is looked up
+  // on demand so its real past-earnings history still shows.
+  const lookupSym = (!localRows.length && /^[A-Z][A-Z.]{0,5}$/.test(needle)) ? needle : '';
+  const look = useApi<any>(
+    (s) => (lookupSym && !demo ? api2.earningsSignalHistory(8, s, lookupSym)
+                               : Promise.resolve(null)),
+    [lookupSym, demo],
+  );
+  const lookRows: any[] = (lookupSym && look.data?.rows) ? look.data.rows : [];
+  const rows = localRows.length ? localRows : lookRows;
   // Only as many columns as there is real history for -- no empty padding.
   const n = useMemo(
-    () => Math.max(1, ...allRows.map((r: any) => r.events || 0)),
-    [allRows],
+    () => Math.max(1, ...(rows.length ? rows : allRows).map((r: any) => r.events || 0)),
+    [rows, allRows],
   );
 
   return (
     <div className="page sh esh">
       <PageHead
         title="Signal History"
-        subtitle={<>How each upcoming-earnings name actually moved at its recent
-          earnings — <b>Buy</b> (rose), <b>Sell</b> (fell) or <b>Neutral</b> (flat) —
+        subtitle={<>How each upcoming or recently-reported name actually moved at its
+          recent earnings — <b>Buy</b> (rose), <b>Sell</b> (fell) or <b>Neutral</b> (flat) —
           with the current call in <b>Now</b>. Real post-earnings moves, not advice.</>}
       />
 
@@ -107,12 +118,18 @@ export default function EarningsSignalHistoryPage({ ctx }: { ctx: PageContext })
       ) : res.initialLoading || d?.status === 'LOADING'
           || (res.loading && !allRows.length) ? (
         <div className="sh-empty">Loading earnings reactions…</div>
-      ) : d?.status !== 'OK' || !allRows.length ? (
+      ) : lookupSym && look.loading && !lookRows.length ? (
+        <div className="sh-empty">Looking up {lookupSym}…</div>
+      ) : (d?.status !== 'OK' || !allRows.length) && !rows.length && !lookupSym ? (
         <div className="sh-empty">
           {d?.detail || 'No earnings reactions available yet — warming up.'}
         </div>
       ) : !rows.length ? (
-        <div className="sh-empty">No tickers match “{query}”.</div>
+        <div className="sh-empty">
+          {lookupSym
+            ? `No past-earnings history found for “${lookupSym}”.`
+            : <>No tickers match “{query}”.</>}
+        </div>
       ) : (
         <div className="sh-table-wrap">
           <table className="sh-table">

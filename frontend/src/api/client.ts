@@ -700,8 +700,9 @@ export const api2 = {
   signalHistory: (days = 10, end = '', s?: AbortSignal) =>
     request<any>(`/api/signal-history?days=${days}`
       + (end ? `&end=${encodeURIComponent(end)}` : ''), s),
-  earningsSignalHistory: (n = 4, s?: AbortSignal) =>
-    request<any>(`/api/earnings/signal-history?n=${n}`, s),
+  earningsSignalHistory: (n = 4, s?: AbortSignal, symbol?: string) =>
+    request<any>(`/api/earnings/signal-history?n=${n}`
+      + (symbol ? `&symbol=${encodeURIComponent(symbol)}` : ''), s),
   signals: (limit = 60, s?: AbortSignal) =>
     request<any>(`/api/signals?limit=${limit}`, s),
   signalsUnread: (s?: AbortSignal) => request<any>('/api/signals/unread', s),

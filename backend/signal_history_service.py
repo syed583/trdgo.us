@@ -355,6 +355,35 @@ def warm_trade(symbols: list[str]) -> None:
         pass
 
 
+def active_symbols(limit: int = 100) -> list[str]:
+    """The most-active optionable names from the provider's screener, by volume.
+
+    This is the universe Signal History tracks -- 'all stocks' in practice means
+    the top `limit` most-traded names (the same screener the Stocks page uses),
+    kept to a workable size so daily snapshot capture stays within the API budget.
+    """
+    try:
+        import screener_service as sc
+        rows = (sc.get_all_stocks() or {}).get("rows") or []
+    except Exception:  # noqa: BLE001
+        return []
+    ranked = sorted(
+        (r for r in rows if r.get("symbol")),
+        key=lambda r: (r.get("volume") if r.get("volume") is not None else -1),
+        reverse=True,
+    )
+    out: list[str] = []
+    seen: set[str] = set()
+    for r in ranked:
+        s = str(r["symbol"]).upper().strip()
+        if s and s not in seen:
+            seen.add(s)
+            out.append(s)
+        if len(out) >= max(1, limit):
+            break
+    return out
+
+
 def all_symbols(end: Optional[str] = None, days: int = 30, limit: int = 500) -> list[str]:
     """Every stock that has a score snapshot in the most recent `days` sessions
     (on/before `end`). Used to show the whole captured universe, not a watchlist."""

@@ -263,21 +263,42 @@ def earnings_upcoming(days: int = 14, start: str = "") -> dict:
 
 
 @router.get("/earnings/signal-history")
-def earnings_signal_history(n: int = 4) -> dict:
+def earnings_signal_history(n: int = 4, symbol: str = "") -> dict:
     """
     Per upcoming-earnings name, its REAL past earnings events: `n` columns, each
     the actual post-earnings move (up=Buy / down=Sell / flat=Neutral), newest on
     the right, plus a Now column with the current call. Missing reactions are
     warmed in the background so later polls fill in.
+
+    `symbol` looks up ONE ticker on demand -- its real past-earnings history is
+    computed synchronously and returned as a single-row grid, so a search finds
+    any stock (including one that just reported) even if it is not in the window.
     """
     import os
     import threading
+    from datetime import date as _date, timedelta as _td
     import earnings_signal_history_service as esh
     import uw_earnings_calendar as uwcal
 
-    rows = (uwcal.calendar(days=21) or {}).get("rows") or []
+    sym = (symbol or "").strip().upper()
+    if sym:
+        # Compute+cache this one symbol's reactions, then return just its row.
+        out = swr.serve(
+            f"earnsighist:one:{n}:{sym}",
+            lambda: (esh.warm_reactions([sym]), esh.get_grid([sym], n))[1],
+            300.0)
+        if not out.get("rows"):
+            out = {"status": "NO_DATA", "n": n, "rows": [], "source": esh.SOURCE,
+                   "detail": f"No past-earnings reports found for {sym}."}
+        return out
+
+    # Window spans a week back through ~3 weeks ahead, so names that have
+    # ALREADY reported (e.g. yesterday) show their past-earnings history too --
+    # not just upcoming names. Start in the past; the window covers both sides.
+    start = (_date.today() - _td(days=7)).isoformat()
+    rows = (uwcal.calendar(start=start, days=28) or {}).get("rows") or []
     syms = sorted({r.get("symbol", "").upper() for r in rows if r.get("symbol")})
-    out = swr.serve(f"earnsighist:{n}", lambda: esh.get_grid(syms, n), 60.0)
+    out = swr.serve(f"earnsighist:{n}:{start}", lambda: esh.get_grid(syms, n), 60.0)
 
     # Warm any symbols whose real past-earnings moves aren't cached yet (unless a
     # lean dev backend has warmers off).

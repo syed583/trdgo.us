@@ -445,13 +445,26 @@ def _start_snapshot_loop() -> None:
         while True:
             try:
                 from api_routes import DEFAULT_STRIP
+                import ai_trade_service as board
+                import signal_history_service as sh
                 import snapshot_service as snap
                 import workspace_service as workspace
 
                 saved = [r["symbol"] for r in
                          workspace.list_watchlist(with_quotes=False)["rows"]]
-                symbols = saved + [s for s in DEFAULT_STRIP if s not in saved]
-                snap.capture(symbols[:25])
+                # Snapshot the top ~100 most-active names so Signal History shows
+                # the whole market the app tracks, not just a watchlist. Order:
+                # the active universe first (it is what the grid lists), then any
+                # saved watchlist / board / default names not already in it.
+                active = sh.active_symbols(100)
+                seen: set[str] = set()
+                symbols: list[str] = []
+                for s in [*active, *saved, *board.UNIVERSE, *DEFAULT_STRIP]:
+                    u = (s or "").upper().strip()
+                    if u and u not in seen:
+                        seen.add(u)
+                        symbols.append(u)
+                snap.capture(symbols[:120])
                 # Outcomes for anything now old enough to have one.
                 snap.fill_forward_returns()
             except Exception:  # noqa: BLE001 - never take down the server
