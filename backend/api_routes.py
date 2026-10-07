@@ -292,19 +292,47 @@ def earnings_signal_history(n: int = 4, symbol: str = "") -> dict:
     # Window spans a week back through ~3 weeks ahead, so names that have
     # ALREADY reported (e.g. yesterday) show their past-earnings history too --
     # not just upcoming names. Start in the past; the window covers both sides.
-    start = (_date.today() - _td(days=7)).isoformat()
+    today = _date.today()
+    start = (today - _td(days=7)).isoformat()
     rows = (uwcal.calendar(start=start, days=28) or {}).get("rows") or []
     syms = sorted({r.get("symbol", "").upper() for r in rows if r.get("symbol")})
-    out = swr.serve(f"earnsighist:{n}:{start}", lambda: esh.get_grid(syms, n), 60.0)
+    out = swr.serve(f"earnsighist:{n}:{start}", lambda: esh.get_grid(syms, n), 180.0)
 
-    # Warm any symbols whose real past-earnings moves aren't cached yet (unless a
-    # lean dev backend has warmers off).
+    # The names that reported in the last several days are the fresh results the
+    # user wants to see appear. Warm THOSE with priority -- and always, even on a
+    # lean dev backend -- so a stock that reported yesterday shows up in the list
+    # (not just via search). The reaction of an after-close report matures the
+    # next session, so it fills in on a later poll rather than instantly.
+    reported = []  # (report_date, symbol), most recent first
+    for r in rows:
+        ds = (r.get("date") or r.get("report_date") or "")[:10]
+        try:
+            rd = _date.fromisoformat(ds)
+        except ValueError:
+            continue
+        if 0 <= (today - rd).days <= 7:
+            reported.append((rd, (r.get("symbol") or "").upper()))
+    reported.sort(reverse=True)
+    have_events = {r["symbol"] for r in out.get("rows", []) if r.get("events")}
+    fresh, seen_fresh = [], set()
+    for _, s in reported:
+        if s and s not in have_events and s not in seen_fresh:
+            seen_fresh.add(s)
+            fresh.append(s)
+    # Warm just a small, highest-priority batch per request (newest reporters
+    # first) so the list fills in without overloading the provider; the rest
+    # follow on later polls.
+    if fresh:
+        threading.Thread(target=lambda: esh.warm_reactions(fresh[:12]),
+                         daemon=True).start()
+
+    # Backfill the rest of the window's reactions too (unless warmers are off).
     if not (os.getenv("DISABLE_WARMERS") or "").strip():
         missing = [r["symbol"] for r in out.get("rows", []) if not r.get("events")]
         missing += [s for s in syms if s not in {r["symbol"] for r in out.get("rows", [])}]
+        missing = [s for s in missing if s not in seen_fresh]
         if missing:
-            batch = missing[:40]
-            threading.Thread(target=lambda: esh.warm_reactions(batch),
+            threading.Thread(target=lambda: esh.warm_reactions(missing[:30]),
                              daemon=True).start()
     return out
 
