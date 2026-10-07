@@ -303,14 +303,17 @@ table { border-collapse: collapse; width: 100%; }
 .brand-name .brand-tld { color: var(--gold); }
 
 /* Logo image lockup (black-background brand image shown as a rounded tile). */
+/* Full-width dark header band so the black-background logo blends seamlessly
+   (no floating box) with the light nav below. */
 .brand-logo {
   flex: 0 0 auto;
-  border-radius: 10px;
-  overflow: hidden;
+  margin: 4px -10px 12px;
+  padding: 12px 14px;
   background: #000;
-  line-height: 0;
+  display: flex;
+  align-items: center;
 }
-.brand-logo img { width: 100%; height: auto; display: block; }
+.brand-logo img { width: 172px; max-width: 100%; height: auto; display: block; }
 
 .brand-tag {
   font-size: 10px;
