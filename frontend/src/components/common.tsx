@@ -1,6 +1,8 @@
 import React from 'react';
 import { AlertTriangle, Loader2, PlugZap, WifiOff } from 'lucide-react';
 import type { ProviderStatus } from '../api/client';
+import { AUTH_ERROR } from '../api/client';
+import { AuthRequired } from '../pages/shared';
 
 /* ------------------------------------------------------------------ panel */
 
@@ -91,6 +93,10 @@ export function StateBlock({
   // arrived carrying a provider status means the backend answered fine and it
   // is the upstream feed that is down -- saying otherwise sent people looking
   // for a dead API server when the feed was simply unconfigured.
+  if (error === AUTH_ERROR) {
+    return <AuthRequired />;
+  }
+
   if (error && !status) {
     return (
       <div className="state" style={compact ? { minHeight: 60, padding: 14 } : undefined}>

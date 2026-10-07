@@ -1,6 +1,24 @@
 import React from 'react';
-import { AlertTriangle, Info, KeyRound, PlugZap, WifiOff } from 'lucide-react';
+import { AlertTriangle, Info, KeyRound, LogIn, PlugZap, WifiOff } from 'lucide-react';
 import type { ProviderStatus } from '../api/client';
+import { AUTH_ERROR } from '../api/client';
+
+/** A full-page prompt shown when a request came back 401 (session ended). */
+export function AuthRequired() {
+  return (
+    <div className="state">
+      <LogIn size={18} />
+      <span className="state-title">Sign in to continue</span>
+      <span style={{ maxWidth: 420 }}>
+        Your session has ended. Sign in to view this page.
+      </span>
+      {/* A full navigation to the app root: when unauthenticated the server
+          returns the login page. */}
+      <button className="btn" style={{ marginTop: 10 }}
+        onClick={() => { window.location.href = '/'; }}>Sign in</button>
+    </div>
+  );
+}
 
 /** Page title block, used by every non-reference screen. */
 export function PageHead({
@@ -101,6 +119,7 @@ export function Loading({ label = 'Loading live data…' }: { label?: string }) 
 }
 
 export function ErrorState({ error }: { error: string }) {
+  if (error === AUTH_ERROR) return <AuthRequired />;
   return (
     <div className="state">
       <WifiOff size={17} />

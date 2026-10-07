@@ -413,6 +413,11 @@ class ApiError extends Error {
   }
 }
 
+// Sentinel the data hook sets when a request comes back 401, so every page's
+// shared error renderer can show a "sign in" prompt instead of a confusing
+// "backend unreachable" message.
+export const AUTH_ERROR = 'SESSION_EXPIRED';
+
 async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
   let response: Response;
   try {
