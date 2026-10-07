@@ -1,23 +1,78 @@
 /* ============================================================================
-   Login / sign-up — one centered card over a faint candlestick backdrop.
+   Landing page: top nav + marketing hero + the auth card, over a faint
+   candlestick backdrop.
    ========================================================================== */
-.lp-shell {
-  position: relative;
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 28px 18px;
-  background: var(--bg, #f4f5f7);
-  overflow: hidden;
+.ld-shell {
+  position: relative; min-height: 100vh;
+  background: var(--bg, #f4f6f9); overflow-x: hidden;
 }
-:root:not([data-theme="light"]) .lp-shell { background: var(--bg, #0d0e12); }
-
-.lp-bg {
+:root:not([data-theme="light"]) .ld-shell { background: var(--bg, #0d0e12); }
+.ld-bg {
   position: fixed; inset: 0; width: 100%; height: 100%;
-  opacity: 0.14; pointer-events: none; z-index: 0;
+  opacity: 0.16; pointer-events: none; z-index: 0;
+}
+
+/* Top nav */
+.ld-nav {
+  position: relative; z-index: 2;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 40px;
+  background: linear-gradient(90deg, #0a0f24 0%, #142a9e 55%, #2348e6 100%);
+  color: #fff;
+}
+.ld-logo { display: flex; align-items: center; gap: 9px; }
+.ld-logo-mark {
+  width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center;
+  background: rgba(255, 255, 255, .14); border: 1px solid rgba(255, 255, 255, .25);
+  font-size: 12px; color: #6f86ff;
+}
+.ld-logo-word { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+.ld-logo-word b { font-weight: 700; color: #8fa2ff; }
+.ld-nav-links { display: flex; gap: 32px; }
+.ld-nav-links a {
+  color: rgba(255, 255, 255, .88); text-decoration: none; font-size: 14.5px; font-weight: 500;
+}
+.ld-nav-links a:hover { color: #fff; }
+
+/* Main grid: hero + auth card */
+.ld-main {
+  position: relative; z-index: 1;
+  max-width: 1280px; margin: 0 auto;
+  display: grid; grid-template-columns: 1.1fr minmax(360px, 420px);
+  gap: 48px; align-items: center;
+  padding: 72px 40px 60px;
+}
+.ld-hero { max-width: 560px; }
+.ld-hero-h {
+  font-size: 48px; line-height: 1.08; font-weight: 800; letter-spacing: -0.025em;
+  color: var(--text, #0b1020); margin: 0 0 24px;
+}
+.ld-hero-p { font-size: 16px; line-height: 1.6; color: var(--text-mute); margin: 0 0 16px; max-width: 520px; }
+.ld-cta {
+  margin-top: 14px; padding: 15px 34px; border-radius: 999px; cursor: pointer;
+  background: #141a3a; color: #fff; border: none; font-size: 16px; font-weight: 600;
+  box-shadow: 0 12px 30px rgba(17, 25, 70, .28);
+  transition: transform .12s, box-shadow .15s, background .15s;
+}
+.ld-cta:hover { transform: translateY(-2px); background: #1c2550; box-shadow: 0 16px 36px rgba(17, 25, 70, .34); }
+.ld-disclaimer { margin-top: 30px; font-size: 12px; color: var(--text-mute); opacity: .8; max-width: 540px; line-height: 1.5; }
+.ld-auth { justify-self: center; width: 100%; max-width: 420px; }
+
+@media (max-width: 900px) {
+  .ld-nav { padding: 14px 20px; }
+  .ld-nav-links { gap: 18px; font-size: 13px; }
+  .ld-main { grid-template-columns: 1fr; gap: 32px; padding: 40px 20px 48px; }
+  .ld-hero { max-width: 100%; }
+  .ld-hero-h { font-size: 34px; }
+  .ld-auth { justify-self: stretch; max-width: 440px; margin: 0 auto; }
+}
+@media (max-width: 520px) {
+  .ld-nav-links a:not(:last-child) { display: none; } /* keep Contact only */
+  .ld-hero-h { font-size: 29px; }
 }
 
 .lp-card {
+  position: relative; z-index: 1;
   position: relative; z-index: 1;
   width: 100%; max-width: 408px;
   background: var(--panel, #fff);
