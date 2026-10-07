@@ -1274,12 +1274,14 @@ def signals_latest(symbols: str = "", source: str = "directional") -> dict:
 
 @router.get("/signal-history")
 def signal_history(request: Request, days: int = 10, end: str = "") -> dict:
-    """Last N sessions of Buy/Sell/Neutral per watched stock (grid)."""
+    """Last N sessions of Buy/Sell/Neutral for every captured stock (grid)."""
     import signal_history_service as sh
 
-    syms = _watch_symbols(request) or list(DEFAULT_STRIP)
+    # Show the whole captured universe (not just a watchlist); fall back to the
+    # watchlist / default basket only if nothing has been snapshotted yet.
+    syms = sh.all_symbols(end or None, days) or _watch_symbols(request) or list(DEFAULT_STRIP)
     live = not end   # latest column reflects the live decision when up-to-today
-    out = swr.serve(f"sighist:{','.join(sorted(syms))[:200]}:{days}:{end}:{int(live)}",
+    out = swr.serve(f"sighist:all:{len(syms)}:{days}:{end}:{int(live)}",
                     lambda: sh.get_grid(syms, days=days, end=end or None, include_live=live),
                     market.session_ttl(300, 1800))
 

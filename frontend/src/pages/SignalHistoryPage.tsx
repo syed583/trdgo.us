@@ -24,6 +24,7 @@ export default function SignalHistoryPage({ ctx }: { ctx: PageContext }) {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState(10);
   const [end, setEnd] = useState('');   // YYYY-MM-DD "up to" date, '' = latest
+  const [query, setQuery] = useState('');
 
   const q = useApi<any>(
     (s) => (demo ? Promise.resolve(null) : api2.signalHistory(sessions, end, s)),
@@ -32,14 +33,18 @@ export default function SignalHistoryPage({ ctx }: { ctx: PageContext }) {
   );
   const d = q.data;
   const dates: string[] = d?.dates || [];
-  const rows: any[] = d?.rows || [];
+  const allRows: any[] = d?.rows || [];
+  const query_ = query.trim().toUpperCase();
+  const rows: any[] = query_
+    ? allRows.filter((r) => String(r.symbol).toUpperCase().includes(query_))
+    : allRows;
 
   return (
     <div className="page sh">
       <PageHead
         title="Signal History"
         subtitle={<>The last 10 sessions of the model's call — <b>Buy</b>,{' '}
-          <b>Sell</b> or <b>Neutral</b> — for each watched stock. Analysis, not advice.</>}
+          <b>Sell</b> or <b>Neutral</b> — for every tracked stock. Analysis, not advice.</>}
       />
 
       {d?.fallback && (
@@ -66,6 +71,17 @@ export default function SignalHistoryPage({ ctx }: { ctx: PageContext }) {
             </button>
           )}
         </div>
+        <div className="sh-filter sh-search">
+          <label>Search</label>
+          <input type="text" value={query} placeholder="Ticker (e.g. NVDA)"
+            spellCheck={false}
+            onChange={(e) => setQuery(e.target.value.toUpperCase())} />
+          {query && (
+            <button className="sh-clear" onClick={() => setQuery('')} title="Clear search">
+              <X size={13} />
+            </button>
+          )}
+        </div>
         <div className="sh-legend">
           <span><i className="sh-dot buy" /> Buy</span>
           <span><i className="sh-dot sell" /> Sell</span>
@@ -78,10 +94,12 @@ export default function SignalHistoryPage({ ctx }: { ctx: PageContext }) {
         <div className="sh-empty">Disabled in demo mode.</div>
       ) : q.initialLoading ? (
         <div className="sh-empty">Loading signal history…</div>
-      ) : d?.status !== 'OK' || !rows.length ? (
+      ) : d?.status !== 'OK' || !allRows.length ? (
         <div className="sh-empty">
           {d?.detail || 'No daily snapshots captured yet — this fills in over the next sessions.'}
         </div>
+      ) : !rows.length ? (
+        <div className="sh-empty">No tracked stock matches “{query}”.</div>
       ) : (
         <div className="sh-table-wrap">
           <table className="sh-table">

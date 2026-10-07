@@ -355,6 +355,36 @@ def warm_trade(symbols: list[str]) -> None:
         pass
 
 
+def all_symbols(end: Optional[str] = None, days: int = 30, limit: int = 500) -> list[str]:
+    """Every stock that has a score snapshot in the most recent `days` sessions
+    (on/before `end`). Used to show the whole captured universe, not a watchlist."""
+    try:
+        from datetime import date as _date
+        from database import SessionLocal
+        from models_snapshots import ScoreSnapshot
+        db = SessionLocal()
+        try:
+            dq = db.query(ScoreSnapshot.snapshot_date)
+            if end:
+                try:
+                    dq = dq.filter(ScoreSnapshot.snapshot_date <= _date.fromisoformat(end))
+                except ValueError:
+                    pass
+            dates = [r[0] for r in dq.distinct()
+                     .order_by(ScoreSnapshot.snapshot_date.desc())
+                     .limit(max(1, min(int(days or 30), 30))).all()]
+            if not dates:
+                return []
+            rows = (db.query(ScoreSnapshot.symbol)
+                    .filter(ScoreSnapshot.snapshot_date.in_(dates))
+                    .distinct().limit(limit).all())
+            return sorted({r[0].upper() for r in rows if r[0]})
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def get_grid(symbols: list[str], days: int = 10,
              end: Optional[str] = None, include_live: bool = False) -> dict:
     """
