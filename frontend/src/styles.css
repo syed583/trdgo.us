@@ -305,8 +305,8 @@ table { border-collapse: collapse; width: 100%; }
 /* Attention-grabbing pulse for a highlighted group heading. */
 .nav-group-label.blink {
   display: inline-block;
-  color: #052e16; font-weight: 800; font-size: 11.5px;
-  background: var(--green); border-radius: var(--r-pill);
+  color: var(--accent-contrast); font-weight: 800; font-size: 11.5px;
+  background: var(--accent); border-radius: var(--r-pill);
   padding: 4px 11px; margin: 4px 6px 4px 9px;
   letter-spacing: 0.02em;
   animation: nav-blink 1s ease-in-out infinite;
@@ -332,16 +332,21 @@ table { border-collapse: collapse; width: 100%; }
   font-weight: 500;
   background: none; border: 0;
   text-align: left; width: 100%;
-  transition: background .12s, color .12s;
+  position: relative;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.nav-item svg { flex-shrink: 0; opacity: .85; }
+.nav-item svg { flex-shrink: 0; opacity: .85; transition: opacity var(--dur) var(--ease); }
 .nav-item:hover { background: var(--panel-2); color: var(--text); }
 .nav-item.active {
-  background: var(--green-bg);
-  color: var(--green);
+  background: var(--accent-bg);
+  color: var(--accent);
   font-weight: 600;
 }
-.nav-item.active svg { opacity: 1; }
+.nav-item.active::before {
+  content: ''; position: absolute; left: -2px; top: 50%; transform: translateY(-50%);
+  width: 3px; height: 16px; border-radius: 3px; background: var(--accent);
+}
+.nav-item.active svg { opacity: 1; color: var(--accent); }
 
 .sidebar-foot { margin-top: auto; }
 
@@ -528,19 +533,32 @@ table { border-collapse: collapse; width: 100%; }
   padding: 7px 12px; border-radius: var(--r);
   border: 1px solid transparent; background: none; color: var(--text);
   cursor: pointer; white-space: nowrap;
-  transition: background .12s ease, color .12s ease, border-color .12s ease;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease),
+    transform var(--dur) var(--ease), filter var(--dur) var(--ease);
 }
 .btn:disabled { opacity: .55; cursor: default; }
-.btn-primary { background: var(--blue-2); color: #fff; }
-.btn-primary:hover:not(:disabled) { filter: brightness(1.05); }
+.btn:focus-visible { outline: none; box-shadow: var(--ring); }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn-primary {
+  background: var(--accent-2); color: var(--accent-contrast);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .12), 0 0 0 0 var(--accent-bg);
+}
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent); transform: translateY(-1px);
+  box-shadow: 0 4px 14px var(--accent-bg);
+}
 .btn-secondary { background: var(--panel-2); border-color: var(--border); color: var(--text-dim); }
-.btn-secondary:hover:not(:disabled) { color: var(--text); border-color: var(--border-2); }
+.btn-secondary:hover:not(:disabled) {
+  color: var(--text); border-color: var(--accent); box-shadow: var(--shadow-1);
+}
 .btn-icon {
   width: 28px; height: 28px; padding: 0; display: grid; place-items: center;
   border: 0; background: none; color: var(--text-dim); border-radius: var(--r);
-  cursor: pointer; transition: background .12s ease, color .12s ease;
+  cursor: pointer; transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 .btn-icon:hover { background: var(--panel-2); color: var(--text); }
+.btn-icon:focus-visible { outline: none; box-shadow: var(--ring); }
 
 .icon-btn {
   width: 28px; height: 28px;
@@ -611,9 +629,11 @@ table { border-collapse: collapse; width: 100%; }
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
+  box-shadow: var(--shadow-1);
   display: flex;
   flex-direction: column;
   min-width: 0;
+  transition: box-shadow var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
 
 .panel-head {
@@ -824,10 +844,15 @@ select.mini {
   padding: 6px 8px 7px;
   text-align: left;
   color: var(--text);
-  transition: border-color .12s, background .12s;
+  box-shadow: var(--shadow-1);
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease);
   min-width: 0;
 }
-.ticker-card:hover { border-color: var(--border-2); background: var(--panel-2); }
+.ticker-card:hover {
+  border-color: var(--accent); background: var(--panel);
+  box-shadow: var(--shadow-2); transform: translateY(-2px);
+}
 .ticker-card.active { border-color: var(--green); box-shadow: 0 0 0 1px rgba(33,208,122,.25); }
 
 .tc-top { display: flex; align-items: center; gap: 5px; margin-bottom: 3px; }
