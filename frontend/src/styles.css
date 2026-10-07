@@ -454,8 +454,8 @@ table { border-collapse: collapse; width: 100%; }
 }
 .hn-pill:hover { background: var(--panel-2); color: var(--text); }
 .hn-pill.active {
-  background: var(--green-bg);
-  color: var(--green);
+  background: var(--accent-bg);
+  color: var(--accent);
 }
 
 /* ------------------------------------------------------- theme switch */

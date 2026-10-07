@@ -280,8 +280,8 @@
   width: 12px; height: 12px; border-radius: 50%;
   background: var(--text-mute); transition: .16s;
 }
-.toggle.on { background: var(--green-bg); border-color: rgba(33, 208, 122, .5); }
-.toggle.on span { left: 18px; background: var(--green); }
+.toggle.on { background: var(--accent-bg); border-color: var(--accent); }
+.toggle.on span { left: 18px; background: var(--accent); }
 
 /* ---- search suggestions ------------------------------------------------- */
 
@@ -328,7 +328,7 @@ a.upgrade-btn { display: block; text-align: center; }
 a.plan { color: inherit; }
 
 /* brand */
-.brand-name .brand-tld { color: var(--green); }
+.brand-name .brand-tld { color: var(--accent); }
 
 @media (max-width: 1300px) {
   .two-col, .news-grid { grid-template-columns: minmax(0, 1fr); }
