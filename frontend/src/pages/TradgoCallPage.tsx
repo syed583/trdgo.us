@@ -97,9 +97,20 @@ export default function TradgoCallPage({ ctx }: { ctx: PageContext }) {
         <TradgoScan symbol={symbol} />
       ) : !r || r.status !== 'OK' ? (
         <div className="es-empty">{r?.detail || 'No call available for this stock.'}</div>
-      ) : (
-        <>
-          <div className="es-card">
+      ) : (() => {
+        const params: any[] = r.params || r.market_params || [];
+        const sorted = [...params].sort((a, b) =>
+          (b.available ? 1 : 0) - (a.available ? 1 : 0)
+          || Math.abs(b.points || 0) - Math.abs(a.points || 0));
+        const ups = params.filter((p) => (p.points || 0) > 0.3)
+          .sort((a, b) => b.points - a.points).slice(0, 4);
+        const downs = params.filter((p) => (p.points || 0) < -0.3)
+          .sort((a, b) => a.points - b.points).slice(0, 4);
+        const conviction = score == null ? '—'
+          : Math.abs(score) >= 35 ? 'Strong' : Math.abs(score) >= 15 ? 'Moderate' : 'Low';
+        return (
+        <div className="tc-result">
+          <div className="es-card tc-headcard">
             <div className="tc-head">
               <div className="tc-score-wrap">
                 <div className={`tc-score ${score != null && score >= 0 ? 'pos' : 'neg'}`}>
@@ -112,22 +123,44 @@ export default function TradgoCallPage({ ctx }: { ctx: PageContext }) {
               </div>
               <div className="tc-head-mid">
                 <div className={`es-decision ${tone}`}>{dec}</div>
-                <div className="es-chips">
-                  <span className="es-chip">Coverage {Math.round(r.coverage_pct)}%</span>
-                  <span className="es-chip">{r.present}/{r.possible} pts live</span>
+                <div className="tc-meta">
+                  <span><b>{conviction}</b> conviction</span>
+                  <span><b>{Math.round(r.coverage_pct)}%</b> coverage</span>
+                  <span><b>{r.present}/{r.possible}</b> pts live</span>
                 </div>
               </div>
             </div>
 
-            <h3 className="es-sub">Scored Parameters (100 pts)</h3>
-            <div className="es-params">
-              {(r.params || r.market_params || []).map((p: any) => <Param key={p.name} p={p} />)}
+            <div className="tc-drivers">
+              <div className="tc-drive up">
+                <span className="tc-drive-h">Pushing up</span>
+                {ups.length ? ups.map((p) => (
+                  <span key={p.name} className="tc-drive-row">
+                    <i /><span>{p.label}</span><b>{p.points_label.split(' ')[0]}</b>
+                  </span>
+                )) : <span className="tc-drive-none">No bullish drivers</span>}
+              </div>
+              <div className="tc-drive down">
+                <span className="tc-drive-h">Pushing down</span>
+                {downs.length ? downs.map((p) => (
+                  <span key={p.name} className="tc-drive-row">
+                    <i /><span>{p.label}</span><b>{p.points_label.split(' ')[0]}</b>
+                  </span>
+                )) : <span className="tc-drive-none">No bearish drivers</span>}
+              </div>
             </div>
+          </div>
 
+          <div className="es-card">
+            <h3 className="es-sub">Scored Parameters · strongest first (100 pts)</h3>
+            <div className="es-params">
+              {sorted.map((p: any) => <Param key={p.name} p={p} />)}
+            </div>
             <div className="es-foot">{r.note}</div>
           </div>
-        </>
-      )}
+        </div>
+        );
+      })()}
     </div>
   );
 }
