@@ -8,6 +8,7 @@
 .es-card {
   background: var(--panel); border: 1px solid var(--border);
   border-radius: var(--r-lg); padding: 18px; margin-bottom: 16px;
+  box-shadow: var(--shadow-1);
 }
 
 /* score header */
@@ -68,7 +69,10 @@
 .es-param {
   background: var(--panel-2); border: 1px solid var(--border);
   border-left-width: 3px; border-radius: var(--r); padding: 9px 12px;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
 }
+.es-param:hover { box-shadow: var(--shadow-1); transform: translateX(1px); }
 .es-param.pos { border-left-color: var(--green); }
 .es-param.neg { border-left-color: var(--red); }
 .es-param.neu { border-left-color: var(--text-mute); }
