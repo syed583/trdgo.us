@@ -33,6 +33,7 @@
   --accent-strong: #1538b8;   /* deepest */
   --accent-bg: rgba(58, 99, 240, 0.16);
   --accent-contrast: #ffffff; /* text on an accent fill */
+  --flip: #ec4899;            /* signal-change (half/half split + blink) */
   --blue: var(--accent);
   --blue-2: var(--accent-2);
   --blue-bg: var(--accent-bg);
@@ -112,6 +113,7 @@
   --accent-strong: #163aa8;
   --accent-bg: rgba(27, 70, 221, 0.10);
   --accent-contrast: #ffffff;
+  --flip: #d6287f;            /* signal-change pink, a touch deeper for light */
   --blue: var(--accent);
   --blue-2: var(--accent-2);
   --blue-bg: var(--accent-bg);

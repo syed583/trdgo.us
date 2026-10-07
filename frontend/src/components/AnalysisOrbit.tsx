@@ -7,7 +7,7 @@ import type { AnalysisStream, Stage } from '../hooks/useAnalysisStream';
 
 const GREEN = '#21d07a';
 const AMBER = '#f0a92b';
-const BLUE = '#3b82f6';
+const BLUE = '#3a63f0';
 
 const ICONS: Record<string, React.ReactNode> = {
   sec_filings: <FileText size={16} />,

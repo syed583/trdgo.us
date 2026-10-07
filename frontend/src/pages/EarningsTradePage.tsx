@@ -21,7 +21,7 @@ const SETUP = (s: number | null) =>
     : s >= 45 ? 'Neutral' : 'Weak Setup';
 // This theme's --blue token is actually tan, so use an explicit blue here to
 // match the mockup's palette.
-const ETS_BLUE = '#3b82f6';
+const ETS_BLUE = '#3a63f0';
 const SETUP_COLOR = (s: number | null) =>
   s == null ? 'var(--text-mute)' : s >= 75 ? 'var(--green)' : s >= 55 ? ETS_BLUE
     : s >= 45 ? 'var(--amber)' : 'var(--red)';
@@ -419,7 +419,7 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
                     <Tooltip contentStyle={{ background: 'var(--panel)', border: '1px solid var(--border)', fontSize: 12 }} />
                     <ReferenceLine y={0} stroke="var(--border-2)" />
                     {em.current != null && <ReferenceLine x={Math.round(em.current)} stroke="var(--text-mute)" strokeDasharray="3 3" />}
-                    <Line dataKey="pl" stroke="#3b82f6" strokeWidth={1.8} dot={false} isAnimationActive={false} />
+                    <Line dataKey="pl" stroke="#3a63f0" strokeWidth={1.8} dot={false} isAnimationActive={false} />
                   </LineChart>
                 </ResponsiveContainer>
               ) : <div className="ets-empty-sm">No straddle data.</div>}

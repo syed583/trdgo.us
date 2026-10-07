@@ -526,7 +526,7 @@ function ChartPanel({
         <div className="chart-stage">
           {/* Overlaid the way a trading terminal stacks its moving averages. */}
           <div className="ema-stack">
-            <span className="cl-ema"><i style={{ background: '#3b82f6' }} />EMA 20 <b>{num(c.ema?.ema20)}</b></span>
+            <span className="cl-ema"><i style={{ background: '#3a63f0' }} />EMA 20 <b>{num(c.ema?.ema20)}</b></span>
             <span className="cl-ema"><i style={{ background: '#f5a524' }} />EMA 50 <b>{num(c.ema?.ema50)}</b></span>
             <span className="cl-ema"><i style={{ background: '#a78bfa' }} />EMA 200 <b>{num(c.ema?.ema200)}</b></span>
             {/* Only shown when levels were actually found: a legend entry for

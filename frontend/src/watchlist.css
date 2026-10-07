@@ -38,7 +38,7 @@
 .wl-add button {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 5px 11px; border: 0; border-radius: var(--r);
-  background: var(--blue-2, #2563eb); color: #fff;
+  background: var(--blue-2, var(--accent)); color: #fff;
   font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
 }
 .wl-add button:disabled { opacity: .45; cursor: default; }

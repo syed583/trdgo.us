@@ -609,7 +609,7 @@ tr.mf-picked td:first-child { box-shadow: inset 2px 0 0 var(--blue); }
 .mf-analyse {
   flex: 0 0 auto; padding: 4px 14px;
   border: 0; border-radius: var(--r);
-  background: var(--blue-2, #2563eb); color: #fff;
+  background: var(--blue-2, var(--accent)); color: #fff;
   font: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
 }
 .mf-analyse:hover { filter: brightness(1.08); }

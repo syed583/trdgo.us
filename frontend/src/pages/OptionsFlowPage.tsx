@@ -1718,7 +1718,7 @@ function MaxPainCurve({
             <ReferenceLine x={maxPain} stroke={AMBER} strokeWidth={1.5}
               label={{ value: 'Max pain', fontSize: 9, fill: AMBER, position: 'insideTopRight' }} />
           ) : null}
-          <Line type="monotone" dataKey="relative" stroke="#3b82f6"
+          <Line type="monotone" dataKey="relative" stroke="#3a63f0"
             strokeWidth={1.6} dot={false} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>

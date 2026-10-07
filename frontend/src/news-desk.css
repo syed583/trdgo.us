@@ -115,7 +115,7 @@
   font: inherit; font-size: 13px; font-weight: 650; cursor: pointer;
 }
 .nd-pill:hover { color: var(--text); border-color: var(--border-2); }
-.nd-pill.active { background: var(--blue-2, #2563eb); color: #fff; }
+.nd-pill.active { background: var(--blue-2, var(--accent)); color: #fff; }
 .nd-count { margin-left: auto; font-size: 12px; color: var(--text-mute); }
 
 /* --- feed ---------------------------------------------------------------- */

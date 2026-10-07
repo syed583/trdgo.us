@@ -188,7 +188,7 @@ function IntradayFlow({ d }: { d: any }) {
             formatter={(v: any, n: any) => [n === 'Net premium' ? compactMoney(Number(v)) : compact(Number(v), 0), n]} />
           <Bar yAxisId="v" dataKey="call_volume" name="Call vol" fill="var(--green)" isAnimationActive={false} />
           <Bar yAxisId="v" dataKey="put_volume" name="Put vol" fill="var(--red)" isAnimationActive={false} />
-          <Line yAxisId="p" dataKey="net_premium" name="Net premium" stroke="var(--gold, #e0a45c)"
+          <Line yAxisId="p" dataKey="net_premium" name="Net premium" stroke="var(--gold, #3a63f0)"
             dot={false} strokeWidth={1.6} isAnimationActive={false} />
         </ComposedChart>
       </ResponsiveContainer>
@@ -257,7 +257,7 @@ function DailyGEX({ g }: { g: any }) {
               <Cell key={i} fill={(s.net_gamma ?? 0) >= 0 ? 'var(--green)' : 'var(--red)'} />
             ))}
           </Bar>
-          <Line yAxisId="p" dataKey="price" name="Price" stroke="var(--gold, #e0a45c)"
+          <Line yAxisId="p" dataKey="price" name="Price" stroke="var(--gold, #3a63f0)"
             dot={false} strokeWidth={1.6} isAnimationActive={false} connectNulls />
         </ComposedChart>
       </ResponsiveContainer>

@@ -180,7 +180,7 @@
 }
 .ue-notice { flex-direction: column; align-items: stretch; }
 .ue-notice-top { display: flex; align-items: center; gap: 8px; }
-.ue-notice-top > svg { color: #ec4899; flex: 0 0 auto; }
+.ue-notice-top > svg { color: var(--flip); flex: 0 0 auto; }
 .ue-notice-h { font-size: 12.5px; font-weight: 700; }
 .ue-notice-list { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
@@ -202,9 +202,9 @@
   color: var(--text); background: var(--panel-3, var(--bg-2)); border-color: var(--text-dim);
 }
 .ue-chg-tab.intraday.on {
-  color: #ec4899; background: rgba(236, 72, 153, .12); border-color: rgba(236, 72, 153, .5);
+  color: var(--flip); background: rgba(236, 72, 153, .12); border-color: rgba(236, 72, 153, .5);
 }
-.ue-chg-tab.intraday.on .ue-chg-count { color: #ec4899; background: rgba(236, 72, 153, .18); }
+.ue-chg-tab.intraday.on .ue-chg-count { color: var(--flip); background: rgba(236, 72, 153, .18); }
 .ue-chg-tab.session.on {
   color: var(--amber); background: rgba(217, 164, 65, .12); border-color: rgba(217, 164, 65, .5);
 }
@@ -219,7 +219,7 @@
 }
 .ue-cardwrap .ue-row { border: none; border-radius: 0; }
 /* Changed card: the wrapper (not the clipped inner row) blinks pink. */
-.ue-cardwrap.cw-changed { border-color: #ec4899; animation: ue-pink-blink 1.05s ease-in-out infinite; }
+.ue-cardwrap.cw-changed { border-color: var(--flip); animation: ue-pink-blink 1.05s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) {
   .ue-cardwrap.cw-changed { animation: none; box-shadow: 0 0 0 2px rgba(236,72,153,.45); }
 }
@@ -264,12 +264,12 @@
   border-radius: var(--r); font-size: 12.5px; color: var(--text);
 }
 .ue-chgnote-top { display: flex; align-items: center; gap: 8px; }
-.ue-chgnote-top > svg { color: #ec4899; flex: 0 0 auto; }
+.ue-chgnote-top > svg { color: var(--flip); flex: 0 0 auto; }
 .ue-chgnote-h { font-weight: 700; }
 .ue-chgnote-list { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 /* The changed-stock chips pulse pink, matching the blinking cards below. */
 .ue-chgnote .ue-notice-chip {
-  border: 1px solid #ec4899; animation: ue-pink-blink 1.05s ease-in-out infinite;
+  border: 1px solid var(--flip); animation: ue-pink-blink 1.05s ease-in-out infinite;
 }
 @media (prefers-reduced-motion: reduce) {
   .ue-chgnote .ue-notice-chip { animation: none; box-shadow: 0 0 0 2px rgba(236,72,153,.4); }
@@ -277,7 +277,7 @@
 
 /* "why?" affordance on a changed card */
 .ue-row-why {
-  font-size: 10.5px; font-weight: 700; color: #ec4899; cursor: pointer;
+  font-size: 10.5px; font-weight: 700; color: var(--flip); cursor: pointer;
   border: 1px solid rgba(236, 72, 153, .5); border-radius: var(--r-pill);
   padding: 1px 7px; background: var(--panel);
 }
@@ -287,12 +287,12 @@
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-pill);
   padding: 3px 9px; font: inherit; font-size: 11px; color: var(--text-dim);
 }
-.ue-notice-chip:hover { border-color: #ec4899; color: var(--text); }
+.ue-notice-chip:hover { border-color: var(--flip); color: var(--text); }
 .ue-notice-chip b { font-weight: 700; color: var(--text); }
 .ue-notice-more { font-size: 11px; color: var(--text-mute); align-self: center; }
 .ue-notice-toggle {
   align-self: center; cursor: pointer; font: inherit; font-size: 11px;
-  font-weight: 700; color: #ec4899; background: var(--panel);
+  font-weight: 700; color: var(--flip); background: var(--panel);
   border: 1px solid rgba(236, 72, 153, .5); border-radius: var(--r-pill);
   padding: 3px 10px;
 }
@@ -308,8 +308,8 @@
   border: 1px solid var(--border); border-left: none;
   border-radius: 0 var(--r-pill) var(--r-pill) 0; padding: 3px 8px;
 }
-.ue-why-btn:hover { color: #ec4899; border-color: rgba(236, 72, 153, .5); }
-.ue-why-btn.on { color: #ec4899; background: rgba(236, 72, 153, .12); border-color: rgba(236, 72, 153, .5); }
+.ue-why-btn:hover { color: var(--flip); border-color: rgba(236, 72, 153, .5); }
+.ue-why-btn.on { color: var(--flip); background: rgba(236, 72, 153, .12); border-color: rgba(236, 72, 153, .5); }
 
 .ue-why {
   margin-top: 10px; padding: 10px 12px; background: var(--panel);
@@ -374,7 +374,7 @@
 
 /* Intraday flip (moved today): pink border that BLINKS -- it's fresh/live. */
 .ue-row.sig-changed-intraday {
-  border-color: #ec4899;
+  border-color: var(--flip);
   animation: ue-pink-blink 1.05s ease-in-out infinite;
 }
 @keyframes ue-pink-blink {
@@ -384,7 +384,7 @@
   }
   50% {
     box-shadow: 0 0 0 3px rgba(236, 72, 153, .55);
-    border-color: #ec4899;
+    border-color: var(--flip);
   }
 }
 
@@ -396,7 +396,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .ue-row.sig-changed-intraday {
-    animation: none; border-color: #ec4899;
+    animation: none; border-color: var(--flip);
     box-shadow: 0 0 0 2px rgba(236, 72, 153, .4);
   }
 }

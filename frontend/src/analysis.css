@@ -298,7 +298,7 @@
   padding: 5px 9px; border-radius: var(--r-pill); border: 1px solid var(--border, #e5e7eb);
   background: transparent; color: var(--dim, #6b7280); }
 .ce-tab em { font-style: normal; opacity: .65; margin-left: 4px; }
-.ce-tab.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+.ce-tab.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .ce-tab:disabled { opacity: .4; cursor: default; }
 .ce-list { display: flex; flex-direction: column; }
 .ce-row { display: grid; grid-template-columns: 96px 1fr auto; gap: 12px;
@@ -326,7 +326,7 @@
 }
 
 .ce-src { font-size: 9.5px; font-weight: 700; letter-spacing: .3px;
-  text-transform: uppercase; color: #2563eb; }
+  text-transform: uppercase; color: var(--accent); }
 .ce-live { font-size: 9.5px; font-weight: 700; letter-spacing: .3px;
   text-transform: uppercase; padding: 2px 6px; border-radius: var(--r-sm);
   background: rgba(33,208,122,.16); color: #12a15c; }
@@ -432,7 +432,7 @@
 .pw { margin-top: 8px; }
 .pw-btn, .pw-link { display: inline-flex; align-items: center; gap: 6px;
   font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer;
-  padding: 5px 10px; border-radius: var(--r-pill); color: #2563eb;
+  padding: 5px 10px; border-radius: var(--r-pill); color: var(--accent);
   background: rgba(37,99,235,.09); border: 1px solid rgba(37,99,235,.22); }
 .pw-btn:hover { background: rgba(37,99,235,.16); }
 .pw-btn:disabled { opacity: .65; cursor: default; }
@@ -440,7 +440,7 @@
 .pw-done { padding: 10px 12px; border-radius: var(--r);
   background: rgba(37,99,235,.06); border: 1px solid rgba(37,99,235,.16); }
 .pw-text { margin: 0; font-size: 12.5px; line-height: 1.6; }
-.pw-text svg { color: #2563eb; margin-right: 4px; vertical-align: -2px; }
+.pw-text svg { color: var(--accent); margin-right: 4px; vertical-align: -2px; }
 .pw-filings { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .pw-filings a { font-size: 11px; display: inline-flex; align-items: center;
   gap: 4px; color: var(--dim, #6b7280); }
@@ -483,7 +483,7 @@
 .ce-row[role="button"]:hover { background: rgba(37, 99, 235, .04); }
 .ce-row.ce-open { background: rgba(37, 99, 235, .06); }
 .ce-more { display: inline-block; margin-top: 4px; font-size: 10.5px;
-  font-weight: 600; color: #2563eb; }
+  font-weight: 600; color: var(--accent); }
 .ce-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 6px 14px; margin: 8px 0 2px; padding: 8px 10px; border-radius: var(--r);
   background: var(--soft, #f8fafc); border: 1px solid var(--border, #e5e7eb); }
@@ -525,7 +525,7 @@
 .dp-level-price.dp-sector { font-size: 10.5px; }
 .dp-level-bar { background: var(--soft, #f1f5f9); border-radius: var(--r-sm); height: 8px; }
 .dp-level-bar i { display: block; height: 100%; border-radius: var(--r-sm);
-  background: #2563eb; }
+  background: var(--accent); }
 .dp-level-bar i.up { background: #16a34a; }
 .dp-level-bar i.dn { background: #dc2626; }
 .dp-level em { font-style: normal; font-size: 10px; color: var(--mute, #9ca3af);
@@ -576,16 +576,16 @@
   text-transform: uppercase; color: var(--mute, #9ca3af); margin-left: auto; }
 .sn-head { font-size: 12.5px; line-height: 1.4; }
 .sn-head a { color: inherit; }
-.sn-head a:hover { color: #2563eb; }
+.sn-head a:hover { color: var(--accent); }
 .sn-tickers { display: flex; gap: 5px; margin-top: 4px; }
 .sn-tickers span { font-size: 9.5px; font-weight: 700; padding: 1px 5px;
   border-radius: var(--r-sm); background: var(--soft, #f1f5f9); color: var(--mute, #9ca3af); }
-.sn-tickers span.on { background: rgba(37,99,235,.12); color: #2563eb; }
+.sn-tickers span.on { background: rgba(37,99,235,.12); color: var(--accent); }
 .sn-note, .sn-foot { margin: 0; padding: 12px; font-size: 11.5px;
   color: var(--mute, #9ca3af); }
 .ep-from { display: inline-block; margin-left: 5px; font-style: normal;
   font-size: 8.5px; letter-spacing: .3px; padding: 1px 4px; border-radius: var(--r-sm);
-  background: rgba(37,99,235,.12); color: #2563eb; cursor: help; }
+  background: rgba(37,99,235,.12); color: var(--accent); cursor: help; }
 
 /* How stale the shown price is, when it is not a live regular-session trade. */
 .an-price-fresh {

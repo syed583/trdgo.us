@@ -13,7 +13,7 @@ import { Panel } from '../components/common';
 const IV = '#a855f7';       // implied — purple, matching the provider
 const RV = '#e0b341';       // realized — amber
 const RANK = '#21d07a';     // IV rank — green
-const MOVE = '#3b82f6';     // implied move — blue
+const MOVE = '#3a63f0';     // implied move — blue
 const PRICE = '#5b6580';    // stock price — slate, kept neutral behind the vol lines
 
 function pct(v: number | null | undefined): string {

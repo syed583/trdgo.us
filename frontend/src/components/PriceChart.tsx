@@ -15,7 +15,7 @@ import { money, num } from '../lib/format';
  * recharts version, so every caller is a drop-in.
  */
 
-const EMA20 = '#3b82f6';
+const EMA20 = '#3a63f0';
 const EMA50 = '#f0a92b';
 const EMA200 = '#a855f7';
 

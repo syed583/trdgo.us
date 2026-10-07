@@ -50,14 +50,14 @@ function MarketTide() {
                   <Line yAxisId="prem" dataKey="net_put_premium" name="Net put premium"
                     stroke="var(--red)" dot={false} strokeWidth={1.6} isAnimationActive={false} connectNulls />
                   <Line yAxisId="spy" dataKey="sp500" name="S&P 500"
-                    stroke="var(--gold, #e0a45c)" dot={false} strokeWidth={1.4}
+                    stroke="var(--gold, #3a63f0)" dot={false} strokeWidth={1.4}
                     strokeDasharray="4 2" isAnimationActive={false} connectNulls />
                 </ComposedChart>
               </ResponsiveContainer>
               <div className="mo-legend" role="list">
                 <span role="listitem"><i style={{ background: 'var(--green)' }} />Net call premium</span>
                 <span role="listitem"><i style={{ background: 'var(--red)' }} />Net put premium</span>
-                <span role="listitem"><i style={{ background: 'var(--gold, #e0a45c)' }} />S&amp;P 500</span>
+                <span role="listitem"><i style={{ background: 'var(--gold, #3a63f0)' }} />S&amp;P 500</span>
               </div>
               <div className="hint">{d?.detail}</div>
             </>

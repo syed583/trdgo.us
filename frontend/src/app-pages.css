@@ -424,7 +424,7 @@ a.index-card { color: inherit; }
 }
 .vol-range-btn:hover { color: var(--text); }
 .vol-range-btn.active {
-  background: var(--blue-2, #2563eb); color: #fff; border-color: transparent;
+  background: var(--blue-2, var(--accent)); color: #fff; border-color: transparent;
 }
 
 .vol-legend {
