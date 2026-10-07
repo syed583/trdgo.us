@@ -61,8 +61,9 @@ export default function UpcomingEarnings({
     (s) => (demo || !rows.length ? Promise.resolve(null)
       : api2.signalsLatest(rows.map((r) => r.symbol), 'earnings', s)),
     [demo, symKey],
-    // Poll so cards colour in as the backend captures the missing symbols.
-    { refreshMs: demo ? undefined : 15_000 },
+    // Poll so cards colour in as the backend warms the missing symbols. 30s
+    // (was 15s) halves the background-warm churn while cards still fill in.
+    { refreshMs: demo ? undefined : 30_000 },
   );
   // Pre-earnings signal timeline (only when that tab is active).
   const timelineOn = !!timeline;

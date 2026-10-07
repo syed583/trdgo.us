@@ -88,7 +88,10 @@ TTL_TAPE = 60.0            # the options tape, while the market is open
 # appearing as they cross, not a minute behind. While the market trades it is
 # cached for only a few seconds so each poll returns fresh prints; out of hours
 # it holds the last session's tape for much longer, since nothing new prints.
-TTL_FLOW_LIVE_OPEN = 4.0
+# Raised 4 -> 12s: a 4s cache refetched the whole flow tape ~15x/min per viewer,
+# which under the per-minute UW rate limit starved heavier calls (the options
+# overview) and slowed every screen. 12s still reads as live without the storm.
+TTL_FLOW_LIVE_OPEN = 12.0
 TTL_FLOW_LIVE_CLOSED = 300.0
 
 
