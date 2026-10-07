@@ -81,6 +81,17 @@
 .lp-input::placeholder { color: var(--text-mute); }
 .lp-input:focus-visible { outline: none; box-shadow: var(--ring); border-color: var(--accent); }
 
+/* Country code + number group */
+.lp-phone { display: flex; gap: 8px; }
+.lp-dial {
+  flex: 0 0 auto; width: 104px; box-sizing: border-box;
+  padding: 11px 8px; border-radius: 10px; cursor: pointer;
+  background: var(--panel-2, rgba(128, 128, 128, .06));
+  border: 1px solid var(--border); color: var(--text); font-size: 14px;
+}
+.lp-dial:focus-visible { outline: none; box-shadow: var(--ring); border-color: var(--accent); }
+.lp-phone-num { flex: 1 1 auto; min-width: 0; }
+
 .lp-error { color: var(--red); font-size: 12.5px; margin-top: 12px; }
 .lp-notice {
   display: inline-flex; align-items: center; gap: 6px;

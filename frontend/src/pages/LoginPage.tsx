@@ -12,6 +12,43 @@ import './login-page.css';
 // the app with the fresh session cookie.
 type Mode = 'signin' | 'phone' | 'verify';
 
+// Curated dial codes (flag + code). Value is the dial code digits; the backend
+// normalizes the combined number to digits anyway.
+const COUNTRIES: { flag: string; dial: string; name: string }[] = [
+  { flag: '🇮🇳', dial: '91', name: 'India' },
+  { flag: '🇺🇸', dial: '1', name: 'USA / Canada' },
+  { flag: '🇬🇧', dial: '44', name: 'UK' },
+  { flag: '🇦🇪', dial: '971', name: 'UAE' },
+  { flag: '🇸🇦', dial: '966', name: 'Saudi Arabia' },
+  { flag: '🇶🇦', dial: '974', name: 'Qatar' },
+  { flag: '🇰🇼', dial: '965', name: 'Kuwait' },
+  { flag: '🇧🇭', dial: '973', name: 'Bahrain' },
+  { flag: '🇴🇲', dial: '968', name: 'Oman' },
+  { flag: '🇵🇰', dial: '92', name: 'Pakistan' },
+  { flag: '🇧🇩', dial: '880', name: 'Bangladesh' },
+  { flag: '🇱🇰', dial: '94', name: 'Sri Lanka' },
+  { flag: '🇳🇵', dial: '977', name: 'Nepal' },
+  { flag: '🇸🇬', dial: '65', name: 'Singapore' },
+  { flag: '🇲🇾', dial: '60', name: 'Malaysia' },
+  { flag: '🇦🇺', dial: '61', name: 'Australia' },
+  { flag: '🇩🇪', dial: '49', name: 'Germany' },
+  { flag: '🇫🇷', dial: '33', name: 'France' },
+  { flag: '🇪🇸', dial: '34', name: 'Spain' },
+  { flag: '🇮🇹', dial: '39', name: 'Italy' },
+  { flag: '🇳🇱', dial: '31', name: 'Netherlands' },
+  { flag: '🇿🇦', dial: '27', name: 'South Africa' },
+  { flag: '🇳🇬', dial: '234', name: 'Nigeria' },
+  { flag: '🇰🇪', dial: '254', name: 'Kenya' },
+  { flag: '🇧🇷', dial: '55', name: 'Brazil' },
+  { flag: '🇲🇽', dial: '52', name: 'Mexico' },
+  { flag: '🇯🇵', dial: '81', name: 'Japan' },
+  { flag: '🇰🇷', dial: '82', name: 'South Korea' },
+  { flag: '🇨🇳', dial: '86', name: 'China' },
+  { flag: '🇭🇰', dial: '852', name: 'Hong Kong' },
+  { flag: '🇹🇷', dial: '90', name: 'Turkey' },
+  { flag: '🇪🇬', dial: '20', name: 'Egypt' },
+];
+
 const FEATURES = [
   { icon: Gauge, title: 'Earnings Trade scoring', text: '100-point equity & options setups before every report.' },
   { icon: Activity, title: 'Options flow & straddles', text: 'Unusual activity, IV crush and expected-move analysis.' },
@@ -21,8 +58,11 @@ const FEATURES = [
 
 export default function LoginPage() {
   const [mode, setMode] = useState<Mode>('signin');
+  const [dial, setDial] = useState('91');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  // The full international number (dial code + local number), digits only.
+  const fullPhone = () => (dial + phone).replace(/\D/g, '');
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -37,7 +77,7 @@ export default function LoginPage() {
   const signIn = async () => {
     if (busy || !phone.trim() || !password) return;
     setBusy(true); setError('');
-    try { await api2.login(phone.trim(), password); window.location.href = '/'; }
+    try { await api2.login(fullPhone(), password); window.location.href = '/'; }
     catch (e) { fail(e); }
   };
 
@@ -45,7 +85,7 @@ export default function LoginPage() {
     if (busy || !phone.trim()) return;
     setBusy(true); setError(''); setNotice('');
     try {
-      await api2.otpRequest(phone.trim());
+      await api2.otpRequest(fullPhone());
       setNotice('We sent a code to your WhatsApp. Enter it below.');
       setMode('verify'); setBusy(false);
     } catch (e) { fail(e); }
@@ -55,10 +95,27 @@ export default function LoginPage() {
     if (busy || !code.trim() || !name.trim() || !password) return;
     setBusy(true); setError('');
     try {
-      await api2.register(phone.trim(), code.trim(), name.trim(), password);
+      await api2.register(fullPhone(), code.trim(), name.trim(), password);
       window.location.href = '/';
     } catch (e) { fail(e); }
   };
+
+  // The country-code + number input group, reused in sign-in and sign-up.
+  const phoneField = (onEnter: () => void) => (
+    <div className="lp-phone">
+      <select className="lp-dial" value={dial}
+        onChange={(e) => { setDial(e.target.value); setError(''); }}
+        aria-label="Country code">
+        {COUNTRIES.map((c) => (
+          <option key={c.dial + c.name} value={c.dial}>{c.flag} +{c.dial}</option>
+        ))}
+      </select>
+      <input className="lp-input lp-phone-num" value={phone} autoFocus inputMode="tel"
+        placeholder="Phone number" autoComplete="tel-national"
+        onChange={(e) => { setPhone(e.target.value); setError(''); }}
+        onKeyDown={(e) => { if (e.key === 'Enter') onEnter(); }} />
+    </div>
+  );
 
   const reset = (m: Mode) => {
     setMode(m); setError(''); setNotice(''); setCode(''); setPassword('');
@@ -110,11 +167,7 @@ export default function LoginPage() {
               <p className="lp-sub">Sign in with your phone number and password.</p>
 
               <label className="lp-label">Phone number</label>
-              <input className="lp-input" value={phone} autoFocus inputMode="tel"
-                placeholder="e.g. 919876543210 (with country code)"
-                autoComplete="username"
-                onChange={(e) => { setPhone(e.target.value); setError(''); }}
-                onKeyDown={(e) => { if (e.key === 'Enter') signIn(); }} />
+              {phoneField(signIn)}
 
               <label className="lp-label">Password</label>
               <input className="lp-input" type="password" value={password}
@@ -142,10 +195,7 @@ export default function LoginPage() {
               <p className="lp-sub">We’ll send a verification code to your WhatsApp.</p>
 
               <label className="lp-label">Phone number</label>
-              <input className="lp-input" value={phone} autoFocus inputMode="tel"
-                placeholder="e.g. 919876543210 (with country code)"
-                onChange={(e) => { setPhone(e.target.value); setError(''); }}
-                onKeyDown={(e) => { if (e.key === 'Enter') sendCode(); }} />
+              {phoneField(sendCode)}
 
               {error && <div className="lp-error">{error}</div>}
 
