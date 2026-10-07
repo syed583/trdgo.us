@@ -160,8 +160,45 @@ def _moves(symbol: str) -> list:
         return []
 
 
+def single(symbol: str, n: int = 8) -> dict:
+    """A one-row grid for `symbol`, computing its real past-earnings moves FRESH.
+
+    Used by the search box: unlike the main grid it does not read the day-long
+    `earnrx` cache, so a stock that just reported (or whose reaction only matured
+    today) shows its latest result instead of a stale/empty cached row.
+    """
+    sym = (symbol or "").upper().strip()
+    if not sym:
+        return {"status": "NO_SYMBOLS", "n": n, "rows": [], "source": SOURCE}
+    n = max(1, min(int(n or 8), 12))
+    try:
+        import earnings_trade_service as ets
+        moves = ets._historical_moves(sym, limit=max(n, 8)) or []
+    except Exception:  # noqa: BLE001
+        moves = []
+    tail = moves[-n:]
+    cells = [{"date": None, "label": None, "move_pct": None, "signal": None}
+             for _ in range(n - len(tail))]
+    for m in tail:
+        mv = m.get("move_pct") if isinstance(m, dict) else None
+        cells.append({"date": (m or {}).get("date"), "label": (m or {}).get("label"),
+                      "move_pct": mv, "signal": _direction(mv)})
+    now = _live([sym]).get(sym, (None, None))[0]
+    if not tail and not now:
+        return {"status": "NO_DATA", "n": n, "rows": [], "source": SOURCE,
+                "detail": f"No past-earnings reports found for {sym}."}
+    return {"status": "OK", "n": n, "source": SOURCE,
+            "rows": [{"symbol": sym, "cells": cells, "events": len(tail), "now": now}]}
+
+
 def warm_reactions(symbols: list[str]) -> None:
-    """Compute+cache each symbol's real past-earnings moves (background use)."""
+    """Compute+cache each symbol's real post-earnings moves (background use).
+
+    Cached for a few hours (not a full day) so that a report which lands today --
+    or whose next-day reaction only matures after the close -- shows up on the
+    next refresh rather than being pinned stale until tomorrow. An empty result
+    (nothing computed yet) is held only briefly so it refills soon.
+    """
     try:
         import swr
         import earnings_trade_service as ets
@@ -169,8 +206,10 @@ def warm_reactions(symbols: list[str]) -> None:
 
         def one(sym: str) -> None:
             try:
-                swr.serve(f"earnrx:{sym}",
-                          lambda: ets._historical_moves(sym, limit=8), 86400.0)
+                key = f"earnrx:{sym}"
+                moves = ets._historical_moves(sym, limit=8) or []
+                swr.clear_key(key)  # force a refresh past any stale/empty copy
+                swr.serve(key, lambda: moves, 10800.0 if moves else 900.0)
             except Exception:  # noqa: BLE001
                 pass
 

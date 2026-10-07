@@ -50,22 +50,39 @@ export default function EarningsSignalHistoryPage({ ctx }: { ctx: PageContext })
   const d = res.data;
   const allRows: any[] = d?.rows || [];
   const needle = query.trim().toUpperCase();
-  const localRows = useMemo(() => {
-    let out = needle ? allRows.filter((r) => (r.symbol || '').includes(needle)) : allRows;
-    if (active.size) out = out.filter((r) => r.now && active.has(r.now));
-    return out;
-  }, [allRows, needle, active]);
+  // The exact ticker the user typed (if it's already in the grid), and any other
+  // names that merely contain the text (e.g. "LW" also matches "GLW").
+  const exactLocal = needle ? allRows.find((r) => (r.symbol || '') === needle) : null;
+  const subMatches = useMemo(
+    () => (needle
+      ? allRows.filter((r) => (r.symbol || '') !== needle && (r.symbol || '').includes(needle))
+      : allRows),
+    [allRows, needle],
+  );
 
-  // A searched ticker that isn't in the window (e.g. just reported) is looked up
-  // on demand so its real past-earnings history still shows.
-  const lookupSym = (!localRows.length && /^[A-Z][A-Z.]{0,5}$/.test(needle)) ? needle : '';
+  // Look the exact ticker up on demand whenever it isn't already an exact row in
+  // the grid -- so searching "LW" fetches LW itself (not just "GLW"), including a
+  // name that just reported and isn't in the window.
+  const lookupSym = (needle && !exactLocal && /^[A-Z][A-Z.]{0,5}$/.test(needle))
+    ? needle : '';
   const look = useApi<any>(
     (s) => (lookupSym && !demo ? api2.earningsSignalHistory(8, s, lookupSym)
                                : Promise.resolve(null)),
     [lookupSym, demo],
   );
-  const lookRows: any[] = (lookupSym && look.data?.rows) ? look.data.rows : [];
-  const rows = localRows.length ? localRows : lookRows;
+  const lookRow: any = (lookupSym && look.data?.rows?.[0]) ? look.data.rows[0] : null;
+
+  const rows = useMemo(() => {
+    // The typed ticker leads (exact row, else the on-demand lookup), then the
+    // substring matches; de-duplicated. No search => the whole grid.
+    const head = needle ? (exactLocal ? [exactLocal] : (lookRow ? [lookRow] : [])) : [];
+    const seen = new Set(head.map((r: any) => r.symbol));
+    let out = needle
+      ? [...head, ...subMatches.filter((r: any) => !seen.has(r.symbol))]
+      : allRows;
+    if (active.size) out = out.filter((r) => r.now && active.has(r.now));
+    return out;
+  }, [needle, exactLocal, lookRow, subMatches, allRows, active]);
   // Only as many columns as there is real history for -- no empty padding.
   const n = useMemo(
     () => Math.max(1, ...(rows.length ? rows : allRows).map((r: any) => r.events || 0)),
@@ -118,7 +135,7 @@ export default function EarningsSignalHistoryPage({ ctx }: { ctx: PageContext })
       ) : res.initialLoading || d?.status === 'LOADING'
           || (res.loading && !allRows.length) ? (
         <div className="sh-empty">Loading earnings reactions…</div>
-      ) : lookupSym && look.loading && !lookRows.length ? (
+      ) : lookupSym && look.loading && !rows.length ? (
         <div className="sh-empty">Looking up {lookupSym}…</div>
       ) : (d?.status !== 'OK' || !allRows.length) && !rows.length && !lookupSym ? (
         <div className="sh-empty">

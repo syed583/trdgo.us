@@ -282,15 +282,12 @@ def earnings_signal_history(n: int = 4, symbol: str = "") -> dict:
 
     sym = (symbol or "").strip().upper()
     if sym:
-        # Compute+cache this one symbol's reactions, then return just its row.
-        out = swr.serve(
-            f"earnsighist:one:{n}:{sym}",
-            lambda: (esh.warm_reactions([sym]), esh.get_grid([sym], n))[1],
-            300.0)
-        if not out.get("rows"):
-            out = {"status": "NO_DATA", "n": n, "rows": [], "source": esh.SOURCE,
-                   "detail": f"No past-earnings reports found for {sym}."}
-        return out
+        # One ticker, computed FRESH (not from the day-long reaction cache) so a
+        # stock that just reported shows its latest result. A short window keeps
+        # it fresh and lets a transient provider miss self-heal on the next poll,
+        # while single-flight still dedupes concurrent lookups of the same name.
+        return swr.serve(f"earnsighist:one:{n}:{sym}",
+                         lambda: esh.single(sym, n), 120.0)
 
     # Window spans a week back through ~3 weeks ahead, so names that have
     # ALREADY reported (e.g. yesterday) show their past-earnings history too --
