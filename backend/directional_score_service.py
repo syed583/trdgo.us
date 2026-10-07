@@ -34,7 +34,14 @@ PROVIDER_BUDGET = 20.0
 # sixteen parameters. Timing it out drops coverage from 96% to 26% and turns a
 # usable reading into a blocked one -- so a cold chain is worth waiting for in
 # a way that no other single provider is.
-OVERVIEW_BUDGET = 75.0
+#
+# Raised 75 -> 120: the overview fetches cleanly in ~25s on its own, but under
+# the concurrent gather it contends with ~12 other UW jobs for the per-minute
+# rate limit and can run past 75s on heavy names, which dropped the whole
+# options tape to "no data" at once. as_completed returns as soon as every job
+# finishes, so a higher ceiling only lets slow runs complete -- it costs nothing
+# when the feed is fast (the VPS).
+OVERVIEW_BUDGET = 120.0
 
 CACHE_TTL_OPEN = 120.0
 CACHE_TTL_CLOSED = 900.0
