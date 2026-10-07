@@ -212,3 +212,25 @@
   background-image: repeating-linear-gradient(90deg,
     currentColor 0 4px, transparent 4px 6px);
 }
+
+/* In-page stock search on Market Overview */
+.mo-search {
+  display: flex; align-items: center; gap: 7px; padding: 5px 6px 5px 11px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-pill);
+  color: var(--text-mute);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.mo-search:focus-within { border-color: var(--accent); box-shadow: var(--ring); }
+.mo-search input {
+  width: 130px; background: none; border: 0; outline: none;
+  font: inherit; font-size: 13px; color: var(--text); text-transform: uppercase;
+}
+.mo-search input::placeholder { text-transform: none; color: var(--text-mute); }
+.mo-search-go {
+  border: 0; border-radius: var(--r-pill); cursor: pointer;
+  background: var(--accent-2); color: var(--accent-contrast);
+  font: inherit; font-size: 12px; font-weight: 700; padding: 4px 12px;
+  transition: background var(--dur) var(--ease);
+}
+.mo-search-go:hover:not(:disabled) { background: var(--accent); }
+.mo-search-go:disabled { opacity: .5; cursor: default; }

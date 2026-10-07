@@ -5,7 +5,7 @@ import {
   Tooltip, XAxis, YAxis,
 } from 'recharts';
 import {
-  Activity, ChevronRight, Gauge, Globe, Info, Layers, RefreshCw, Waves,
+  Activity, ChevronRight, Gauge, Globe, Info, Layers, RefreshCw, Search, Waves,
   TrendingDown, TrendingUp,
 } from 'lucide-react';
 import { api2 } from '../api/client';
@@ -249,6 +249,11 @@ function SentimentDial({ value, label }: {
 export default function MarketPulsePage({ ctx }: { ctx: PageContext }) {
   const navigate = useNavigate();
   const [tick, setTick] = useState(0);
+  const [stockQ, setStockQ] = useState('');
+  const goStock = () => {
+    const t = stockQ.trim().toUpperCase();
+    if (t) navigate(`/dashboard/${encodeURIComponent(t)}${ctx.search || ''}`);
+  };
   const pulse = useApi<any>((s) => api2.marketPulse(s), [tick], {
     refreshMs: 60000,
   });
@@ -301,6 +306,12 @@ export default function MarketPulsePage({ ctx }: { ctx: PageContext }) {
           </p>
         </div>
         <div className="mo-head-right">
+          <form className="mo-search" onSubmit={(e) => { e.preventDefault(); goStock(); }}>
+            <Search size={14} />
+            <input value={stockQ} onChange={(e) => setStockQ(e.target.value.toUpperCase())}
+              placeholder="Search a stock…" aria-label="Search stock" spellCheck={false} />
+            <button type="submit" className="mo-search-go" disabled={!stockQ.trim()}>Go</button>
+          </form>
           <span className={`mo-live ${d.market?.is_open ? 'on' : ''}`}>
             <i />{d.market?.label || 'Market'}
           </span>
