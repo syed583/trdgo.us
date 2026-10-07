@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity, ArrowRight, BarChart3, Building2, CalendarDays, CheckCircle2,
   Database, FileText, Gauge, Globe, LineChart, Loader2, Newspaper, Search,
@@ -210,7 +210,7 @@ export default function InsightsPage({ ctx }: { ctx: PageContext }) {
     return (
       <SearchScreen draft={draft} onDraft={setDraft} onAnalyse={analyse}
         horizon={horizon} onHorizon={setPicked} session={session}
-        readOnly={ctx.readOnly} />
+        readOnly={ctx.readOnly} ctx={ctx} />
     );
   }
 
@@ -240,12 +240,171 @@ function missingCount(state: Record<string, { status: string }>): number {
 
 /* ------------------------------------------------------------ 1. search */
 
+// ----- Landing data panels: Top Movers / Market Overview / Earnings & News ---
+
+function compact(n: number | null | undefined): string {
+  if (n == null) return '--';
+  const a = Math.abs(n);
+  if (a >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
+  if (a >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (a >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
+  return String(Math.round(n));
+}
+function Spark({ data, up }: { data: number[]; up: boolean }) {
+  const col = up ? 'var(--signal-up, #22a06b)' : 'var(--signal-down, #e5556b)';
+  if (!data || data.length < 2) {
+    return <svg width="60" height="22"><line x1="2" y1="11" x2="58" y2="11" stroke={col} strokeWidth="1.5" strokeDasharray="3 3" opacity="0.5" /></svg>;
+  }
+  const w = 60, h = 22, min = Math.min(...data), max = Math.max(...data), rng = (max - min) || 1;
+  const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / rng) * (h - 3) - 1.5}`).join(' ');
+  return <svg width={w} height={h}><polyline points={pts} fill="none" stroke={col} strokeWidth="1.5" strokeLinejoin="round" /></svg>;
+}
+const sentTone = (s: string) =>
+  s === 'positive' ? 'buy' : s === 'negative' ? 'sell' : 'flat';
+const sentWord = (s: string) =>
+  s === 'positive' ? 'Bullish' : s === 'negative' ? 'Bearish' : 'Neutral';
+
+function Dot({ sym }: { sym: string }) {
+  const hue = (sym.charCodeAt(0) * 37 + (sym.charCodeAt(1) || 0) * 11) % 360;
+  return <span className="anp-dot" style={{ background: `hsl(${hue} 60% 46%)` }}>{sym.slice(0, 2)}</span>;
+}
+
+const MARQUEE = ['NVDA', 'TSLA', 'AAPL', 'AMZN', 'MSFT', 'META', 'GOOGL', 'AMD'];
+
+function LandingPanels({ onPick, ctx }: { onPick: (s: string) => void; ctx: PageContext }) {
+  // Indices come from the shell (fast). Movers are a handful of marquee names
+  // quoted in parallel -- the full 500-stock screener is far too slow to block
+  // a landing panel on, and the watchlist strip is per-user (often empty).
+  const quotes = useApi<any>(async (s) => {
+    const out = await Promise.all(MARQUEE.map((sym) =>
+      api.quote(sym, s).then((q: any) => ({
+        symbol: sym, price: q?.price ?? null, change_percent: q?.change_percent ?? null,
+      })).catch(() => null)));
+    return out.filter(Boolean);
+  }, [], { refreshMs: 60_000 });
+  const news = useApi<any>((s) => api2.newsDesk(s), [], { refreshMs: 120_000 });
+  const upcoming = useApi<any>((s) => api2.earningsUpcoming(14, s), []);
+
+  const [mv, setMv] = useState<'active' | 'gainers' | 'losers'>('gainers');
+  const [ev, setEv] = useState<'news' | 'earnings'>('news');
+  const cards: any[] = quotes.data || [];
+  const movers = useMemo(() => {
+    const r = cards.filter((x) => x.price != null && x.change_percent != null);
+    if (mv === 'active') r.sort((a, b) => Math.abs(b.change_percent) - Math.abs(a.change_percent));
+    else if (mv === 'gainers') r.sort((a, b) => b.change_percent - a.change_percent);
+    else r.sort((a, b) => a.change_percent - b.change_percent);
+    return r.slice(0, 6);
+  }, [cards, mv]);
+  const stocks = { loading: quotes.initialLoading, data: quotes.data };
+  const indices: any[] = (ctx.indices.data?.indices || []).slice(0, 6);
+  const idx = { loading: ctx.indices.initialLoading, data: ctx.indices.data };
+  const articles: any[] = (news.data?.articles || []).slice(0, 5);
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const earningsRows: any[] = (upcoming.data?.rows || [])
+    .filter((r: any) => (r.report_date || r.date || '') >= todayISO).slice(0, 5);
+
+  const tab = (on: boolean) => `anp-tab ${on ? 'on' : ''}`;
+
+  return (
+    <div className="anp-grid">
+      {/* Top Movers */}
+      <div className="anp-card">
+        <div className="anp-head">
+          <h3>Top Movers</h3>
+          <div className="anp-tabs">
+            <button className={tab(mv === 'active')} onClick={() => setMv('active')}>Most Active</button>
+            <button className={tab(mv === 'gainers')} onClick={() => setMv('gainers')}>Gainers</button>
+            <button className={tab(mv === 'losers')} onClick={() => setMv('losers')}>Losers</button>
+          </div>
+        </div>
+        <div className="anp-trow anp-m3 anp-thead">
+          <span>Symbol</span><span className="r">Price</span><span className="r">Change</span>
+        </div>
+        {stocks.loading && !stocks.data
+          ? <div className="anp-empty">Loading…</div>
+          : movers.length
+            ? movers.map((m) => (
+              <button key={m.symbol} className="anp-trow anp-m3 anp-click" onClick={() => onPick(m.symbol)}>
+                <span className="anp-sym"><Dot sym={m.symbol} /> {m.symbol}</span>
+                <span className="r">{money(m.price)}</span>
+                <span className={`r ${m.change_percent >= 0 ? 'pos' : 'neg'}`}>{signedPct(m.change_percent)}</span>
+              </button>
+            ))
+            : <div className="anp-empty">No movers yet.</div>}
+      </div>
+
+      {/* Market Overview */}
+      <div className="anp-card">
+        <div className="anp-head">
+          <h3>Market Overview</h3>
+          <div className="anp-tabs"><button className="anp-tab on">Indices</button></div>
+        </div>
+        <div className="anp-trow anp-thead">
+          <span>Index</span><span className="r">Price</span><span className="r">Change</span><span className="r">Chart</span>
+        </div>
+        {idx.loading && !idx.data
+          ? <div className="anp-empty">Loading…</div>
+          : indices.map((r) => (
+            <div key={r.instrument || r.label} className="anp-trow">
+              <span className="anp-sym">{r.label}</span>
+              <span className="r">{num(r.value, 2)}</span>
+              <span className={`r ${(r.change_percent ?? 0) >= 0 ? 'pos' : 'neg'}`}>{signedPct(r.change_percent)}</span>
+              <span className="r"><Spark data={r.spark || []} up={(r.change_percent ?? 0) >= 0} /></span>
+            </div>
+          ))}
+      </div>
+
+      {/* Earnings & News */}
+      <div className="anp-card">
+        <div className="anp-head">
+          <h3>Earnings &amp; News</h3>
+          <div className="anp-tabs">
+            <button className={tab(ev === 'news')} onClick={() => setEv('news')}>Latest News</button>
+            <button className={tab(ev === 'earnings')} onClick={() => setEv('earnings')}>Earnings</button>
+          </div>
+        </div>
+        {ev === 'news' ? (
+          news.loading && !news.data
+            ? <div className="anp-empty">Loading…</div>
+            : articles.map((a, i) => (
+              <a key={a.id || i} className="anp-news" href={a.url || undefined}
+                target={a.url ? '_blank' : undefined} rel="noopener noreferrer"
+                onClick={(e) => { if (!a.url) e.preventDefault(); }}>
+                <Dot sym={(a.symbols?.[0] || a.provider || '?').toString()} />
+                <div className="anp-news-b">
+                  <div className="anp-news-h">{a.headline}</div>
+                  <div className="anp-news-m">{(a.symbols?.[0] || a.provider)} · {a.time_label}</div>
+                </div>
+                <span className={`ets-badge ${sentTone(a.sentiment)}`}>{sentWord(a.sentiment)}</span>
+              </a>
+            ))
+        ) : (
+          upcoming.loading && !upcoming.data
+            ? <div className="anp-empty">Loading…</div>
+            : earningsRows.length
+              ? earningsRows.map((r) => (
+                <button key={r.symbol} className="anp-news anp-click" onClick={() => onPick(r.symbol)}>
+                  <Dot sym={r.symbol} />
+                  <div className="anp-news-b">
+                    <div className="anp-news-h">{r.name || r.symbol}</div>
+                    <div className="anp-news-m">{r.symbol} · {r.label || r.report_date || r.date}</div>
+                  </div>
+                  <span className="ets-badge flat">{r.timing || r.reporting_time || 'Earnings'}</span>
+                </button>
+              ))
+              : <div className="anp-empty">No upcoming earnings in the window.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SearchScreen({
-  draft, onDraft, onAnalyse, horizon, onHorizon, session, readOnly,
+  draft, onDraft, onAnalyse, horizon, onHorizon, session, readOnly, ctx,
 }: {
   draft: string; onDraft: (v: string) => void; onAnalyse: (s: string) => void;
   horizon: Horizon; onHorizon: (h: Horizon) => void; session?: string;
-  readOnly?: boolean;
+  readOnly?: boolean; ctx: PageContext;
 }) {
   // Real data for the floating cards: this week's earnings count and a market
   // sentiment read from how many indices are up right now.
@@ -339,6 +498,8 @@ function SearchScreen({
         <div className="anh-stat"><span className="anh-sic amber"><Zap size={18} /></span>
           <div><b>Live</b><span>Prices &amp; Flow</span></div></div>
       </div>
+
+      <LandingPanels ctx={ctx} onPick={(s) => { onDraft(s); if (!readOnly) onAnalyse(s); }} />
     </div>
   );
 }

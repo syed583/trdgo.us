@@ -712,3 +712,41 @@
   .anh-right { display: none; }
   .anh-stats { grid-template-columns: 1fr 1fr; }
 }
+
+/* ===== Analysis landing: data panels ===================================== */
+.anp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 16px; }
+.anp-card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 16px 16px 10px; }
+.anp-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.anp-head h3 { margin: 0; font-size: 16px; font-weight: 700; color: var(--text); }
+.anp-tabs { display: inline-flex; gap: 3px; background: var(--panel-2, rgba(128,128,128,.08)); border: 1px solid var(--border); border-radius: 9px; padding: 3px; }
+.anp-tab { border: none; background: none; cursor: pointer; font-size: 11.5px; font-weight: 600; color: var(--text-mute); padding: 5px 9px; border-radius: 6px; }
+.anp-tab.on { background: var(--accent); color: var(--accent-contrast, #fff); }
+
+.anp-trow { display: grid; grid-template-columns: 1.4fr .9fr .9fr .9fr; align-items: center; gap: 8px; padding: 8px 4px; font-size: 13px; border-bottom: 1px solid var(--border); width: 100%; text-align: left; background: none; }
+.anp-trow:last-child { border-bottom: none; }
+.anp-thead { color: var(--text-mute); font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+.anp-trow .r { text-align: right; justify-self: end; font-variant-numeric: tabular-nums; }
+.anp-trow .pos { color: var(--signal-up, #22a06b); } .anp-trow .neg { color: var(--signal-down, #e5556b); }
+.anp-mute { color: var(--text-mute); }
+.anp-click { border: none; cursor: pointer; }
+.anp-click:hover { background: var(--panel-2, rgba(128,128,128,.06)); }
+.anp-sym { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: var(--text); }
+.anp-dot { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; color: #fff; font-size: 9px; font-weight: 700; flex: 0 0 auto; }
+.anp-empty { padding: 20px 4px; color: var(--text-mute); font-size: 13px; text-align: center; }
+
+.anp-news { display: flex; align-items: flex-start; gap: 10px; padding: 10px 4px; border-bottom: 1px solid var(--border); text-decoration: none; width: 100%; text-align: left; background: none; border-left: 0; border-right: 0; border-top: 0; cursor: pointer; }
+.anp-news:last-child { border-bottom: none; }
+.anp-news:hover { background: var(--panel-2, rgba(128,128,128,.05)); }
+.anp-news-b { flex: 1; min-width: 0; }
+.anp-news-h { font-size: 13px; color: var(--text); line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.anp-news-m { font-size: 11px; color: var(--text-mute); margin-top: 3px; }
+
+/* sentiment / timing badges (self-contained) */
+.ets-badge { font-size: 10.5px; font-weight: 700; padding: 3px 8px; border-radius: 999px; white-space: nowrap; flex: 0 0 auto; }
+.ets-badge.buy { color: var(--signal-up, #22a06b); background: color-mix(in srgb, var(--signal-up, #22a06b) 14%, transparent); }
+.ets-badge.sell { color: var(--signal-down, #e5556b); background: color-mix(in srgb, var(--signal-down, #e5556b) 14%, transparent); }
+.ets-badge.flat { color: var(--text-mute); background: var(--panel-2, rgba(128,128,128,.12)); }
+
+@media (max-width: 1100px) { .anp-grid { grid-template-columns: 1fr; } }
+
+.anp-trow.anp-m3 { grid-template-columns: 1.6fr 1fr 1fr; }
