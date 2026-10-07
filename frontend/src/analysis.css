@@ -806,3 +806,6 @@
 .anh-sic.amber { background: #fffbeb; color: #f59e0b; }
 
 .anp-logo { width: 24px; height: 24px; border-radius: 6px; object-fit: contain; background: #f1f5f9; padding: 2px; box-sizing: border-box; flex: 0 0 auto; }
+
+.anh-chip-try { display: inline-flex; align-items: center; gap: 6px; }
+.anh-try-logo { width: 16px; height: 16px; border-radius: 4px; object-fit: contain; background: #fff; padding: 1px; box-sizing: border-box; }

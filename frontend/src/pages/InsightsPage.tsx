@@ -268,6 +268,18 @@ const sentWord = (s: string) =>
 // Real company logos by ticker (parqet logo CDN). Falls back to a coloured
 // monogram when it is not a ticker (e.g. "Macro") or the image fails to load,
 // so the panels never show a broken image.
+// A bare logo image (ticker) that simply hides itself if it fails to load --
+// for inline use like the Try chips.
+function TickerLogo({ sym, className }: { sym: string; className?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return (
+    <img className={className} alt="" loading="lazy"
+      src={`https://assets.parqet.com/logos/symbol/${encodeURIComponent(sym.toUpperCase())}?format=png&size=48`}
+      onError={() => setFailed(true)} />
+  );
+}
+
 function Dot({ sym }: { sym: string }) {
   const s = (sym || '?').toUpperCase();
   const [failed, setFailed] = useState(false);
@@ -488,7 +500,9 @@ function SearchScreen({
               <span>Try:</span>
               {SUGGESTED.map((s) => (
                 <button key={s} className="anh-chip-try"
-                  onClick={() => { onDraft(s); onAnalyse(s); }}>{s}</button>
+                  onClick={() => { onDraft(s); onAnalyse(s); }}>
+                  <TickerLogo sym={s} className="anh-try-logo" /> {s}
+                </button>
               ))}
             </div>
           )}
