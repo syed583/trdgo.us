@@ -96,18 +96,51 @@ def _estimate_bias(symbol: str) -> tuple[Optional[float], Optional[float]]:
             if up is not None and dn is not None and (up + dn):
                 rev = (up - dn) / (up + dn)
                 eps_bias = rev if eps_bias is None else max(-1.0, min(1.0, (eps_bias + rev) / 2))
+
+        # Fallback when UW has no usable forward EPS estimate (e.g. flat 0.0
+        # estimates, or no fiscal-year rows): use the company's own most recent
+        # EPS surprise from Finnhub so the EPS parameter is not blank.
+        if eps_bias is None:
+            try:
+                import finnhub_service as fh
+                ce = fh.company_earnings(symbol)
+                sp = _f((ce or {}).get("surprisePercent")) if ce else None
+                if sp is None and ce:
+                    act, est = _f(ce.get("actual")), _f(ce.get("estimate"))
+                    if act is not None and est not in (None, 0):
+                        sp = (act - est) / abs(est) * 100.0
+                if sp is not None:
+                    eps_bias = max(-1.0, min(1.0, sp / 10.0))
+            except Exception:  # noqa: BLE001
+                pass
         return eps_bias, rev_bias
     except Exception:  # noqa: BLE001
         return None, None
 
 
+def _reco_lean(reco: Optional[dict]) -> Optional[float]:
+    """Analyst-recommendation consensus -> a -1..+1 lean."""
+    if not reco:
+        return None
+    sb = _f(reco.get("strongBuy")) or 0.0
+    b = _f(reco.get("buy")) or 0.0
+    h = _f(reco.get("hold")) or 0.0
+    s = _f(reco.get("sell")) or 0.0
+    ss = _f(reco.get("strongSell")) or 0.0
+    total = sb + b + h + s + ss
+    if total <= 0:
+        return None
+    return max(-1.0, min(1.0, (sb + 0.5 * b - 0.5 * s - ss) / total))
+
+
 def _peer_readthrough(symbol: str) -> Optional[float]:
     """
-    A read-through from peers that have already reported this season: the average
-    EPS surprise (beat/miss) of this name's peers whose last quarter landed in the
-    past ~75 days. Peers beating read as a mild sector tailwind into the report.
-    Peers and surprises come from Finnhub (free plan); None when no peer reported
-    recently (or Finnhub has no peer list for this name).
+    A read-through from this name's peers (Finnhub). Primary signal: the EPS
+    surprise (beat/miss) of peers that reported in the last ~75 days -- the true
+    read-through into this report. When no peer has reported yet this season
+    (common early in a season), fall back to the peers' analyst-recommendation
+    consensus so the parameter still reflects peer-group sentiment instead of
+    going blank. None only when Finnhub has no usable peer data at all.
     """
     try:
         import finnhub_service as fh
@@ -120,32 +153,38 @@ def _peer_readthrough(symbol: str) -> Optional[float]:
             return None
         today = date.today()
 
-        def _lean(p: str) -> Optional[float]:
+        def _one(p: str) -> tuple[Optional[float], Optional[float]]:
+            """(recent-surprise lean, recommendation lean) for one peer."""
+            surprise = None
             er = fh.company_earnings(p)
-            if not er:
-                return None
-            try:
-                age = (today - date.fromisoformat(er.get("period"))).days
-            except Exception:  # noqa: BLE001
-                return None
-            if age < 0 or age > 75:          # only recent reporters read through
-                return None
-            sp = _f(er.get("surprisePercent"))
-            if sp is None:
-                act, est = _f(er.get("actual")), _f(er.get("estimate"))
-                if act is not None and est not in (None, 0):
-                    sp = (act - est) / abs(est) * 100.0
-            if sp is None:
-                return None
-            return max(-1.0, min(1.0, sp / 10.0))   # +-10% surprise ~ full
+            if er:
+                try:
+                    age = (today - date.fromisoformat(er.get("period"))).days
+                except Exception:  # noqa: BLE001
+                    age = None
+                if age is not None and 0 <= age <= 75:
+                    sp = _f(er.get("surprisePercent"))
+                    if sp is None:
+                        act, est = _f(er.get("actual")), _f(er.get("estimate"))
+                        if act is not None and est not in (None, 0):
+                            sp = (act - est) / abs(est) * 100.0
+                    if sp is not None:
+                        surprise = max(-1.0, min(1.0, sp / 10.0))  # +-10% ~ full
+            return surprise, _reco_lean(fh.recommendation(p))
 
-        # Fetch the peers' earnings at once -- one slow peer no longer stalls the
-        # whole read-through (these were the dominant cost on a cold build).
         with ThreadPoolExecutor(max_workers=len(peers)) as pool:
-            leans = [v for v in pool.map(_lean, peers) if v is not None]
-        if not leans:
-            return None
-        return max(-1.0, min(1.0, sum(leans) / len(leans)))
+            rows = list(pool.map(_one, peers))
+        surprises = [s for s, _ in rows if s is not None]
+        recos = [r for _, r in rows if r is not None]
+
+        if surprises:
+            base = sum(surprises) / len(surprises)
+            if recos:                                   # fresh results + sentiment
+                base = 0.7 * base + 0.3 * (sum(recos) / len(recos))
+            return max(-1.0, min(1.0, base))
+        if recos:                                       # no recent reporter yet
+            return max(-1.0, min(1.0, (sum(recos) / len(recos)) * 0.6))
+        return None
     except Exception:  # noqa: BLE001
         return None
 
@@ -388,9 +427,10 @@ def get_analysis(symbol: str, profile: str = "default") -> dict:
                   detail="Trade side unknown; use as confirmation only."),
         eng.Param("peer_readthrough", "Peer Read-through", 8,
                   (_peer := _peer_readthrough(symbol)),
-                  detail="Average EPS surprise of peers that reported recently (Finnhub).",
+                  detail="Peers' recent earnings beats/misses, or peer analyst "
+                         "sentiment when none have reported yet (Finnhub).",
                   unavailable_reason="" if _peer is not None
-                  else "No peer reported in the last quarter (or no peer list)."),
+                  else "No Finnhub peer data for this name."),
         eng.Param("short_insider", "Short Interest + Insider", 6,
                   (_short_insider := _short_insider_bias(symbol, s("insider_activity"))),
                   detail="Squeeze potential (short interest) and insider open-market activity.",
