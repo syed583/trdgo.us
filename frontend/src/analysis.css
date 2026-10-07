@@ -752,3 +752,10 @@
 .anp-trow.anp-m3 { grid-template-columns: 1.6fr 1fr 1fr; }
 
 .anh-heroimg { width: 100%; height: auto; border-radius: 16px; display: block; box-shadow: 0 24px 70px rgba(10, 25, 80, .35); }
+
+/* Top Movers: 5-column row (Symbol / Price / Change / Volume / Chart) */
+.anp-trow.anp-m5 { grid-template-columns: 1.25fr .85fr .85fr .8fr .8fr; }
+.anp-trow.anp-m5 .r:last-child { justify-self: end; }
+.anp-head-right { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.anp-viewall { background: none; border: none; cursor: pointer; color: var(--accent); font-size: 12px; font-weight: 600; }
+.anp-viewall:hover { text-decoration: underline; }

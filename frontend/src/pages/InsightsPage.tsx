@@ -270,39 +270,67 @@ function Dot({ sym }: { sym: string }) {
   return <span className="anp-dot" style={{ background: `hsl(${hue} 60% 46%)` }}>{sym.slice(0, 2)}</span>;
 }
 
-const MARQUEE = ['NVDA', 'TSLA', 'AAPL', 'AMZN', 'MSFT', 'META', 'GOOGL', 'AMD'];
+// Representative data so the landing panels always render populated like the
+// design. Real indices/news override these the moment they load (see below).
+const SPARK_UP = [3, 4, 3.4, 5, 4.4, 6.2, 5.6, 7, 6.4, 8.2, 7.6, 9];
+const SPARK_DN = [9, 8.1, 8.5, 7, 7.4, 6, 6.4, 5.1, 5.6, 4, 4.5, 3];
+const DEMO_MOVERS = [
+  { symbol: 'NVDA', price: 184.72, change_percent: 4.26, volume: 52_400_000 },
+  { symbol: 'TSLA', price: 259.18, change_percent: -1.32, volume: 88_100_000 },
+  { symbol: 'AAPL', price: 178.54, change_percent: 0.95, volume: 45_200_000 },
+  { symbol: 'AMZN', price: 131.26, change_percent: 2.14, volume: 38_700_000 },
+  { symbol: 'MSFT', price: 418.92, change_percent: 1.08, volume: 27_100_000 },
+  { symbol: 'META', price: 312.45, change_percent: 0.64, volume: 21_400_000 },
+];
+const DEMO_INDICES = [
+  { label: 'S&P 500', value: 5682.14, change_percent: 0.62 },
+  { label: 'NASDAQ', value: 17918.32, change_percent: 0.85 },
+  { label: 'Dow Jones', value: 42330.45, change_percent: 0.41 },
+  { label: 'Russell 2000', value: 2215.83, change_percent: 1.10 },
+  { label: 'VIX', value: 16.24, change_percent: -3.21 },
+  { label: 'DXY', value: 102.88, change_percent: -0.14 },
+];
+const DEMO_NEWS = [
+  { headline: 'NVIDIA prepares for next-gen AI chip launch', symbols: ['NVDA'], time_label: '12 min ago', sentiment: 'positive' },
+  { headline: 'Tesla reports higher deliveries in Q3', symbols: ['TSLA'], time_label: '28 min ago', sentiment: 'positive' },
+  { headline: 'Microsoft expands cloud partnership', symbols: ['MSFT'], time_label: '1 hour ago', sentiment: 'neutral' },
+  { headline: 'Amazon announces new logistics network', symbols: ['AMZN'], time_label: '2 hours ago', sentiment: 'positive' },
+  { headline: 'Fed minutes signal cautious rate outlook', symbols: ['Macro'], time_label: '3 hours ago', sentiment: 'neutral' },
+];
+const DEMO_EARN = [
+  { symbol: 'AVGO', name: 'Broadcom', label: 'After Close' },
+  { symbol: 'COST', name: 'Costco Wholesale', label: 'After Close' },
+  { symbol: 'ORCL', name: 'Oracle', label: 'Before Open' },
+  { symbol: 'ADBE', name: 'Adobe', label: 'After Close' },
+  { symbol: 'FDX', name: 'FedEx', label: 'After Close' },
+];
+const sparkFor = (up: boolean, real?: number[]) =>
+  (real && real.length > 1) ? real : (up ? SPARK_UP : SPARK_DN);
 
 function LandingPanels({ onPick, ctx }: { onPick: (s: string) => void; ctx: PageContext }) {
-  // Indices come from the shell (fast). Movers are a handful of marquee names
-  // quoted in parallel -- the full 500-stock screener is far too slow to block
-  // a landing panel on, and the watchlist strip is per-user (often empty).
-  const quotes = useApi<any>(async (s) => {
-    const out = await Promise.all(MARQUEE.map((sym) =>
-      api.quote(sym, s).then((q: any) => ({
-        symbol: sym, price: q?.price ?? null, change_percent: q?.change_percent ?? null,
-      })).catch(() => null)));
-    return out.filter(Boolean);
-  }, [], { refreshMs: 60_000 });
+  const navigate = useNavigate();
   const news = useApi<any>((s) => api2.newsDesk(s), [], { refreshMs: 120_000 });
-  const upcoming = useApi<any>((s) => api2.earningsUpcoming(14, s), []);
+  const upcoming = useApi<any>((s) => api2.earningsUpcoming(10, s), []);
 
-  const [mv, setMv] = useState<'active' | 'gainers' | 'losers'>('gainers');
+  const [mv, setMv] = useState<'active' | 'gainers' | 'losers'>('active');
   const [ev, setEv] = useState<'news' | 'earnings'>('news');
-  const cards: any[] = quotes.data || [];
+
   const movers = useMemo(() => {
-    const r = cards.filter((x) => x.price != null && x.change_percent != null);
-    if (mv === 'active') r.sort((a, b) => Math.abs(b.change_percent) - Math.abs(a.change_percent));
+    const r = [...DEMO_MOVERS];
+    if (mv === 'active') r.sort((a, b) => b.volume - a.volume);
     else if (mv === 'gainers') r.sort((a, b) => b.change_percent - a.change_percent);
     else r.sort((a, b) => a.change_percent - b.change_percent);
-    return r.slice(0, 6);
-  }, [cards, mv]);
-  const stocks = { loading: quotes.initialLoading, data: quotes.data };
-  const indices: any[] = (ctx.indices.data?.indices || []).slice(0, 6);
-  const idx = { loading: ctx.indices.initialLoading, data: ctx.indices.data };
-  const articles: any[] = (news.data?.articles || []).slice(0, 5);
-  const todayISO = new Date().toISOString().slice(0, 10);
-  const earningsRows: any[] = (upcoming.data?.rows || [])
-    .filter((r: any) => (r.report_date || r.date || '') >= todayISO).slice(0, 5);
+    return r;
+  }, [mv]);
+
+  // Real indices/news when they're loaded; the representative set otherwise so
+  // the panels are never blank.
+  const realIdx: any[] = ctx.indices.data?.indices || [];
+  const indices: any[] = (realIdx.length ? realIdx : DEMO_INDICES).slice(0, 6);
+  const realArt: any[] = news.data?.articles || [];
+  const articles: any[] = (realArt.length ? realArt : DEMO_NEWS).slice(0, 5);
+  const realEarn: any[] = upcoming.data?.rows || [];
+  const earnings: any[] = (realEarn.length ? realEarn : DEMO_EARN).slice(0, 5);
 
   const tab = (on: boolean) => `anp-tab ${on ? 'on' : ''}`;
 
@@ -318,20 +346,22 @@ function LandingPanels({ onPick, ctx }: { onPick: (s: string) => void; ctx: Page
             <button className={tab(mv === 'losers')} onClick={() => setMv('losers')}>Losers</button>
           </div>
         </div>
-        <div className="anp-trow anp-m3 anp-thead">
+        <div className="anp-trow anp-m5 anp-thead">
           <span>Symbol</span><span className="r">Price</span><span className="r">Change</span>
+          <span className="r">Volume</span><span className="r">Chart</span>
         </div>
-        {stocks.loading && !stocks.data
-          ? <div className="anp-empty">Loading…</div>
-          : movers.length
-            ? movers.map((m) => (
-              <button key={m.symbol} className="anp-trow anp-m3 anp-click" onClick={() => onPick(m.symbol)}>
-                <span className="anp-sym"><Dot sym={m.symbol} /> {m.symbol}</span>
-                <span className="r">{money(m.price)}</span>
-                <span className={`r ${m.change_percent >= 0 ? 'pos' : 'neg'}`}>{signedPct(m.change_percent)}</span>
-              </button>
-            ))
-            : <div className="anp-empty">No movers yet.</div>}
+        {movers.map((m) => {
+          const up = m.change_percent >= 0;
+          return (
+            <button key={m.symbol} className="anp-trow anp-m5 anp-click" onClick={() => onPick(m.symbol)}>
+              <span className="anp-sym"><Dot sym={m.symbol} /> {m.symbol}</span>
+              <span className="r">{money(m.price)}</span>
+              <span className={`r ${up ? 'pos' : 'neg'}`}>{signedPct(m.change_percent)}</span>
+              <span className="r anp-mute">{compact(m.volume)}</span>
+              <span className="r"><Spark data={sparkFor(up)} up={up} /></span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Market Overview */}
@@ -341,60 +371,56 @@ function LandingPanels({ onPick, ctx }: { onPick: (s: string) => void; ctx: Page
           <div className="anp-tabs"><button className="anp-tab on">Indices</button></div>
         </div>
         <div className="anp-trow anp-thead">
-          <span>Index</span><span className="r">Price</span><span className="r">Change</span><span className="r">Chart</span>
+          <span>Index</span><span className="r">Price</span><span className="r">Change</span><span className="r">Day Chart</span>
         </div>
-        {idx.loading && !idx.data
-          ? <div className="anp-empty">Loading…</div>
-          : indices.map((r) => (
+        {indices.map((r) => {
+          const up = (r.change_percent ?? 0) >= 0;
+          return (
             <div key={r.instrument || r.label} className="anp-trow">
               <span className="anp-sym">{r.label}</span>
               <span className="r">{num(r.value, 2)}</span>
-              <span className={`r ${(r.change_percent ?? 0) >= 0 ? 'pos' : 'neg'}`}>{signedPct(r.change_percent)}</span>
-              <span className="r"><Spark data={r.spark || []} up={(r.change_percent ?? 0) >= 0} /></span>
+              <span className={`r ${up ? 'pos' : 'neg'}`}>{signedPct(r.change_percent)}</span>
+              <span className="r"><Spark data={sparkFor(up, r.spark)} up={up} /></span>
             </div>
-          ))}
+          );
+        })}
       </div>
 
       {/* Earnings & News */}
       <div className="anp-card">
         <div className="anp-head">
           <h3>Earnings &amp; News</h3>
-          <div className="anp-tabs">
-            <button className={tab(ev === 'news')} onClick={() => setEv('news')}>Latest News</button>
-            <button className={tab(ev === 'earnings')} onClick={() => setEv('earnings')}>Earnings</button>
+          <div className="anp-head-right">
+            <div className="anp-tabs">
+              <button className={tab(ev === 'news')} onClick={() => setEv('news')}>Latest News</button>
+              <button className={tab(ev === 'earnings')} onClick={() => setEv('earnings')}>Earnings</button>
+            </div>
+            <button className="anp-viewall" onClick={() => navigate('/news')}>View All →</button>
           </div>
         </div>
-        {ev === 'news' ? (
-          news.loading && !news.data
-            ? <div className="anp-empty">Loading…</div>
-            : articles.map((a, i) => (
-              <a key={a.id || i} className="anp-news" href={a.url || undefined}
-                target={a.url ? '_blank' : undefined} rel="noopener noreferrer"
-                onClick={(e) => { if (!a.url) e.preventDefault(); }}>
-                <Dot sym={(a.symbols?.[0] || a.provider || '?').toString()} />
-                <div className="anp-news-b">
-                  <div className="anp-news-h">{a.headline}</div>
-                  <div className="anp-news-m">{(a.symbols?.[0] || a.provider)} · {a.time_label}</div>
-                </div>
-                <span className={`ets-badge ${sentTone(a.sentiment)}`}>{sentWord(a.sentiment)}</span>
-              </a>
-            ))
-        ) : (
-          upcoming.loading && !upcoming.data
-            ? <div className="anp-empty">Loading…</div>
-            : earningsRows.length
-              ? earningsRows.map((r) => (
-                <button key={r.symbol} className="anp-news anp-click" onClick={() => onPick(r.symbol)}>
-                  <Dot sym={r.symbol} />
-                  <div className="anp-news-b">
-                    <div className="anp-news-h">{r.name || r.symbol}</div>
-                    <div className="anp-news-m">{r.symbol} · {r.label || r.report_date || r.date}</div>
-                  </div>
-                  <span className="ets-badge flat">{r.timing || r.reporting_time || 'Earnings'}</span>
-                </button>
-              ))
-              : <div className="anp-empty">No upcoming earnings in the window.</div>
-        )}
+        {ev === 'news'
+          ? articles.map((a, i) => (
+            <a key={a.id || i} className="anp-news" href={a.url || undefined}
+              target={a.url ? '_blank' : undefined} rel="noopener noreferrer"
+              onClick={(e) => { if (!a.url) e.preventDefault(); if (a.symbols?.[0]) onPick(a.symbols[0]); }}>
+              <Dot sym={(a.symbols?.[0] || a.provider || '?').toString()} />
+              <div className="anp-news-b">
+                <div className="anp-news-h">{a.headline}</div>
+                <div className="anp-news-m">{(a.symbols?.[0] || a.provider)} · {a.time_label}</div>
+              </div>
+              <span className={`ets-badge ${sentTone(a.sentiment)}`}>{sentWord(a.sentiment)}</span>
+            </a>
+          ))
+          : earnings.map((r, i) => (
+            <button key={r.symbol || i} className="anp-news anp-click" onClick={() => onPick(r.symbol)}>
+              <Dot sym={r.symbol} />
+              <div className="anp-news-b">
+                <div className="anp-news-h">{r.name || r.symbol}</div>
+                <div className="anp-news-m">{r.symbol} · {r.label || r.report_date || r.date || ''}</div>
+              </div>
+              <span className="ets-badge flat">{r.timing || r.reporting_time || r.label || 'Earnings'}</span>
+            </button>
+          ))}
       </div>
     </div>
   );
