@@ -418,19 +418,42 @@ class ApiError extends Error {
 // "backend unreachable" message.
 export const AUTH_ERROR = 'SESSION_EXPIRED';
 
-async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      headers: { Accept: 'application/json' },
-      signal,
-    });
-  } catch (err) {
-    if ((err as Error).name === 'AbortError') throw err;
-    throw new ApiError(
-      `Cannot reach the Trdgo.us backend at ${API_BASE_URL}. Is it running?`,
-    );
+// A hard ceiling so a hung/slow backend eventually fails instead of spinning
+// forever (the far-region DB can stall). Generous enough for a cold build.
+const REQUEST_TIMEOUT_MS = 25_000;
+
+// fetch with a deadline that also honours the caller's AbortSignal. Normalises
+// failures: a timeout and an unreachable backend become ApiError; the caller
+// cancelling (dep change / unmount) re-throws the AbortError so useApi ignores it.
+async function fetchWithTimeout(
+  url: string, init: RequestInit, signal?: AbortSignal,
+): Promise<Response> {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, REQUEST_TIMEOUT_MS);
+  const onAbort = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener('abort', onAbort, { once: true });
   }
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (timedOut) {
+      throw new ApiError('The request timed out — the server may be busy. Please try again.');
+    }
+    if (signal?.aborted || (err as Error).name === 'AbortError') throw err;
+    throw new ApiError(`Cannot reach the Trdgo.us backend at ${API_BASE_URL}. Is it running?`);
+  } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener('abort', onAbort);
+  }
+}
+
+async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const response = await fetchWithTimeout(
+    `${API_BASE_URL}${path}`, { headers: { Accept: 'application/json' } }, signal,
+  );
 
   if (!response.ok) {
     const body = await response.json().catch(() => null);
@@ -507,7 +530,7 @@ async function send<T>(
   method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   body?: unknown,
 ): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, {
     method,
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),

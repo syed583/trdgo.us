@@ -11,6 +11,8 @@ import {
 } from './demo';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
+import ErrorBoundary from './components/ErrorBoundary';
+import { Loading } from './pages/shared';
 const AssistantWidget = lazy(() => import('./components/AssistantWidget'));
 const EarningsPage = lazy(() => import('./pages/EarningsPage'));
 const OptionsFlowPage = lazy(() => import('./pages/OptionsFlowPage'));
@@ -250,8 +252,11 @@ function Shell() {
           );
         })()}
 
-        {/* Each page is its own download, fetched the first time it opens. */}
-        <Suspense fallback={<div className="page" />}>
+        {/* Each page is its own download, fetched the first time it opens.
+            The ErrorBoundary (keyed by route so navigating clears a crash)
+            keeps a render error on one page from blanking the whole app. */}
+        <ErrorBoundary key={location.pathname}>
+        <Suspense fallback={<div className="page"><Loading /></div>}>
         <Routes>
           <Route path="/" element={<Navigate to={`${isAdmin ? '/admin/users' : '/dashboard'}${location.search}`} replace />} />
           <Route path="/dashboard" element={<OverviewPage ctx={ctx} />} />
@@ -329,6 +334,7 @@ function Shell() {
           <Route path="*" element={<NotFound />} />
         </Routes>
         </Suspense>
+        </ErrorBoundary>
       </div>
 
       {/* The assistant spends the Claude key, so only for signed-in accounts. */}
