@@ -1,42 +1,12 @@
 import { useState } from 'react';
 import { Loader2, Phone, Eye, EyeOff, PlayCircle, Lock } from 'lucide-react';
 import { api2 } from '../api/client';
+import CountrySelect from './CountrySelect';
 
 // The Log In / Sign Up card (phone-OTP). `view` is controlled by the parent so
 // the landing hero's "Join Now" can jump straight to Sign Up. All other field
 // state lives here. No Google login; captcha to be added later.
 export type AuthView = 'login' | 'signup' | 'signupVerify' | 'forgot' | 'forgotVerify';
-
-const COUNTRIES: { flag: string; dial: string; name: string }[] = [
-  { flag: '🇦🇪', dial: '971', name: 'UAE' },
-  { flag: '🇮🇳', dial: '91', name: 'India' },
-  { flag: '🇺🇸', dial: '1', name: 'USA / Canada' },
-  { flag: '🇬🇧', dial: '44', name: 'UK' },
-  { flag: '🇸🇦', dial: '966', name: 'Saudi Arabia' },
-  { flag: '🇶🇦', dial: '974', name: 'Qatar' },
-  { flag: '🇰🇼', dial: '965', name: 'Kuwait' },
-  { flag: '🇧🇭', dial: '973', name: 'Bahrain' },
-  { flag: '🇴🇲', dial: '968', name: 'Oman' },
-  { flag: '🇵🇰', dial: '92', name: 'Pakistan' },
-  { flag: '🇧🇩', dial: '880', name: 'Bangladesh' },
-  { flag: '🇱🇰', dial: '94', name: 'Sri Lanka' },
-  { flag: '🇳🇵', dial: '977', name: 'Nepal' },
-  { flag: '🇸🇬', dial: '65', name: 'Singapore' },
-  { flag: '🇲🇾', dial: '60', name: 'Malaysia' },
-  { flag: '🇦🇺', dial: '61', name: 'Australia' },
-  { flag: '🇩🇪', dial: '49', name: 'Germany' },
-  { flag: '🇫🇷', dial: '33', name: 'France' },
-  { flag: '🇪🇸', dial: '34', name: 'Spain' },
-  { flag: '🇮🇹', dial: '39', name: 'Italy' },
-  { flag: '🇳🇱', dial: '31', name: 'Netherlands' },
-  { flag: '🇿🇦', dial: '27', name: 'South Africa' },
-  { flag: '🇳🇬', dial: '234', name: 'Nigeria' },
-  { flag: '🇧🇷', dial: '55', name: 'Brazil' },
-  { flag: '🇯🇵', dial: '81', name: 'Japan' },
-  { flag: '🇨🇳', dial: '86', name: 'China' },
-  { flag: '🇹🇷', dial: '90', name: 'Turkey' },
-  { flag: '🇪🇬', dial: '20', name: 'Egypt' },
-];
 
 export default function AuthCard({ view, setView }:
   { view: AuthView; setView: (v: AuthView) => void }) {
@@ -101,17 +71,9 @@ export default function AuthCard({ view, setView }:
   };
   const tryDemo = () => { window.location.href = '/dashboard?demo=1'; };
 
-  const dialSelect = (
-    <select className="lp-dial" value={dial}
-      onChange={(e) => { setDial(e.target.value); setError(''); }} aria-label="Country code">
-      {COUNTRIES.map((c) => (
-        <option key={c.dial + c.name} value={c.dial}>{c.flag} +{c.dial}</option>
-      ))}
-    </select>
-  );
   const phoneRow = (onEnter: () => void) => (
     <div className="lp-phone">
-      {dialSelect}
+      <CountrySelect dial={dial} setDial={(d) => { setDial(d); setError(''); }} />
       <input className="lp-input lp-phone-num" value={phone} inputMode="tel"
         placeholder="Phone number" autoComplete="tel-national"
         onChange={(e) => { setPhone(e.target.value); setError(''); }}

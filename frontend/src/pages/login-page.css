@@ -120,14 +120,46 @@
 
 /* Country code + number */
 .lp-phone { display: flex; gap: 8px; }
-.lp-dial {
-  flex: 0 0 auto; width: 108px; box-sizing: border-box;
-  padding: 12px 8px; border-radius: 11px; cursor: pointer;
+.lp-phone-num { flex: 1 1 auto; min-width: 0; }
+
+/* Searchable country dropdown */
+.cs { position: relative; flex: 0 0 auto; }
+.cs-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  width: 112px; box-sizing: border-box;
+  padding: 12px 10px; border-radius: 11px; cursor: pointer;
   background: var(--panel-2, #eef1f8); border: 1px solid var(--border);
   color: var(--text); font-size: 14px;
 }
-.lp-dial:focus-visible { outline: none; box-shadow: var(--ring); border-color: var(--accent); }
-.lp-phone-num { flex: 1 1 auto; min-width: 0; }
+.cs-btn:focus-visible { outline: none; box-shadow: var(--ring); border-color: var(--accent); }
+.cs-flag { font-size: 16px; line-height: 1; }
+.cs-code { font-weight: 600; }
+.cs-chev { margin-left: auto; color: var(--text-mute); flex: 0 0 auto; }
+
+.cs-pop {
+  position: absolute; z-index: 20; top: calc(100% + 6px); left: 0;
+  width: 260px; max-width: 78vw;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: 0 16px 40px rgba(17, 25, 70, .18);
+  overflow: hidden;
+}
+.cs-search {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px; border-bottom: 1px solid var(--border); color: var(--text-mute);
+}
+.cs-search input {
+  flex: 1; background: none; border: none; outline: none;
+  color: var(--text); font-size: 13.5px;
+}
+.cs-list { list-style: none; margin: 0; padding: 4px; max-height: 240px; overflow-y: auto; }
+.cs-list li {
+  display: flex; align-items: center; gap: 9px;
+  padding: 9px 10px; border-radius: 8px; cursor: pointer; font-size: 13.5px;
+}
+.cs-list li:hover, .cs-list li.on { background: var(--panel-2, rgba(128, 128, 128, .1)); }
+.cs-name { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-dial { color: var(--text-mute); font-variant-numeric: tabular-nums; }
+.cs-none { padding: 14px 10px; text-align: center; color: var(--text-mute); font-size: 13px; }
 
 /* Password + eye */
 .lp-pw { position: relative; }
