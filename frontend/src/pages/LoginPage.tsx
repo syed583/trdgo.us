@@ -46,7 +46,7 @@ export default function LoginPage() {
       <header className="ld-nav">
         <div className="ld-logo">
           <span className="ld-logo-mark">▶</span>
-          <span className="ld-logo-word">Trdgo<b>.ai</b></span>
+          <span className="ld-logo-word">Trdgo<b>.us</b></span>
         </div>
         <nav className="ld-nav-links">
           <a href="#knowledge">Knowledge</a>
@@ -59,14 +59,15 @@ export default function LoginPage() {
         <section className="ld-hero">
           <h1 className="ld-hero-h">Trade Smarter With AI-Powered Market Intelligence</h1>
           <p className="ld-hero-p">
-            Trdgo.ai reads your charts, tracks live prices across forex, metals,
-            crypto and equities, and explains what the market is doing in plain
-            language — so you can weigh a setup instead of guessing at it.
+            Trdgo.us reads the US market — scoring earnings setups across 100
+            points, tracking unusual options flow and dark-pool prints, and
+            explaining what stocks are doing in plain language, so you can weigh
+            a trade instead of guessing at it.
           </p>
           <p className="ld-hero-p">
-            Link your MetaTrader account to follow your balance, open positions
-            and running P/L in one place, and keep an eye on the economic
-            calendar that moves them.
+            Follow upcoming earnings, options straddles, insider and
+            institutional moves in one place — with live quotes and the
+            catalysts that move your watchlist.
           </p>
           <button className="ld-cta" onClick={joinNow}>Join Now</button>
           <p className="ld-disclaimer">
