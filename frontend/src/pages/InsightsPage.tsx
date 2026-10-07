@@ -316,19 +316,21 @@ function SearchScreen({
  * mid-word, which is worse than an abbreviation. The long name stays on the
  * node's tooltip and on the results panel, where there is room for it.
  */
+// Boxes are labelled by the scored parameter each source primarily feeds, so
+// the scan mirrors the Category Breakdown rather than raw provider names.
 const SHORT: Record<string, string> = {
-  sec_filings: 'SEC',
-  insider: 'Insiders',
-  institutional: '13F',
-  options_flow: 'Flow',
-  gex: 'GEX',
-  price_action: 'Price',
-  relative_strength: 'RS',
-  macro: 'Macro',
-  iv_greeks: 'IV',
-  volume: 'Volume',
-  news: 'News',
+  options_flow: 'Options Flow',
+  gex: 'Key Levels',
+  volume: 'Volume & P/C',
+  iv_greeks: 'Implied Vol',
+  price_action: 'Price Action',
+  relative_strength: 'EMA / RSI',
+  macro: 'Exp. Move',
+  sec_filings: 'SEC Filings',
   earnings: 'Earnings',
+  insider: 'Insider',
+  institutional: 'Fund 13F',
+  news: 'Unusual Act.',
 };
 
 /**
