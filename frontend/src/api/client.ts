@@ -418,6 +418,10 @@ class ApiError extends Error {
 // "backend unreachable" message.
 export const AUTH_ERROR = 'SESSION_EXPIRED';
 
+// Sentinel for a 5xx/maintenance response, so the shared error UI can show a
+// "service temporarily unavailable" state rather than "backend unreachable".
+export const MAINTENANCE_ERROR = 'SERVICE_UNAVAILABLE';
+
 // A hard ceiling so a hung/slow backend eventually fails instead of spinning
 // forever (the far-region DB can stall). Generous enough for a cold build.
 const REQUEST_TIMEOUT_MS = 25_000;

@@ -34,6 +34,14 @@ function clock(iso: string | null | undefined): string {
 /** The detail for one option contract: summary, analysis, prints, volume, history. */
 export function ContractModal({ occ, onClose }: { occ: string; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('Summary');
+  const modalRef = React.useRef<HTMLDivElement>(null);
+  // Esc closes the dialog, and it takes focus on open (keyboard a11y).
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    modalRef.current?.focus();
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
   const detail = useApi<any>((s) => api2.optionsContract(occ, s), [occ]);
   const d = detail.data;
   const m = d?.meta || {};
@@ -42,8 +50,9 @@ export function ContractModal({ occ, onClose }: { occ: string; onClose: () => vo
   const title = `${m.symbol || ''} $${m.strike ?? ''} ${m.right || ''} ${m.expiry || ''}`;
 
   return (
-    <div className="cm-overlay" onClick={onClose}>
-      <div className="cm-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="cm-overlay" role="presentation" onClick={onClose}>
+      <div className="cm-modal" role="dialog" aria-modal="true" aria-label={title || 'Contract detail'}
+        tabIndex={-1} ref={modalRef} onClick={(e) => e.stopPropagation()}>
         <div className="cm-head">
           <div>
             <div className="cm-title">

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AUTH_ERROR } from '../api/client';
+import { AUTH_ERROR, MAINTENANCE_ERROR } from '../api/client';
 
 export interface AsyncState<T> {
   data: T | null;
@@ -110,7 +110,9 @@ export function useApi<T>(
         // A 401 is not an outage -- the session ended. Flag it so the shared
         // error UI shows a sign-in prompt instead of "backend unreachable".
         const status = (err as { status?: number }).status;
-        setError(status === 401 ? AUTH_ERROR : (err.message || 'Request failed'));
+        setError(status === 401 ? AUTH_ERROR
+          : (status != null && status >= 500) ? MAINTENANCE_ERROR
+            : (err.message || 'Request failed'));
       })
       .finally(() => {
         if (cancelled || !mountedRef.current) return;

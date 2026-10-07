@@ -319,10 +319,18 @@ function ExplainDrawer({ signal, symbol, horizon, onClose }: {
 }) {
   const colour = !signal.available ? DIM
     : signal.points > 0 ? GREEN : signal.points < 0 ? RED : DIM;
+  const drawerRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    drawerRef.current?.focus();
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   return (
-    <div className="dir-overlay" onClick={onClose}>
-      <div className="dir-drawer" onClick={(e) => e.stopPropagation()}>
+    <div className="dir-overlay" role="presentation" onClick={onClose}>
+      <div className="dir-drawer" role="dialog" aria-modal="true" aria-label="Signal detail"
+        tabIndex={-1} ref={drawerRef} onClick={(e) => e.stopPropagation()}>
         <div className="dd-head">
           <div>
             <div className="dd-title">{signal.label}</div>

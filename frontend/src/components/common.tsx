@@ -1,8 +1,8 @@
 import React from 'react';
 import { AlertTriangle, Loader2, PlugZap, WifiOff } from 'lucide-react';
 import type { ProviderStatus } from '../api/client';
-import { AUTH_ERROR } from '../api/client';
-import { AuthRequired } from '../pages/shared';
+import { AUTH_ERROR, MAINTENANCE_ERROR } from '../api/client';
+import { AuthRequired, MaintenanceState } from '../pages/shared';
 
 /* ------------------------------------------------------------------ panel */
 
@@ -95,6 +95,10 @@ export function StateBlock({
   // for a dead API server when the feed was simply unconfigured.
   if (error === AUTH_ERROR) {
     return <AuthRequired />;
+  }
+
+  if (error === MAINTENANCE_ERROR) {
+    return <MaintenanceState />;
   }
 
   if (error && !status) {

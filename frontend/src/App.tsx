@@ -119,6 +119,22 @@ function Shell() {
   const params = useParams();
 
   const demo = isDemoMode();
+
+  // Browser connectivity: a global banner so a dropped connection is obvious
+  // and distinct from the backend being down (held/cached data stays on screen).
+  const [online, setOnline] = React.useState(
+    typeof navigator === 'undefined' ? true : navigator.onLine);
+  React.useEffect(() => {
+    const up = () => setOnline(true);
+    const down = () => setOnline(false);
+    window.addEventListener('online', up);
+    window.addEventListener('offline', down);
+    return () => {
+      window.removeEventListener('online', up);
+      window.removeEventListener('offline', down);
+    };
+  }, []);
+
   // The URL is the single source of truth for the active ticker. Read it from
   // the pathname: useParams() cannot see a child route's params from here.
   const symbol = (
@@ -215,6 +231,13 @@ function Shell() {
           isAdmin={isAdmin}
           username={me.data?.username}
         />
+
+        {!online && (
+          <div className="offline-banner" role="status">
+            You’re offline — showing the last loaded data. We’ll reconnect
+            automatically when your connection returns.
+          </div>
+        )}
 
         {readOnly && (
           <div className="readonly-banner">

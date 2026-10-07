@@ -1,7 +1,9 @@
 import React from 'react';
-import { AlertTriangle, Info, KeyRound, LogIn, PlugZap, WifiOff } from 'lucide-react';
+import {
+  AlertTriangle, Info, KeyRound, LogIn, PlugZap, RefreshCw, ServerCog, WifiOff,
+} from 'lucide-react';
 import type { ProviderStatus } from '../api/client';
-import { AUTH_ERROR } from '../api/client';
+import { AUTH_ERROR, MAINTENANCE_ERROR } from '../api/client';
 
 /** A full-page prompt shown when a request came back 401 (session ended). */
 export function AuthRequired() {
@@ -118,13 +120,38 @@ export function Loading({ label = 'Loading live data…' }: { label?: string }) 
   );
 }
 
-export function ErrorState({ error }: { error: string }) {
+/** Shown on a 5xx/maintenance response. */
+export function MaintenanceState({ onRetry }: { onRetry?: () => void }) {
+  return (
+    <div className="state">
+      <ServerCog size={18} />
+      <span className="state-title">Service temporarily unavailable</span>
+      <span style={{ maxWidth: 420 }}>
+        The server is busy or briefly down. This usually clears on its own —
+        try again in a moment.
+      </span>
+      <button className="btn" style={{ marginTop: 10 }}
+        onClick={onRetry || (() => window.location.reload())}>
+        <RefreshCw size={14} /> Retry
+      </button>
+    </div>
+  );
+}
+
+// onRetry lets a page re-run its own fetch; without it, the button reloads the
+// page so there is always a recovery path from an error state.
+export function ErrorState({ error, onRetry }: { error: string; onRetry?: () => void }) {
   if (error === AUTH_ERROR) return <AuthRequired />;
+  if (error === MAINTENANCE_ERROR) return <MaintenanceState onRetry={onRetry} />;
   return (
     <div className="state">
       <WifiOff size={17} />
       <span className="state-title">Backend unreachable</span>
       <span>{error}</span>
+      <button className="btn" style={{ marginTop: 10 }}
+        onClick={onRetry || (() => window.location.reload())}>
+        <RefreshCw size={14} /> Retry
+      </button>
     </div>
   );
 }
