@@ -14,10 +14,11 @@ export default function EarningsOptionsPage({ ctx }: { ctx: PageContext }) {
   const { symbol: pathSym } = useParams();
   const navigate = useNavigate();
   const on = !!pathSym && !demo;
+  const profile = new URLSearchParams(ctx.search).get('profile') || undefined;
 
   const q = useApi<any>(
-    (s) => (on ? api2.earningsOptions(symbol, s) : Promise.resolve(null)),
-    [symbol, demo, pathSym],
+    (s) => (on ? api2.earningsOptions(symbol, profile, s) : Promise.resolve(null)),
+    [symbol, demo, pathSym, profile],
     { refreshMs: on ? 60_000 : undefined, enabled: on },
   );
   const r = q.data;

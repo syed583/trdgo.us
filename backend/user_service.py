@@ -189,6 +189,7 @@ def set_active(username: str, active: bool) -> dict:
     finally:
         db.close()
     _access_invalidate(username)
+    _valid_invalidate(username)
     return {"status": "OK", "username": username, "active": bool(active)}
 
 
@@ -201,7 +202,49 @@ def delete_user(username: str) -> dict:
         db.commit()
     finally:
         db.close()
+    # Drop the cached access/validity so the deleted account's live session stops
+    # being honoured within _ACCESS_TTL instead of lingering until the cookie
+    # expires.
+    _access_invalidate(username)
+    _valid_invalidate(username)
     return {"status": "OK" if deleted else "NOT_FOUND", "username": username}
+
+
+# Session validity (exists + active), cached like access so current_user can
+# reject a deleted/deactivated account's still-signed cookie without a DB hit on
+# every request. Separate from has_full_access, which also requires full_access.
+_valid_cache: dict[str, tuple[float, bool]] = {}
+
+
+def _valid_invalidate(username: str) -> None:
+    with _access_lock:
+        _valid_cache.pop(username, None)
+
+
+def account_active(username: str) -> bool:
+    """True when the account currently exists and is active. 30s cached.
+
+    Fails open on a DB error: a flaky far-region DB must not log everyone out;
+    an invalidation (delete/deactivate) clears the cache so the next check hits
+    the DB and, when it is reachable, returns the real answer."""
+    username = (username or "").strip().lower()
+    if not username:
+        return False
+    with _access_lock:
+        hit = _valid_cache.get(username)
+    if hit and (time.time() - hit[0]) < _ACCESS_TTL:
+        return hit[1]
+    db = SessionLocal()
+    try:
+        user = db.query(AppUser).filter(AppUser.username == username).first()
+        value = bool(user and user.active)
+    except Exception:  # noqa: BLE001
+        return True
+    finally:
+        db.close()
+    with _access_lock:
+        _valid_cache[username] = (time.time(), value)
+    return value
 
 
 def check_credentials(username: str, password: str) -> Optional[dict]:

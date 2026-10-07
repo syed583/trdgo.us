@@ -21,6 +21,7 @@ const EarningsSignalHistoryPage = lazy(() => import('./pages/EarningsSignalHisto
 const EarningsEquityPage = lazy(() => import('./pages/EarningsEquityPage'));
 const EarningsOptionsPage = lazy(() => import('./pages/EarningsOptionsPage'));
 const EarningsTradePage = lazy(() => import('./pages/EarningsTradePage'));
+const MyCallsPage = lazy(() => import('./pages/MyCallsPage'));
 const TradgoCallPage = lazy(() => import('./pages/TradgoCallPage'));
 const VolatilityPage = lazy(() => import('./pages/VolatilityPage'));
 const ModelPerformancePage = lazy(() => import('./pages/ModelPerformancePage'));
@@ -83,7 +84,7 @@ const OPTIONS_ROUTES = [
 
 /** Sections that carry a symbol in the URL. */
 const SYMBOL_SECTIONS =
-  /^\/(earnings|earnings-trade|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)(\/|$)/;
+  /^\/(earnings|earnings-trade|my-calls|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)(\/|$)/;
 
 /**
  * The same sections, capturing the ticker itself.
@@ -95,7 +96,7 @@ const SYMBOL_SECTIONS =
  * ticker card changed the address bar while every panel kept showing NVDA.
  */
 const SYMBOL_IN_PATH =
-  /^\/(?:earnings|earnings-trade|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)\/([A-Za-z0-9.\-]+)/;
+  /^\/(?:earnings|earnings-trade|my-calls|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)\/([A-Za-z0-9.\-]+)/;
 
 export interface PageContext {
   symbol: string;
@@ -286,6 +287,8 @@ function Shell() {
 
           <Route path="/tradgo-call" element={<TradgoCallPage ctx={ctx} />} />
           <Route path="/tradgo-call/:symbol" element={<TradgoCallPage ctx={ctx} />} />
+          <Route path="/my-calls" element={<MyCallsPage ctx={ctx} />} />
+          <Route path="/my-calls/:symbol" element={<MyCallsPage ctx={ctx} />} />
           <Route path="/earnings-trade" element={<EarningsTradePage ctx={ctx} />} />
           <Route path="/earnings-trade/:symbol" element={<EarningsTradePage ctx={ctx} />} />
           <Route path="/earnings-equity" element={<EarningsEquityPage ctx={ctx} />} />

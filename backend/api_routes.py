@@ -1302,32 +1302,38 @@ def signal_history(request: Request, days: int = 10, end: str = "") -> dict:
 
 
 @router.get("/earnings/trade/{symbol}")
-def earnings_trade(symbol: str) -> dict:
-    """Combined Earnings Trade summary (equity + options + calendar + strategy)."""
+def earnings_trade(symbol: str, profile: str = "default") -> dict:
+    """Combined Earnings Trade summary (equity + options + calendar + strategy).
+
+    profile="final" scores on the My Calls "Final Earnings Structure" weights.
+    """
     import earnings_trade_service as ets
 
-    return swr.serve(f"earn:trade:{symbol.upper()}",
-                     lambda: ets.get_summary(symbol),
+    pf = "final" if profile == "final" else "default"
+    return swr.serve(f"earn:trade:{pf}:{symbol.upper()}",
+                     lambda: ets.get_summary(symbol, pf),
                      market.session_ttl(120, 1800))
 
 
 @router.get("/earnings/equity/{symbol}")
-def earnings_equity(symbol: str) -> dict:
+def earnings_equity(symbol: str, profile: str = "default") -> dict:
     """Engine 1: the 100-point Equity Earnings analysis."""
     import earnings_equity_service as eq
 
-    return swr.serve(f"earn:equity:{symbol.upper()}",
-                     lambda: eq.get_analysis(symbol),
+    pf = "final" if profile == "final" else "default"
+    return swr.serve(f"earn:equity:{pf}:{symbol.upper()}",
+                     lambda: eq.get_analysis(symbol, pf),
                      market.session_ttl(120, 1800))
 
 
 @router.get("/earnings/options/{symbol}")
-def earnings_options(symbol: str) -> dict:
+def earnings_options(symbol: str, profile: str = "default") -> dict:
     """Engine 2: the 100-point Options (straddle/strangle) Earnings analysis."""
     import earnings_options_service as op
 
-    return swr.serve(f"earn:options:{symbol.upper()}",
-                     lambda: op.get_analysis(symbol),
+    pf = "final" if profile == "final" else "default"
+    return swr.serve(f"earn:options:{pf}:{symbol.upper()}",
+                     lambda: op.get_analysis(symbol, pf),
                      market.session_ttl(120, 1800))
 
 

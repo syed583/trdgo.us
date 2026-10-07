@@ -65,7 +65,7 @@ export default function TopBar({
   // hide it on those landing pages. The per-symbol analysis view keeps it.
   const _path = useLocation().pathname;
   const hideHeaderSearch = ['/ai-insights', '/earnings-equity', '/earnings-options',
-    '/earnings-trade', '/trade-plan', '/earnings-signals', '/tradgo-call',
+    '/earnings-trade', '/my-calls', '/trade-plan', '/earnings-signals', '/tradgo-call',
     // Market-wide pages are not about a single ticker, so the per-ticker header
     // search doesn't belong on them.
     '/market', '/stocks', '/watchlist', '/market-insiders', '/earnings-calendar',

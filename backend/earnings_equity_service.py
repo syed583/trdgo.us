@@ -72,13 +72,18 @@ def _estimate_bias(symbol: str) -> tuple[Optional[float], Optional[float]]:
                      and r.get("date")), key=lambda r: r.get("date"))
 
         def yoy(field: str) -> Optional[float]:
-            """Forward year-over-year growth of an estimate (seasonality-free)."""
+            """Forward year-over-year growth of an estimate (seasonality-free).
+
+            Uses |a| as the base so a loss-making company whose loss is shrinking
+            (e.g. EPS -1.09 -> -0.48) reads as an improvement (bullish), not as
+            'no data'. Only a zero/missing base is unusable.
+            """
             if len(fy) < 2:
                 return None
             a, b = _f(fy[0].get(field)), _f(fy[1].get(field))
-            if a and b and a > 0:
+            if a is not None and b is not None and a != 0:
                 scale = 0.3 if "eps" in field else 0.2
-                return max(-1.0, min(1.0, ((b - a) / a) / scale))
+                return max(-1.0, min(1.0, ((b - a) / abs(a)) / scale))
             return None
 
         eps_bias = yoy("eps_estimate_average")
@@ -94,6 +99,55 @@ def _estimate_bias(symbol: str) -> tuple[Optional[float], Optional[float]]:
         return eps_bias, rev_bias
     except Exception:  # noqa: BLE001
         return None, None
+
+
+def _peer_readthrough(symbol: str) -> Optional[float]:
+    """
+    A read-through from peers that have already reported this season: the average
+    EPS surprise (beat/miss) of this name's peers whose last quarter landed in the
+    past ~75 days. Peers beating read as a mild sector tailwind into the report.
+    Peers and surprises come from Finnhub (free plan); None when no peer reported
+    recently (or Finnhub has no peer list for this name).
+    """
+    try:
+        import finnhub_service as fh
+        from concurrent.futures import ThreadPoolExecutor
+        from datetime import date
+        if not fh.configured():
+            return None
+        peers = fh.peers(symbol)[:5]
+        if not peers:
+            return None
+        today = date.today()
+
+        def _lean(p: str) -> Optional[float]:
+            er = fh.company_earnings(p)
+            if not er:
+                return None
+            try:
+                age = (today - date.fromisoformat(er.get("period"))).days
+            except Exception:  # noqa: BLE001
+                return None
+            if age < 0 or age > 75:          # only recent reporters read through
+                return None
+            sp = _f(er.get("surprisePercent"))
+            if sp is None:
+                act, est = _f(er.get("actual")), _f(er.get("estimate"))
+                if act is not None and est not in (None, 0):
+                    sp = (act - est) / abs(est) * 100.0
+            if sp is None:
+                return None
+            return max(-1.0, min(1.0, sp / 10.0))   # +-10% surprise ~ full
+
+        # Fetch the peers' earnings at once -- one slow peer no longer stalls the
+        # whole read-through (these were the dominant cost on a cold build).
+        with ThreadPoolExecutor(max_workers=len(peers)) as pool:
+            leans = [v for v in pool.map(_lean, peers) if v is not None]
+        if not leans:
+            return None
+        return max(-1.0, min(1.0, sum(leans) / len(leans)))
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _guidance_bias(symbol: str) -> Optional[float]:
@@ -268,8 +322,29 @@ def _short_insider_bias(symbol: str, insider_bias: Optional[float]) -> Optional[
     return max(-1.0, min(1.0, sum(parts) / len(parts)))
 
 
-def get_analysis(symbol: str) -> dict:
-    """The full equity earnings analysis for one ticker."""
+# "Final Earnings Structure" profile (My Calls): the exact 10-param / 100-pt
+# equity weighting the user specified. Params not listed here are dropped for
+# this profile; labels are overridden to the spec's wording.
+FINAL_EQUITY: dict[str, tuple[str, int]] = {
+    "eps_estimates":       ("EPS Estimates & Revisions", 15),
+    "revenue_estimates":   ("Revenue Estimates & Revisions", 15),
+    "guidance":            ("Forward Guidance & Outlook", 15),
+    "historical_reaction": ("Historical Earnings Reaction", 15),
+    "price_action":        ("Price Action & Technical Trend", 10),
+    "options_positioning": ("Options Flow + OI", 10),
+    "dark_pool":           ("Dark Pool Activity", 5),
+    "unusual_options":     ("Unusual Options Activity", 5),
+    "disparity":           ("Options Disparity + Put/Call Ratio", 5),
+    "sector_market":       ("Sector & Market Trend", 5),
+}
+
+
+def get_analysis(symbol: str, profile: str = "default") -> dict:
+    """The full equity earnings analysis for one ticker.
+
+    profile="final" re-weights to the "Final Earnings Structure" spec (used by
+    the My Calls page); "default" keeps the live Earnings Trade weighting.
+    """
     symbol = (symbol or "").upper().strip()
     if not symbol:
         return {"status": "INVALID_SYMBOL", "symbol": symbol, "source": SOURCE}
@@ -311,9 +386,11 @@ def get_analysis(symbol: str) -> dict:
                   detail="Skew rises before earnings from hedging."),
         eng.Param("dark_pool", "Dark Pool / Off-Exchange Evidence", 3, _darkpool_bias(symbol),
                   detail="Trade side unknown; use as confirmation only."),
-        eng.Param("peer_readthrough", "Peer Read-through", 8, None,
-                  detail="Results and reactions of peers that already reported.",
-                  unavailable_reason="Peer read-through not wired up yet."),
+        eng.Param("peer_readthrough", "Peer Read-through", 8,
+                  (_peer := _peer_readthrough(symbol)),
+                  detail="Average EPS surprise of peers that reported recently (Finnhub).",
+                  unavailable_reason="" if _peer is not None
+                  else "No peer reported in the last quarter (or no peer list)."),
         eng.Param("short_insider", "Short Interest + Insider", 6,
                   (_short_insider := _short_insider_bias(symbol, s("insider_activity"))),
                   detail="Squeeze potential (short interest) and insider open-market activity.",
@@ -321,10 +398,16 @@ def get_analysis(symbol: str) -> dict:
                   else "No short-interest / insider signal."),
     ]
 
+    if profile == "final":
+        params = [p for p in params if p.name in FINAL_EQUITY]
+        for p in params:
+            p.label, p.weight = FINAL_EQUITY[p.name]
+
     result = eng.score(params, pos_label="BUY", neg_label="SELL")
     result.update({
         "symbol": symbol,
         "engine": "EQUITY",
+        "profile": profile,
         "trade": _trade_refs(symbol),
         "note": ("Weights are the structure's proposed development settings, "
                  "not validated probabilities. Correlated options factors "

@@ -202,7 +202,19 @@ def current_user(request: Request) -> Optional[dict]:
         return {"username": "admin", "role": "admin"}
     user = read_token(request.cookies.get(COOKIE_NAME))
     if user:
-        return user
+        # 'admin' is the env password account, not a DB row, so it is always
+        # valid. For a stored account, the signed cookie is not enough: if the
+        # account has since been deleted or deactivated, its session must stop
+        # working (within _ACCESS_TTL), not linger until the cookie expires.
+        if user.get("username") == "admin":
+            return user
+        try:
+            import user_service
+            if user_service.account_active(user["username"]):
+                return user
+            return None
+        except Exception:  # noqa: BLE001 - never hard-fail auth on a DB blip
+            return user
     # A bearer token (the admin password) is accepted too, so scripts and curl
     # can use the same access without the cookie flow.
     header = request.headers.get("authorization") or ""

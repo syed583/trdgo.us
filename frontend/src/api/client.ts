@@ -19,7 +19,10 @@
  */
 export const API_BASE_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
-  (import.meta.env.DEV ? 'http://127.0.0.1:8000' : '');
+  // Dev goes through the vite proxy (same-origin '/api'), so cookies are sent
+  // and the in-app browser pane can reach the backend. Override with
+  // VITE_API_BASE_URL to hit a backend directly.
+  '';
 
 export type ProviderStatus =
   | 'OK'
@@ -646,12 +649,15 @@ export const api2 = {
     request<any>(`/api/earnings/upcoming?days=${days}`, s),
   tradgoCall: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/tradgo-call/${encodeURIComponent(symbol)}`, s),
-  earningsTrade: (symbol: string, s?: AbortSignal) =>
-    request<any>(`/api/earnings/trade/${encodeURIComponent(symbol)}`, s),
-  earningsEquity: (symbol: string, s?: AbortSignal) =>
-    request<any>(`/api/earnings/equity/${encodeURIComponent(symbol)}`, s),
-  earningsOptions: (symbol: string, s?: AbortSignal) =>
-    request<any>(`/api/earnings/options/${encodeURIComponent(symbol)}`, s),
+  earningsTrade: (symbol: string, profile?: string, s?: AbortSignal) =>
+    request<any>(`/api/earnings/trade/${encodeURIComponent(symbol)}`
+      + (profile && profile !== 'default' ? `?profile=${profile}` : ''), s),
+  earningsEquity: (symbol: string, profile?: string, s?: AbortSignal) =>
+    request<any>(`/api/earnings/equity/${encodeURIComponent(symbol)}`
+      + (profile && profile !== 'default' ? `?profile=${profile}` : ''), s),
+  earningsOptions: (symbol: string, profile?: string, s?: AbortSignal) =>
+    request<any>(`/api/earnings/options/${encodeURIComponent(symbol)}`
+      + (profile && profile !== 'default' ? `?profile=${profile}` : ''), s),
   earningsAlerts: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/earnings/alerts/${encodeURIComponent(symbol)}`, s),
   earningsSignalTimeline: (symbols: string[], days = 15, backfill = false, s?: AbortSignal) =>

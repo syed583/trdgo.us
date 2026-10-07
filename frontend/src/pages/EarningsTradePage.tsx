@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import {
   CalendarDays, Plus, TrendingUp, Target, Lightbulb, AlertTriangle, ChevronRight,
-  Loader2,
+  Loader2, Scale,
 } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api, api2 } from '../api/client';
@@ -120,20 +120,99 @@ function Signal15View({ symbol }: { symbol: string }) {
 
 // The landing view: the two change tabs (Intraday / Last 10 days) live in the
 // page header and drive the Upcoming-earnings list's change banner below.
-function EarningsTradeLanding({ demo, search }: { demo?: boolean; search: string }) {
+function EarningsTradeLanding({ demo, search, base, profile, embedded }:
+  { demo?: boolean; search: string; base: string; profile?: string; embedded?: boolean }) {
   return (
     <div className="page ets">
-      <div className="ets-landing-head">
-        <h1>Earnings Trade</h1>
-        <p>Combined equity + options earnings analysis. Pick a stock reporting soon.</p>
-      </div>
-      <UpcomingEarnings base="/earnings-trade" title="Upcoming earnings"
-        demo={demo} search={search} hideChanges />
+      {!embedded && (
+        <div className="ets-landing-head">
+          <h1>Earnings Trade</h1>
+          <p>Combined equity + options earnings analysis. Pick a stock reporting soon.</p>
+        </div>
+      )}
+      <UpcomingEarnings base={base} title="Upcoming earnings"
+        demo={demo} search={search} hideChanges profile={profile} />
     </div>
   );
 }
 
-export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
+// Score Breakdown: splits one engine's parameters into what's pushing the score
+// up (+) vs down (-), with each one's points and the net total. Self-contained
+// -- the only maths shown is this box's own +/- and net.
+function ScoreSplit({ equity, options }: { equity: any; options: any }) {
+  const [side, setSide] = useState<'equity' | 'options'>('equity');
+  const src = side === 'equity' ? equity : options;
+  const rows: any[] = (src?.why || []).filter((w: any) => w.available && w.points != null);
+  const ups = rows.filter((w) => w.points > 0).sort((a, b) => b.points - a.points);
+  const downs = rows.filter((w) => w.points < 0).sort((a, b) => a.points - b.points);
+  const neutral = rows.filter((w) => w.points === 0).length;
+  const noDataRows: any[] = (src?.why || []).filter((w: any) => !w.available);
+  const noData = noDataRows.length;
+  const sumUp = ups.reduce((s, w) => s + w.points, 0);
+  const sumDown = downs.reduce((s, w) => s + w.points, 0);   // <= 0
+  const net = sumUp + sumDown;
+  // PRESENT = weight that actually had data; the score maps NET onto 0-100.
+  const present = rows.reduce((s, w) => s + (Number(w.weight) || 0), 0);
+  const score = src?.score;
+  const fmt = (n: number) => `${n > 0 ? '+' : ''}${n.toFixed(1)}`;
+  const pts = (w: any) => (w.points_label || '').replace(' of ', ' / ');
+  return (
+    <div className="ets-card ets-split">
+      <div className="ets-card-h">
+        <span><Scale size={15} /> Score Breakdown</span>
+        <div className="ets-split-toggle">
+          <button className={side === 'equity' ? 'on' : ''}
+            onClick={() => setSide('equity')}>Stock Trade</button>
+          <button className={side === 'options' ? 'on' : ''}
+            onClick={() => setSide('options')}>Options Straddle</button>
+        </div>
+      </div>
+      <div className="ets-split-cols">
+        <div className="ets-split-col up">
+          <div className="ets-split-ch">Pushing up (+) <b>{fmt(sumUp)}</b></div>
+          {ups.map((w, i) => (
+            <div key={i} className="ets-split-r"><span>{w.label}</span><em>{pts(w)}</em></div>
+          ))}
+          {!ups.length && <div className="ets-split-empty">None</div>}
+        </div>
+        <div className="ets-split-col down">
+          <div className="ets-split-ch">Pushing down (−) <b>{fmt(sumDown)}</b></div>
+          {downs.map((w, i) => (
+            <div key={i} className="ets-split-r"><span>{w.label}</span><em>{pts(w)}</em></div>
+          ))}
+          {!downs.length && <div className="ets-split-empty">None</div>}
+        </div>
+      </div>
+      {noDataRows.length > 0 && (
+        <div className="ets-split-nodata">
+          <span className="ets-split-nd-h">No data (not scored)</span>
+          {noDataRows.map((w, i) => (
+            <span key={i} className="ets-split-nd-chip" title={w.detail || ''}>{w.label}</span>
+          ))}
+        </div>
+      )}
+      <div className="ets-split-net">
+        <span className="ets-split-net-k">Net</span>
+        <b className={net >= 0 ? 'pos' : 'neg'}>{fmt(net)} pts</b>
+        <span className="ets-split-sub">
+          = {fmt(sumUp)} − {Math.abs(sumDown).toFixed(1)}
+          {neutral ? ` · ${neutral} neutral` : ''}{noData ? ` · ${noData} no data` : ''}
+        </span>
+      </div>
+      {score != null && present > 0 && (
+        <div className="ets-split-calc">
+          Score = 50 + (<b className={net >= 0 ? 'pos' : 'neg'}>{fmt(net)}</b> ÷ {present} available)
+          × 50 = <b className="ets-split-final">{Math.round(score)}</b> / 100
+        </div>
+      )}
+    </div>
+  );
+}
+
+// `base`/`profile`/`embedded` let the My Calls page reuse this same engine view
+// under its own route and scoring profile ("final") without duplicating the UI.
+export default function EarningsTradePage({ ctx, base = '/earnings-trade', profile, embedded }:
+  { ctx: PageContext; base?: string; profile?: string; embedded?: boolean }) {
   const { symbol, demo } = ctx;
   const { symbol: pathSym } = useParams();
   const navigate = useNavigate();
@@ -142,12 +221,16 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
   const on = !!pathSym && !demo;
   const [whyOpen, setWhyOpen] = useState(false);
   const [view, setView] = useState<'trade' | 'signal15'>('trade');
+  // Carry the scoring profile into the equity/options subtab links.
+  const subSearch = profile && profile !== 'default'
+    ? (ctx.search ? `${ctx.search}&profile=${profile}` : `?profile=${profile}`)
+    : ctx.search;
 
   const q = useApi<any>(
-    (s) => (on ? api2.earningsTrade(symbol, s) : Promise.resolve(null)),
+    (s) => (on ? api2.earningsTrade(symbol, profile, s) : Promise.resolve(null)),
     // Poll fairly often: a cold build can return a transient LOADING payload,
     // and the next poll then picks up the finished analysis on screen.
-    [symbol, demo, pathSym], { refreshMs: on ? 15_000 : undefined, enabled: on });
+    [symbol, demo, pathSym, profile], { refreshMs: on ? 15_000 : undefined, enabled: on });
   const chart = useApi<any>(
     (s) => (on ? api.chart(symbol, '3M', s) : Promise.resolve(null)),
     [symbol, demo, pathSym], { enabled: on });
@@ -182,12 +265,13 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
 
   // List view (no ticker) -- all hooks above have run, safe to branch now.
   if (!pathSym) {
-    return <EarningsTradeLanding demo={demo} search={ctx.search} />;
+    return <EarningsTradeLanding demo={demo} search={ctx.search}
+      base={base} profile={profile} embedded={embedded} />;
   }
 
   return (
     <div className="page ets">
-      <Link to={`/earnings-trade${ctx.search}`} className="ets-back">
+      <Link to={`${base}${ctx.search}`} className="ets-back">
         <ChevronRight size={14} style={{ transform: 'rotate(180deg)' }} /> Upcoming earnings
       </Link>
 
@@ -267,8 +351,8 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
               onClick={() => setView('trade')}>Earnings Trade</button>
             <button type="button" className={`ets-subtab${view === 'signal15' ? ' active' : ''}`}
               onClick={() => setView('signal15')}>15-Day Signal</button>
-            <Link className="ets-subtab" to={`/earnings-equity/${symbol}${ctx.search}`}>Equity detail</Link>
-            <Link className="ets-subtab" to={`/earnings-options/${symbol}${ctx.search}`}>Options detail</Link>
+            <Link className="ets-subtab" to={`/earnings-equity/${symbol}${subSearch}`}>Equity detail</Link>
+            <Link className="ets-subtab" to={`/earnings-options/${symbol}${subSearch}`}>Options detail</Link>
             <Link className="ets-subtab" to={`/options-flow/${symbol}${ctx.search}`}>Options Chain</Link>
             <Link className="ets-subtab" to={`/news/${symbol}${ctx.search}`}>News &amp; Sentiment</Link>
           </div>
@@ -372,6 +456,13 @@ export default function EarningsTradePage({ ctx }: { ctx: PageContext }) {
               </div>
             </div>
           </div>
+
+          {/* Score Breakdown: +/- parameter contributions and the net. */}
+          {(d.equity?.why?.length || d.options?.why?.length) ? (
+            <div className="ets-row">
+              <ScoreSplit equity={d.equity} options={d.options} />
+            </div>
+          ) : null}
 
           {/* Forecast: forward-looking analyst estimates (EPS / revenue / guidance). */}
           {(d.forecast || []).length > 0 && (

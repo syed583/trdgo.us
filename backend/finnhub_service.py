@@ -91,6 +91,16 @@ def company_news(symbol: str, days: int = 7) -> list[dict]:
     return rows if isinstance(rows, list) else []
 
 
+def company_earnings(symbol: str) -> Optional[dict]:
+    """The symbol's most recent reported quarter: EPS actual vs estimate +
+    surprise percent (Finnhub /stock/earnings, free plan). None if nothing."""
+    rows = _get(f"/stock/earnings?symbol={urllib.parse.quote(symbol)}", 21600)
+    if isinstance(rows, list) and rows:
+        rows.sort(key=lambda r: r.get("period", ""))
+        return rows[-1]
+    return None
+
+
 def earnings_calendar(symbol: str) -> Optional[dict]:
     """The symbol's next scheduled earnings row, if any in the next ~40 days."""
     from datetime import date, timedelta

@@ -161,7 +161,16 @@ def _move_uncertainty_bias(symbol: str) -> Optional[float]:
         return None
 
 
-def get_analysis(symbol: str) -> dict:
+# "Final Earnings Structure" profile (My Calls): the options engine built to the
+# user's exact 13-line spec (totals 100). Built explicitly in get_analysis from
+# the biases already computed there, so the default Earnings Trade weighting is
+# untouched.
+#   IV 10 · IV Crush 15 · EM vs Premium 15 · Historical 10 · Combined Premium 10 ·
+#   Theta 5 · Greeks 5 · Strike 5 · Liquidity 5 · Unusual 5 · Disparity 5 ·
+#   Flow+OI 5 · Dark Pool 5
+
+
+def get_analysis(symbol: str, profile: str = "default") -> dict:
     symbol = (symbol or "").upper().strip()
     if not symbol:
         return {"status": "INVALID_SYMBOL", "symbol": symbol, "source": SOURCE}
@@ -260,10 +269,20 @@ def get_analysis(symbol: str) -> dict:
     b_flowoi = mag("options_flow", "daily_oi_change", "oi_positioning")
     b_disp = mag("disparity", "volume_pcr")
 
-    # Greeks + Theta are one parameter now.
+    # Greeks + Theta are one parameter in the default profile; the "final"
+    # profile splits them back apart (see below).
     b_greeks_theta = _avg(b_greeks, b_theta)
     b_regime = _vix_regime_bias()
     b_moveunc = _move_uncertainty_bias(symbol)
+    # Off-lit (dark pool) activity -- direction-agnostic magnitude: heavy
+    # off-exchange prints signal a move brewing. Reuses the equity helper.
+    b_dark = None
+    try:
+        import earnings_equity_service as _eq
+        _dpb = _eq._darkpool_bias(symbol)
+        b_dark = None if _dpb is None else _clamp(abs(_dpb) * 2)
+    except Exception:  # noqa: BLE001
+        b_dark = None
 
     params = [
         eng.Param("implied_vs_realized", "Implied Move vs Historical Realized Move", 25, b_emp,
@@ -300,7 +319,49 @@ def get_analysis(symbol: str) -> dict:
                   detail="Volume above open interest / near-term positioning."),
     ]
 
-    # For a buyer there is no "short" side: the negative end is simply NO TRADE.
+    # My Calls "Final Earnings Structure": the exact 13-line options spec,
+    # Theta/Greeks/Strike/Combined-Premium/Dark-Pool each their own parameter.
+    if profile == "final":
+        params = [
+            eng.Param("iv_rank", "Implied Volatility (IV) + IV Rank", 10, b_iv,
+                      detail=(f"IV {iv}% (rank {round(iv_rank*100) if iv_rank is not None else '--'}%); "
+                              "cheaper IV / lower rank favours the buyer.")),
+            eng.Param("iv_crush", "IV Crush Risk", 15, b_crush,
+                      detail=f"IV {iv}% vs realised {rv}%; rich options crush harder."),
+            eng.Param("implied_vs_realized", "Expected Move vs Option Premium", 15, b_emp,
+                      detail="Implied move vs realised -- the straddle pays when realised wins."),
+            eng.Param("historical_move", "Historical Earnings Movement", 10, b_hist,
+                      detail="Where realised volatility sits in its range (recent earnings)."),
+            eng.Param("combined_premium", "Combined Premium", 10, b_prem,
+                      detail="Total straddle premium richness (correlated with IV; kept mild).",
+                      unavailable_reason="" if b_prem is not None else "No IV reading."),
+            eng.Param("theta", "Theta Decay", 5, b_theta,
+                      detail=(f"ATM straddle theta {round(straddle['theta'], 2)}/day (UW)."
+                              if straddle and straddle.get("theta") is not None else "No ATM chain."),
+                      unavailable_reason="" if b_theta is not None else "No ATM chain theta."),
+            eng.Param("greeks", "Greeks (Vega / Delta)", 5, b_greeks,
+                      detail=(f"ATM straddle vega {round(straddle['vega'], 3)} per premium (UW)."
+                              if straddle and straddle.get("vega") is not None else "No ATM chain."),
+                      unavailable_reason="" if b_greeks is not None else "No ATM chain greeks."),
+            eng.Param("strike", "Strike Selection", 5, b_strike,
+                      detail="ATM strike tightness to spot at a usable post-earnings expiry.",
+                      unavailable_reason="" if b_strike is not None else "No ATM strike."),
+            eng.Param("liquidity", "Liquidity + Bid/Ask Spread", 5, b_liq,
+                      detail=(f"ATM spread {round(straddle['spread_pct']*100, 1)}% of premium (UW)."
+                              if straddle and straddle.get("spread_pct") is not None
+                              else "No NBBO on the ATM chain."),
+                      unavailable_reason="" if b_liq is not None else "No ATM NBBO."),
+            eng.Param("unusual_options", "Unusual Options Activity", 5, b_unusual,
+                      detail="Volume above open interest / near-term positioning."),
+            eng.Param("skew", "Options Disparity / Put-Call Skew", 5, b_disp,
+                      detail="Options disparity / put-call skew (magnitude)."),
+            eng.Param("flow_oi", "Options Flow + OI", 5, b_flowoi,
+                      detail="Per-print flow and overnight OI build / positioning (magnitude)."),
+            eng.Param("dark_pool", "Dark Pool Activity", 5, b_dark,
+                      detail="Off-exchange print intensity (direction-agnostic).",
+                      unavailable_reason="" if b_dark is not None else "No dark-pool prints."),
+        ]
+
     result = eng.score(params, pos_label="STRADDLE", neg_label="NO TRADE",
                        buy_at=58.0, sell_at=-1.0)
 
@@ -312,6 +373,7 @@ def get_analysis(symbol: str) -> dict:
     result.update({
         "symbol": symbol,
         "engine": "OPTIONS",
+        "profile": profile,
         "construction": {
             "spot": spot_px,
             "expected_move_percent": _f(em.get("percent")),

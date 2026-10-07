@@ -18,7 +18,7 @@ function fmtCap(v: number): string {
  * Pick one and it opens that ticker's full analysis on the same engine (`base`).
  */
 export default function UpcomingEarnings({
-  base, title, demo, search, timeline, hideChanges,
+  base, title, demo, search, timeline, hideChanges, profile,
 }: {
   base: string; title: string; demo?: boolean; search: string;
   // timeline: show each stock's past-15-day signal track inline on its card.
@@ -26,6 +26,8 @@ export default function UpcomingEarnings({
   // hideChanges: no "changed signal" banner and no split/blink on cards (the
   // Earnings Trade landing wants a plain list).
   hideChanges?: boolean;
+  // profile: scoring profile for the per-card "why" prefetch (e.g. "final").
+  profile?: string;
 }) {
   const navigate = useNavigate();
   const [q, setQ] = useState('');
@@ -42,7 +44,7 @@ export default function UpcomingEarnings({
     setWhyFor(sym);
     if (!whyCache[sym]) {
       setWhyCache((c) => ({ ...c, [sym]: { loading: true } }));
-      api2.earningsTrade(sym)
+      api2.earningsTrade(sym, profile)
         .then((d) => setWhyCache((c) => ({ ...c, [sym]: d })))
         .catch(() => setWhyCache((c) => ({ ...c, [sym]: { error: true } })));
     }

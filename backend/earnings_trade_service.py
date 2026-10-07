@@ -53,7 +53,7 @@ def _historical_moves(symbol: str, limit: int = 0) -> list[dict]:
         return []
 
 
-def get_summary(symbol: str) -> dict:
+def get_summary(symbol: str, profile: str = "default") -> dict:
     symbol = (symbol or "").upper().strip()
     if not symbol:
         return {"status": "INVALID_SYMBOL", "symbol": symbol, "source": SOURCE}
@@ -81,8 +81,8 @@ def get_summary(symbol: str) -> dict:
     # The two engines and the auxiliary reads are independent -- run them at once
     # so the screen is not the sum of every provider round-trip in series.
     with ThreadPoolExecutor(max_workers=5) as pool:
-        f_equity = pool.submit(eq.get_analysis, symbol)
-        f_options = pool.submit(op.get_analysis, symbol)
+        f_equity = pool.submit(eq.get_analysis, symbol, profile)
+        f_options = pool.submit(op.get_analysis, symbol, profile)
         f_quote = pool.submit(_quote)
         f_preview = pool.submit(_preview)
         f_hist = pool.submit(_historical_moves, symbol)
@@ -160,7 +160,9 @@ def get_summary(symbol: str) -> dict:
                                  -abs(float(p.get("points") or 0))))
         return [{"label": p.get("label") or p.get("name"),
                  "leaning": p.get("leaning"),
+                 "points": p.get("points"),
                  "points_label": p.get("points_label"),
+                 "weight": p.get("weight"),
                  "available": p.get("available"),
                  "detail": p.get("detail") or p.get("unavailable_reason")}
                 for p in rows]
