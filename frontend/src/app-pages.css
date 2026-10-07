@@ -68,8 +68,13 @@
   padding: 10px 12px; text-align: left; align-items: flex-start;
   gap: 2px; color: var(--text);
 }
+.ov-card { transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease),
+  box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease); }
 .ov-card.clickable { cursor: pointer; }
-.ov-card.clickable:hover { border-color: var(--border-2); background: var(--panel-2); }
+.ov-card.clickable:hover {
+  border-color: var(--accent); background: var(--panel);
+  box-shadow: var(--shadow-2); transform: translateY(-2px);
+}
 .ov-label { font-size: 12px; color: var(--text-dim); font-weight: 600; }
 .ov-proxy {
   margin-left: 6px; font-style: normal; font-size: 9.5px; font-weight: 700;
@@ -625,9 +630,12 @@ a.index-card { color: inherit; }
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 1px;
   background: var(--border);
-  border-radius: var(--r);
+  border-radius: var(--r-lg);
   overflow: hidden;
+  box-shadow: var(--shadow-1);
 }
+.ov-stat { transition: background var(--dur) var(--ease); }
+.ov-stat:hover { background: var(--panel-2); }
 .ov-stat { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; background: var(--panel); }
 .ov-stat-k { font-size: 11px; color: var(--text-mute); }
 .ov-stat-v { font-size: 15px; font-weight: 600; color: var(--text); }
