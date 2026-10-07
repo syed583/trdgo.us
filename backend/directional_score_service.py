@@ -124,34 +124,32 @@ def _gather(symbol: str, progress=None) -> dict:
     # until the stream gave up at two minutes, with two stages still
     # spinning on screen. The pool is shut down without waiting instead, and
     # a straggler finishes into its own cache with nobody watching.
-    pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix="dir")
+    # Four workers, not six, and submissions staggered ~0.2s apart. Firing every
+    # provider at once (plus the overview's own internal fan-out of UW calls)
+    # tripped the per-minute rate limit, which slowed the critical overview past
+    # its budget and dropped the whole options tape. Fewer simultaneous calls +
+    # a spread-out start smooth the burst; the heavy, option-tape overview is
+    # submitted FIRST so it claims a worker before the lighter jobs.
+    pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="dir")
     try:
-        jobs = {
-            "overview": pool.submit(_safe, lambda: options.get_overview(symbol), {}),
-            "oi": pool.submit(_safe, lambda: odflow.daily_oi_change(symbol), {}),
-            "form4": pool.submit(
-                _safe,
-                lambda: __import__("uw_ownership_service")
+        specs = [
+            ("overview", lambda: options.get_overview(symbol), {}),
+            ("oi", lambda: odflow.daily_oi_change(symbol), {}),
+            ("disparity", lambda: __import__("disparity_service").get_disparity(symbol), {}),
+            ("bars", lambda: market._fallback_bars(symbol, "1 Y"), ([], None)),
+            ("bench", lambda: market._fallback_bars(BENCHMARK, "1 Y"), ([], None)),
+            ("form4", lambda: __import__("uw_ownership_service")
                 .insider_transactions_preferred(symbol), {}),
-            "ownership": pool.submit(
-                _safe, lambda: filings.ownership_filings(symbol), {}),
-            "bars": pool.submit(
-                _safe, lambda: market._fallback_bars(symbol, "1 Y"), ([], None)),
-            "bench": pool.submit(
-                _safe, lambda: market._fallback_bars(BENCHMARK, "1 Y"), ([], None)),
-            "events": pool.submit(
-                _safe, lambda: __import__("event_radar_service")
-                .get_event_radar(symbol), {}),
-            "filings": pool.submit(
-                _safe, lambda: __import__("corporate_events_service")
-                .get_events(symbol), {}),
-            "dividends": pool.submit(
-                _safe, lambda: __import__("dividends_service")
-                .get_dividends(symbol), {}),
-            "disparity": pool.submit(
-                _safe, lambda: __import__("disparity_service")
-                .get_disparity(symbol), {}),
-        }
+            ("ownership", lambda: filings.ownership_filings(symbol), {}),
+            ("events", lambda: __import__("event_radar_service").get_event_radar(symbol), {}),
+            ("filings", lambda: __import__("corporate_events_service").get_events(symbol), {}),
+            ("dividends", lambda: __import__("dividends_service").get_dividends(symbol), {}),
+        ]
+        jobs = {}
+        for i, (name, fn, default) in enumerate(specs):
+            if i:
+                time.sleep(0.2)   # stagger the initial UW burst
+            jobs[name] = pool.submit(_safe, fn, default)
         # Collected in completion order rather than submission order. Waiting
         # on jobs in the order they were submitted means the first call blocks
         # until it finishes, by which time the rest have finished too -- so
