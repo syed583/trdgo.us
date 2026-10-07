@@ -39,3 +39,14 @@
 .lp-btn:disabled { opacity: .55; cursor: default; }
 .lp-spin { animation: lp-rot 1s linear infinite; }
 @keyframes lp-rot { to { transform: rotate(360deg); } }
+.lp-link {
+  width: 100%; margin-top: 14px; background: none; border: none; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  color: var(--accent); font-size: 12.5px; font-weight: 600;
+}
+.lp-link:hover { text-decoration: underline; }
+.lp-notice {
+  margin-top: 4px; margin-bottom: 4px; font-size: 12.5px; color: var(--text-mute);
+  background: var(--accent-bg); border: 1px solid var(--border);
+  padding: 8px 10px; border-radius: 8px;
+}

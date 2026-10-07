@@ -1309,13 +1309,16 @@ def auth_me(request: Request) -> dict:
         return {"authenticated": False}
     is_admin = user["role"] == "admin"
     full_access = is_admin
+    display_name = None
     if not is_admin:
         try:
             import user_service
             full_access = user_service.has_full_access(user["username"])
+            display_name = user_service.display_name_for(user["username"])
         except Exception:  # noqa: BLE001
             full_access = False
     return {"authenticated": True, "username": user["username"],
+            "display_name": display_name,
             "role": user["role"], "is_admin": is_admin,
             "full_access": full_access}
 
@@ -1395,6 +1398,75 @@ async def auth_login(request: Request):
         path="/",
     )
     return response
+
+
+async def _json_body(request: Request) -> dict:
+    try:
+        return await request.json()
+    except Exception:  # noqa: BLE001
+        try:
+            return dict(await request.form())
+        except Exception:  # noqa: BLE001
+            return {}
+
+
+def _login_response(request: Request, username: str, role: str,
+                    extra: dict | None = None) -> JSONResponse:
+    forwarded = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+    over_https = forwarded == "https" or request.url.scheme == "https"
+    response = JSONResponse({"status": "OK", "role": role, "username": username,
+                             **(extra or {})})
+    response.set_cookie(
+        auth.COOKIE_NAME, auth.issue_token(username, role),
+        max_age=auth.SESSION_TTL, httponly=True, samesite="lax",
+        secure=over_https, path="/")
+    return response
+
+
+@app.post("/auth/otp/request")
+async def auth_otp_request(request: Request):
+    """Send a WhatsApp OTP for a NEW phone signup. Existing numbers sign in."""
+    import otp_service
+    import user_service
+    body = await _json_body(request)
+    phone = str(body.get("phone") or "")
+    if user_service.phone_exists(phone):
+        return JSONResponse(
+            {"detail": "This number already has an account — sign in with your password."},
+            status_code=409)
+    res = otp_service.request_code(phone)
+    if res.get("status") == "SENT":
+        return {"status": "SENT"}
+    status = 429 if res.get("status") == "RATE_LIMITED" else 400
+    return JSONResponse({"detail": res.get("detail") or "Could not send the code."},
+                        status_code=status)
+
+
+@app.post("/auth/register")
+async def auth_register(request: Request):
+    """Verify the OTP, create the account (full access), and sign them in."""
+    import otp_service
+    import user_service
+    body = await _json_body(request)
+    phone = str(body.get("phone") or "")
+    code = str(body.get("code") or "")
+    name = str(body.get("name") or "")
+    password = str(body.get("password") or "")
+    if not otp_service.verify_code(phone, code):
+        return JSONResponse({"detail": "Invalid or expired code. Request a new one."},
+                            status_code=400)
+    res = user_service.create_phone_user(phone, name, password)
+    if res.get("status") != "OK":
+        status = 409 if res.get("status") == "EXISTS" else 400
+        return JSONResponse({"detail": res.get("detail") or "Could not create the account."},
+                            status_code=status)
+    try:
+        user_service.record_login(res["username"], True, _client_key(request),
+                                  request.headers.get("user-agent", "")[:256])
+    except Exception:  # noqa: BLE001
+        pass
+    return _login_response(request, res["username"], "user",
+                           {"display_name": res.get("display_name")})
 
 
 @app.post("/auth/logout")

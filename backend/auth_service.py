@@ -37,6 +37,8 @@ SESSION_TTL = 30 * 24 * 3600  # 30 days
 # also open any future "/health-internal" route by accident.
 PUBLIC_PATHS = frozenset({
     "/auth/login",
+    "/auth/otp/request",   # phone signup: request a WhatsApp code
+    "/auth/register",      # phone signup: verify code + create account
     "/auth/status",
     "/favicon.ico",
     "/health",

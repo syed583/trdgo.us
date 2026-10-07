@@ -115,7 +115,10 @@ class AppUser(Base):
     __tablename__ = "app_users"
 
     id = Column(Integer, primary_key=True)
+    # For phone-OTP accounts the username IS the normalized phone number; the
+    # person's chosen name is kept separately in display_name.
     username = Column(String(40), nullable=False, unique=True, index=True)
+    display_name = Column(String(80), nullable=True)
     password_hash = Column(String(256), nullable=False)
     salt = Column(String(64), nullable=False)
     role = Column(String(16), nullable=False, default="user")

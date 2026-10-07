@@ -21,8 +21,88 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
+from sqlalchemy import text
+
 from database import SessionLocal
 from models_user import AppUser, LoginEvent
+
+# One-time, idempotent add of the display_name column for phone-OTP accounts.
+# create_all() does not alter an existing table, so add it explicitly.
+_schema_ready = False
+
+
+def _ensure_schema() -> None:
+    global _schema_ready
+    if _schema_ready:
+        return
+    try:
+        db = SessionLocal()
+        try:
+            db.execute(text("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS display_name VARCHAR(80)"))
+            db.commit()
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001 - a transient DB blip retries next call
+        return
+    _schema_ready = True
+
+
+def create_phone_user(phone: str, name: str, password: str) -> dict:
+    """
+    Create a self-service account from a verified phone signup. The username is
+    the normalized phone number; `name` is the display name. Phone-OTP accounts
+    get full access immediately (per product decision).
+    """
+    import whatsapp_service as wa
+    _ensure_schema()
+    username = wa.normalize_phone(phone)
+    if len(username) < 8:
+        return {"status": "INVALID", "detail": "Enter a valid phone number with country code."}
+    if not valid_password(password):
+        return {"status": "INVALID", "detail": "Password must be 6-128 characters."}
+    name = (name or "").strip()[:80] or username
+    salt = secrets.token_hex(16)
+    db = SessionLocal()
+    try:
+        existing = db.query(AppUser).filter(AppUser.username == username).first()
+        if existing:
+            return {"status": "EXISTS",
+                    "detail": "This number already has an account — sign in with your password."}
+        db.add(AppUser(username=username, display_name=name,
+                       password_hash=_hash(password, salt), salt=salt,
+                       role="user", active=True, full_access=True))
+        db.commit()
+    finally:
+        db.close()
+    _access_invalidate(username)
+    _valid_invalidate(username)
+    return {"status": "OK", "username": username, "display_name": name}
+
+
+def phone_exists(phone: str) -> bool:
+    import whatsapp_service as wa
+    username = wa.normalize_phone(phone)
+    if len(username) < 8:
+        return False
+    db = SessionLocal()
+    try:
+        return db.query(AppUser).filter(AppUser.username == username).first() is not None
+    except Exception:  # noqa: BLE001
+        return False
+    finally:
+        db.close()
+
+
+def display_name_for(username: str) -> Optional[str]:
+    username = (username or "").strip().lower()
+    db = SessionLocal()
+    try:
+        u = db.query(AppUser).filter(AppUser.username == username).first()
+        return (u.display_name if u else None)
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        db.close()
 
 _USERNAME = re.compile(r"^[a-z0-9][a-z0-9_.-]{2,39}$")
 

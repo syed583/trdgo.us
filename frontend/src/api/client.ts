@@ -780,6 +780,9 @@ export const api2 = {
   me: (s?: AbortSignal) => request<any>('/auth/me', s),
   login: (username: string, password: string) =>
     send<any>('/auth/login', 'POST', { username, password }),
+  otpRequest: (phone: string) => send<any>('/auth/otp/request', 'POST', { phone }),
+  register: (phone: string, code: string, name: string, password: string) =>
+    send<any>('/auth/register', 'POST', { phone, code, name, password }),
   logout: () => send<any>('/auth/logout', 'POST'),
   adminUsers: (s?: AbortSignal) => request<any>('/api/admin/users', s),
   adminLogins: (limit = 50, s?: AbortSignal) =>
