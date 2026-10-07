@@ -265,9 +265,21 @@ const sentTone = (s: string) =>
 const sentWord = (s: string) =>
   s === 'positive' ? 'Bullish' : s === 'negative' ? 'Bearish' : 'Neutral';
 
+// Real company logos by ticker (parqet logo CDN). Falls back to a coloured
+// monogram when it is not a ticker (e.g. "Macro") or the image fails to load,
+// so the panels never show a broken image.
 function Dot({ sym }: { sym: string }) {
-  const hue = (sym.charCodeAt(0) * 37 + (sym.charCodeAt(1) || 0) * 11) % 360;
-  return <span className="anp-dot" style={{ background: `hsl(${hue} 60% 46%)` }}>{sym.slice(0, 2)}</span>;
+  const s = (sym || '?').toUpperCase();
+  const [failed, setFailed] = useState(false);
+  if (!failed && /^[A-Z][A-Z.]{0,5}$/.test(s)) {
+    return (
+      <img className="anp-logo" alt={s} loading="lazy"
+        src={`https://assets.parqet.com/logos/symbol/${encodeURIComponent(s)}?format=png&size=64`}
+        onError={() => setFailed(true)} />
+    );
+  }
+  const hue = (s.charCodeAt(0) * 37 + (s.charCodeAt(1) || 0) * 11) % 360;
+  return <span className="anp-dot" style={{ background: `hsl(${hue} 60% 46%)` }}>{s.slice(0, 2)}</span>;
 }
 
 // Representative data so the landing panels always render populated like the

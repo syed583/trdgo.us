@@ -804,3 +804,5 @@
 .anh-sic.violet { background: #eef2ff; color: #6366f1; }
 .anh-sic.red { background: #fff1f2; color: #f43f5e; }
 .anh-sic.amber { background: #fffbeb; color: #f59e0b; }
+
+.anp-logo { width: 24px; height: 24px; border-radius: 6px; object-fit: contain; background: #f1f5f9; padding: 2px; box-sizing: border-box; flex: 0 0 auto; }
