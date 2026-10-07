@@ -29,9 +29,10 @@
   padding: 7px 8px 7px 15px;
   background: var(--panel); border: 1px solid var(--border-2);
   border-radius: var(--r-lg);
-  box-shadow: 0 6px 26px rgba(0, 0, 0, .22);
+  box-shadow: var(--shadow-2);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
-:root[data-theme="light"] .an-search { box-shadow: 0 6px 22px rgba(16, 23, 37, .08); }
+.an-search:focus-within { border-color: var(--accent); box-shadow: var(--shadow-2), var(--ring); }
 .an-search input {
   flex: 1; min-width: 0;
   background: none; border: 0; outline: none;
@@ -41,9 +42,13 @@
 
 .an-go {
   padding: 9px 20px; border: 0; border-radius: var(--r);
-  background: var(--blue-2); color: #fff;
+  background: var(--accent-2); color: var(--accent-contrast);
   font-size: 15px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  transition: background var(--dur) var(--ease), transform var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
 }
+.an-go:hover:not(:disabled) { background: var(--accent); transform: translateY(-1px); box-shadow: 0 6px 18px var(--accent-bg); }
+.an-go:active:not(:disabled) { transform: translateY(0); }
 .an-go:disabled { opacity: .45; cursor: default; }
 .an-go.big {
   padding: 12px 26px; font-size: 15px;
@@ -55,11 +60,16 @@
   margin-top: 14px; font-size: 13px; color: var(--text-mute);
 }
 .an-try button {
-  cursor: pointer; color: var(--blue); font-size: 13px; font-weight: 700;
+  cursor: pointer; color: var(--accent); font-size: 13px; font-weight: 700;
   background: var(--panel-2); border: 1px solid var(--border);
-  border-radius: var(--r); padding: 3px 10px;
+  border-radius: var(--r-pill); padding: 4px 12px;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease);
 }
-.an-try button:hover { background: var(--panel); border-color: var(--blue); }
+.an-try button:hover {
+  background: var(--accent-bg); border-color: var(--accent);
+  box-shadow: var(--shadow-1); transform: translateY(-1px);
+}
 
 .an-stats {
   display: flex; gap: 34px; flex-wrap: wrap; justify-content: center;
