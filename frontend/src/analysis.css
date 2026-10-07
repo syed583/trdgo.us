@@ -750,3 +750,5 @@
 @media (max-width: 1100px) { .anp-grid { grid-template-columns: 1fr; } }
 
 .anp-trow.anp-m3 { grid-template-columns: 1.6fr 1fr 1fr; }
+
+.anh-heroimg { width: 100%; height: auto; border-radius: 16px; display: block; box-shadow: 0 24px 70px rgba(10, 25, 80, .35); }

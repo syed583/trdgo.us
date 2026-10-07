@@ -8,6 +8,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import type { PageContext } from '../App';
 import { Panel } from '../components/common';
 import WorldGlobe from '../components/WorldGlobe';
+import analysisHero from '../assets/analysis-hero.webp';
 import { api, api2 } from '../api/client';
 import WhyCall from '../components/WhyCall';
 import CorporateEvents from '../components/CorporateEvents';
@@ -406,17 +407,6 @@ function SearchScreen({
   horizon: Horizon; onHorizon: (h: Horizon) => void; session?: string;
   readOnly?: boolean; ctx: PageContext;
 }) {
-  // Real data for the floating cards: this week's earnings count and a market
-  // sentiment read from how many indices are up right now.
-  const earn = useApi<any>((s) => api2.earningsUpcoming(7, s), []);
-  const idx = useApi<any>((s) => api.indices(s), [], { refreshMs: 60_000 });
-  const earningsCount: number = (earn.data?.rows || []).length;
-  const indices: any[] = idx.data?.indices || [];
-  const scored = indices.filter((i) => (i.change_percent ?? i.change) != null);
-  const up = scored.filter((i) => (i.change_percent ?? i.change) > 0).length;
-  const sentiment = scored.length ? Math.round((up / scored.length) * 100) : null;
-  const sentLabel = sentiment == null ? '—'
-    : sentiment >= 55 ? 'Bullish' : sentiment <= 45 ? 'Bearish' : 'Neutral';
   const chip = horizon === 'TODAY' ? 'Today · ET'
     : horizon === 'SWING' ? 'Swing · ~5 days' : 'Next session · ET';
 
@@ -467,24 +457,8 @@ function SearchScreen({
         </div>
 
         <div className="anh-right">
-          <div className="anh-globe"><WorldGlobe size={300} spinning /></div>
-          <div className="anh-fcard anh-f1">
-            <span className="anh-fic blue"><BarChart3 size={16} /></span>
-            <div><i>Options Flow</i><b>Live</b><small>Unusual Activity</small></div>
-          </div>
-          <div className="anh-fcard anh-f2">
-            <span className="anh-fic violet"><CalendarDays size={16} /></span>
-            <div><i>Earnings</i><b>{earn.loading && !earn.data ? '…' : earningsCount}</b>
-              <small>This Week</small></div>
-          </div>
-          <div className="anh-fcard anh-f3">
-            <span className="anh-fic green"><Activity size={16} /></span>
-            <div><i>Market Sentiment</i><b>{sentiment ?? '—'}</b><small>{sentLabel}</small></div>
-          </div>
-          <div className="anh-fcard anh-f4">
-            <span className="anh-fic amber"><Zap size={16} /></span>
-            <div><i>Live Prices</i><b>US Markets</b><small>Real-time</small></div>
-          </div>
+          <img className="anh-heroimg" src={analysisHero} alt="Global market intelligence"
+            loading="eager" />
         </div>
       </div>
 
