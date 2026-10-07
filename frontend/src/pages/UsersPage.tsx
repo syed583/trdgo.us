@@ -56,7 +56,13 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
   };
   const remove = async (u: string) => {
     if (!window.confirm(`Remove ${u}? They will lose access immediately.`)) return;
-    await api2.adminDeleteUser(u).catch(() => undefined); refresh();
+    try {
+      const r = await api2.adminDeleteUser(u);
+      if (r?.status && r.status !== 'OK') window.alert(`Could not delete ${u}: ${r.status}`);
+    } catch (e: any) {
+      window.alert(`Could not delete ${u}: ${e?.message || 'request failed'}`);
+    }
+    refresh();
   };
 
   const rows: any[] = users.data?.users || [];

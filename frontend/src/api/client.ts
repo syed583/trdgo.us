@@ -757,7 +757,8 @@ export const api2 = {
   adminSetProviderKey: (key: string) =>
     send<any>('/api/admin/provider/key', 'POST', { key }),
   adminDeleteUser: (username: string) =>
-    send<any>(`/api/admin/users/${encodeURIComponent(username)}`, 'DELETE'),
+    // POST (not DELETE): some reverse proxies block the DELETE verb.
+    send<any>(`/api/admin/users/${encodeURIComponent(username)}/delete`, 'POST', {}),
 
   watchlistAdd: (symbol: string, note?: string) =>
     send<any>('/api/watchlist', 'POST', { symbol, note }),
