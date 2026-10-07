@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Activity, ArrowRight, BarChart3, Building2, CalendarDays, CheckCircle2,
   Database, FileText, Gauge, Globe, LineChart, Loader2, Newspaper, Search,
-  Star, TrendingUp, User, X, XCircle,
+  Star, TrendingUp, User, X, XCircle, Zap,
 } from 'lucide-react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import type { PageContext } from '../App';
@@ -247,60 +247,97 @@ function SearchScreen({
   horizon: Horizon; onHorizon: (h: Horizon) => void; session?: string;
   readOnly?: boolean;
 }) {
-  return (
-    <div className="an-hero">
-      <h1>Global Market Intelligence<br />For Smarter Decisions</h1>
-      <p className="an-tag">Real data. Deep analysis.</p>
+  // Real data for the floating cards: this week's earnings count and a market
+  // sentiment read from how many indices are up right now.
+  const earn = useApi<any>((s) => api2.earningsUpcoming(7, s), []);
+  const idx = useApi<any>((s) => api.indices(s), [], { refreshMs: 60_000 });
+  const earningsCount: number = (earn.data?.rows || []).length;
+  const indices: any[] = idx.data?.indices || [];
+  const scored = indices.filter((i) => (i.change_percent ?? i.change) != null);
+  const up = scored.filter((i) => (i.change_percent ?? i.change) > 0).length;
+  const sentiment = scored.length ? Math.round((up / scored.length) * 100) : null;
+  const sentLabel = sentiment == null ? '—'
+    : sentiment >= 55 ? 'Bullish' : sentiment <= 45 ? 'Bearish' : 'Neutral';
+  const chip = horizon === 'TODAY' ? 'Today · ET'
+    : horizon === 'SWING' ? 'Swing · ~5 days' : 'Next session · ET';
 
-      {/* Chosen before the run, because it changes what the run reads. */}
-      <div className="an-horizon">
-        <HorizonSwitch value={horizon} onChange={onHorizon} session={session} />
-        <p>{HORIZON_COPY[horizon].basis}</p>
+  return (
+    <div className="anh">
+      <div className="anh-grid">
+        <div className="anh-left">
+          <div className="anh-eyebrow">Global Market Intelligence</div>
+          <h1 className="anh-title">For Smarter <span>Decisions</span></h1>
+          <p className="anh-sub">Real data. Deep analysis. AI-powered insights for US markets.</p>
+
+          {/* Chosen before the run, because it changes what the run reads. */}
+          <div className="anh-horizon">
+            <HorizonSwitch value={horizon} onChange={onHorizon} session={session} />
+            <span className="anh-chip"><CalendarDays size={13} /> {chip}</span>
+          </div>
+          <p className="anh-basis">{HORIZON_COPY[horizon].basis}</p>
+
+          <form className="anh-search"
+            onSubmit={(e) => { e.preventDefault(); onAnalyse(draft); }}>
+            <Search size={17} color={DIM} />
+            <input value={draft} onChange={(e) => onDraft(e.target.value.toUpperCase())}
+              placeholder="Search ticker (e.g. NVDA)" aria-label="Ticker"
+              spellCheck={false} autoFocus />
+            {draft && (
+              <button type="button" className="icon-btn" onClick={() => onDraft('')}
+                aria-label="Clear"><X size={14} /></button>
+            )}
+            <button type="submit" className="anh-go" disabled={!draft.trim() || readOnly}
+              title={readOnly ? 'View-only account' : undefined}>
+              Analyze <ArrowRight size={16} />
+            </button>
+          </form>
+
+          {readOnly ? (
+            <div className="anh-try" style={{ opacity: 0.7 }}>
+              Running analysis is disabled for view-only accounts.
+            </div>
+          ) : (
+            <div className="anh-try">
+              <span>Try:</span>
+              {SUGGESTED.map((s) => (
+                <button key={s} className="anh-chip-try"
+                  onClick={() => { onDraft(s); onAnalyse(s); }}>{s}</button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="anh-right">
+          <div className="anh-globe"><WorldGlobe size={300} spinning /></div>
+          <div className="anh-fcard anh-f1">
+            <span className="anh-fic blue"><BarChart3 size={16} /></span>
+            <div><i>Options Flow</i><b>Live</b><small>Unusual Activity</small></div>
+          </div>
+          <div className="anh-fcard anh-f2">
+            <span className="anh-fic violet"><CalendarDays size={16} /></span>
+            <div><i>Earnings</i><b>{earn.loading && !earn.data ? '…' : earningsCount}</b>
+              <small>This Week</small></div>
+          </div>
+          <div className="anh-fcard anh-f3">
+            <span className="anh-fic green"><Activity size={16} /></span>
+            <div><i>Market Sentiment</i><b>{sentiment ?? '—'}</b><small>{sentLabel}</small></div>
+          </div>
+          <div className="anh-fcard anh-f4">
+            <span className="anh-fic amber"><Zap size={16} /></span>
+            <div><i>Live Prices</i><b>US Markets</b><small>Real-time</small></div>
+          </div>
+        </div>
       </div>
 
-      <form
-        className="an-search"
-        onSubmit={(e) => { e.preventDefault(); onAnalyse(draft); }}
-      >
-        <Search size={15} color={DIM} />
-        <input
-          value={draft}
-          onChange={(e) => onDraft(e.target.value.toUpperCase())}
-          placeholder="Search ticker (e.g. NVDA)"
-          aria-label="Ticker"
-          spellCheck={false}
-          autoFocus
-        />
-        {draft && (
-          <button type="button" className="icon-btn" onClick={() => onDraft('')}
-            aria-label="Clear">
-            <X size={14} />
-          </button>
-        )}
-        <button type="submit" className="an-go" disabled={!draft.trim() || readOnly}
-          title={readOnly ? 'View-only account' : undefined}>
-          Analyze
-        </button>
-      </form>
-
-      {readOnly ? (
-        <div className="an-try" style={{ opacity: 0.7 }}>
-          Running analysis is disabled for view-only accounts.
-        </div>
-      ) : (
-        <div className="an-try">
-          Try:
-          {SUGGESTED.map((s) => (
-            <button key={s} onClick={() => { onDraft(s); onAnalyse(s); }}>{s}</button>
-          ))}
-        </div>
-      )}
-
-      <div className="an-stats">
-        <div><b>12</b><span>Data Sources</span></div>
-        <div><b>20</b><span>Scored Parameters</span></div>
-        <div><b>US</b><span>Market Coverage</span></div>
-        <div><b>Live</b><span>Prices &amp; Flow</span></div>
+      <div className="anh-stats">
+        <div className="anh-stat"><span className="anh-sic green"><Database size={18} /></span>
+          <div><b>12</b><span>Data Sources</span></div></div>
+        <div className="anh-stat"><span className="anh-sic violet"><Gauge size={18} /></span>
+          <div><b>20</b><span>Scored Parameters</span></div></div>
+        <div className="anh-stat"><span className="anh-sic red"><BarChart3 size={18} /></span>
+          <div><b>US</b><span>Market Coverage</span></div></div>
+        <div className="anh-stat"><span className="anh-sic amber"><Zap size={18} /></span>
+          <div><b>Live</b><span>Prices &amp; Flow</span></div></div>
       </div>
     </div>
   );
