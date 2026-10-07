@@ -119,6 +119,7 @@ class AppUser(Base):
     # person's chosen name is kept separately in display_name.
     username = Column(String(40), nullable=False, unique=True, index=True)
     display_name = Column(String(80), nullable=True)
+    age = Column(Integer, nullable=True)
     password_hash = Column(String(256), nullable=False)
     salt = Column(String(64), nullable=False)
     role = Column(String(16), nullable=False, default="user")

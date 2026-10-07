@@ -1,139 +1,154 @@
 /* ============================================================================
-   Login / sign-up — a two-panel layout: brand/value hero + the form.
+   Login / sign-up — one centered card over a faint candlestick backdrop.
    ========================================================================== */
 .lp-shell {
+  position: relative;
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 1.05fr 1fr;
-  background: var(--bg, var(--panel));
-}
-
-/* ---- Hero (left) -------------------------------------------------------- */
-.lp-hero {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 28px;
-  padding: 48px 52px;
-  color: #fff;
-  background:
-    radial-gradient(120% 80% at 10% 0%, #3a63f0 0%, transparent 55%),
-    linear-gradient(150deg, #1b46dd 0%, #122a9e 60%, #0c1b63 100%);
+  place-items: center;
+  padding: 28px 18px;
+  background: var(--bg, #f4f5f7);
   overflow: hidden;
 }
-.lp-hero::after {
-  content: '';
-  position: absolute; inset: 0;
-  background: radial-gradient(60% 50% at 90% 100%, rgba(255, 255, 255, .12), transparent 60%);
-  pointer-events: none;
+:root:not([data-theme="light"]) .lp-shell { background: var(--bg, #0d0e12); }
+
+.lp-bg {
+  position: fixed; inset: 0; width: 100%; height: 100%;
+  opacity: 0.14; pointer-events: none; z-index: 0;
 }
-.lp-hero-top, .lp-hero-mid, .lp-hero-foot { position: relative; z-index: 1; }
 
-.lp-logo { display: flex; align-items: center; gap: 10px; }
-.lp-logo-mark {
-  width: 34px; height: 34px; border-radius: 9px;
-  display: grid; place-items: center;
-  background: rgba(255, 255, 255, .16); border: 1px solid rgba(255, 255, 255, .25);
-  font-weight: 800; font-size: 18px;
+.lp-card {
+  position: relative; z-index: 1;
+  width: 100%; max-width: 408px;
+  background: var(--panel, #fff);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 26px 28px 24px;
+  box-shadow: 0 20px 60px rgba(17, 25, 70, .14);
 }
-.lp-logo-word { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
-.lp-logo-word b { font-weight: 700; opacity: .8; }
-.lp-tag { margin-top: 8px; font-size: 11px; letter-spacing: .22em; opacity: .7; }
 
-.lp-hero-h { font-size: 30px; line-height: 1.15; font-weight: 700; margin: 0 0 12px; letter-spacing: -0.02em; }
-.lp-hero-p { font-size: 14.5px; line-height: 1.55; opacity: .82; margin: 0 0 26px; max-width: 400px; }
-
-.lp-feat { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; max-width: 420px; }
-.lp-feat li { display: flex; gap: 12px; align-items: flex-start; }
-.lp-feat-ic {
-  flex: 0 0 auto; width: 30px; height: 30px; border-radius: 8px;
-  display: grid; place-items: center;
-  background: rgba(255, 255, 255, .14); border: 1px solid rgba(255, 255, 255, .2);
+/* Log In / Sign Up toggle */
+.lp-toggle {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+  background: var(--panel-2, #eef0f4); border: 1px solid var(--border);
+  border-radius: 999px; padding: 4px; margin-bottom: 22px;
 }
-.lp-feat b { display: block; font-size: 13.5px; font-weight: 600; }
-.lp-feat i { display: block; font-style: normal; font-size: 12.5px; opacity: .72; line-height: 1.45; margin-top: 1px; }
+.lp-toggle button {
+  border: none; cursor: pointer; border-radius: 999px; padding: 10px 12px;
+  font-size: 14px; font-weight: 600; color: var(--text-mute); background: none;
+  transition: background .15s, color .15s;
+}
+.lp-toggle button.on {
+  background: var(--accent-strong, #142a9e); color: #fff;
+  box-shadow: 0 2px 8px rgba(17, 25, 70, .22);
+}
 
-.lp-hero-foot { font-size: 12px; opacity: .6; font-style: italic; }
-
-/* ---- Form panel (right) ------------------------------------------------- */
-.lp-panel { display: grid; place-items: center; padding: 40px 24px; }
-.lp-card { width: 100%; max-width: 380px; }
-
-.lp-steps { display: flex; gap: 6px; margin-bottom: 22px; }
-.lp-dot { width: 26px; height: 4px; border-radius: 99px; background: var(--border); transition: background .2s; }
-.lp-dot.on { background: var(--accent); }
-
-.lp-title { font-size: 25px; font-weight: 700; letter-spacing: -0.01em; margin: 0; }
-.lp-sub { color: var(--text-mute); font-size: 13.5px; margin: 7px 0 22px; }
+.lp-title { font-size: 24px; font-weight: 700; letter-spacing: -0.01em; margin: 0; }
+.lp-sub { color: var(--text-mute); font-size: 13.5px; margin: 6px 0 16px; line-height: 1.45; }
 
 .lp-label {
-  display: block; font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em;
-  color: var(--text-mute); margin: 14px 0 5px;
+  display: block; font-size: 12.5px; font-weight: 600;
+  color: var(--text); margin: 14px 0 6px;
 }
 .lp-input {
   width: 100%; box-sizing: border-box;
-  padding: 11px 13px; border-radius: 10px;
-  background: var(--panel-2, rgba(128, 128, 128, .06));
-  border: 1px solid var(--border); color: var(--text); font-size: 14px;
+  padding: 12px 13px; border-radius: 11px;
+  background: var(--panel-2, #eef1f8);
+  border: 1px solid var(--border); color: var(--text); font-size: 14.5px;
   transition: border-color .15s, box-shadow .15s;
 }
 .lp-input::placeholder { color: var(--text-mute); }
 .lp-input:focus-visible { outline: none; box-shadow: var(--ring); border-color: var(--accent); }
 
-/* Country code + number group */
+.lp-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.lp-2col .lp-label { margin-top: 0; }
+
+/* Country code + number */
 .lp-phone { display: flex; gap: 8px; }
 .lp-dial {
-  flex: 0 0 auto; width: 104px; box-sizing: border-box;
-  padding: 11px 8px; border-radius: 10px; cursor: pointer;
-  background: var(--panel-2, rgba(128, 128, 128, .06));
-  border: 1px solid var(--border); color: var(--text); font-size: 14px;
+  flex: 0 0 auto; width: 108px; box-sizing: border-box;
+  padding: 12px 8px; border-radius: 11px; cursor: pointer;
+  background: var(--panel-2, #eef1f8); border: 1px solid var(--border);
+  color: var(--text); font-size: 14px;
 }
 .lp-dial:focus-visible { outline: none; box-shadow: var(--ring); border-color: var(--accent); }
 .lp-phone-num { flex: 1 1 auto; min-width: 0; }
 
+/* Password + eye */
+.lp-pw { position: relative; }
+.lp-pw .lp-input { padding-right: 42px; }
+.lp-eye {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  width: 30px; height: 30px; display: grid; place-items: center;
+  background: none; border: none; cursor: pointer; color: var(--text-mute); border-radius: 7px;
+}
+.lp-eye:hover { color: var(--text); }
+
+.lp-forgot {
+  display: inline-block; margin-top: 10px; background: none; border: none; cursor: pointer;
+  color: var(--accent); font-size: 12.5px; font-weight: 600; padding: 0;
+}
+.lp-forgot:hover { text-decoration: underline; }
+
 .lp-error { color: var(--red); font-size: 12.5px; margin-top: 12px; }
 .lp-notice {
-  display: inline-flex; align-items: center; gap: 6px;
   margin: 2px 0 6px; font-size: 12.5px; color: var(--accent-strong, var(--accent));
   background: var(--accent-bg); border: 1px solid var(--border);
-  padding: 8px 11px; border-radius: 9px;
+  padding: 9px 11px; border-radius: 10px;
 }
 
+/* Primary button — light fill, accent text + border (matches the mockup). */
 .lp-btn {
-  width: 100%; margin-top: 22px;
+  width: 100%; margin-top: 18px;
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-  padding: 12px 16px; border-radius: 11px; cursor: pointer;
-  background: var(--accent); color: var(--accent-contrast, #fff);
-  border: 1px solid var(--accent); font-size: 14px; font-weight: 600;
-  box-shadow: 0 6px 18px var(--accent-bg);
-  transition: transform .12s, box-shadow .15s, opacity .15s;
+  padding: 13px 16px; border-radius: 12px; cursor: pointer;
+  background: var(--accent-bg, #e7ecff); color: var(--accent-strong, #142a9e);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  font-size: 14.5px; font-weight: 700;
+  transition: transform .12s, box-shadow .15s, background .15s, opacity .15s;
 }
-.lp-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 10px 24px var(--accent-bg); }
+.lp-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 18%, var(--panel));
+  box-shadow: 0 6px 16px var(--accent-bg); transform: translateY(-1px);
+}
 .lp-btn:active:not(:disabled) { transform: translateY(0); }
-.lp-btn:disabled { opacity: .5; cursor: default; box-shadow: none; }
+.lp-btn:disabled { opacity: .5; cursor: default; }
 .lp-spin { animation: lp-rot 1s linear infinite; }
 @keyframes lp-rot { to { transform: rotate(360deg); } }
 
-.lp-switch { margin-top: 18px; text-align: center; font-size: 13px; color: var(--text-mute); }
-.lp-link {
-  background: none; border: none; cursor: pointer; padding: 0;
-  display: inline-flex; align-items: center; gap: 4px;
-  color: var(--accent); font-size: 13px; font-weight: 600;
+.lp-back {
+  width: 100%; margin-top: 12px; text-align: center;
+  background: none; border: none; cursor: pointer;
+  color: var(--text-mute); font-size: 12.5px; font-weight: 600;
 }
-.lp-link:hover { text-decoration: underline; }
+.lp-back:hover { color: var(--text); }
+
+/* OR divider */
+.lp-or {
+  display: flex; align-items: center; gap: 12px; margin: 20px 0 14px;
+  color: var(--text-mute); font-size: 11px; letter-spacing: .1em;
+}
+.lp-or::before, .lp-or::after {
+  content: ''; flex: 1; height: 1px; background: var(--border);
+}
+
+/* Try the demo */
+.lp-demo {
+  width: 100%;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px 16px; border-radius: 12px; cursor: pointer;
+  background: var(--panel); color: var(--accent);
+  border: 1px solid var(--border); font-size: 14px; font-weight: 600;
+  transition: border-color .15s, background .15s;
+}
+.lp-demo:hover { border-color: var(--accent); background: var(--accent-bg); }
 
 .lp-fineprint {
-  margin-top: 26px; text-align: center; font-size: 11px; color: var(--text-mute);
+  margin-top: 14px; text-align: center; font-size: 11.5px; color: var(--text-mute);
   line-height: 1.5;
 }
 
-/* ---- Responsive --------------------------------------------------------- */
-@media (max-width: 860px) {
-  .lp-shell { grid-template-columns: 1fr; }
-  /* On phones the form is what matters; keep a slim branded header instead of
-     the full hero. */
-  .lp-hero { padding: 24px 24px 20px; gap: 14px; }
-  .lp-hero-mid, .lp-hero-foot { display: none; }
-  .lp-panel { padding: 28px 20px 40px; align-items: start; }
+@media (max-width: 420px) {
+  .lp-card { padding: 22px 18px 20px; border-radius: 16px; }
+  .lp-2col { grid-template-columns: 1fr; gap: 0; }
 }

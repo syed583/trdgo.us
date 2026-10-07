@@ -39,6 +39,8 @@ PUBLIC_PATHS = frozenset({
     "/auth/login",
     "/auth/otp/request",   # phone signup: request a WhatsApp code
     "/auth/register",      # phone signup: verify code + create account
+    "/auth/reset/request", # forgot password: request a WhatsApp code
+    "/auth/reset",         # forgot password: verify code + set new password
     "/auth/status",
     "/favicon.ico",
     "/health",

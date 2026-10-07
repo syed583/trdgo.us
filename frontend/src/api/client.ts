@@ -781,8 +781,11 @@ export const api2 = {
   login: (username: string, password: string) =>
     send<any>('/auth/login', 'POST', { username, password }),
   otpRequest: (phone: string) => send<any>('/auth/otp/request', 'POST', { phone }),
-  register: (phone: string, code: string, name: string, password: string) =>
-    send<any>('/auth/register', 'POST', { phone, code, name, password }),
+  register: (phone: string, code: string, name: string, password: string, age?: string) =>
+    send<any>('/auth/register', 'POST', { phone, code, name, password, age }),
+  resetRequest: (phone: string) => send<any>('/auth/reset/request', 'POST', { phone }),
+  resetPassword: (phone: string, code: string, password: string) =>
+    send<any>('/auth/reset', 'POST', { phone, code, password }),
   logout: () => send<any>('/auth/logout', 'POST'),
   adminUsers: (s?: AbortSignal) => request<any>('/api/admin/users', s),
   adminLogins: (limit = 50, s?: AbortSignal) =>

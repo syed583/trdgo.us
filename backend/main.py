@@ -1452,10 +1452,11 @@ async def auth_register(request: Request):
     code = str(body.get("code") or "")
     name = str(body.get("name") or "")
     password = str(body.get("password") or "")
+    age = body.get("age")
     if not otp_service.verify_code(phone, code):
         return JSONResponse({"detail": "Invalid or expired code. Request a new one."},
                             status_code=400)
-    res = user_service.create_phone_user(phone, name, password)
+    res = user_service.create_phone_user(phone, name, password, age)
     if res.get("status") != "OK":
         status = 409 if res.get("status") == "EXISTS" else 400
         return JSONResponse({"detail": res.get("detail") or "Could not create the account."},
@@ -1467,6 +1468,46 @@ async def auth_register(request: Request):
         pass
     return _login_response(request, res["username"], "user",
                            {"display_name": res.get("display_name")})
+
+
+@app.post("/auth/reset/request")
+async def auth_reset_request(request: Request):
+    """Send a WhatsApp OTP to reset the password of an EXISTING phone account."""
+    import otp_service
+    import user_service
+    body = await _json_body(request)
+    phone = str(body.get("phone") or "")
+    if not user_service.phone_exists(phone):
+        return JSONResponse(
+            {"detail": "No account found for this number. Create one instead."},
+            status_code=404)
+    res = otp_service.request_code(phone)
+    if res.get("status") == "SENT":
+        return {"status": "SENT"}
+    status = 429 if res.get("status") == "RATE_LIMITED" else 400
+    return JSONResponse({"detail": res.get("detail") or "Could not send the code."},
+                        status_code=status)
+
+
+@app.post("/auth/reset")
+async def auth_reset(request: Request):
+    """Verify the OTP and set a new password, then sign the user in."""
+    import otp_service
+    import user_service
+    body = await _json_body(request)
+    phone = str(body.get("phone") or "")
+    code = str(body.get("code") or "")
+    password = str(body.get("password") or "")
+    import whatsapp_service as wa
+    username = wa.normalize_phone(phone)
+    if not otp_service.verify_code(phone, code):
+        return JSONResponse({"detail": "Invalid or expired code. Request a new one."},
+                            status_code=400)
+    res = user_service.reset_password(username, password)
+    if res.get("status") != "OK":
+        return JSONResponse({"detail": res.get("detail") or "Could not reset the password."},
+                            status_code=400)
+    return _login_response(request, username, "user")
 
 
 @app.post("/auth/logout")

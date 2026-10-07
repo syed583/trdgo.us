@@ -39,6 +39,7 @@ def _ensure_schema() -> None:
         db = SessionLocal()
         try:
             db.execute(text("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS display_name VARCHAR(80)"))
+            db.execute(text("ALTER TABLE app_users ADD COLUMN IF NOT EXISTS age INTEGER"))
             db.commit()
         finally:
             db.close()
@@ -47,7 +48,8 @@ def _ensure_schema() -> None:
     _schema_ready = True
 
 
-def create_phone_user(phone: str, name: str, password: str) -> dict:
+def create_phone_user(phone: str, name: str, password: str,
+                      age: Optional[int] = None) -> dict:
     """
     Create a self-service account from a verified phone signup. The username is
     the normalized phone number; `name` is the display name. Phone-OTP accounts
@@ -61,6 +63,12 @@ def create_phone_user(phone: str, name: str, password: str) -> dict:
     if not valid_password(password):
         return {"status": "INVALID", "detail": "Password must be 6-128 characters."}
     name = (name or "").strip()[:80] or username
+    try:
+        age_val = int(age) if age not in (None, "") else None
+        if age_val is not None and not (1 <= age_val <= 120):
+            age_val = None
+    except (TypeError, ValueError):
+        age_val = None
     salt = secrets.token_hex(16)
     db = SessionLocal()
     try:
@@ -68,7 +76,7 @@ def create_phone_user(phone: str, name: str, password: str) -> dict:
         if existing:
             return {"status": "EXISTS",
                     "detail": "This number already has an account — sign in with your password."}
-        db.add(AppUser(username=username, display_name=name,
+        db.add(AppUser(username=username, display_name=name, age=age_val,
                        password_hash=_hash(password, salt), salt=salt,
                        role="user", active=True, full_access=True))
         db.commit()

@@ -1,24 +1,23 @@
 import { useState } from 'react';
-import {
-  LogIn, Loader2, Phone, ArrowLeft, ShieldCheck, Gauge, Activity, TrendingUp,
-  CheckCircle2,
-} from 'lucide-react';
+import { Loader2, Phone, Eye, EyeOff, PlayCircle, Lock } from 'lucide-react';
 import { api2 } from '../api/client';
 import './login-page.css';
 
-// Phone-OTP auth. New users: phone -> WhatsApp code -> name + password (created
-// with full access, signed in). Returning users: phone + password. Posts go to
-// /auth/* (proxied to the backend in dev). On success a full navigation reloads
-// the app with the fresh session cookie.
-type Mode = 'signin' | 'phone' | 'verify';
+// Phone-OTP auth with a Log In / Sign Up card.
+//   login         phone + password
+//   signup        first/last/age/phone -> Send OTP
+//   signupVerify  code + password -> create account
+//   forgot        phone -> Send OTP (existing accounts only)
+//   forgotVerify  code + new password -> reset
+// Posts go to /auth/* (proxied to the backend in dev). On success a full
+// navigation reloads the app with the fresh session cookie.
+type View = 'login' | 'signup' | 'signupVerify' | 'forgot' | 'forgotVerify';
 
-// Curated dial codes (flag + code). Value is the dial code digits; the backend
-// normalizes the combined number to digits anyway.
 const COUNTRIES: { flag: string; dial: string; name: string }[] = [
+  { flag: '🇦🇪', dial: '971', name: 'UAE' },
   { flag: '🇮🇳', dial: '91', name: 'India' },
   { flag: '🇺🇸', dial: '1', name: 'USA / Canada' },
   { flag: '🇬🇧', dial: '44', name: 'UK' },
-  { flag: '🇦🇪', dial: '971', name: 'UAE' },
   { flag: '🇸🇦', dial: '966', name: 'Saudi Arabia' },
   { flag: '🇶🇦', dial: '974', name: 'Qatar' },
   { flag: '🇰🇼', dial: '965', name: 'Kuwait' },
@@ -38,224 +37,289 @@ const COUNTRIES: { flag: string; dial: string; name: string }[] = [
   { flag: '🇳🇱', dial: '31', name: 'Netherlands' },
   { flag: '🇿🇦', dial: '27', name: 'South Africa' },
   { flag: '🇳🇬', dial: '234', name: 'Nigeria' },
-  { flag: '🇰🇪', dial: '254', name: 'Kenya' },
   { flag: '🇧🇷', dial: '55', name: 'Brazil' },
-  { flag: '🇲🇽', dial: '52', name: 'Mexico' },
   { flag: '🇯🇵', dial: '81', name: 'Japan' },
-  { flag: '🇰🇷', dial: '82', name: 'South Korea' },
   { flag: '🇨🇳', dial: '86', name: 'China' },
-  { flag: '🇭🇰', dial: '852', name: 'Hong Kong' },
   { flag: '🇹🇷', dial: '90', name: 'Turkey' },
   { flag: '🇪🇬', dial: '20', name: 'Egypt' },
 ];
 
-const FEATURES = [
-  { icon: Gauge, title: 'Earnings Trade scoring', text: '100-point equity & options setups before every report.' },
-  { icon: Activity, title: 'Options flow & straddles', text: 'Unusual activity, IV crush and expected-move analysis.' },
-  { icon: TrendingUp, title: 'Live market intelligence', text: 'Dark pool, insider and sector signals in real time.' },
-  { icon: ShieldCheck, title: 'Private & secure', text: 'WhatsApp-verified sign-in. Your workspace stays yours.' },
-];
+// A faint candlestick backdrop (decorative). Deterministic so it never jitters.
+function CandleBackdrop() {
+  const rnd = (i: number) => Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1;
+  const candles = Array.from({ length: 26 }, (_, i) => {
+    const x = 16 + i * 31;
+    const up = rnd(i + 3) > 0.5;
+    const bodyH = 24 + rnd(i) * 70;
+    const y = 90 + rnd(i + 5) * 300;
+    const wick = 18 + rnd(i + 7) * 36;
+    return { x, y, bodyH, wick, up };
+  });
+  return (
+    <svg className="lp-bg" viewBox="0 0 820 560" preserveAspectRatio="xMidYMid slice"
+      aria-hidden="true">
+      {candles.map((c, i) => {
+        const col = c.up ? 'var(--signal-up, #3a63f0)' : 'var(--signal-down, #e5556b)';
+        return (
+          <g key={i} stroke={col} fill={col}>
+            <line x1={c.x + 6} x2={c.x + 6} y1={c.y - c.wick} y2={c.y + c.bodyH + c.wick}
+              strokeWidth="1.5" />
+            <rect x={c.x} y={c.y} width="12" height={c.bodyH} rx="2" opacity="0.9" />
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
 
 export default function LoginPage() {
-  const [mode, setMode] = useState<Mode>('signin');
-  const [dial, setDial] = useState('91');
+  const [view, setView] = useState<View>('login');
+  const [dial, setDial] = useState('971');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  // The full international number (dial code + local number), digits only.
-  const fullPhone = () => (dial + phone).replace(/\D/g, '');
+  const [showPw, setShowPw] = useState(false);
   const [code, setCode] = useState('');
-  const [name, setName] = useState('');
+  const [first, setFirst] = useState('');
+  const [last, setLast] = useState('');
+  const [age, setAge] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
+  const fullPhone = () => (dial + phone).replace(/\D/g, '');
   const fail = (e: unknown) => {
     setError((e as Error)?.message || 'Something went wrong. Try again.');
     setBusy(false);
   };
+  const go = (v: View) => { setView(v); setError(''); setNotice(''); };
+  const clearAuth = () => { setPassword(''); setCode(''); setShowPw(false); };
 
-  const signIn = async () => {
+  const login = async () => {
     if (busy || !phone.trim() || !password) return;
     setBusy(true); setError('');
     try { await api2.login(fullPhone(), password); window.location.href = '/'; }
     catch (e) { fail(e); }
   };
 
-  const sendCode = async () => {
-    if (busy || !phone.trim()) return;
+  const sendSignupOtp = async () => {
+    if (busy || !first.trim() || !last.trim() || !phone.trim()) return;
     setBusy(true); setError(''); setNotice('');
     try {
       await api2.otpRequest(fullPhone());
-      setNotice('We sent a code to your WhatsApp. Enter it below.');
-      setMode('verify'); setBusy(false);
+      setNotice('We sent a code to your WhatsApp.');
+      setView('signupVerify'); setBusy(false);
     } catch (e) { fail(e); }
   };
 
-  const createAccount = async () => {
-    if (busy || !code.trim() || !name.trim() || !password) return;
+  const completeSignup = async () => {
+    if (busy || !code.trim() || !password) return;
     setBusy(true); setError('');
     try {
-      await api2.register(fullPhone(), code.trim(), name.trim(), password);
+      await api2.register(fullPhone(), code.trim(), `${first.trim()} ${last.trim()}`.trim(),
+        password, age.trim());
       window.location.href = '/';
     } catch (e) { fail(e); }
   };
 
-  // The country-code + number input group, reused in sign-in and sign-up.
-  const phoneField = (onEnter: () => void) => (
+  const sendForgotOtp = async () => {
+    if (busy || !phone.trim()) return;
+    setBusy(true); setError(''); setNotice('');
+    try {
+      await api2.resetRequest(fullPhone());
+      setNotice('We sent a reset code to your WhatsApp.');
+      setView('forgotVerify'); setBusy(false);
+    } catch (e) { fail(e); }
+  };
+
+  const completeForgot = async () => {
+    if (busy || !code.trim() || !password) return;
+    setBusy(true); setError('');
+    try {
+      await api2.resetPassword(fullPhone(), code.trim(), password);
+      window.location.href = '/';
+    } catch (e) { fail(e); }
+  };
+
+  const tryDemo = () => { window.location.href = '/dashboard?demo=1'; };
+
+  const dialSelect = (
+    <select className="lp-dial" value={dial}
+      onChange={(e) => { setDial(e.target.value); setError(''); }} aria-label="Country code">
+      {COUNTRIES.map((c) => (
+        <option key={c.dial + c.name} value={c.dial}>{c.flag} +{c.dial}</option>
+      ))}
+    </select>
+  );
+  const phoneRow = (onEnter: () => void) => (
     <div className="lp-phone">
-      <select className="lp-dial" value={dial}
-        onChange={(e) => { setDial(e.target.value); setError(''); }}
-        aria-label="Country code">
-        {COUNTRIES.map((c) => (
-          <option key={c.dial + c.name} value={c.dial}>{c.flag} +{c.dial}</option>
-        ))}
-      </select>
-      <input className="lp-input lp-phone-num" value={phone} autoFocus inputMode="tel"
+      {dialSelect}
+      <input className="lp-input lp-phone-num" value={phone} inputMode="tel"
         placeholder="Phone number" autoComplete="tel-national"
         onChange={(e) => { setPhone(e.target.value); setError(''); }}
         onKeyDown={(e) => { if (e.key === 'Enter') onEnter(); }} />
     </div>
   );
+  const pwField = (onEnter: () => void, ph = 'Password', ac = 'current-password') => (
+    <div className="lp-pw">
+      <input className="lp-input" type={showPw ? 'text' : 'password'} value={password}
+        placeholder={ph} autoComplete={ac}
+        onChange={(e) => { setPassword(e.target.value); setError(''); }}
+        onKeyDown={(e) => { if (e.key === 'Enter') onEnter(); }} />
+      <button className="lp-eye" type="button" onClick={() => setShowPw((v) => !v)}
+        aria-label={showPw ? 'Hide password' : 'Show password'}>
+        {showPw ? <EyeOff size={17} /> : <Eye size={17} />}
+      </button>
+    </div>
+  );
 
-  const reset = (m: Mode) => {
-    setMode(m); setError(''); setNotice(''); setCode(''); setPassword('');
-  };
+  const isSignup = view !== 'login';
 
   return (
     <div className="lp-shell">
-      {/* Brand / value panel */}
-      <aside className="lp-hero">
-        <div className="lp-hero-top">
-          <div className="lp-logo">
-            <span className="lp-logo-mark">T</span>
-            <span className="lp-logo-word">Trdgo<b>.us</b></span>
-          </div>
-          <div className="lp-tag">TRADE SMARTER. FASTER.</div>
+      <CandleBackdrop />
+      <div className="lp-card">
+        {/* Log In / Sign Up toggle */}
+        <div className="lp-toggle">
+          <button className={!isSignup ? 'on' : ''}
+            onClick={() => { clearAuth(); go('login'); }}>Log In</button>
+          <button className={isSignup ? 'on' : ''}
+            onClick={() => { clearAuth(); go('signup'); }}>Sign Up</button>
         </div>
-        <div className="lp-hero-mid">
-          <h2 className="lp-hero-h">The edge before earnings.</h2>
-          <p className="lp-hero-p">
-            Scored equity & options setups, live flow and risk alerts — one
-            private workspace for your US-market research.
-          </p>
-          <ul className="lp-feat">
-            {FEATURES.map((f) => (
-              <li key={f.title}>
-                <span className="lp-feat-ic"><f.icon size={16} /></span>
-                <span>
-                  <b>{f.title}</b>
-                  <i>{f.text}</i>
-                </span>
-              </li>
-            ))}
-          </ul>
+
+        {view === 'login' && (
+          <>
+            <h1 className="lp-title">Welcome back</h1>
+            <p className="lp-sub">Log in with your phone number and password.</p>
+
+            <label className="lp-label">Phone number</label>
+            {phoneRow(login)}
+
+            <label className="lp-label">Password</label>
+            {pwField(login)}
+            <button className="lp-forgot" onClick={() => { clearAuth(); go('forgot'); }}>
+              Forgot password?
+            </button>
+
+            {error && <div className="lp-error">{error}</div>}
+            <button className="lp-btn" disabled={busy || !phone.trim() || !password} onClick={login}>
+              {busy ? <Loader2 size={16} className="lp-spin" /> : <Lock size={16} />}
+              {busy ? 'Logging in…' : 'Log In'}
+            </button>
+          </>
+        )}
+
+        {view === 'signup' && (
+          <>
+            <h1 className="lp-title">Create your account</h1>
+            <p className="lp-sub">Tell us a bit about you, then verify your phone number.</p>
+
+            <div className="lp-2col">
+              <div>
+                <label className="lp-label">First name</label>
+                <input className="lp-input" value={first} placeholder="Alex" autoFocus
+                  onChange={(e) => { setFirst(e.target.value); setError(''); }} />
+              </div>
+              <div>
+                <label className="lp-label">Last name</label>
+                <input className="lp-input" value={last} placeholder="Trader"
+                  onChange={(e) => { setLast(e.target.value); setError(''); }} />
+              </div>
+            </div>
+
+            <label className="lp-label">Age</label>
+            <input className="lp-input" value={age} inputMode="numeric" placeholder="28"
+              onChange={(e) => { setAge(e.target.value.replace(/\D/g, '').slice(0, 3)); setError(''); }} />
+
+            <label className="lp-label">Phone number</label>
+            {phoneRow(sendSignupOtp)}
+
+            {error && <div className="lp-error">{error}</div>}
+            <button className="lp-btn"
+              disabled={busy || !first.trim() || !last.trim() || !phone.trim()}
+              onClick={sendSignupOtp}>
+              {busy ? <Loader2 size={16} className="lp-spin" /> : <Phone size={16} />}
+              {busy ? 'Sending…' : 'Send OTP'}
+            </button>
+          </>
+        )}
+
+        {view === 'signupVerify' && (
+          <>
+            <h1 className="lp-title">Verify your number</h1>
+            <p className="lp-sub">Enter the code we sent and set a password.</p>
+            {notice && <div className="lp-notice">{notice}</div>}
+
+            <label className="lp-label">Verification code</label>
+            <input className="lp-input" value={code} inputMode="numeric" autoFocus
+              placeholder="6-digit code"
+              onChange={(e) => { setCode(e.target.value); setError(''); }} />
+
+            <label className="lp-label">Set a password</label>
+            {pwField(completeSignup, 'At least 6 characters', 'new-password')}
+
+            {error && <div className="lp-error">{error}</div>}
+            <button className="lp-btn" disabled={busy || !code.trim() || !password}
+              onClick={completeSignup}>
+              {busy ? <Loader2 size={16} className="lp-spin" /> : <Lock size={16} />}
+              {busy ? 'Creating…' : 'Create account'}
+            </button>
+            <button className="lp-back" onClick={() => go('signup')}>Use a different number</button>
+          </>
+        )}
+
+        {view === 'forgot' && (
+          <>
+            <h1 className="lp-title">Reset password</h1>
+            <p className="lp-sub">Enter your number — we’ll send a reset code to WhatsApp.</p>
+
+            <label className="lp-label">Phone number</label>
+            {phoneRow(sendForgotOtp)}
+
+            {error && <div className="lp-error">{error}</div>}
+            <button className="lp-btn" disabled={busy || !phone.trim()} onClick={sendForgotOtp}>
+              {busy ? <Loader2 size={16} className="lp-spin" /> : <Phone size={16} />}
+              {busy ? 'Sending…' : 'Send reset code'}
+            </button>
+            <button className="lp-back" onClick={() => { clearAuth(); go('login'); }}>
+              Back to log in
+            </button>
+          </>
+        )}
+
+        {view === 'forgotVerify' && (
+          <>
+            <h1 className="lp-title">Set a new password</h1>
+            <p className="lp-sub">Enter the code and choose a new password.</p>
+            {notice && <div className="lp-notice">{notice}</div>}
+
+            <label className="lp-label">Verification code</label>
+            <input className="lp-input" value={code} inputMode="numeric" autoFocus
+              placeholder="6-digit code"
+              onChange={(e) => { setCode(e.target.value); setError(''); }} />
+
+            <label className="lp-label">New password</label>
+            {pwField(completeForgot, 'At least 6 characters', 'new-password')}
+
+            {error && <div className="lp-error">{error}</div>}
+            <button className="lp-btn" disabled={busy || !code.trim() || !password}
+              onClick={completeForgot}>
+              {busy ? <Loader2 size={16} className="lp-spin" /> : <Lock size={16} />}
+              {busy ? 'Saving…' : 'Reset password'}
+            </button>
+            <button className="lp-back" onClick={() => { clearAuth(); go('login'); }}>
+              Back to log in
+            </button>
+          </>
+        )}
+
+        <div className="lp-or"><span>OR</span></div>
+        <button className="lp-demo" onClick={tryDemo}>
+          <PlayCircle size={16} /> Try the demo
+        </button>
+        <div className="lp-fineprint">
+          Look around without signing up. Shared account — don’t save anything private to it.
         </div>
-        <div className="lp-hero-foot">“Data. Discipline. Edge.” — Trdgo.us</div>
-      </aside>
-
-      {/* Form panel */}
-      <main className="lp-panel">
-        <div className="lp-card">
-          <div className="lp-steps">
-            <span className={`lp-dot ${mode === 'signin' ? 'on' : ''}`} />
-            <span className={`lp-dot ${mode !== 'signin' ? 'on' : ''}`} />
-          </div>
-
-          {mode === 'signin' && (
-            <>
-              <h1 className="lp-title">Welcome back</h1>
-              <p className="lp-sub">Sign in with your phone number and password.</p>
-
-              <label className="lp-label">Phone number</label>
-              {phoneField(signIn)}
-
-              <label className="lp-label">Password</label>
-              <input className="lp-input" type="password" value={password}
-                autoComplete="current-password"
-                onChange={(e) => { setPassword(e.target.value); setError(''); }}
-                onKeyDown={(e) => { if (e.key === 'Enter') signIn(); }} />
-
-              {error && <div className="lp-error">{error}</div>}
-
-              <button className="lp-btn" disabled={busy || !phone.trim() || !password}
-                onClick={signIn}>
-                {busy ? <Loader2 size={16} className="lp-spin" /> : <LogIn size={16} />}
-                {busy ? 'Signing in…' : 'Sign in'}
-              </button>
-              <div className="lp-switch">
-                New to Trdgo.us?{' '}
-                <button className="lp-link" onClick={() => reset('phone')}>Create an account</button>
-              </div>
-            </>
-          )}
-
-          {mode === 'phone' && (
-            <>
-              <h1 className="lp-title">Create your account</h1>
-              <p className="lp-sub">We’ll send a verification code to your WhatsApp.</p>
-
-              <label className="lp-label">Phone number</label>
-              {phoneField(sendCode)}
-
-              {error && <div className="lp-error">{error}</div>}
-
-              <button className="lp-btn" disabled={busy || !phone.trim()} onClick={sendCode}>
-                {busy ? <Loader2 size={16} className="lp-spin" /> : <Phone size={16} />}
-                {busy ? 'Sending…' : 'Send WhatsApp code'}
-              </button>
-              <div className="lp-switch">
-                <button className="lp-link" onClick={() => reset('signin')}>
-                  <ArrowLeft size={13} /> Back to sign in
-                </button>
-              </div>
-            </>
-          )}
-
-          {mode === 'verify' && (
-            <>
-              <h1 className="lp-title">Verify & finish</h1>
-              <p className="lp-sub">Enter your code, your name, and a password to keep.</p>
-              {notice && (
-                <div className="lp-notice"><CheckCircle2 size={14} /> {notice}</div>
-              )}
-
-              <label className="lp-label">Verification code</label>
-              <input className="lp-input" value={code} autoFocus inputMode="numeric"
-                placeholder="6-digit code"
-                onChange={(e) => { setCode(e.target.value); setError(''); }} />
-
-              <label className="lp-label">Your name</label>
-              <input className="lp-input" value={name} placeholder="e.g. Alex Carter"
-                onChange={(e) => { setName(e.target.value); setError(''); }} />
-
-              <label className="lp-label">Set a password</label>
-              <input className="lp-input" type="password" value={password}
-                placeholder="At least 6 characters" autoComplete="new-password"
-                onChange={(e) => { setPassword(e.target.value); setError(''); }}
-                onKeyDown={(e) => { if (e.key === 'Enter') createAccount(); }} />
-
-              {error && <div className="lp-error">{error}</div>}
-
-              <button className="lp-btn"
-                disabled={busy || !code.trim() || !name.trim() || !password}
-                onClick={createAccount}>
-                {busy ? <Loader2 size={16} className="lp-spin" /> : <LogIn size={16} />}
-                {busy ? 'Creating…' : 'Create account'}
-              </button>
-              <div className="lp-switch">
-                <button className="lp-link" onClick={() => reset('phone')}>
-                  <ArrowLeft size={13} /> Use a different number
-                </button>
-              </div>
-            </>
-          )}
-
-          <div className="lp-fineprint">
-            By continuing you agree this is a private research tool — not
-            financial advice.
-          </div>
-        </div>
-      </main>
+      </div>
     </div>
   );
 }
