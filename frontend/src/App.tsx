@@ -135,6 +135,13 @@ function Shell() {
     };
   }, []);
 
+  // Reset scroll to the top on navigation so a new page doesn't open halfway
+  // down (scroll position was carrying over from the previous page).
+  React.useEffect(() => {
+    window.scrollTo(0, 0);
+    (document.querySelector('.app-main') as HTMLElement | null)?.scrollTo?.(0, 0);
+  }, [location.pathname]);
+
   // The URL is the single source of truth for the active ticker. Read it from
   // the pathname: useParams() cannot see a child route's params from here.
   const symbol = (

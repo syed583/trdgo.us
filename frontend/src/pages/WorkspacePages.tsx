@@ -148,6 +148,7 @@ export function AlertsPage({ ctx }: { ctx: PageContext }) {
                         </button>
                         <button className="mini-btn danger" title="Delete"
                           onClick={async () => {
+                            if (!window.confirm(`Delete this alert for ${r.symbol || 'this symbol'}?`)) return;
                             await api2.alertDelete(r.id);
                             evaluated.refresh();
                           }}>
@@ -307,7 +308,10 @@ export function JournalPage({ ctx }: { ctx: PageContext }) {
                           overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.notes}</td>
                         <td>
                           <button className="mini-btn danger" title="Delete"
-                            onClick={async () => { await api2.journalDelete(r.id); journal.refresh(); }}>
+                            onClick={async () => {
+                              if (!window.confirm('Delete this journal entry? This cannot be undone.')) return;
+                              await api2.journalDelete(r.id); journal.refresh();
+                            }}>
                             <Trash2 size={11} />
                           </button>
                         </td>

@@ -314,6 +314,10 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .search-menu li i { font-style: normal; font-size: 10px; color: var(--text-mute); }
+.search-menu li.search-empty {
+  cursor: default; color: var(--text-mute); font-size: 12.5px; justify-content: flex-start;
+}
+.search-menu li.search-empty:hover { background: none; }
 
 /* ---- link-shaped controls ---------------------------------------------- */
 

@@ -219,6 +219,7 @@ function SymbolSearch({
   const [draft, setDraft] = useState(symbol);
   const [matches, setMatches] = useState<SymbolMatch[]>([]);
   const [open, setOpen] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [highlight, setHighlight] = useState(0);
@@ -230,13 +231,15 @@ function SymbolSearch({
   useEffect(() => {
     if (demo || !open) return;
     const q = draft.trim();
-    if (q.length < 1 || q === symbol) { setMatches([]); return; }
+    if (q.length < 1 || q === symbol) { setMatches([]); setSearching(false); return; }
 
+    setSearching(true);
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       api2.searchSymbols(q, controller.signal)
         .then((r) => { setMatches(r.matches || []); setHighlight(0); })
-        .catch(() => undefined);
+        .catch(() => undefined)
+        .finally(() => setSearching(false));
     }, 220);
 
     return () => { controller.abort(); window.clearTimeout(timer); };
@@ -326,6 +329,15 @@ function SymbolSearch({
               <i>{m.exchange}</i>
             </li>
           ))}
+        </ul>
+      )}
+
+      {open && !searching && !error && matches.length === 0
+        && draft.trim().length >= 1 && draft.trim() !== symbol && (
+        <ul className="search-menu">
+          <li className="search-empty" aria-disabled="true">
+            No matches for “{draft.trim()}”
+          </li>
         </ul>
       )}
     </div>

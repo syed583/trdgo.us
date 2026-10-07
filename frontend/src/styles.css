@@ -554,6 +554,17 @@ table { border-collapse: collapse; width: 100%; }
 }
 .btn:disabled { opacity: .55; cursor: default; }
 .btn:focus-visible { outline: none; box-shadow: var(--ring); }
+
+/* Keyboard focus for form controls. Several inputs clear the native outline
+   without a replacement; this restores a visible focus ring for keyboard users
+   (mouse focus stays quiet via :focus-visible). */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+  border-color: var(--accent);
+}
 .btn:active:not(:disabled) { transform: translateY(1px); }
 .btn-primary {
   background: var(--accent-2); color: var(--accent-contrast);
