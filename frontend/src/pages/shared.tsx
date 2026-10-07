@@ -14,10 +14,8 @@ export function AuthRequired() {
       <span style={{ maxWidth: 420 }}>
         Your session has ended. Sign in to view this page.
       </span>
-      {/* A full navigation to the app root: when unauthenticated the server
-          returns the login page. */}
       <button className="btn" style={{ marginTop: 10 }}
-        onClick={() => { window.location.href = '/'; }}>Sign in</button>
+        onClick={() => { window.location.href = '/login'; }}>Sign in</button>
     </div>
   );
 }

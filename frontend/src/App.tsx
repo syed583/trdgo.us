@@ -33,6 +33,7 @@ const MarketInsidersPage = lazy(() => import('./pages/MarketInsidersPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 const WorkflowPage = lazy(() => import('./pages/WorkflowPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const LoginPage = lazy(() => import('./pages/LoginPage'));
 const OverviewPage = lazy(() => import('./pages/OverviewPage'));
 const StocksPage = lazy(() => import('./pages/StocksPage'));
 const CalendarPage = lazy(() => import('./pages/CalendarPage'));
@@ -400,7 +401,15 @@ function NotFound() {
 export default function App() {
   return (
     <BrowserRouter>
-      <Shell />
+      <Routes>
+        {/* The sign-in page renders standalone — no sidebar, no data calls. */}
+        <Route path="/login" element={
+          <Suspense fallback={<div className="page"><Loading /></div>}>
+            <LoginPage />
+          </Suspense>
+        } />
+        <Route path="/*" element={<Shell />} />
+      </Routes>
     </BrowserRouter>
   );
 }

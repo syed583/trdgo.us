@@ -1,0 +1,41 @@
+.lp-wrap {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg, var(--panel));
+}
+.lp-card {
+  width: 100%;
+  max-width: 360px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px 26px 26px;
+  box-shadow: var(--shadow-2, 0 8px 30px rgba(0, 0, 0, .18));
+}
+.lp-brand { margin-bottom: 18px; }
+.lp-title { font-size: 22px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+.lp-sub { color: var(--text-mute); font-size: 13px; margin: 6px 0 20px; }
+.lp-label {
+  display: block; font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--text-mute); margin: 12px 0 5px;
+}
+.lp-input {
+  width: 100%; box-sizing: border-box;
+  padding: 10px 12px; border-radius: 9px;
+  background: var(--panel-2, rgba(128, 128, 128, .06));
+  border: 1px solid var(--border); color: var(--text); font-size: 14px;
+}
+.lp-input:focus-visible { outline: none; box-shadow: var(--ring); border-color: var(--accent); }
+.lp-error { color: var(--red); font-size: 12.5px; margin-top: 12px; }
+.lp-btn {
+  width: 100%; margin-top: 20px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 11px 16px; border-radius: 10px; cursor: pointer;
+  background: var(--accent); color: var(--accent-contrast, #fff);
+  border: 1px solid var(--accent); font-size: 14px; font-weight: 600;
+}
+.lp-btn:disabled { opacity: .55; cursor: default; }
+.lp-spin { animation: lp-rot 1s linear infinite; }
+@keyframes lp-rot { to { transform: rotate(360deg); } }

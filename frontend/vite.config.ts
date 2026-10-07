@@ -15,6 +15,13 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      // Auth endpoints live at /auth/* (no /api prefix), so they must be proxied
+      // too or sign-in / sign-out / the session check never reach the backend
+      // in dev.
+      '/auth': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
     },
   },
   preview: {

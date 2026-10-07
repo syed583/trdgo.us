@@ -158,9 +158,9 @@ function AccountMenu({
   const signOut = async () => {
     setBusy(true);
     try { await api2.logout(); } catch { /* clear client-side regardless */ }
-    // The cookie is HttpOnly, so the server clears it; a hard reload drops any
-    // in-memory state and lands on the login screen the gate now redirects to.
-    window.location.href = '/';
+    // The cookie is HttpOnly, so the server clears it; a hard navigation to the
+    // login page drops any in-memory state and lets the user sign back in.
+    window.location.href = '/login';
   };
 
   return (
