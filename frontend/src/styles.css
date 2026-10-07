@@ -312,8 +312,8 @@ table { border-collapse: collapse; width: 100%; }
   animation: nav-blink 1s ease-in-out infinite;
 }
 @keyframes nav-blink {
-  0%, 100% { background: var(--green); box-shadow: 0 0 0 0 rgba(33, 208, 122, 0.6); }
-  50% { background: #15b869; box-shadow: 0 0 12px 3px rgba(33, 208, 122, 0.85); }
+  0%, 100% { background: var(--accent); box-shadow: 0 0 0 0 var(--accent-bg); }
+  50% { background: var(--accent-strong); box-shadow: 0 0 12px 3px var(--accent-bg); }
 }
 @media (prefers-reduced-motion: reduce) {
   .nav-group-label.blink { animation: none; }
