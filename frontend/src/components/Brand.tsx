@@ -1,4 +1,5 @@
 import React from 'react';
+import logoImg from '../assets/logo.jpg';
 
 /**
  * Trdgo.us mark: a bull's head on a black disc, ringed in copper.
@@ -61,11 +62,8 @@ export function BrandMark({ size = 26 }: { size?: number }) {
 export function BrandLockup() {
   return (
     <>
-      <div className="brand">
-        <BrandMark size={26} />
-        <div className="brand-name">
-          Trdgo<span className="brand-tld">.us</span>
-        </div>
+      <div className="brand-logo">
+        <img src={logoImg} alt="Tradgo.us" />
       </div>
       <div className="brand-tag">TRADE SMARTER. FASTER.</div>
     </>

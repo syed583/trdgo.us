@@ -302,12 +302,22 @@ table { border-collapse: collapse; width: 100%; }
 }
 .brand-name .brand-tld { color: var(--gold); }
 
+/* Logo image lockup (black-background brand image shown as a rounded tile). */
+.brand-logo {
+  flex: 0 0 auto;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #000;
+  line-height: 0;
+}
+.brand-logo img { width: 100%; height: auto; display: block; }
+
 .brand-tag {
   font-size: 10px;
   letter-spacing: 1.3px;
   color: var(--text-mute);
   font-weight: 600;
-  margin: 5px 0 16px 4px;
+  margin: 7px 0 16px 2px;
 }
 
 .nav { display: flex; flex-direction: column; gap: 1px; }
