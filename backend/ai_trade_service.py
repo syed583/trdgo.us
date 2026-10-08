@@ -291,6 +291,19 @@ def _as_row(symbol: str, d: dict, horizon: str = "SWING") -> dict:
     decision = d.get("decision") or "WAIT"
     blocked = decision == dm.NO_TRADE or not d.get("actionable", True)
 
+    # Intraday dual-score read (BUY score + SELL score + signal state), per the
+    # operator's intraday model. This drives the Buy/Sell classification and the
+    # card colour on the Trdgo Stock page; the single directional score above is
+    # kept for everything else.
+    import intraday_model_service as im
+    import intraday_inputs as imi
+    signals = list(d.get("signals") or [])
+    try:
+        signals += imi.extra_signals(symbol)   # market direction, sector, analyst
+    except Exception:  # noqa: BLE001 - extras are additive, never break scoring
+        pass
+    ev = im.evaluate(signals)
+
     return {
         "symbol": symbol,
         "horizon": horizon,
@@ -306,6 +319,13 @@ def _as_row(symbol: str, d: dict, horizon: str = "SWING") -> dict:
         "agreement_pct": d.get("agreement_pct"),
         "coverage_pct": d.get("coverage_pct"),
         "top_reasons": (d.get("reasons") or [])[:3],
+        # Intraday model fields.
+        "buy_score": ev.get("buy_score"),
+        "sell_score": ev.get("sell_score"),
+        "im_decision": ev.get("decision"),
+        "im_side": ev.get("side"),
+        "im_color": ev.get("color"),
+        "im_full_size": ev.get("full_size"),
     }
 
 
@@ -500,17 +520,19 @@ def _compose(limit: int = TOP_N, building: bool = False,
     scored = _fresh_rows(horizon)
     have = {r["symbol"] for r in scored}
     pending = [s for s in UNIVERSE if s not in have]
-    callable_rows = [r for r in scored if not r.get("blocked")]
-    held = [r for r in scored if r.get("blocked")]
-
+    # Classification comes entirely from the intraday dual-score model here --
+    # the single directional model's own NO-TRADE gate does not apply to this
+    # page. A name is a buyer when its signal state is a BUY state (Active or
+    # Weakening), ranked by its BUY score; a seller likewise by SELL score;
+    # everything else is the model's NO TRADE (withheld).
     buyers = sorted(
-        [r for r in callable_rows if "BUY" in (r.get("decision") or "")],
-        key=lambda r: r.get("lean") or 0.0, reverse=True)
+        [r for r in scored if r.get("im_side") == "buy"],
+        key=lambda r: r.get("buy_score") or 0.0, reverse=True)
     sellers = sorted(
-        [r for r in callable_rows if "SELL" in (r.get("decision") or "")],
-        key=lambda r: r.get("lean") or 0.0)
-    waiting = [r for r in callable_rows
-               if r not in buyers and r not in sellers]
+        [r for r in scored if r.get("im_side") == "sell"],
+        key=lambda r: r.get("sell_score") or 0.0, reverse=True)
+    held = [r for r in scored if r.get("im_side") not in ("buy", "sell")]
+    waiting: list[dict] = []
 
     ages = [r.get("age_seconds") or 0 for r in scored]
 

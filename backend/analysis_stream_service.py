@@ -270,6 +270,19 @@ def stream_analysis(symbol: str, refresh: bool = False,
 
                 result = horizon_model.score_horizon(symbol, horizon, base=result)
 
+            # Add the intraday model's extra parameters (market direction, sector
+            # strength, today's analyst action) to the parameter list. Display
+            # only -- appended after scoring, so the Analysis score is unchanged.
+            try:
+                import intraday_inputs as imi
+                have = {s.get("name") for s in (result.get("signals") or [])}
+                extra = [s for s in imi.analysis_signals(symbol)
+                         if s.get("name") not in have]
+                if extra:
+                    result["signals"] = (result.get("signals") or []) + extra
+            except Exception:  # noqa: BLE001 - extras must never break analysis
+                pass
+
             # A run the reader just watched is the freshest score there is, so
             # the AI Trade board takes it rather than waiting for its own scan
             # to come round again. Otherwise the two screens show different

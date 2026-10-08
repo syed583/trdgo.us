@@ -199,12 +199,22 @@ def why(row: TradeCall, top: int = 4) -> dict:
     missing = [p.get("label") for p in params
                if p.get("directional") and not p.get("available")]
 
+    # The intraday dual-score breakdown: how many points each parameter adds to
+    # the BUY score and to the SELL score.
+    buy_sell = None
+    try:
+        import intraday_model_service as im
+        buy_sell = im.breakdown(params)
+    except Exception:  # noqa: BLE001 - the breakdown is additive, never required
+        buy_sell = None
+
     return {
         "for": [brief(p) for p in for_call[:top]],
         "against": [brief(p) for p in against[:top]],
         "missing": missing,
         "blocked": json.loads(row.blocked_reasons or "[]"),
         "explanation": row.explanation,
+        "buy_sell": buy_sell,
     }
 
 

@@ -699,7 +699,38 @@ def ai_trade_board(limit: int = 10, refresh: bool = False,
     # start another pass rather than making the caller sit through one.
     if refresh:
         board.prewarm()
-    return board.get_board(limit=limit, horizon=(horizon or "SWING").upper())
+    hz = (horizon or "SWING").upper()
+    b = board.get_board(limit=limit, horizon=hz)
+
+    # Attach a lightweight exit target + stop to each shown Buy/Sell card, the
+    # same ATR maths the Trade Plan uses. Cached per name so this stays cheap.
+    try:
+        import trade_plan_service as tp
+        # Every shown row gets a price + a target/stop, including the NO-TRADE
+        # (held) ones -- a pinned card that has gone No Trade still shows its
+        # price. The level direction follows whichever score leans higher.
+        for side in ("buyers", "sellers", "held"):
+            for row in (b.get(side) or []):
+                sym = row.get("symbol")
+                if not sym:
+                    continue
+                im_side = row.get("im_side")
+                if im_side in ("buy", "sell"):
+                    is_buy = im_side == "buy"
+                else:
+                    is_buy = (row.get("buy_score") or 0) >= (row.get("sell_score") or 0)
+                dec = "BUY" if is_buy else "SELL"
+                lv = swr.serve(
+                    f"qlvl:{hz}:{sym}:{'B' if is_buy else 'S'}",
+                    lambda s=sym, d=dec: tp.quick_levels(s, hz, d),
+                    market.session_ttl(120, 1800))
+                if lv:
+                    row["target"] = lv.get("target")
+                    row["stop"] = lv.get("stop")
+                    row["spot"] = lv.get("spot")
+    except Exception:  # noqa: BLE001 - levels are a nicety, never break the board
+        pass
+    return b
 
 
 @router.get("/directional-model/weights")

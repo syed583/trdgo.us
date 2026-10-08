@@ -158,6 +158,41 @@ def _read(plan: dict) -> Optional[str]:
         return None
 
 
+def quick_levels(symbol: str, horizon: str = "SWING",
+                 decision: str = "BUY") -> Optional[dict]:
+    """A lightweight exit target and stop for a board card.
+
+    Same ATR-based maths as the full plan's entry/stop/targets, but with no
+    option-level fetch and no plan tracking -- just the one take-profit and the
+    stop, anchored to spot. Side-effect free and cheap (cached quote + daily
+    bars), so it can be run for every name shown on the board. The full Trade
+    Plan page remains the authoritative, tracked version.
+    """
+    import live_market_service as market
+
+    symbol = (symbol or "").upper().strip()
+    horizon = (horizon or "SWING").upper()
+    if not symbol:
+        return None
+    hp = HORIZON_PARAMS.get(horizon, HORIZON_PARAMS["SWING"])
+
+    quote = market.get_quote(symbol) or {}
+    spot = _f(quote.get("price"))
+    if spot is None:
+        return None
+
+    bars = _bars(symbol)
+    atr = _atr(bars) or (spot * 0.02)   # 2% fallback if history is thin
+    long = "BUY" in (decision or "").upper()
+    if long:
+        target = spot + hp["tp1"] * atr
+        stop = spot - hp["stop"] * atr
+    else:
+        target = spot - hp["tp1"] * atr
+        stop = spot + hp["stop"] * atr
+    return {"spot": _r(spot), "target": _r(target), "stop": _r(stop)}
+
+
 def get_plan(symbol: str, horizon: str = "SWING", with_read: bool = True) -> dict:
     """A data-derived trade plan for the underlying stock."""
     symbol = (symbol or "").upper().strip()
