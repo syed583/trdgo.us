@@ -89,21 +89,27 @@ export default function LoginPage() {
           </div>
 
           <div className="ld-stage">
-            <div className="ld-candles">
-              {[20, 16, 28, 36, 24, 32].map((h, i) => (
-                <span key={i} className={`ld-candle ${i % 3 === 1 ? 'dn' : 'up'}`}
-                  style={{ height: `${h * 2.4}px` }} />
-              ))}
+            <div className="ld-stage-head">
+              <span className="ld-live"><i /> Live Market</span>
+              <span className="ld-stage-sub">Today's movers</span>
             </div>
-            {CALLOUTS.map((c) => (
-              <div key={c.sym} className={`ld-callout ${c.pos} ${c.up ? 'up' : 'dn'}`}>
-                <span className="ld-callout-sym">{c.sym}</span>
-                <span className="ld-callout-chg">{c.chg}</span>
-                <svg className="ld-callout-spark" viewBox="0 0 50 20">
-                  <path d={c.d} />
-                </svg>
+            <div className="ld-stage-body">
+              <div className="ld-candles">
+                {[20, 16, 28, 36, 24, 32, 22, 30].map((h, i) => (
+                  <span key={i} className={`ld-candle ${i % 3 === 1 ? 'dn' : 'up'}`}
+                    style={{ height: `${h * 2.1}px` }} />
+                ))}
               </div>
-            ))}
+              <div className="ld-quotes">
+                {CALLOUTS.map((c) => (
+                  <div key={c.sym} className={`ld-quote ${c.up ? 'up' : 'dn'}`}>
+                    <span className="ld-quote-sym">{c.sym}</span>
+                    <svg className="ld-quote-spark" viewBox="0 0 50 20"><path d={c.d} /></svg>
+                    <span className="ld-quote-chg">{c.chg}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="ld-stats">
