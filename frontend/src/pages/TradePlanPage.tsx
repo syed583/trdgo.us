@@ -161,23 +161,30 @@ function PriceLadder({ d }: { d: any }) {
   };
   const pos = (v: number) => PAD + even(v) * (100 - 2 * PAD);
 
-  const el = pos(long ? d.entry.low : d.entry.high);
-  const eh = pos(long ? d.entry.high : d.entry.low);
+  // Entry zone may be absent on some setups -- guard it so the ladder still
+  // renders (the anchors above are already optional-chained).
+  const eLow = d.entry?.low;
+  const eHigh = d.entry?.high;
+  const hasEntry = eLow != null && eHigh != null;
+  const el = hasEntry ? pos(long ? eLow : eHigh) : 0;
+  const eh = hasEntry ? pos(long ? eHigh : eLow) : 0;
 
   const marks = [
     { v: d.stop, cls: 'stop', label: 'Stop' },
     { v: d.spot, cls: 'spot', label: 'Spot' },
-    { v: d.targets.tp1, cls: 'tp', label: 'TP1' },
-    { v: d.targets.tp2, cls: 'tp', label: 'TP2' },
-    { v: d.targets.tp3, cls: 'tp', label: 'TP3' },
+    { v: d.targets?.tp1, cls: 'tp', label: 'TP1' },
+    { v: d.targets?.tp2, cls: 'tp', label: 'TP2' },
+    { v: d.targets?.tp3, cls: 'tp', label: 'TP3' },
   ].filter((m) => m.v != null);
 
   return (
     <div className="tp-ladder">
       <div className={`tp-ladder-track ${long ? '' : 'rev'}`}>
-        <div className="tp-ladder-zone"
-          style={{ left: `${Math.min(el, eh)}%`,
-            width: `${Math.max(Math.abs(eh - el), 4)}%` }} />
+        {hasEntry && (
+          <div className="tp-ladder-zone"
+            style={{ left: `${Math.min(el, eh)}%`,
+              width: `${Math.max(Math.abs(eh - el), 4)}%` }} />
+        )}
         {marks.map((m) => (
           <div key={m.label} className={`tp-ladder-mark ${m.cls}`}
             style={{ left: `${pos(m.v)}%` }}>
@@ -455,7 +462,7 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
                 <div className="tp-lv-ic"><LogIn size={16} /></div>
                 <div>
                   <div className="tp-lv-l">Entry zone</div>
-                  <div className="tp-lv-v"><Price v={d.entry.low} /> – <Price v={d.entry.high} /></div>
+                  <div className="tp-lv-v"><Price v={d.entry?.low} /> – <Price v={d.entry?.high} /></div>
                 </div>
               </div>
               <div className="tp-lv chase">
@@ -476,21 +483,21 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
                 <div className="tp-lv-ic"><Target size={16} /></div>
                 <div>
                   <div className="tp-lv-l">Target 1</div>
-                  <div className="tp-lv-v"><Price v={d.targets.tp1} /></div>
+                  <div className="tp-lv-v"><Price v={d.targets?.tp1} /></div>
                 </div>
               </div>
               <div className="tp-lv tp2">
                 <div className="tp-lv-ic"><Target size={16} /></div>
                 <div>
                   <div className="tp-lv-l">Target 2</div>
-                  <div className="tp-lv-v"><Price v={d.targets.tp2} /></div>
+                  <div className="tp-lv-v"><Price v={d.targets?.tp2} /></div>
                 </div>
               </div>
               <div className="tp-lv tp3">
                 <div className="tp-lv-ic"><Target size={16} /></div>
                 <div>
                   <div className="tp-lv-l">Target 3</div>
-                  <div className="tp-lv-v"><Price v={d.targets.tp3} /></div>
+                  <div className="tp-lv-v"><Price v={d.targets?.tp3} /></div>
                 </div>
               </div>
               <div className="tp-lv spot">
