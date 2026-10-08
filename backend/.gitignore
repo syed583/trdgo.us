@@ -1,1 +1,5 @@
 .sec_cache/
+
+# Local DB backup archive (contains password hashes) -- never commit
+old_db_backup.json
+backend/old_db_backup.json
