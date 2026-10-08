@@ -1595,34 +1595,36 @@ def watchlist_remove(request: Request, symbol: str) -> dict:
 
 
 @router.get("/alerts")
-def alerts_list() -> dict:
-    return workspace.list_alerts()
+def alerts_list(request: Request) -> dict:
+    return workspace.list_alerts(owner=_who(request))
 
 
 @router.post("/alerts")
-def alerts_create(payload: dict = Body(...)) -> dict:
+def alerts_create(request: Request, payload: dict = Body(...)) -> dict:
     return workspace.create_alert(
         symbol=payload.get("symbol", ""),
         kind=payload.get("kind", ""),
         comparator=payload.get("comparator", ">="),
         threshold=float(payload.get("threshold", 0)),
         note=payload.get("note"),
+        owner=_who(request),
     )
 
 
 @router.delete("/alerts/{alert_id}")
-def alerts_delete(alert_id: int) -> dict:
-    return workspace.delete_alert(alert_id)
+def alerts_delete(request: Request, alert_id: int) -> dict:
+    return workspace.delete_alert(alert_id, owner=_who(request))
 
 
 @router.patch("/alerts/{alert_id}")
-def alerts_toggle(alert_id: int, payload: dict = Body(...)) -> dict:
-    return workspace.toggle_alert(alert_id, bool(payload.get("active", True)))
+def alerts_toggle(request: Request, alert_id: int, payload: dict = Body(...)) -> dict:
+    return workspace.toggle_alert(alert_id, bool(payload.get("active", True)),
+                                  owner=_who(request))
 
 
 @router.get("/alerts/evaluate")
-def alerts_evaluate() -> dict:
-    return workspace.evaluate_alerts()
+def alerts_evaluate(request: Request) -> dict:
+    return workspace.evaluate_alerts(owner=_who(request))
 
 
 # ---------------------------------------------------------------------------
@@ -1631,18 +1633,18 @@ def alerts_evaluate() -> dict:
 
 
 @router.get("/journal")
-def journal_list(limit: int = 200) -> dict:
-    return workspace.list_journal(limit)
+def journal_list(request: Request, limit: int = 200) -> dict:
+    return workspace.list_journal(limit, owner=_who(request))
 
 
 @router.post("/journal")
-def journal_create(payload: dict = Body(...)) -> dict:
-    return workspace.create_journal(payload)
+def journal_create(request: Request, payload: dict = Body(...)) -> dict:
+    return workspace.create_journal(payload, owner=_who(request))
 
 
 @router.delete("/journal/{entry_id}")
-def journal_delete(entry_id: int) -> dict:
-    return workspace.delete_journal(entry_id)
+def journal_delete(request: Request, entry_id: int) -> dict:
+    return workspace.delete_journal(entry_id, owner=_who(request))
 
 
 # ---------------------------------------------------------------------------
@@ -1651,18 +1653,18 @@ def journal_delete(entry_id: int) -> dict:
 
 
 @router.get("/strategy")
-def strategy_get() -> dict:
-    return workspace.get_strategy()
+def strategy_get(request: Request) -> dict:
+    return workspace.get_strategy(owner=_who(request))
 
 
 @router.put("/strategy")
-def strategy_update(payload: dict = Body(...)) -> dict:
-    return workspace.update_strategy(payload)
+def strategy_update(request: Request, payload: dict = Body(...)) -> dict:
+    return workspace.update_strategy(payload, owner=_who(request))
 
 
 @router.post("/strategy/reset")
-def strategy_reset() -> dict:
-    return workspace.reset_strategy()
+def strategy_reset(request: Request) -> dict:
+    return workspace.reset_strategy(owner=_who(request))
 
 
 # ---------------------------------------------------------------------------
@@ -1693,12 +1695,13 @@ def backtest(payload: dict = Body(...)) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _dashboard_build() -> dict:
+def _dashboard_build(owner: Optional[str] = None) -> dict:
     """
     One call for the landing screen.
 
     Each block degrades on its own: a provider being down blanks that card
-    rather than failing the whole page.
+    rather than failing the whole page. The watchlist and alert blocks are
+    scoped to `owner` so each user sees only their own, never the admin's.
     """
     def safe(fn, fallback):
         try:
@@ -1750,8 +1753,9 @@ def _dashboard_build() -> dict:
                                  {"indices": [], "sectors": []})
         strip_job = pool.submit(safe, lambda: ticker_strip(None), {"cards": []})
         calendar_job = pool.submit(safe, upcoming_earnings, {"rows": []})
-        watch_job = pool.submit(safe, workspace.list_watchlist, {"rows": []})
-        alerts_job = pool.submit(safe, workspace.evaluate_alerts,
+        watch_job = pool.submit(safe, lambda: workspace.list_watchlist(owner=owner),
+                                {"rows": []})
+        alerts_job = pool.submit(safe, lambda: workspace.evaluate_alerts(owner=owner),
                                  {"rows": [], "triggered": 0})
 
         provider = provider_job.result()
@@ -1837,9 +1841,12 @@ def clear_cache() -> dict:
 
 
 @router.get("/dashboard")
-def dashboard() -> dict:
-    """The landing screen, served from the last build and refreshed behind it."""
-    return swr.serve("dashboard", _dashboard_build, 120)
+def dashboard(request: Request) -> dict:
+    """The landing screen, served from the last build and refreshed behind it.
+    Cached per user so the watchlist/alert blocks never leak across accounts."""
+    owner = _who(request)
+    key = f"dashboard:{(owner or 'admin').strip().lower()}"
+    return swr.serve(key, lambda: _dashboard_build(owner), 120)
 
 
 # ---------------------------------------------------------------------------

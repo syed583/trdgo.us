@@ -8,7 +8,7 @@ import type { PageContext } from '../App';
 import { useApi } from '../hooks/useApi';
 import { Panel } from '../components/common';
 import ProviderUsage from '../components/ProviderUsage';
-import { money, num, signedPct, tone } from '../lib/format';
+import { money, num, safeHref, signedPct, tone } from '../lib/format';
 import {
   ErrorState, Loading, PageHead, StatusChip, Unavailable,
 } from './shared';
@@ -692,7 +692,7 @@ export function SettingsPage({ ctx }: { ctx: PageContext }) {
                           {syncing === which ? 'Syncing…' : 'Sync now'}
                         </button>
                       ) : (
-                        <a className="ghost-btn" href={p?.signup}
+                        <a className="ghost-btn" href={safeHref(p?.signup)}
                           target="_blank" rel="noreferrer">
                           Get an API key
                         </a>

@@ -169,10 +169,18 @@ ALERT_KINDS = {
 }
 
 
-def list_alerts() -> dict:
+def _owner_filter(model, who: Optional[str]):
+    """SQLAlchemy filter that scopes a query to one owner (NULL == admin)."""
+    return model.owner.is_(None) if who is None else model.owner == who
+
+
+def list_alerts(owner: Optional[str] = None) -> dict:
+    who = _owner(owner)
     db = SessionLocal()
     try:
-        rules = db.query(AlertRule).order_by(AlertRule.id.desc()).all()
+        rules = (db.query(AlertRule)
+                 .filter(_owner_filter(AlertRule, who))
+                 .order_by(AlertRule.id.desc()).all())
         rows = [{
             "id": r.id,
             "symbol": r.symbol,
@@ -194,7 +202,9 @@ def list_alerts() -> dict:
 
 
 def create_alert(symbol: str, kind: str, comparator: str,
-                 threshold: float, note: Optional[str] = None) -> dict:
+                 threshold: float, note: Optional[str] = None,
+                 owner: Optional[str] = None) -> dict:
+    who = _owner(owner)
     symbol = symbol.strip().upper()
     kind = kind.strip().upper()
     if kind not in ALERT_KINDS:
@@ -205,7 +215,7 @@ def create_alert(symbol: str, kind: str, comparator: str,
     db = SessionLocal()
     try:
         rule = AlertRule(symbol=symbol, kind=kind, comparator=comparator,
-                         threshold=threshold, note=note, active=True)
+                         threshold=threshold, note=note, active=True, owner=who)
         db.add(rule)
         db.commit()
         db.refresh(rule)
@@ -214,20 +224,26 @@ def create_alert(symbol: str, kind: str, comparator: str,
         db.close()
 
 
-def delete_alert(alert_id: int) -> dict:
+def delete_alert(alert_id: int, owner: Optional[str] = None) -> dict:
+    who = _owner(owner)
     db = SessionLocal()
     try:
-        deleted = db.query(AlertRule).filter(AlertRule.id == alert_id).delete()
+        deleted = (db.query(AlertRule)
+                   .filter(AlertRule.id == alert_id)
+                   .filter(_owner_filter(AlertRule, who)).delete())
         db.commit()
         return {"status": "OK" if deleted else "NOT_FOUND", "id": alert_id}
     finally:
         db.close()
 
 
-def toggle_alert(alert_id: int, active: bool) -> dict:
+def toggle_alert(alert_id: int, active: bool, owner: Optional[str] = None) -> dict:
+    who = _owner(owner)
     db = SessionLocal()
     try:
-        rule = db.query(AlertRule).filter(AlertRule.id == alert_id).first()
+        rule = (db.query(AlertRule)
+                .filter(AlertRule.id == alert_id)
+                .filter(_owner_filter(AlertRule, who)).first())
         if not rule:
             return {"status": "NOT_FOUND", "id": alert_id}
         rule.active = active
@@ -237,14 +253,15 @@ def toggle_alert(alert_id: int, active: bool) -> dict:
         db.close()
 
 
-def evaluate_alerts() -> dict:
+def evaluate_alerts(owner: Optional[str] = None) -> dict:
     """
     Check every active rule against current values.
 
     Evaluated on demand rather than on a timer: this is a personal tool and a
     background poller would hold market-data lines open all day.
     """
-    listing = list_alerts()
+    who = _owner(owner)
+    listing = list_alerts(owner)
     rules = [r for r in listing["rows"] if r["active"]]
     if not rules:
         return {"rows": [], "triggered": 0, "status": "OK"}
@@ -305,7 +322,9 @@ def evaluate_alerts() -> dict:
 
             if fired:
                 triggered += 1
-                row = db.query(AlertRule).filter(AlertRule.id == rule["id"]).first()
+                row = (db.query(AlertRule)
+                       .filter(AlertRule.id == rule["id"])
+                       .filter(_owner_filter(AlertRule, who)).first())
                 if row:
                     row.last_triggered_at = datetime.now(timezone.utc)
                     row.last_value = value
@@ -325,10 +344,12 @@ def evaluate_alerts() -> dict:
 # ---------------------------------------------------------------------------
 
 
-def list_journal(limit: int = 200) -> dict:
+def list_journal(limit: int = 200, owner: Optional[str] = None) -> dict:
+    who = _owner(owner)
     db = SessionLocal()
     try:
         entries = (db.query(JournalEntry)
+                   .filter(_owner_filter(JournalEntry, who))
                    .order_by(JournalEntry.trade_date.desc(),
                              JournalEntry.id.desc())
                    .limit(limit).all())
@@ -373,7 +394,8 @@ def list_journal(limit: int = 200) -> dict:
     return {"rows": rows, "stats": stats, "status": "OK", "source": "DATABASE"}
 
 
-def create_journal(payload: dict) -> dict:
+def create_journal(payload: dict, owner: Optional[str] = None) -> dict:
+    who = _owner(owner)
     try:
         trade_date = (datetime.strptime(payload["trade_date"], "%Y-%m-%d").date()
                       if payload.get("trade_date")
@@ -411,6 +433,7 @@ def create_journal(payload: dict) -> dict:
             notes=payload.get("notes"),
             score_at_entry=payload.get("score_at_entry"),
             confidence_at_entry=payload.get("confidence_at_entry"),
+            owner=who,
         )
         db.add(entry_row)
         db.commit()
@@ -420,10 +443,13 @@ def create_journal(payload: dict) -> dict:
         db.close()
 
 
-def delete_journal(entry_id: int) -> dict:
+def delete_journal(entry_id: int, owner: Optional[str] = None) -> dict:
+    who = _owner(owner)
     db = SessionLocal()
     try:
-        deleted = db.query(JournalEntry).filter(JournalEntry.id == entry_id).delete()
+        deleted = (db.query(JournalEntry)
+                   .filter(JournalEntry.id == entry_id)
+                   .filter(_owner_filter(JournalEntry, who)).delete())
         db.commit()
         return {"status": "OK" if deleted else "NOT_FOUND", "id": entry_id}
     finally:
@@ -470,10 +496,13 @@ STRATEGY_META = {
 }
 
 
-def get_strategy() -> dict:
+def get_strategy(owner: Optional[str] = None) -> dict:
+    who = _owner(owner)
     db = SessionLocal()
     try:
-        stored = {s.key: s.value for s in db.query(StrategySetting).all()}
+        stored = {s.key: s.value for s in
+                  db.query(StrategySetting)
+                  .filter(_owner_filter(StrategySetting, who)).all()}
     finally:
         db.close()
 
@@ -503,7 +532,8 @@ def get_strategy() -> dict:
     }
 
 
-def update_strategy(updates: dict) -> dict:
+def update_strategy(updates: dict, owner: Optional[str] = None) -> dict:
+    who = _owner(owner)
     applied, rejected = {}, {}
 
     db = SessionLocal()
@@ -533,11 +563,13 @@ def update_strategy(updates: dict) -> dict:
                     value = int(value)
 
             row = (db.query(StrategySetting)
-                   .filter(StrategySetting.key == key).first())
+                   .filter(StrategySetting.key == key)
+                   .filter(_owner_filter(StrategySetting, who)).first())
             if row:
                 row.value = json.dumps(value)
             else:
-                db.add(StrategySetting(key=key, value=json.dumps(value)))
+                db.add(StrategySetting(key=key, value=json.dumps(value),
+                                       owner=who))
             applied[key] = value
         db.commit()
     finally:
@@ -545,14 +577,16 @@ def update_strategy(updates: dict) -> dict:
 
     return {"status": "OK" if applied else "NO_CHANGES",
             "applied": applied, "rejected": rejected,
-            "config": get_strategy()}
+            "config": get_strategy(owner)}
 
 
-def reset_strategy() -> dict:
+def reset_strategy(owner: Optional[str] = None) -> dict:
+    who = _owner(owner)
     db = SessionLocal()
     try:
-        db.query(StrategySetting).delete()
+        (db.query(StrategySetting)
+         .filter(_owner_filter(StrategySetting, who)).delete())
         db.commit()
     finally:
         db.close()
-    return {"status": "OK", "config": get_strategy()}
+    return {"status": "OK", "config": get_strategy(owner)}

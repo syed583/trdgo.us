@@ -55,6 +55,9 @@ class AlertRule(Base):
     threshold = Column(Numeric(18, 4), nullable=False)
     note = Column(Text, nullable=True)
     active = Column(Boolean, nullable=False, default=True)
+    # Whose alert this is. Each user has their own; legacy rows (owner NULL)
+    # belong to the admin/owner. Scoped by username, lowercased.
+    owner = Column(String(40), nullable=True, index=True)
     last_triggered_at = Column(DateTime(timezone=True), nullable=True)
     last_value = Column(Numeric(18, 4), nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
@@ -78,6 +81,8 @@ class JournalEntry(Base):
     # Captured at entry so a review reflects what was known then, not now.
     score_at_entry = Column(Numeric(8, 2), nullable=True)
     confidence_at_entry = Column(Numeric(8, 2), nullable=True)
+    # Whose journal this entry is on; legacy rows (owner NULL) are the admin's.
+    owner = Column(String(40), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
@@ -86,11 +91,17 @@ class StrategySetting(Base):
     """Key/value store for the personal TRDGO strategy configuration."""
 
     __tablename__ = "strategy_settings"
-    __table_args__ = (UniqueConstraint("key", name="uq_strategy_key"),)
+    # Unique per (owner, key), not key alone: each user keeps their own strategy
+    # config, so two users must be able to store the same setting key.
+    __table_args__ = (
+        UniqueConstraint("owner", "key", name="uq_strategy_owner_key"),
+    )
 
     id = Column(Integer, primary_key=True)
     key = Column(String(64), nullable=False, index=True)
     value = Column(Text, nullable=False)
+    # Whose strategy config this row is; legacy rows (owner NULL) are the admin's.
+    owner = Column(String(40), nullable=True, index=True)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
 

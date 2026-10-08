@@ -223,6 +223,44 @@ def _create_schema() -> None:
     except Exception as exc:  # noqa: BLE001
         print(f"schema: watchlist constraint swap skipped ({exc})")
 
+    # alerts / journal / strategy predate per-user accounts and were a single
+    # shared dataset; add an owner column where missing so each account's rows
+    # are scoped to it (NULL = the admin's legacy rows), mirroring the watchlist.
+    try:
+        from sqlalchemy import inspect as _inspect, text as _text
+        _insp = _inspect(engine)
+        for _tbl in ("alert_rules", "journal_entries", "strategy_settings"):
+            try:
+                _cols = {c["name"] for c in _insp.get_columns(_tbl)}
+            except Exception:  # noqa: BLE001 - table may not exist yet
+                continue
+            if "owner" not in _cols:
+                with engine.begin() as conn:
+                    conn.execute(_text(
+                        f"ALTER TABLE {_tbl} ADD COLUMN owner VARCHAR(40)"))
+                print(f"schema: added {_tbl}.owner")
+    except Exception as exc:  # noqa: BLE001
+        print(f"schema: workspace owner check skipped ({exc})")
+
+    # strategy_settings used to be unique on key alone; per-user config needs it
+    # unique per (owner, key) so each user stores the same setting keys.
+    try:
+        from sqlalchemy import inspect as _inspect, text as _text
+        insp = _inspect(engine)
+        uniques = {u["name"] for u in insp.get_unique_constraints("strategy_settings")}
+        if "uq_strategy_owner_key" not in uniques:
+            with engine.begin() as conn:
+                if "uq_strategy_key" in uniques:
+                    conn.execute(_text(
+                        "ALTER TABLE strategy_settings "
+                        "DROP CONSTRAINT uq_strategy_key"))
+                conn.execute(_text(
+                    "ALTER TABLE strategy_settings ADD CONSTRAINT "
+                    "uq_strategy_owner_key UNIQUE (owner, key)"))
+            print("schema: strategy unique constraint -> (owner, key)")
+    except Exception as exc:  # noqa: BLE001
+        print(f"schema: strategy constraint swap skipped ({exc})")
+
     # Load any admin-set provider key override now that the settings table
     # exists, so a key replaced from the UI survives a restart.
     try:

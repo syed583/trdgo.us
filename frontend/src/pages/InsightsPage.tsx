@@ -22,7 +22,7 @@ import FundActivity from '../components/FundActivity';
 import HorizonSwitch, { HORIZON_COPY, defaultHorizon } from '../components/HorizonSwitch';
 import type { Horizon } from '../components/HorizonSwitch';
 import { useApi } from '../hooks/useApi';
-import { money, num, signedPct } from '../lib/format';
+import { money, num, safeHref, signedPct } from '../lib/format';
 import { useAnalysisStream } from '../hooks/useAnalysisStream';
 import type { Category, DirSignalLike, Stage } from '../hooks/useAnalysisStream';
 
@@ -424,9 +424,9 @@ function LandingPanels({ onPick, ctx }: { onPick: (s: string) => void; ctx: Page
         </div>
         {ev === 'news'
           ? articles.map((a, i) => (
-            <a key={a.id || i} className="anp-news" href={a.url || undefined}
-              target={a.url ? '_blank' : undefined} rel="noopener noreferrer"
-              onClick={(e) => { if (!a.url) e.preventDefault(); if (a.symbols?.[0]) onPick(a.symbols[0]); }}>
+            <a key={a.id || i} className="anp-news" href={safeHref(a.url)}
+              target={safeHref(a.url) ? '_blank' : undefined} rel="noopener noreferrer"
+              onClick={(e) => { if (!safeHref(a.url)) e.preventDefault(); if (a.symbols?.[0]) onPick(a.symbols[0]); }}>
               <Dot sym={(a.symbols?.[0] || a.provider || '?').toString()} />
               <div className="anp-news-b">
                 <div className="anp-news-h">{a.headline}</div>

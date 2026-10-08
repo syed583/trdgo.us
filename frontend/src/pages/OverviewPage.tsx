@@ -10,7 +10,7 @@ import { useApi } from '../hooks/useApi';
 import { PageHead, Loading, ErrorState, Unavailable } from './shared';
 import { Panel } from '../components/common';
 import { ContractModal } from '../components/ContractModal';
-import { compact, compactMoney, money, num, signedPct, titleCase } from '../lib/format';
+import { compact, compactMoney, money, num, safeHref, signedPct, titleCase } from '../lib/format';
 
 /**
  * Ticker Overview: one page of everything on a stock.
@@ -305,8 +305,8 @@ function LatestNews({ symbol }: { symbol: string }) {
             </div>
           </>
         );
-        return n.url ? (
-          <a key={n.id || i} className="ov-news-row" href={n.url}
+        return safeHref(n.url) ? (
+          <a key={n.id || i} className="ov-news-row" href={safeHref(n.url)}
             target="_blank" rel="noopener noreferrer">{body}</a>
         ) : (
           <div key={n.id || i} className="ov-news-row">{body}</div>
