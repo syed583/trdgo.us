@@ -7,8 +7,13 @@ come from the environment -- nothing is hardcoded or committed:
     WHATSAPP_API_TOKEN     Bearer token (required)
     WHATSAPP_PHONE_ID      sender phone-number id (default from the panel setup)
     WHATSAPP_API_BASE      API base incl. version (default .../V23.0)
-    WHATSAPP_TEMPLATE      approved template name (default "verify1")
+    WHATSAPP_TEMPLATE      approved template name (default "otpp")
     WHATSAPP_LANG          template language code (default "en")
+
+The "otpp" template has a body parameter (the code) and a URL button whose
+dynamic parameter is also the code (the one-tap copy/verify button), so the
+payload sends both. Set WHATSAPP_TEMPLATE to a body-only template name to fall
+back to a plain body-only message (no button component).
 """
 
 from __future__ import annotations
@@ -50,8 +55,21 @@ def send_otp(phone: str, code: str) -> dict:
 
     base = (os.getenv("WHATSAPP_API_BASE") or _DEFAULT_BASE).rstrip("/")
     phone_id = os.getenv("WHATSAPP_PHONE_ID") or _DEFAULT_PHONE_ID
-    template = os.getenv("WHATSAPP_TEMPLATE") or "verify1"
+    template = os.getenv("WHATSAPP_TEMPLATE") or "otpp"
     lang = os.getenv("WHATSAPP_LANG") or "en"
+
+    components = [
+        {"type": "body", "parameters": [{"type": "text", "text": code}]},
+    ]
+    # The "otpp" template has a dynamic URL button at index 0; its parameter is
+    # the code (the one-tap copy/verify button). A body-only template skips this.
+    if template == "otpp":
+        components.append({
+            "type": "button",
+            "sub_type": "url",
+            "index": "0",
+            "parameters": [{"type": "text", "text": code}],
+        })
 
     payload = {
         "messaging_product": "whatsapp",
@@ -61,9 +79,7 @@ def send_otp(phone: str, code: str) -> dict:
         "template": {
             "name": template,
             "language": {"code": lang},
-            "components": [
-                {"type": "body", "parameters": [{"type": "text", "text": code}]},
-            ],
+            "components": components,
         },
     }
     try:
