@@ -614,8 +614,8 @@ function ScanScreen({
       <div className="an-scan-head">
         <h2>{connecting ? 'Searching' : 'Analyzing'} <span>{symbol}</span>…</h2>
         <p>{connecting
-          ? 'Connecting to data sources'
-          : 'Streaming live and historical data from every configured source'}</p>
+          ? 'Connecting to the analysis engine'
+          : 'Our agents are gathering and processing the market data'}</p>
       </div>
 
       {error && <div className="dir-block"><div className="db-head">{error}</div></div>}
@@ -690,26 +690,21 @@ function ScanScreen({
             <div
               className={`an-node ${st}`}
               key={s.key}
+              aria-hidden="true"
               style={{
                 left: `${p.x}%`,
                 top: `${p.y}%`,
-                // The node's own accent, so the ball arriving at the globe can
-                // be traced back to the card that sent it.
+                // Each orb's own accent, so the ball arriving at the globe can be
+                // traced back to the agent that sent it (the source stays unnamed).
                 ['--src' as any]: `hsl(${hue} 82% 58%)`,
-                ['--src-soft' as any]: `hsl(${hue} 82% 58% / .14)`,
+                ['--src-soft' as any]: `hsl(${hue} 82% 58% / .18)`,
               }}
-              title={`${s.label} — ${s.sub}`}
             >
-              <span className="as-icon">{ICONS[s.key] || <Database size={16} />}</span>
-              <span className="as-body">
-                <b>{SHORT[s.key] || s.label}</b>
-              </span>
-              <span className="an-node-state">
-                {st === 'complete' ? <><CheckCircle2 size={10} color={GREEN} />
-                  {at ? `${at.toFixed(1)}s` : ''}</>
-                  : st === 'unavailable' ? <XCircle size={10} color={AMBER} />
-                    : st === 'scanning' ? <Loader2 size={10} className="spin" />
-                      : <span className="an-dot" />}
+              <span className="an-node-orb">
+                {st === 'complete' ? <CheckCircle2 size={15} color={GREEN} />
+                  : st === 'unavailable' ? <XCircle size={15} color={AMBER} />
+                    : st === 'scanning' ? <Loader2 size={15} className="spin" />
+                      : <span className="an-orb-pending" />}
               </span>
             </div>
           );
@@ -723,8 +718,7 @@ function ScanScreen({
           <b>{percent}%</b>
         </div>
         <div className="an-progress-sub">
-          {done}/{total} sources · {elapsed.toFixed(1)}s elapsed
-          {log.length ? ` · latest: ${log[log.length - 1].text}` : ''}
+          {done}/{total} agents complete · {elapsed.toFixed(1)}s elapsed
         </div>
       </div>
     </div>

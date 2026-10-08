@@ -78,71 +78,53 @@
 
 /* Short labels mean a small node: twelve of these sit on one ring, and at the
    old 186px the top and bottom pairs overlapped each other outright. */
+/* Anonymous agent orbs: a ring of identical nodes around the globe. They show
+   the run's progress (pending / scanning / complete) without naming any of the
+   underlying data sources or parameters. */
 .an-node {
   position: absolute;
   transform: translate(-50%, -50%);
-  display: flex; align-items: center; gap: 7px;
-  width: auto; min-width: 96px; max-width: 124px; padding: 5px 8px;
-  border: 1px solid var(--border); border-radius: var(--r-lg);
-  background: var(--panel);
-  transition: border-color .25s ease, box-shadow .25s ease;
+  display: grid; place-items: center;
+  width: 38px; height: 38px; border-radius: 50%;
+  border: 1px solid var(--border); background: var(--panel);
+  transition: border-color .25s ease, box-shadow .25s ease, transform .25s ease;
 }
-.an-node .as-body b { font-size: 13px; font-weight: 700; }
+.an-node-orb { display: grid; place-items: center; }
+.an-orb-pending {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--src, var(--text-mute)); opacity: .5;
+}
 .an-node.scanning {
-  border-color: rgba(59, 130, 246, .55);
-  box-shadow: 0 0 18px rgba(59, 130, 246, .22);
+  border-color: var(--src, rgba(59, 130, 246, .55));
+  box-shadow: 0 0 18px var(--src-soft, rgba(59, 130, 246, .22));
+  transform: translate(-50%, -50%) scale(1.08);
 }
+.an-node.scanning .an-node-orb { color: var(--src, var(--blue)); }
 .an-node.complete {
   border-color: rgba(33, 208, 122, .5);
   box-shadow: 0 0 16px rgba(33, 208, 122, .14);
 }
 .an-node.unavailable { border-color: rgba(240, 169, 43, .45); }
 
-.an-node .as-icon { width: 26px; height: 26px; }
-.an-node .as-body i { display: none; }
-.an-node.complete .as-icon { color: var(--green); }
-.an-node.unavailable .as-icon { color: var(--amber); }
-.an-node.scanning .as-icon { color: var(--blue); }
-
-.an-node-state {
-  display: inline-flex; align-items: center; gap: 3px;
-  font-size: 11px; font-weight: 700; color: var(--text-mute);
-  white-space: nowrap; flex-shrink: 0;
-}
-.an-node.complete .an-node-state { color: var(--green); }
-.an-node.unavailable .an-node-state { color: var(--amber); }
-.an-node.scanning .an-node-state { color: var(--blue); }
-
-/* Below this the ring cannot hold twelve nodes without them overlapping, so
-   the same states stack as a list. A broken ring is worse than no ring. */
+/* On small screens the ring collapses to a centred wrap of the same orbs
+   under the globe, so nothing overlaps. */
 @media (max-width: 720px), (max-height: 520px) {
   .an-orbit {
     width: 100%; height: auto;
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 6px;
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
   }
   .an-orbit-lines { display: none; }
-  .an-orbit-core {
-    position: static; transform: none;
-    grid-column: 1 / -1;
-    padding: 6px 0 14px;
-    justify-self: center;
-  }
+  .an-orbit-core { position: static; transform: none; padding: 6px 0; }
   .an-node {
-    position: static; transform: none; width: auto; max-width: none;
+    position: static; transform: none;
   }
+  .an-node.scanning { transform: scale(1.08); }
 }
 
-/* --- per-source colour --------------------------------------------------- */
-
-/* Each node carries its own hue on --src. The icon wears it always; the
-   border picks it up once that source is doing something, so a ring of
-   pending cards stays calm and the active ones stand out. */
-.an-node .as-icon { background: var(--src-soft, var(--panel-2)); color: var(--src, var(--text-mute)); }
-.an-node.scanning { border-color: var(--src); box-shadow: 0 0 18px var(--src-soft); }
+/* --- per-orb colour ------------------------------------------------------ */
+/* Each orb carries its own hue on --src so the pips travelling into the globe
+   trace back to it; the border lights up once that orb is working. No labels. */
 .an-node.complete { border-color: var(--src); box-shadow: 0 0 14px var(--src-soft); }
-.an-node.scanning .as-icon,
-.an-node.complete .as-icon { color: var(--src); }
 
 /* The pip's fill is set per source inline, so the shared rules must not
    override it. */
