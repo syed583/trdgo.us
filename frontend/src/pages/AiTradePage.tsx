@@ -110,6 +110,17 @@ function useDailyPinned(d: Board | null, horizon: string): {
             store.changes.push({ symbol: sym, from, to });
           }
         }
+        // Carry forward the entry (the price and call when the name first
+        // appeared on its side), or set it the first time a price is known.
+        if (old?.entry_price != null) {
+          fresh.entry_price = old.entry_price;
+          fresh.entry_decision = old.entry_decision;
+          fresh.entry_at = old.entry_at;
+        } else if (fresh.spot != null) {
+          fresh.entry_price = fresh.spot;
+          fresh.entry_decision = store.buy.includes(sym) ? 'BUY' : 'SELL';
+          fresh.entry_at = Date.now();
+        }
         store.rows[sym] = fresh;
       }
     }
@@ -149,6 +160,10 @@ interface Row {
   im_side?: 'buy' | 'sell' | 'none' | null;
   im_color?: 'green' | 'yellow' | 'none' | null;
   im_full_size?: boolean | null;
+  // Where the call was first given today (set client-side on first appearance).
+  entry_price?: number | null;
+  entry_decision?: string | null;
+  entry_at?: number | null;
 }
 
 /** The side a row reads as, preferring the intraday model's call. */
@@ -613,6 +628,16 @@ function BigRow({
                 <span className="at-lvl stp" title="Stop loss">
                   Stop ${row.stop}
                 </span>
+              )}
+            </div>
+          )}
+          {row.entry_price != null && (
+            <div className="at-entry" title="The call and price when this name first appeared today">
+              Called <b className={(row.entry_decision || '').includes('SELL') ? 'neg' : 'pos'}>
+                {row.entry_decision}</b> @ ${row.entry_price}
+              {row.entry_at && <em> · {new Date(row.entry_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</em>}
+              {((row.entry_decision || '').includes('SELL') ? 'sell' : 'buy') !== stateClass && (
+                <span className="at-entry-now"> → now {rowDecision(row)}</span>
               )}
             </div>
           )}

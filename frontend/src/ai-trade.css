@@ -108,12 +108,12 @@
   background: rgba(242, 70, 90, .26);
 }
 .at-card.neutral {
-  border-color: var(--border); border-left-color: var(--text-mute);
-  background: color-mix(in srgb, var(--text) 5%, transparent);
+  border-color: var(--border); border-left-color: var(--amber);
+  background: rgba(217, 164, 65, .24);
 }
 .at-card.buy .at-sym { color: var(--green); }
 .at-card.sell .at-sym { color: var(--red); }
-.at-card.neutral .at-sym { color: var(--text); }
+.at-card.neutral .at-sym { color: var(--amber); }
 
 /* Intraday signal-STATE colours: green = Active, yellow = Weakening, grey =
    No Trade -- per the model's state table, regardless of side. */
@@ -172,6 +172,16 @@
 .at-lvl.now { color: var(--text); }
 .at-lvl.tgt { color: var(--green); }
 .at-lvl.stp { color: var(--red); }
+/* The call + price when this name was first given today. */
+.at-entry {
+  margin-top: 3px; font-size: 10px; color: var(--text-mute);
+  font-variant-numeric: tabular-nums;
+}
+.at-entry b { font-weight: 800; }
+.at-entry b.pos { color: var(--green); }
+.at-entry b.neg { color: var(--red); }
+.at-entry em { font-style: normal; color: var(--text-mute); }
+.at-entry-now { color: var(--amber); font-weight: 700; }
 
 /* The direction score, 0-100, exactly as the analysis screen's ring shows it. */
 .at-score {
@@ -262,7 +272,7 @@
 @media (max-width: 560px) { .at-past-lists { grid-template-columns: minmax(0, 1fr); } }
 .at-card.buy .at-score { color: var(--green); }
 .at-card.sell .at-score { color: var(--red); }
-.at-card.neutral .at-score { color: var(--text-mute); }
+.at-card.neutral .at-score { color: var(--amber); }
 
 .at-go { color: var(--text-mute); justify-self: end; }
 .at-card:hover .at-go { color: var(--blue); }
