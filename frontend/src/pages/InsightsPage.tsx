@@ -9,6 +9,7 @@ import type { PageContext } from '../App';
 import { Panel } from '../components/common';
 import WorldGlobe from '../components/WorldGlobe';
 import analysisHero from '../assets/analysis-hero.webp';
+import scanVideo from '../assets/scan-globe.mp4';
 import { api, api2 } from '../api/client';
 import WhyCall from '../components/WhyCall';
 import CorporateEvents from '../components/CorporateEvents';
@@ -620,95 +621,13 @@ function ScanScreen({
 
       {error && <div className="dir-block"><div className="db-head">{error}</div></div>}
 
-      {/* Sources ring the globe with a line to the core. The line streams
-          while its provider is still outstanding and settles when it answers,
-          so the picture is the run rather than an animation playing over it. */}
-      <div className="an-orbit">
-        <svg className="an-orbit-lines" viewBox="0 0 100 100"
-             preserveAspectRatio="none" aria-hidden="true">
-          {shown.map((s, i) => {
-            const p = nodeAt(i, count, 38);
-            const st = state[s.key]?.status || 'pending';
-            const path = `M ${p.x} ${p.y} L 50 50`;
-            const hue = hueOf(s.key, i, count);
-            const lit = `hsl(${hue} 85% 62%)`;
-            return (
-              <g key={s.key}>
-                <line x1={p.x} y1={p.y} x2="50" y2="50"
-                      className={`an-wire ${st} ${running ? 'live' : ''}`}
-                      style={st === 'pending' && !running ? undefined
-                        : { stroke: `hsl(${hue} 80% 58% / ${st === 'scanning' ? 0.8 : 0.38})` }} />
-                {/* Pips travelling down the wire into the core. Three per
-                    wire, staggered, so the flow reads as continuous without
-                    turning the middle of the screen into a swarm. */}
-                {st === 'scanning' && [0, 0.45, 0.9].map((delay) => (
-                  <circle key={delay} r="1.2" className="an-pip"
-                    style={{ fill: lit, color: lit }}>
-                    <animateMotion
-                      path={path}
-                      dur="1.35s"
-                      begin={`-${delay}s`}
-                      repeatCount="indefinite"
-                    />
-                  </circle>
-                ))}
-                {/* A queued source is still part of a live run -- the agent
-                    has reached out and is waiting on it -- so its wire keeps
-                    a single slow pip. It stops the moment the run does, which
-                    is what keeps the picture honest: motion means working. */}
-                {st === 'pending' && running && (
-                  <circle r="0.95" className="an-pip queued"
-                    style={{ fill: `hsl(${hue} 72% 64%)`,
-                             color: `hsl(${hue} 72% 64%)` }}>
-                    <animateMotion path={path} dur="2.6s"
-                      begin={`-${(i % 6) * 0.4}s`} repeatCount="indefinite" />
-                  </circle>
-                )}
-                {/* One slow pip on a settled wire, so a completed source
-                    still looks connected rather than switched off. */}
-                {st === 'complete' && (
-                  <circle r="0.85" className="an-pip done"
-                    style={{ fill: lit, color: lit }}>
-                    <animateMotion path={path} dur="3.4s" repeatCount="indefinite" />
-                  </circle>
-                )}
-              </g>
-            );
-          })}
-        </svg>
-
-        <div className="an-orbit-core">
-          <WorldGlobe size={168} spinning={running} />
-        </div>
-
-        {shown.map((s, i) => {
-          const p = nodeAt(i, count, 38);
-          const st = state[s.key]?.status || 'pending';
-          const at = state[s.key]?.elapsed;
-          const hue = hueOf(s.key, i, count);
-          return (
-            <div
-              className={`an-node ${st}`}
-              key={s.key}
-              aria-hidden="true"
-              style={{
-                left: `${p.x}%`,
-                top: `${p.y}%`,
-                // Each orb's own accent, so the ball arriving at the globe can be
-                // traced back to the agent that sent it (the source stays unnamed).
-                ['--src' as any]: `hsl(${hue} 82% 58%)`,
-                ['--src-soft' as any]: `hsl(${hue} 82% 58% / .18)`,
-              }}
-            >
-              <span className="an-node-orb">
-                {st === 'complete' ? <CheckCircle2 size={15} color={GREEN} />
-                  : st === 'unavailable' ? <XCircle size={15} color={AMBER} />
-                    : st === 'scanning' ? <Loader2 size={15} className="spin" />
-                      : <span className="an-orb-pending" />}
-              </span>
-            </div>
-          );
-        })}
+      {/* The animated globe plays in the centre while the agents run. It is
+          decorative — the real progress is the bar below — and names no data
+          source, so the parameters stay private. */}
+      <div className="an-stage">
+        <video className="an-stage-vid" src={scanVideo}
+          autoPlay loop muted playsInline aria-hidden="true" />
+        <div className="an-stage-scrim" />
       </div>
 
       <div className="an-progress">
