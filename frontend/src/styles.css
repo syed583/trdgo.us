@@ -28,10 +28,10 @@
      token names point at it so every active-state, pill, link, button and
      segmented control across the app picks it up from this one place.
      A touch brighter in dark mode so it reads on the dark panels. */
-  --accent: #3a63f0;
-  --accent-2: #1b46dd;        /* filled buttons / pressed */
-  --accent-strong: #1538b8;   /* deepest */
-  --accent-bg: rgba(58, 99, 240, 0.16);
+  --accent: #2a5bff;          /* logo blue */
+  --accent-2: #1d4ed8;        /* filled buttons / pressed */
+  --accent-strong: #1b46dd;   /* deepest */
+  --accent-bg: rgba(42, 91, 255, 0.14);
   --accent-contrast: #ffffff; /* text on an accent fill */
   --flip: #ec4899;            /* signal-change (half/half split + blink) */
   --blue: var(--accent);
@@ -329,18 +329,21 @@ table { border-collapse: collapse; width: 100%; }
   font-size: 11px; font-weight: 600;
   color: var(--text-mute); padding: 6px 9px 3px;
 }
-/* Attention-grabbing pulse for a highlighted group heading. */
+/* A highlighted group heading: a soft blue glass chip that gently pulses to
+   draw the eye, in keeping with the glass nav items rather than a hard fill. */
 .nav-group-label.blink {
   display: inline-block;
-  color: var(--accent-contrast); font-weight: 800; font-size: 11.5px;
-  background: var(--accent); border-radius: var(--r-pill);
+  color: var(--accent); font-weight: 700; font-size: 11px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
+  border-radius: var(--r-pill);
   padding: 4px 11px; margin: 4px 6px 4px 9px;
-  letter-spacing: 0.02em;
-  animation: nav-blink 1s ease-in-out infinite;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  animation: nav-blink 1.6s ease-in-out infinite;
 }
 @keyframes nav-blink {
-  0%, 100% { background: var(--accent); box-shadow: 0 0 0 0 var(--accent-bg); }
-  50% { background: var(--accent-strong); box-shadow: 0 0 12px 3px var(--accent-bg); }
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 14px 1px color-mix(in srgb, var(--accent) 35%, transparent); }
 }
 @media (prefers-reduced-motion: reduce) {
   .nav-group-label.blink { animation: none; }
@@ -350,30 +353,49 @@ table { border-collapse: collapse; width: 100%; }
   margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
 }
 
+/* Nav items: clean and transparent at rest, so the column reads as a tidy list
+   rather than a stack of grey boxes. Hover and the active state raise a soft
+   blue "glass" card in the logo's colour, so interaction is where the brand
+   shows. */
 .nav-item {
-  display: flex; align-items: center; gap: 9px;
-  padding: 7px 9px;
-  border-radius: var(--r);
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; margin-bottom: 2px;
+  border-radius: 10px;
   color: var(--text-dim);
   font-size: 13px;
   font-weight: 500;
-  background: none; border: 0;
+  background: transparent;
+  border: 1px solid transparent;
   text-align: left; width: 100%;
   position: relative;
-  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
-.nav-item svg { flex-shrink: 0; opacity: .85; transition: opacity var(--dur) var(--ease); }
-.nav-item:hover { background: var(--panel-2); color: var(--text); }
+.nav-item svg { flex-shrink: 0; opacity: .7; transition: opacity var(--dur) var(--ease), color var(--dur) var(--ease); }
+.nav-item:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--text);
+}
+.nav-item:hover svg { opacity: 1; color: var(--accent); }
 .nav-item.active {
-  background: var(--accent-bg);
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--accent) 16%, transparent),
+    color-mix(in srgb, var(--accent) 7%, transparent));
+  border-color: color-mix(in srgb, var(--accent) 38%, transparent);
   color: var(--accent);
   font-weight: 600;
-}
-.nav-item.active::before {
-  content: ''; position: absolute; left: -2px; top: 50%; transform: translateY(-50%);
-  width: 3px; height: 16px; border-radius: 3px; background: var(--accent);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .5) inset,
+    0 6px 16px -10px color-mix(in srgb, var(--accent) 65%, transparent);
 }
 .nav-item.active svg { opacity: 1; color: var(--accent); }
+
+:root[data-theme="dark"] .nav-item.active,
+:root:not([data-theme="light"]) .nav-item.active { color: #7aa2ff; }
+:root[data-theme="dark"] .nav-item.active svg,
+:root:not([data-theme="light"]) .nav-item.active svg { color: #7aa2ff; }
+:root[data-theme="dark"] .nav-item.active,
+:root:not([data-theme="light"]) .nav-item.active { box-shadow: 0 6px 16px -10px color-mix(in srgb, var(--accent) 65%, transparent); }
 
 .sidebar-foot { margin-top: auto; }
 

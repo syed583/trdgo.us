@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom';
 import {
   Activity, Brain, CalendarDays, Crosshair, Gauge, History, Layers, LineChart, Users,
   LayoutDashboard, ListOrdered, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
-  Scale, ScrollText, Settings, Sparkles, Star, Target, TrendingUp, UserCog, Waves, Waypoints, X,
+  Scale, ScrollText, Settings, Sparkles, Star, TrendingUp, UserCog, Waves, Waypoints, X,
 } from 'lucide-react';
 import { BrandLockup, BRAND_QUOTE_EARNINGS } from './Brand';
 
@@ -37,7 +37,6 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/tradgo-call', label: 'Tradgo Call', icon: <Gauge size={S} /> },
     { to: '/trade-plan', label: 'Trade Plan', icon: <Crosshair size={S} /> },
     { to: '/signal-history', label: 'Signal History', icon: <History size={S} /> },
-    { to: '/model-performance', label: 'Analysis Based', icon: <Target size={S} /> },
     { to: '/peers', label: 'Sector Comparison', icon: <Scale size={S} /> },
   ] },
   { heading: 'Earnings & news', items: [
