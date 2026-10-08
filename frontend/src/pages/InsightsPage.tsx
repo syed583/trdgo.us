@@ -607,7 +607,13 @@ function ScanScreen({
   const count = shown.length;
 
   return (
-    <div className="an-scan">
+    <div className="an-scan an-scan-full">
+      {/* Full-screen animated globe behind the overlay. Decorative, and names
+          no data source, so the parameters stay private. */}
+      <video className="an-stage-vid" src={scanVideo}
+        autoPlay loop muted playsInline aria-hidden="true" />
+      <div className="an-stage-scrim" />
+
       <button className="an-back" onClick={onBack}>
         <X size={14} /> Cancel
       </button>
@@ -619,16 +625,7 @@ function ScanScreen({
           : 'Our agents are gathering and processing the market data'}</p>
       </div>
 
-      {error && <div className="dir-block"><div className="db-head">{error}</div></div>}
-
-      {/* The animated globe plays in the centre while the agents run. It is
-          decorative — the real progress is the bar below — and names no data
-          source, so the parameters stay private. */}
-      <div className="an-stage">
-        <video className="an-stage-vid" src={scanVideo}
-          autoPlay loop muted playsInline aria-hidden="true" />
-        <div className="an-stage-scrim" />
-      </div>
+      {error && <div className="an-scan-err">{error}</div>}
 
       <div className="an-progress">
         <div className="ap-track"><i style={{ width: `${percent}%` }} /></div>
