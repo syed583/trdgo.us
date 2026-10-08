@@ -221,6 +221,13 @@ function Shell() {
     symbol, demo, onSymbol, indices, strip, quote, search: location.search, readOnly,
   };
 
+  // Signed out (and not demo): hand off to the SPA's own login page. The backend
+  // serves this shell to anonymous visitors so the phone-OTP login renders;
+  // without this they would see an empty authenticated frame.
+  if (!demo && me.data && me.data.authenticated === false) {
+    return <Navigate to={`/login${location.search}`} replace />;
+  }
+
   return (
     <div className="app">
       <Sidebar optionsMode={optionsMode} search={location.search} isAdmin={isAdmin} symbol={symbol} />

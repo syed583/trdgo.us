@@ -43,6 +43,9 @@ PUBLIC_PATHS = frozenset({
     "/auth/reset/request", # forgot password: request a WhatsApp code
     "/auth/reset",         # forgot password: verify code + set new password
     "/auth/status",
+    "/auth/me",            # lets the SPA learn it is signed-out (returns
+                           # {"authenticated": false}) so it can show its own
+                           # login page -- no data, no leak.
     "/favicon.ico",
     "/health",
 })

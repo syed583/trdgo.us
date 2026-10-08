@@ -1318,6 +1318,17 @@ async def _gate(request: Request, call_next):
                 if path.startswith("/api") or path.startswith("/market"):
                     return JSONResponse({"detail": "Authentication required"},
                                         status_code=401)
+                # Serve the SPA so its own (phone-OTP) login page handles
+                # sign-in -- the app routes a signed-out visitor to /login.
+                # GET navigations only; fall back to the static login.html if
+                # the build is missing or for non-GET verbs.
+                if request.method == "GET":
+                    spa = (Path(__file__).parent.parent
+                           / "frontend" / "dist" / "index.html")
+                    if spa.is_file():
+                        return FileResponse(spa, headers={
+                            "Cache-Control": "no-cache, no-store, must-revalidate",
+                        })
                 return FileResponse(_LOGIN_PAGE, status_code=401)
 
             # A non-admin user is view-only until the admin grants full access.
