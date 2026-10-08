@@ -1,0 +1,40 @@
+.adl-shell {
+  min-height: 100vh; display: grid; place-items: center;
+  background: var(--bg); padding: 24px 16px;
+}
+.adl-card {
+  width: 100%; max-width: 360px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 16px; padding: 28px 26px;
+  display: flex; flex-direction: column;
+  box-shadow: 0 18px 50px rgba(0,0,0,.18);
+}
+.adl-logo { height: 30px; width: auto; align-self: flex-start; margin-bottom: 18px; }
+.adl-badge {
+  display: inline-flex; align-items: center; gap: 5px; align-self: flex-start;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  color: #5b8cff; background: color-mix(in srgb, #5b8cff 12%, transparent);
+  padding: 3px 9px; border-radius: 999px; margin-bottom: 12px;
+}
+.adl-card h1 { font-size: 22px; font-weight: 700; margin: 0 0 4px; }
+.adl-sub { font-size: 13px; color: var(--text-dim); margin: 0 0 18px; }
+.adl-label {
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--text-mute); margin: 10px 0 5px;
+}
+.adl-input {
+  padding: 10px 12px; font-size: 14px; border-radius: 9px;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--text);
+}
+.adl-input:focus { outline: none; border-color: #5b8cff; box-shadow: var(--ring); }
+.adl-err { color: var(--red); font-size: 12.5px; margin-top: 10px; }
+.adl-btn {
+  margin-top: 18px; padding: 11px 14px; font-size: 14px; font-weight: 700;
+  border: none; border-radius: 10px; background: #2a5bff; color: #fff; cursor: pointer;
+}
+.adl-btn:disabled { opacity: .55; cursor: default; }
+.adl-userlink {
+  margin-top: 16px; text-align: center; font-size: 12.5px;
+  color: var(--text-dim); text-decoration: none;
+}
+.adl-userlink:hover { color: var(--text); }

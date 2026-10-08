@@ -32,6 +32,7 @@ const DarkPoolPage = lazy(() => import('./pages/DarkPoolPage'));
 const MarketInsidersPage = lazy(() => import('./pages/MarketInsidersPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
+const AdminLoginPage = lazy(() => import('./pages/AdminLoginPage'));
 const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
 const WorkflowPage = lazy(() => import('./pages/WorkflowPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
@@ -227,7 +228,9 @@ function Shell() {
   // serves this shell to anonymous visitors so the phone-OTP login renders;
   // without this they would see an empty authenticated frame.
   if (!demo && me.data && me.data.authenticated === false) {
-    return <Navigate to={`/login${location.search}`} replace />;
+    // Admin area has its own username+password sign-in; users use phone login.
+    const to = location.pathname.startsWith('/admin') ? '/admin/login' : '/login';
+    return <Navigate to={`${to}${location.search}`} replace />;
   }
 
   return (
@@ -413,10 +416,15 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* The sign-in page renders standalone — no sidebar, no data calls. */}
+        {/* The sign-in pages render standalone — no sidebar, no data calls. */}
         <Route path="/login" element={
           <Suspense fallback={<div className="page"><Loading /></div>}>
             <LoginPage />
+          </Suspense>
+        } />
+        <Route path="/admin/login" element={
+          <Suspense fallback={<div className="page"><Loading /></div>}>
+            <AdminLoginPage />
           </Suspense>
         } />
         <Route path="/*" element={<Shell />} />

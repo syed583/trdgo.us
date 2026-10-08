@@ -7,9 +7,6 @@ import { PageHead, Loading, ErrorState } from './shared';
 import { Panel } from '../components/common';
 import './admin.css';
 
-const ROLE_OPTIONS = ['user', 'support', 'marketing', 'finance', 'operations', 'super_admin'];
-const STAFF = new Set(['super_admin', 'operations', 'finance', 'marketing', 'support']);
-
 function fmt(iso?: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -25,12 +22,11 @@ function fmt(iso?: string | null): string {
 export default function UsersPage({ ctx }: { ctx: PageContext }) {
   const [search, setSearch] = useState('');
   const users = useApi<any>((s) => api2.adminUsers(s, search), [search]);
-  const logins = useApi<any>((s) => api2.adminLogins(60, s), []);
   const [err, setErr] = useState<string | null>(null);
   const [issued, setIssued] = useState<{ username: string; password: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const refresh = () => { users.refresh(); logins.refresh(); };
+  const refresh = () => { users.refresh(); };
 
   const reset = async (u: string) => {
     const pw = window.prompt(
@@ -52,13 +48,6 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
   const toggleAccess = async (u: string, full: boolean) => {
     await api2.adminSetAccess(u, full).catch(() => undefined); refresh();
   };
-  const changeRole = async (u: string, role: string) => {
-    if (STAFF.has(role) && !window.confirm(
-      `Make ${u} a ${role.replace('_', ' ')}? They will gain admin access.`)) return;
-    const r = await api2.adminSetRole(u, role).catch(() => null);
-    if (r?.status && r.status !== 'OK') window.alert(r.detail || `Could not set role: ${r.status}`);
-    refresh();
-  };
   const remove = async (u: string) => {
     if (!window.confirm(`Permanently delete ${u}?\n\nThis removes the account and `
       + `their data from the database and frees the phone number to sign up again. `
@@ -73,12 +62,11 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
   };
 
   const rows: any[] = users.data?.users || [];
-  const events: any[] = logins.data?.events || [];
 
   return (
     <div className="page">
       <PageHead title="Users & Access"
-        subtitle="People sign up themselves with their phone number and an OTP. Here you grant or revoke access, change roles, block or remove accounts, and see who has signed in. You (admin) sign in with the app password and are not listed here." />
+        subtitle="People sign up themselves with their phone number and an OTP. Here you grant or revoke access, block, or remove accounts. You (admin) sign in separately with your admin username and password." />
 
       {users.error && (users.error.includes('403') || users.error.includes('Admin') || users.error.includes('ermitted'))
         ? <ErrorState error="Admin only. Sign in as the owner to manage users." />
@@ -119,7 +107,7 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
                       <table className="tbl">
                         <thead>
                           <tr>
-                            <th>User</th><th>Role</th><th>Status</th><th>Access</th><th>Last login</th>
+                            <th>User</th><th>Status</th><th>Access</th><th>Last login</th>
                             <th className="r">Logins</th><th>Created</th><th></th>
                           </tr>
                         </thead>
@@ -134,15 +122,6 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
                                     blocked: {u.blocked_reason}
                                   </div>
                                 )}
-                              </td>
-                              <td>
-                                <select className="usr-role"
-                                  value={u.role}
-                                  onChange={(e) => changeRole(u.username, e.target.value)}>
-                                  {ROLE_OPTIONS.map((r) => (
-                                    <option key={r} value={r}>{r.replace('_', ' ')}</option>
-                                  ))}
-                                </select>
                               </td>
                               <td>
                                 <span className={`badge ${u.active ? 'green' : 'gray'}`}>
@@ -180,37 +159,6 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
                                   onClick={() => remove(u.username)}>
                                   <Trash2 size={15} />
                                 </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-            </Panel>
-
-            <Panel title="Recent logins" noBody>
-              {logins.initialLoading ? <Loading />
-                : events.length === 0 ? <div className="usr-empty">No login activity yet.</div>
-                  : (
-                    <div className="table-wrap">
-                      <table className="tbl">
-                        <thead>
-                          <tr><th>When</th><th>User</th><th>Result</th><th>IP</th><th>Device</th></tr>
-                        </thead>
-                        <tbody>
-                          {events.map((e, i) => (
-                            <tr key={i}>
-                              <td className="num">{fmt(e.at)}</td>
-                              <td><b>{e.username}</b></td>
-                              <td>
-                                <span className={`badge ${e.ok ? 'green' : 'red'}`}>
-                                  {e.ok ? 'OK' : 'Failed'}
-                                </span>
-                              </td>
-                              <td className="num mf-dim">{e.ip || '—'}</td>
-                              <td className="mf-dim" title={e.user_agent || ''}>
-                                {(e.user_agent || '—').slice(0, 42)}
                               </td>
                             </tr>
                           ))}
