@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Copy, KeyRound, Plus, RotateCcw, Search, ShieldCheck, Trash2, UserPlus } from 'lucide-react';
+import { Ban, Check, Copy, KeyRound, Plus, RotateCcw, Search, ShieldCheck, Trash2, UserPlus } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
@@ -157,7 +157,7 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
                         <thead>
                           <tr>
                             <th>User</th><th>Role</th><th>Status</th><th>Access</th><th>Last login</th>
-                            <th>From IP</th><th className="r">Logins</th><th>Created</th><th></th>
+                            <th className="r">Logins</th><th>Created</th><th></th>
                           </tr>
                         </thead>
                         <tbody>
@@ -193,8 +193,8 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
                                   {u.full_access ? 'Full' : 'View-only'}
                                 </span>
                               </td>
-                              <td className="num">{fmt(u.last_login_at)}</td>
-                              <td className="num mf-dim">{u.last_login_ip || '—'}</td>
+                              <td className="num" title={u.last_login_ip ? `from ${u.last_login_ip}` : ''}>
+                                {fmt(u.last_login_at)}</td>
                               <td className="num r">{u.login_count}</td>
                               <td className="num mf-dim">{fmt(u.created_at)}</td>
                               <td className="usr-actions">
@@ -205,21 +205,26 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
                                   </button>
                                 ) : (
                                   <>
-                                    <button title={u.full_access ? 'Revoke full access' : 'Give full access'}
-                                      className={u.full_access ? '' : 'primary'}
+                                    <button
+                                      title={u.full_access
+                                        ? 'Full access — click to make view-only'
+                                        : 'View-only — click to give full access'}
+                                      className={`ico ${u.full_access ? 'on' : ''}`}
                                       onClick={() => toggleAccess(u.username, !u.full_access)}>
-                                      {u.full_access ? 'Make view-only' : 'Give full access'}
+                                      <ShieldCheck size={15} />
                                     </button>
-                                    <button title="New password" onClick={() => reset(u.username)}>
-                                      <KeyRound size={13} />
+                                    <button className="ico" title="Reset password"
+                                      onClick={() => reset(u.username)}>
+                                      <KeyRound size={15} />
                                     </button>
-                                    <button title={u.active ? 'Block' : 'Unblock'}
+                                    <button className="ico"
+                                      title={u.active ? 'Block account' : 'Unblock account'}
                                       onClick={() => toggle(u.username, !u.active)}>
-                                      {u.active ? 'Block' : 'Unblock'}
+                                      {u.active ? <Ban size={15} /> : <Check size={15} />}
                                     </button>
-                                    <button title="Delete" className="danger"
+                                    <button className="ico danger" title="Delete account"
                                       onClick={() => remove(u.username)}>
-                                      <Trash2 size={13} />
+                                      <Trash2 size={15} />
                                     </button>
                                   </>
                                 )}
