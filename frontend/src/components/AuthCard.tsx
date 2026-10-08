@@ -10,7 +10,7 @@ export type AuthView = 'login' | 'signup' | 'signupVerify' | 'forgot' | 'forgotV
 
 export default function AuthCard({ view, setView }:
   { view: AuthView; setView: (v: AuthView) => void }) {
-  const [dial, setDial] = useState('971');
+  const [dial, setDial] = useState('91');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
