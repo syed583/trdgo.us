@@ -142,6 +142,31 @@ class AppUser(Base):
     last_login_at = Column(DateTime(timezone=True), nullable=True)
     last_login_ip = Column(String(64), nullable=True)
     login_count = Column(Integer, nullable=False, default=0)
+    # Soft-delete: a deleted account keeps its row (so history/audit still
+    # resolves) but is excluded everywhere and cannot sign in. Never hard-delete.
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    # When an account is blocked (active=False) the admin can record why, shown
+    # in the user detail view.
+    blocked_reason = Column(String(200), nullable=True)
+
+
+class AuditLog(Base):
+    """One row per admin action: who did what, to whom/what, and when.
+
+    Append-only. Lets the team answer "who changed this" -- required before
+    roles mean anything (an action with no actor trail is unaccountable).
+    """
+
+    __tablename__ = "admin_audit_log"
+
+    id = Column(Integer, primary_key=True)
+    actor = Column(String(40), nullable=False, index=True)    # admin username
+    actor_role = Column(String(24), nullable=True)
+    action = Column(String(48), nullable=False, index=True)   # e.g. "user.block"
+    target = Column(String(80), nullable=True, index=True)    # affected entity
+    detail = Column(Text, nullable=True)                      # human-readable context
+    ip = Column(String(64), nullable=True)
+    at = Column(DateTime(timezone=True), default=_utcnow, nullable=False, index=True)
 
 
 class LoginEvent(Base):

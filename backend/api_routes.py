@@ -1854,24 +1854,53 @@ def dashboard(request: Request) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _req_ip(request: Request) -> str:
+    fwd = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    return fwd or (request.client.host if request.client else "")
+
+
+def _audit(user: dict, request: Request, action: str,
+           target: str = None, detail: str = None) -> None:
+    import audit_service
+    audit_service.record(
+        actor=user.get("username", "?"), actor_role=user.get("role"),
+        action=action, target=target, detail=detail, ip=_req_ip(request))
+
+
 @router.get("/admin/users")
-def admin_list_users(request: Request) -> dict:
-    """Every invited account, with its last login. Admin only."""
+def admin_list_users(request: Request, search: str = "",
+                     include_deleted: bool = False) -> dict:
+    """Every account, with its last login. Needs users.view."""
     import auth_service as auth
-    auth.require_admin(request)
+    auth.require_permission(request, "users.view")
     import user_service
-    return {"users": user_service.list_users(), "status": "OK"}
+    return {"users": user_service.list_users(search or None, include_deleted),
+            "status": "OK"}
+
+
+@router.get("/admin/users/{username}")
+def admin_user_detail(request: Request, username: str) -> dict:
+    """One account with its login history and audit trail. Needs users.view."""
+    import auth_service as auth
+    auth.require_permission(request, "users.view")
+    import user_service, audit_service
+    out = user_service.user_detail(username)
+    out["audit"] = audit_service.for_target(username.strip().lower(), 50)
+    return out
 
 
 @router.post("/admin/users")
 def admin_create_user(request: Request, payload: dict = Body(...)) -> dict:
     """Create an account with a username and, optionally, a chosen password."""
     import auth_service as auth
-    auth.require_admin(request)
+    user = auth.require_permission(request, "users.manage")
     import user_service
-    return user_service.create_user(
+    res = user_service.create_user(
         str(payload.get("username") or ""),
         password=(str(payload.get("password")) if payload.get("password") else None))
+    if res.get("status") == "OK":
+        _audit(user, request, "user.create", res.get("username"))
+    return res
 
 
 @router.post("/admin/users/{username}/reset")
@@ -1879,20 +1908,29 @@ def admin_reset_user(request: Request, username: str,
                      payload: dict = Body(default={})) -> dict:
     """Set a new password for a user -- a chosen one, or a generated one."""
     import auth_service as auth
-    auth.require_admin(request)
+    user = auth.require_permission(request, "users.manage")
     import user_service
     pw = payload.get("password") if isinstance(payload, dict) else None
-    return user_service.reset_password(username, password=(str(pw) if pw else None))
+    res = user_service.reset_password(username, password=(str(pw) if pw else None))
+    if res.get("status") == "OK":
+        _audit(user, request, "user.reset_password", username)
+    return res
 
 
 @router.post("/admin/users/{username}/active")
 def admin_set_active(request: Request, username: str,
                      payload: dict = Body(default={})) -> dict:
-    """Enable or disable an account without deleting it."""
+    """Enable or block an account (with an optional reason). Needs users.manage."""
     import auth_service as auth
-    auth.require_admin(request)
+    user = auth.require_permission(request, "users.manage")
     import user_service
-    return user_service.set_active(username, bool(payload.get("active", True)))
+    active = bool(payload.get("active", True))
+    reason = (payload.get("reason") or None) if isinstance(payload, dict) else None
+    res = user_service.set_active(username, active, reason=reason)
+    if res.get("status") == "OK":
+        _audit(user, request, "user.unblock" if active else "user.block",
+               username, None if active else (reason or "no reason given"))
+    return res
 
 
 @router.post("/admin/users/{username}/access")
@@ -1900,9 +1938,61 @@ def admin_set_access(request: Request, username: str,
                      payload: dict = Body(default={})) -> dict:
     """Grant or revoke full access (running analysis and changing data)."""
     import auth_service as auth
-    auth.require_admin(request)
+    user = auth.require_permission(request, "users.manage")
     import user_service
-    return user_service.set_full_access(username, bool(payload.get("full", True)))
+    full = bool(payload.get("full", True))
+    res = user_service.set_full_access(username, full)
+    if res.get("status") == "OK":
+        _audit(user, request,
+               "user.grant_access" if full else "user.revoke_access", username)
+    return res
+
+
+@router.post("/admin/users/{username}/role")
+def admin_set_role(request: Request, username: str,
+                   payload: dict = Body(...)) -> dict:
+    """Set an account's role (admin tiers). Super admin only."""
+    import auth_service as auth
+    user = auth.require_admin(request)   # roles.manage == super admin only
+    import user_service
+    role = str(payload.get("role") or "user")
+    res = user_service.set_role(username, role)
+    if res.get("status") == "OK":
+        _audit(user, request, "user.set_role", username, f"-> {role}")
+    return res
+
+
+@router.post("/admin/users/{username}/restore")
+def admin_restore_user(request: Request, username: str) -> dict:
+    """Undo a soft delete. Needs users.manage."""
+    import auth_service as auth
+    user = auth.require_permission(request, "users.manage")
+    import user_service
+    res = user_service.restore_user(username)
+    if res.get("status") == "OK":
+        _audit(user, request, "user.restore", username)
+    return res
+
+
+@router.get("/admin/stats")
+def admin_stats(request: Request) -> dict:
+    """Headline numbers for the admin dashboard. Needs dashboard.view."""
+    import auth_service as auth
+    auth.require_permission(request, "dashboard.view")
+    import user_service
+    return user_service.stats()
+
+
+@router.get("/admin/audit")
+def admin_audit(request: Request, limit: int = 100, actor: str = "",
+                action: str = "", target: str = "", days: int = 0) -> dict:
+    """The admin action log, newest first, with optional filters. Needs audit.view."""
+    import auth_service as auth
+    auth.require_permission(request, "audit.view")
+    import audit_service
+    return {"rows": audit_service.recent(
+        limit=limit, actor=actor or None, action=action or None,
+        target=target or None, days=days or None), "status": "OK"}
 
 
 @router.get("/admin/provider/key")
@@ -1947,13 +2037,16 @@ def admin_set_provider_key(request: Request, payload: dict = Body(...)) -> dict:
     effect immediately, no redeploy. The key is stored and used, never returned.
     """
     import auth_service as auth
-    auth.require_admin(request)
+    user = auth.require_admin(request)
     import unusualwhales_service as uw
     # set_api_key verifies the candidate live before persisting and rolls back
     # to the previous key if it does not work, so a bad paste is never kept.
     res = uw.set_api_key(str(payload.get("key") or ""))
     if res.get("status") == "OK" and not res.get("detail"):
         res["detail"] = "Key replaced and verified live."
+    if res.get("status") == "OK":
+        _audit(user, request, "settings.provider_key", "unusualwhales",
+               "key replaced")
     return res
 
 
@@ -1961,17 +2054,21 @@ def admin_set_provider_key(request: Request, payload: dict = Body(...)) -> dict:
 @router.post("/admin/users/{username}/delete")
 def admin_delete_user(request: Request, username: str) -> dict:
     # Also exposed over POST: some reverse proxies (IIS WebDAV) block the DELETE
-    # verb, which silently failed user deletion in the admin panel.
+    # verb, which silently failed user deletion in the admin panel. Soft delete
+    # by default: the row is kept so audit/history still resolves.
     import auth_service as auth
-    auth.require_admin(request)
+    user = auth.require_permission(request, "users.manage")
     import user_service
-    return user_service.delete_user(username)
+    res = user_service.delete_user(username)
+    if res.get("status") == "OK":
+        _audit(user, request, "user.delete", username, "soft delete")
+    return res
 
 
 @router.get("/admin/logins")
 def admin_logins(request: Request, limit: int = 50) -> dict:
     """Recent login attempts across all users -- who, when, from where."""
     import auth_service as auth
-    auth.require_admin(request)
+    auth.require_permission(request, "users.view")
     import user_service
     return {"events": user_service.recent_logins(limit), "status": "OK"}

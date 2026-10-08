@@ -18,13 +18,19 @@ import hmac
 import re
 import secrets
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import text
 
 from database import SessionLocal
 from models_user import AppUser, LoginEvent
+
+# Roles. 'user' is a normal account; the rest are admin tiers. The env
+# ACCESS_PASSWORD account is the implicit super_admin. Permissions per role live
+# in auth_service (the enforcement layer); these are the valid names.
+ADMIN_ROLES = ("super_admin", "operations", "finance", "marketing", "support")
+ROLES = ("user",) + ADMIN_ROLES
 
 # One-time, idempotent add of the display_name column for phone-OTP accounts.
 # create_all() does not alter an existing table, so add it explicitly.
@@ -265,7 +271,8 @@ def has_full_access(username: str) -> bool:
     return value
 
 
-def set_active(username: str, active: bool) -> dict:
+def set_active(username: str, active: bool, reason: Optional[str] = None) -> dict:
+    """Enable/disable (block) an account. A block can carry a short reason."""
     username = (username or "").strip().lower()
     db = SessionLocal()
     try:
@@ -273,6 +280,10 @@ def set_active(username: str, active: bool) -> dict:
         if not user:
             return {"status": "NOT_FOUND"}
         user.active = bool(active)
+        if active:
+            user.blocked_reason = None
+        elif reason:
+            user.blocked_reason = str(reason)[:200]
         db.commit()
     finally:
         db.close()
@@ -281,12 +292,45 @@ def set_active(username: str, active: bool) -> dict:
     return {"status": "OK", "username": username, "active": bool(active)}
 
 
-def delete_user(username: str) -> dict:
+def set_role(username: str, role: str) -> dict:
+    """Set an account's role (admin sub-roles or back to user)."""
+    username = (username or "").strip().lower()
+    role = (role or "user").strip().lower()
+    if role not in ROLES:
+        return {"status": "INVALID", "detail": f"Unknown role: {role}"}
+    db = SessionLocal()
+    try:
+        user = db.query(AppUser).filter(AppUser.username == username).first()
+        if not user:
+            return {"status": "NOT_FOUND"}
+        user.role = role
+        # An admin role implies full access; a demotion to plain user does not
+        # auto-revoke it (the admin can do that separately).
+        if role in ADMIN_ROLES:
+            user.full_access = True
+        db.commit()
+    finally:
+        db.close()
+    _access_invalidate(username)
+    _valid_invalidate(username)
+    return {"status": "OK", "username": username, "role": role}
+
+
+def delete_user(username: str, hard: bool = False) -> dict:
+    """Soft-delete by default: the row stays (so history/audit still resolves)
+    but the account is marked deleted, deactivated, and excluded everywhere.
+    `hard=True` permanently removes the row (reserved for a purge)."""
     username = (username or "").strip().lower()
     db = SessionLocal()
     try:
-        deleted = (db.query(AppUser)
-                   .filter(AppUser.username == username).delete())
+        user = db.query(AppUser).filter(AppUser.username == username).first()
+        if not user:
+            return {"status": "NOT_FOUND", "username": username}
+        if hard:
+            db.delete(user)
+        else:
+            user.deleted_at = datetime.now(timezone.utc)
+            user.active = False
         db.commit()
     finally:
         db.close()
@@ -295,7 +339,25 @@ def delete_user(username: str) -> dict:
     # expires.
     _access_invalidate(username)
     _valid_invalidate(username)
-    return {"status": "OK" if deleted else "NOT_FOUND", "username": username}
+    return {"status": "OK", "username": username, "hard": bool(hard)}
+
+
+def restore_user(username: str) -> dict:
+    """Undo a soft delete: clear deleted_at and re-enable the account."""
+    username = (username or "").strip().lower()
+    db = SessionLocal()
+    try:
+        user = db.query(AppUser).filter(AppUser.username == username).first()
+        if not user:
+            return {"status": "NOT_FOUND"}
+        user.deleted_at = None
+        user.active = True
+        db.commit()
+    finally:
+        db.close()
+    _access_invalidate(username)
+    _valid_invalidate(username)
+    return {"status": "OK", "username": username}
 
 
 # Session validity (exists + active), cached like access so current_user can
@@ -382,22 +444,102 @@ def record_login(username: str, ok: bool, ip: Optional[str],
         db.close()
 
 
-def list_users() -> list[dict]:
+def _user_dict(u: AppUser) -> dict:
+    return {
+        "username": u.username,
+        "display_name": u.display_name,
+        "role": u.role,
+        "active": u.active,
+        "full_access": bool(u.full_access),
+        "blocked_reason": u.blocked_reason,
+        "deleted": u.deleted_at is not None,
+        "deleted_at": u.deleted_at.isoformat() if u.deleted_at else None,
+        "created_at": u.created_at.isoformat() if u.created_at else None,
+        "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
+        "last_login_ip": u.last_login_ip,
+        "login_count": u.login_count or 0,
+    }
+
+
+def list_users(search: Optional[str] = None,
+               include_deleted: bool = False) -> list[dict]:
+    """All accounts, newest first. Soft-deleted rows are excluded unless asked
+    for; `search` matches username or display name (case-insensitive)."""
     db = SessionLocal()
     try:
-        rows = db.query(AppUser).order_by(AppUser.created_at.desc()).all()
-        return [{
-            "username": u.username,
-            "role": u.role,
-            "active": u.active,
-            "full_access": bool(u.full_access),
-            "created_at": u.created_at.isoformat() if u.created_at else None,
-            "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
-            "last_login_ip": u.last_login_ip,
-            "login_count": u.login_count or 0,
-        } for u in rows]
+        q = db.query(AppUser)
+        if not include_deleted:
+            q = q.filter(AppUser.deleted_at.is_(None))
+        s = (search or "").strip().lower()
+        if s:
+            like = f"%{s}%"
+            from sqlalchemy import func, or_
+            q = q.filter(or_(func.lower(AppUser.username).like(like),
+                             func.lower(AppUser.display_name).like(like)))
+        rows = q.order_by(AppUser.created_at.desc()).all()
+        return [_user_dict(u) for u in rows]
     finally:
         db.close()
+
+
+def stats() -> dict:
+    """Headline numbers for the admin dashboard."""
+    now = datetime.now(timezone.utc)
+    day = now - timedelta(hours=24)
+    week = now - timedelta(days=7)
+    db = SessionLocal()
+    try:
+        from sqlalchemy import func  # noqa: F401
+        live = AppUser.deleted_at.is_(None)
+        total = db.query(AppUser).filter(live).count()
+        new_24h = db.query(AppUser).filter(live, AppUser.created_at >= day).count()
+        new_7d = db.query(AppUser).filter(live, AppUser.created_at >= week).count()
+        active = db.query(AppUser).filter(live, AppUser.active.is_(True)).count()
+        blocked = db.query(AppUser).filter(live, AppUser.active.is_(False)).count()
+        full = db.query(AppUser).filter(live, AppUser.full_access.is_(True)).count()
+        admins = db.query(AppUser).filter(live, AppUser.role != "user").count()
+        failed_24h = (db.query(LoginEvent)
+                      .filter(LoginEvent.ok.is_(False), LoginEvent.at >= day).count())
+        logins_24h = (db.query(LoginEvent)
+                      .filter(LoginEvent.ok.is_(True), LoginEvent.at >= day).count())
+        recent = (db.query(AppUser).filter(live)
+                  .order_by(AppUser.created_at.desc()).limit(8).all())
+        recent_signups = [_user_dict(u) for u in recent]
+    finally:
+        db.close()
+    return {
+        "total_users": total,
+        "new_24h": new_24h,
+        "new_7d": new_7d,
+        "active": active,
+        "blocked": blocked,
+        "full_access": full,
+        "admins": admins,
+        "failed_logins_24h": failed_24h,
+        "logins_24h": logins_24h,
+        "recent_signups": recent_signups,
+        "status": "OK",
+    }
+
+
+def user_detail(username: str) -> dict:
+    """One account with its own login history (for the user-detail view)."""
+    username = (username or "").strip().lower()
+    db = SessionLocal()
+    try:
+        u = db.query(AppUser).filter(AppUser.username == username).first()
+        if not u:
+            return {"status": "NOT_FOUND"}
+        logins = (db.query(LoginEvent)
+                  .filter(LoginEvent.username == username)
+                  .order_by(LoginEvent.at.desc()).limit(50).all())
+        events = [{
+            "ok": e.ok, "ip": e.ip, "user_agent": e.user_agent,
+            "at": e.at.isoformat() if e.at else None,
+        } for e in logins]
+    finally:
+        db.close()
+    return {"status": "OK", "user": _user_dict(u), "logins": events}
 
 
 def recent_logins(limit: int = 50) -> list[dict]:

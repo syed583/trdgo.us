@@ -284,12 +284,55 @@ def require_session(request: Request) -> None:
 
 
 def require_admin(request: Request) -> dict:
-    """Raise unless the caller is the admin. Returns the admin user."""
+    """Raise unless the caller is a super admin. Returns the user.
+
+    'admin' is the env ACCESS_PASSWORD account; 'super_admin' is a DB account
+    granted the top role. Both have every permission. Lower admin tiers use
+    require_permission for the specific thing they are allowed to do."""
     user = current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Authentication required")
-    if user.get("role") != "admin":
+    if user.get("role") not in ("admin", "super_admin"):
         raise HTTPException(status_code=403, detail="Admin only.")
+    return user
+
+
+# --- roles & permissions -------------------------------------------------
+# Each admin tier grants a set of permissions; '*' means all. The env
+# ACCESS_PASSWORD account ('admin') and a DB 'super_admin' are full super admins.
+# 'user' is a normal account and appears in no admin console.
+_ROLE_PERMS: dict[str, set] = {
+    "admin": {"*"},
+    "super_admin": {"*"},
+    "operations": {"users.view", "users.manage", "dashboard.view", "audit.view"},
+    "finance": {"dashboard.view", "reports.view", "audit.view"},
+    "marketing": {"dashboard.view"},
+    "support": {"users.view", "dashboard.view"},
+}
+
+
+def is_staff(role: Optional[str]) -> bool:
+    """True when the role has an admin console (any tier above a plain user)."""
+    return (role or "") in _ROLE_PERMS
+
+
+def permissions_for(role: Optional[str]) -> list[str]:
+    """The permission names a role holds (['*'] for a super admin)."""
+    return sorted(_ROLE_PERMS.get(role or "", set()))
+
+
+def has_permission(user: Optional[dict], perm: str) -> bool:
+    perms = _ROLE_PERMS.get((user or {}).get("role", ""), set())
+    return "*" in perms or perm in perms
+
+
+def require_permission(request: Request, perm: str) -> dict:
+    """Raise 401/403 unless the caller holds `perm`. Returns the user."""
+    user = current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if not has_permission(user, perm):
+        raise HTTPException(status_code=403, detail="Not permitted.")
     return user
 
 

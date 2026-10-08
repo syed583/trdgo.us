@@ -223,6 +223,25 @@ def _create_schema() -> None:
     except Exception as exc:  # noqa: BLE001
         print(f"schema: watchlist constraint swap skipped ({exc})")
 
+    # app_users gained soft-delete and block-reason columns with the admin-panel
+    # expansion; add them where an upgraded database is missing them.
+    try:
+        from sqlalchemy import inspect as _inspect, text as _text
+        cols = {c["name"] for c in _inspect(engine).get_columns("app_users")}
+        with engine.begin() as conn:
+            if "deleted_at" not in cols:
+                conn.execute(_text(
+                    "ALTER TABLE app_users ADD COLUMN deleted_at "
+                    "TIMESTAMPTZ"))
+                print("schema: added app_users.deleted_at")
+            if "blocked_reason" not in cols:
+                conn.execute(_text(
+                    "ALTER TABLE app_users ADD COLUMN blocked_reason "
+                    "VARCHAR(200)"))
+                print("schema: added app_users.blocked_reason")
+    except Exception as exc:  # noqa: BLE001
+        print(f"schema: app_users admin-columns check skipped ({exc})")
+
     # alerts / journal / strategy predate per-user accounts and were a single
     # shared dataset; add an owner column where missing so each account's rows
     # are scoped to it (NULL = the admin's legacy rows), mirroring the watchlist.
@@ -1344,7 +1363,7 @@ async def _gate(request: Request, call_next):
             personal = path.startswith("/api/watchlist")
             if is_data and (writes or runs_ai) and not personal:
                 user = auth.current_user(request)
-                if user and user.get("role") != "admin":
+                if user and not auth.is_staff(user.get("role")):
                     try:
                         import user_service
                         full = user_service.has_full_access(user["username"])
@@ -1369,19 +1388,29 @@ def auth_me(request: Request) -> dict:
     user = auth.current_user(request)
     if not user:
         return {"authenticated": False}
-    is_admin = user["role"] == "admin"
-    full_access = is_admin
+    role = user["role"]
+    # Any staff tier (admin / super_admin / operations / …) sees an admin
+    # console and has full access to the data pages; a plain 'user' does not.
+    is_staff = auth.is_staff(role)
+    full_access = is_staff
     display_name = None
-    if not is_admin:
+    if not is_staff:
         try:
             import user_service
             full_access = user_service.has_full_access(user["username"])
             display_name = user_service.display_name_for(user["username"])
         except Exception:  # noqa: BLE001
             full_access = False
+    else:
+        try:
+            import user_service
+            display_name = user_service.display_name_for(user["username"])
+        except Exception:  # noqa: BLE001
+            display_name = None
     return {"authenticated": True, "username": user["username"],
             "display_name": display_name,
-            "role": user["role"], "is_admin": is_admin,
+            "role": role, "is_admin": is_staff,
+            "permissions": auth.permissions_for(role),
             "full_access": full_access}
 
 
