@@ -34,6 +34,7 @@ export interface StoredCall {
     missing: string[];
     blocked: string[];
     explanation?: string | null;
+    buy_sell?: BuySell | null;
   };
   outcome?: {
     evaluated_at: string | null;
@@ -48,6 +49,19 @@ interface WhyItem {
   points: number | null;
   points_label?: string | null;
   detail?: string | null;
+}
+
+interface BuySellRow {
+  name: string; label: string;
+  buy_weight: number; sell_weight: number;
+  buy_points: number | null; sell_points: number | null;
+  available: boolean;
+}
+interface BuySell {
+  buy_score: number | null; sell_score: number | null;
+  buy_points_total: number; buy_weight_total: number;
+  sell_points_total: number; sell_weight_total: number;
+  rows: BuySellRow[];
 }
 
 function when(iso: string | null): string {
@@ -104,6 +118,8 @@ export default function WhyCall({ call, compact = false }: {
         </div>
       </div>
 
+      {w.buy_sell && <BuySellBreakdown bd={w.buy_sell} />}
+
       {w.missing.length > 0 && (
         <p className="why-missing">No data for: {w.missing.join(', ')}</p>
       )}
@@ -119,6 +135,48 @@ export default function WhyCall({ call, compact = false }: {
           </b></>
         )}
       </p>
+    </div>
+  );
+}
+
+/** The dual-model view: how many points each parameter gives the BUY score and
+ *  the SELL score, with the two totals. */
+function BuySellBreakdown({ bd }: { bd: BuySell }) {
+  const [open, setOpen] = useState(true);
+  const rows = bd.rows.filter((r) => r.available);
+  if (rows.length === 0) return null;
+  return (
+    <div className="why-bs">
+      <button className="why-bs-head" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <span>Buy / Sell score breakdown</span>
+        <span className="why-bs-tot">
+          <b className="pos">BUY {bd.buy_score == null ? '--' : Math.round(bd.buy_score)}</b>
+          <b className="neg">SELL {bd.sell_score == null ? '--' : Math.round(bd.sell_score)}</b>
+        </span>
+      </button>
+      {open && (
+        <table className="why-bs-tbl">
+          <thead>
+            <tr><th>Parameter</th><th>Buy</th><th>Sell</th></tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.name}>
+                <td>{r.label}</td>
+                <td className="pos">{r.buy_points == null ? '·' : `+${r.buy_points}`}
+                  <em> / {r.buy_weight}</em></td>
+                <td className="neg">{r.sell_points == null ? '·' : `+${r.sell_points}`}
+                  <em> / {r.sell_weight}</em></td>
+              </tr>
+            ))}
+            <tr className="why-bs-sum">
+              <td>Total</td>
+              <td className="pos">{bd.buy_points_total} <em>/ {bd.buy_weight_total}</em></td>
+              <td className="neg">{bd.sell_points_total} <em>/ {bd.sell_weight_total}</em></td>
+            </tr>
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

@@ -152,11 +152,10 @@ function AccountMenu({
     };
   }, [open]);
 
-  // Prefer the person's chosen name; fall back to the phone/username. When a
-  // name is shown, the phone becomes the secondary line instead of a generic
-  // "User" label.
+  // Prefer the person's chosen name; fall back to the phone/username only when
+  // no name is set. The phone number is never shown as a label after login.
   const name = displayName || username || (isAdmin ? 'admin' : 'account');
-  const role = isAdmin ? 'Administrator' : (displayName && username ? username : 'User');
+  const role = isAdmin ? 'Administrator' : 'User';
   const initial = (name[0] || 'U').toUpperCase();
 
   const signOut = async () => {

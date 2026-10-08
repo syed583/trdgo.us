@@ -75,84 +75,197 @@
   font-size: 11px; font-weight: 750; color: var(--text-mute);
 }
 
-.at-rows { display: flex; flex-direction: column; }
-/* The bar is the only elastic column, and it is minmax(0, 1fr) rather than
-   minmax(60px, 1fr) on purpose: a floor there cannot be given up when the
-   panel is narrow, so the whole row overflowed and the arrow at the end was
-   clipped outside the panel. Everything else is a fixed width, which is what
-   keeps the figures in a straight line down the column -- each row is its own
-   grid, so any `auto` track would size to that row's own content and the
-   column would wander. */
-.at-row {
-  display: grid; align-items: center; gap: 8px;
+/* Cards, not table rows: a rounded tile per name, laid out in a gapped column
+   and tinted by side, echoing the earnings-trade cards. */
+.at-rows { display: flex; flex-direction: column; gap: 5px; padding: 5px; }
+.at-card {
+  display: grid; align-items: center; gap: 9px;
   grid-template-columns:
     16px                /* rank */
-    50px                /* ticker */
-    88px                /* decision */
-    minmax(0, 1fr)      /* conviction bar */
-    38px                /* direction score */
-    144px               /* conf / agree / age */
-    14px;               /* chevron */
-  width: 100%; padding: 7px 12px; text-align: left;
+    minmax(0, 1fr)      /* ticker + decision + meta */
+    auto                /* direction score */
+    13px;               /* chevron */
+  width: 100%; padding: 6px 10px; text-align: left;
+  border-radius: 8px; border: 1px solid var(--border);
+  background: var(--panel); cursor: pointer;
   box-sizing: border-box; min-width: 0;
-  border: 0; border-bottom: 1px solid var(--border);
-  background: none; font: inherit; cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease, transform .1s ease;
+  font: inherit;
 }
-.at-row > * { min-width: 0; }
-.at-row:last-child { border-bottom: 0; }
-.at-row:hover { background: var(--panel-2); }
+.at-card > * { min-width: 0; }
+.at-card:hover { box-shadow: 0 8px 20px -12px rgba(12, 24, 48, .45); transform: translateY(-1px); }
+
+/* Coloured exactly like the earnings-trade cards: a solid side tint, a 4px
+   coloured left border, and the ticker in the side colour. rgba tints (not
+   color-mix) so the fill shows on every browser. */
+.at-card { border-left-width: 4px; }
+.at-card.buy {
+  border-color: var(--border); border-left-color: var(--green);
+  background: rgba(46, 184, 122, .28);
+}
+.at-card.sell {
+  border-color: var(--border); border-left-color: var(--red);
+  background: rgba(242, 70, 90, .26);
+}
+.at-card.neutral {
+  border-color: var(--border); border-left-color: var(--amber);
+  background: rgba(217, 164, 65, .24);
+}
+.at-card.buy .at-sym { color: var(--green); }
+.at-card.sell .at-sym { color: var(--red); }
+.at-card.neutral .at-sym { color: var(--amber); }
+
+/* Intraday signal-STATE colours: green = Active, yellow = Weakening, grey =
+   No Trade -- per the model's state table, regardless of side. */
+.at-card.state-green {
+  border-color: var(--border); border-left-color: var(--green);
+  background: rgba(46, 184, 122, .26);
+}
+.at-card.state-yellow {
+  border-color: var(--border); border-left-color: var(--amber);
+  background: rgba(217, 164, 65, .24);
+}
+.at-card.state-none {
+  border-color: var(--border); border-left-color: var(--border);
+  background: color-mix(in srgb, var(--text) 3%, transparent);
+}
+.at-card.state-green .at-score { color: var(--green); }
+.at-card.state-yellow .at-score { color: var(--amber); }
+.at-card.state-none .at-score { color: var(--text-mute); }
+
 .at-rank {
-  font-size: 11px; font-weight: 700; color: var(--text-mute);
-  font-variant-numeric: tabular-nums;
+  font-size: 11px; font-weight: 800; color: var(--text-mute);
+  font-variant-numeric: tabular-nums; text-align: center;
 }
+
+.at-card-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.at-card-head { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .at-sym {
-  font-size: 14px; font-weight: 800; color: var(--text);
+  font-size: 13px; font-weight: 800; color: var(--text);
   overflow: hidden; text-overflow: ellipsis;
 }
-/* Wide enough for STRONG BUY at this size. The verdict is the one thing on
-   the row that must never be abbreviated -- "STRONG ..." could be either
-   direction -- so the column is sized to the longest label rather than
-   trusted to ellipsis. */
+/* The verdict must never be abbreviated -- "STRONG ..." could be either
+   direction -- so it keeps its own pill and never wraps. */
 .at-decision {
-  justify-self: start; padding: 2px 6px; border-radius: var(--r-sm);
+  padding: 2px 7px; border-radius: var(--r-sm);
   font-size: 10px; font-weight: 800; letter-spacing: .2px; white-space: nowrap;
 }
-.at-row.buy .at-decision { background: rgba(33, 208, 122, .14); color: var(--green); }
-.at-row.sell .at-decision { background: rgba(239, 83, 80, .14); color: var(--red); }
+.at-card.buy .at-decision { background: rgba(33, 208, 122, .18); color: var(--green); }
+.at-card.sell .at-decision { background: rgba(239, 83, 80, .18); color: var(--red); }
+.at-card.neutral .at-decision { background: rgba(217, 164, 65, .20); color: var(--amber); }
 
-/* Colour each row as a box by its side -- a left accent and a faint tint, so a
-   Buy (green) / Sell (red) reads at a glance, matching the earnings cards. */
-.at-row.buy { border-left: 3px solid var(--green); background: rgba(33, 208, 122, .06); }
-.at-row.sell { border-left: 3px solid var(--red); background: rgba(239, 83, 80, .06); }
-.at-row.buy:hover { background: rgba(33, 208, 122, .12); }
-.at-row.sell:hover { background: rgba(239, 83, 80, .12); }
-
-.at-bar {
-  height: 7px; border-radius: var(--r-sm); background: var(--panel-2); overflow: hidden;
-}
-.at-bar i { display: block; height: 100%; border-radius: var(--r-sm); }
-.at-row.buy .at-bar i { background: var(--green); }
-.at-row.sell .at-bar i { background: var(--red); }
-/* The direction score, 0-100, exactly as the analysis screen's ring shows it.
-   Coloured by side so the row still reads at a glance without a sign. */
-.at-score {
-  text-align: right; font-size: 14px; font-weight: 800;
-  font-variant-numeric: tabular-nums; letter-spacing: -.3px;
-}
-.at-row.buy .at-score { color: var(--green); }
-.at-row.sell .at-score { color: var(--red); }
-
-/* Three equal cells rather than a flex row: "Conf 100%" is wider than
-   "Conf 67%", and in a flex row that difference shifts the two figures beside
-   it, so the three columns never line up between rows. */
-.at-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; }
+.at-meta { display: flex; flex-wrap: wrap; gap: 3px 10px; }
 .at-meta em {
   font-style: normal; font-size: 10px; color: var(--text-mute);
-  white-space: nowrap; text-align: right; overflow: hidden;
-  font-variant-numeric: tabular-nums;
+  white-space: nowrap; font-variant-numeric: tabular-nums;
 }
+.at-meta em.im-buy { color: var(--green); font-weight: 800; }
+.at-meta em.im-sell { color: var(--red); font-weight: 800; }
+.at-full {
+  padding: 1px 6px; border-radius: var(--r-pill); font-size: 9px; font-weight: 800;
+  text-transform: uppercase; letter-spacing: .3px; color: var(--accent);
+  background: var(--accent-bg); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+}
+/* Exit target + stop for a Buy/Sell card. */
+.at-levels { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 3px; }
+.at-lvl { font-size: 10.5px; font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.at-lvl.now { color: var(--text); }
+.at-lvl.tgt { color: var(--green); }
+.at-lvl.stp { color: var(--red); }
+
+/* The direction score, 0-100, exactly as the analysis screen's ring shows it. */
+.at-score {
+  text-align: right; font-size: 16px; font-weight: 800;
+  font-variant-numeric: tabular-nums; letter-spacing: -.4px;
+}
+
+/* A call that changed today lights up exactly like the earnings cards on a
+   flip: a magenta border that pulses, over the split old->new colour fill. */
+.at-card.at-changed, .at-mini-row.at-changed {
+  border-color: var(--flip, #ec4899);
+  animation: at-flip 1.05s ease-in-out infinite;
+}
+@keyframes at-flip {
+  0%, 100% { box-shadow: 0 0 0 1px var(--flip, #ec4899); }
+  50% {
+    box-shadow: 0 0 0 1px var(--flip, #ec4899),
+      0 0 15px 1px color-mix(in srgb, var(--flip, #ec4899) 55%, transparent);
+  }
+}
+/* The "why?" pill on a changed card (and the legacy "changed" tag). */
+.at-why-pill, .at-changed-tag {
+  padding: 1px 7px; border-radius: var(--r-pill);
+  font-size: 9.5px; font-weight: 800; letter-spacing: .2px; white-space: nowrap;
+  color: var(--flip, #ec4899);
+  background: color-mix(in srgb, var(--flip, #ec4899) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--flip, #ec4899) 45%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .at-card.at-changed, .at-mini-row.at-changed {
+    animation: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--flip, #ec4899) 45%, transparent);
+  }
+}
+
+/* --- "N calls changed today" banner, mirroring the earnings notice --------- */
+.at-chgnote {
+  margin-bottom: 8px; padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--flip, #ec4899) 40%, transparent);
+  border-radius: var(--r); background: color-mix(in srgb, var(--flip, #ec4899) 7%, var(--panel));
+}
+.at-chgnote-top { display: flex; align-items: center; gap: 7px; margin-bottom: 9px; color: var(--flip, #ec4899); }
+.at-chgnote-h { font-size: 12.5px; font-weight: 800; }
+.at-chgnote-list { display: flex; flex-wrap: wrap; gap: 7px; }
+.at-chgchip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: var(--r-pill);
+  font-size: 11px; font-weight: 600; color: var(--text-dim);
+  background: var(--panel); border: 1px solid var(--border);
+}
+.at-chgchip b { color: var(--text); font-weight: 800; }
+.at-chgchip.to-buy { border-color: rgba(46, 184, 122, .5); }
+.at-chgchip.to-sell { border-color: rgba(242, 70, 90, .5); }
+.at-chgchip.to-neutral { border-color: rgba(217, 164, 65, .5); }
+.at-chgmore {
+  padding: 3px 9px; border-radius: var(--r-pill); cursor: pointer;
+  font: inherit; font-size: 11px; font-weight: 700; color: var(--flip, #ec4899);
+  background: var(--panel); border: 1px dashed color-mix(in srgb, var(--flip, #ec4899) 45%, transparent);
+}
+.at-chgmore:hover { background: color-mix(in srgb, var(--flip, #ec4899) 10%, transparent); }
+
+/* --- previous sessions (history) ----------------------------------------- */
+.at-past-toggle { cursor: pointer; border: 0; }
+.at-past { display: flex; flex-direction: column; gap: 10px; padding: 4px 2px; }
+.at-past-day { border-top: 1px solid var(--border); padding-top: 9px; }
+.at-past-day:first-child { border-top: 0; padding-top: 0; }
+.at-past-date {
+  font-size: 11px; font-weight: 800; letter-spacing: .03em; text-transform: uppercase;
+  color: var(--text-mute); margin-bottom: 7px;
+}
+.at-past-lists { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.at-past-side { min-width: 0; }
+.at-past-h { font-size: 11px; font-weight: 800; }
+.at-past-h.buy { color: var(--green); }
+.at-past-h.sell { color: var(--red); }
+.at-past-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.at-past-none { color: var(--text-mute); font-size: 12px; }
+.at-pastchip {
+  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  padding: 2px 8px; border-radius: var(--r-pill); font: inherit; font-size: 11px;
+  border: 1px solid var(--border); background: var(--panel); color: var(--text);
+}
+.at-pastchip b { font-weight: 800; }
+.at-pastchip em { font-style: normal; color: var(--text-mute); font-variant-numeric: tabular-nums; }
+.at-pastchip.buy { border-color: rgba(46, 184, 122, .5); background: rgba(46, 184, 122, .12); }
+.at-pastchip.sell { border-color: rgba(242, 70, 90, .5); background: rgba(242, 70, 90, .12); }
+.at-pastchip.neutral { border-color: rgba(217, 164, 65, .5); background: rgba(217, 164, 65, .12); }
+.at-pastchip:hover { border-color: var(--blue); }
+@media (max-width: 560px) { .at-past-lists { grid-template-columns: minmax(0, 1fr); } }
+.at-card.buy .at-score { color: var(--green); }
+.at-card.sell .at-score { color: var(--red); }
+.at-card.neutral .at-score { color: var(--amber); }
+
 .at-go { color: var(--text-mute); justify-self: end; }
-.at-row:hover .at-go { color: var(--blue); }
+.at-card:hover .at-go { color: var(--blue); }
 
 /* --- secondary lists ----------------------------------------------------- */
 
@@ -207,43 +320,29 @@
   .at-cols { grid-template-columns: minmax(0, 1fr); }
   .at-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-/* Below this the three figures cannot fit without squeezing the bar to
-   nothing. The decision and the lean are what the row is for, so they stay. */
-/* Bounded below at 1181px on purpose: under that the two columns stack and
-   each panel gets the full width back, so the three figures fit again. */
-@media (max-width: 1240px) and (min-width: 1181px) {
-  .at-row { grid-template-columns: 16px 50px 88px minmax(0, 1fr) 38px 14px; }
-  .at-row .at-meta { display: none; }
-}
-/* A phone row is rank, ticker, bar, score, chevron -- five cells for five
-   children. The meta group has to go with the decision chip here: leaving it
-   in a five-column grid pushed it onto a second row and dragged the chevron
-   down with it, which is what made these rows look broken on a phone. */
 @media (max-width: 760px) {
-  .at-row {
-    grid-template-columns: 16px 46px minmax(0, 1fr) 34px 14px;
-    gap: 7px; padding: 9px 10px;
-  }
-  .at-row .at-decision, .at-row .at-meta { display: none; }
-  .at-sym { font-size: 13px; }
+  .at-card { gap: 10px; padding: 11px 12px; }
+  .at-sym { font-size: 14px; }
+  .at-score { font-size: 20px; }
 }
 
 @media (max-width: 560px) {
   .at-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .at-cols { grid-template-columns: minmax(0, 1fr); }
   .at-foot { font-size: 12px; }
-  /* The chevron earns no room on a phone: the whole row is the tap target. */
-  .at-row { grid-template-columns: 16px 46px minmax(0, 1fr) 34px; }
-  .at-row .at-go { display: none; }
+  /* The chevron earns no room on a phone: the whole card is the tap target. */
+  .at-card { grid-template-columns: 20px minmax(0, 1fr) auto; }
+  .at-go { display: none; }
   .at-mini-row { grid-template-columns: 46px minmax(0, 1fr) 40px; }
 }
 
-/* The stored "why" opens under its row. */
-.at-row.at-open { background: var(--panel-2); }
+/* The stored "why" opens under its card. */
+.at-card.at-open { box-shadow: 0 0 0 1px var(--border) inset; }
 .at-go-open { transform: rotate(90deg); color: var(--blue); }
 .at-go { transition: transform .15s ease; }
 .at-why {
-  padding: 10px 12px 12px; border-bottom: 1px solid var(--border);
+  margin: -2px 2px 2px; padding: 12px 14px;
+  border: 1px solid var(--border); border-radius: 10px;
   background: var(--bg-2, var(--panel));
 }
 .at-why-open {

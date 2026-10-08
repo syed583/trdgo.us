@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight, Clock, Loader2, PauseCircle, RefreshCw, ShieldAlert,
@@ -14,6 +14,125 @@ import Scorecard from '../components/Scorecard';
 import HorizonSwitch, { HORIZON_COPY, defaultHorizon } from '../components/HorizonSwitch';
 import type { Horizon } from '../components/HorizonSwitch';
 
+const EMPTY: Row[] = [];
+
+/** Which side a decision reads as, so a card is coloured by its CURRENT call
+ *  even after it has been pinned to a column. */
+function toneOf(decision: string): 'buy' | 'sell' | 'neutral' {
+  const d = (decision || '').toUpperCase();
+  if (d.includes('BUY')) return 'buy';
+  if (d.includes('SELL')) return 'sell';
+  return 'neutral';
+}
+
+// The same tints the cards use, for the split-colour "changed" gradient and
+// the banner chips. rgba (not color-mix) so they render on every browser.
+const TINT: Record<'buy' | 'sell' | 'neutral', string> = {
+  buy: 'rgba(46, 184, 122, .28)',
+  sell: 'rgba(242, 70, 90, .26)',
+  neutral: 'rgba(217, 164, 65, .24)',
+};
+const SIDE_LABEL: Record<'buy' | 'sell' | 'neutral', string> = {
+  buy: 'BUY', sell: 'SELL', neutral: 'NEUTRAL',
+};
+
+/** Today's date in US market time, as the key a day's pinned list resets on. */
+function etDay(): string {
+  try {
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
+type Side = 'buy' | 'sell' | 'neutral';
+interface Change { symbol: string; from: Side; to: Side; }
+
+interface PinStore {
+  day: string;
+  buy: string[];
+  sell: string[];
+  rows: Record<string, Row>;
+  changes: Change[];
+}
+
+/**
+ * Pin the day's Buy / Sell lists. Once a name shows up on a side it keeps its
+ * slot for the rest of the trading day -- it does not drop out when its score
+ * dips below the bar or its call flips; its figures and colour just update in
+ * place (and the change flag lights it up). The lists reset to fresh names on
+ * the next trading day, and persist across reloads within the day via
+ * localStorage, keyed by horizon. Returns the ordered buyers/sellers plus the
+ * set of names whose call changed since the last refresh.
+ */
+function useDailyPinned(d: Board | null, horizon: string): {
+  buyers: Row[]; sellers: Row[]; changeMap: Map<string, Change>; changes: Change[];
+} {
+  const key = `at-pinned:${horizon}`;
+  const storeRef = useRef<PinStore | null>(null);
+  const keyRef = useRef<string>('');
+
+  return useMemo(() => {
+    const day = etDay();
+    // The ref is per-horizon: when the horizon (key) changes, reload from that
+    // horizon's own storage rather than carrying the previous one over and
+    // writing it to the new key.
+    let store = keyRef.current === key ? storeRef.current : null;
+    if (!store) {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw) store = JSON.parse(raw) as PinStore;
+      } catch { /* ignore */ }
+    }
+    if (store && store.day !== day) store = { day, buy: [], sell: [], rows: {}, changes: [] };
+    if (!store) store = { day, buy: [], sell: [], rows: {}, changes: [] };
+    if (!store.changes) store.changes = [];
+
+    if (d) {
+      const all = [
+        ...(d.buyers ?? EMPTY), ...(d.sellers ?? EMPTY),
+        ...(d.waiting ?? EMPTY), ...(d.held ?? EMPTY),
+      ];
+      const allMap = new Map(all.map((r) => [r.symbol, r]));
+      const pinned = new Set([...store.buy, ...store.sell]);
+
+      // A name joins the side it FIRST appears on, and stays there.
+      for (const r of (d.buyers ?? EMPTY)) {
+        if (!pinned.has(r.symbol)) { store.buy.push(r.symbol); pinned.add(r.symbol); }
+      }
+      for (const r of (d.sellers ?? EMPTY)) {
+        if (!pinned.has(r.symbol)) { store.sell.push(r.symbol); pinned.add(r.symbol); }
+      }
+      // Refresh each pinned name, and record a change when its SIDE flips
+      // (green/yellow/red), persisted for the day so the banner accumulates.
+      for (const sym of pinned) {
+        const fresh = allMap.get(sym);
+        if (!fresh) continue;
+        const old = store.rows[sym];
+        if (old) {
+          const from = rowTone(old);
+          const to = rowTone(fresh);
+          if (from !== to) {
+            store.changes = store.changes.filter((c) => c.symbol !== sym);
+            store.changes.push({ symbol: sym, from, to });
+          }
+        }
+        store.rows[sym] = fresh;
+      }
+    }
+
+    storeRef.current = store;
+    keyRef.current = key;
+    try { localStorage.setItem(key, JSON.stringify(store)); } catch { /* ignore */ }
+
+    const buyers = store.buy.map((s) => store!.rows[s]).filter(Boolean);
+    const sellers = store.sell.map((s) => store!.rows[s]).filter(Boolean);
+    const changes = store.changes.slice().reverse();     // most recent first
+    const changeMap = new Map(changes.map((c) => [c.symbol, c]));
+    return { buyers, sellers, changeMap, changes };
+  }, [d, key]);
+}
+
 interface Row {
   symbol: string;
   horizon?: string;
@@ -27,6 +146,29 @@ interface Row {
   agreement_pct: number | null;
   coverage_pct: number | null;
   top_reasons: string[];
+  target?: number | null;
+  stop?: number | null;
+  spot?: number | null;
+  // Intraday dual-score model (Trdgo Stock + Tradgo Call only).
+  buy_score?: number | null;
+  sell_score?: number | null;
+  im_decision?: string | null;
+  im_side?: 'buy' | 'sell' | 'none' | null;
+  im_color?: 'green' | 'yellow' | 'none' | null;
+  im_full_size?: boolean | null;
+}
+
+/** The side a row reads as, preferring the intraday model's call. */
+function rowTone(row: Row): 'buy' | 'sell' | 'neutral' {
+  if (row.im_side === 'buy') return 'buy';
+  if (row.im_side === 'sell') return 'sell';
+  if (row.im_side === 'none') return 'neutral';
+  return toneOf(row.decision);
+}
+
+/** The call text to show -- the intraday signal state when present. */
+function rowDecision(row: Row): string {
+  return row.im_decision || row.decision;
 }
 
 interface Board {
@@ -80,6 +222,12 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
   });
   const d = board.data;
   const building = !!d?.building;
+
+  // Hold each card's position steady across the minute-ly re-sort, so the list
+  // does not shuffle under the reader while they are looking at it.
+  // Pin the day's Buy / Sell names so a card stays put once it appears, resets
+  // next trading day, and lights up when its call changes.
+  const { buyers, sellers, changeMap, changes } = useDailyPinned(d ?? null, horizon);
 
   // While a build is running the answer changes every few seconds, so poll
   // until it settles rather than leaving the page on whatever it first saw.
@@ -189,14 +337,16 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
               the summary, not buried under the full withheld list. */}
           <Scorecard horizon={horizon} />
 
+          <ChangedBanner changes={changes} />
+
           <div className="at-cols">
             <Column
               title="Top Buyers" icon={<TrendingUp size={15} />} tone="buy"
-              rows={d.buyers}
+              rows={buyers} changeMap={changeMap}
               empty="Nothing in the universe cleared the bar on the long side." />
             <Column
               title="Top Sellers" icon={<TrendingDown size={15} />} tone="sell"
-              rows={d.sellers}
+              rows={sellers} changeMap={changeMap}
               empty="Nothing in the universe cleared the bar on the short side." />
           </div>
 
@@ -207,7 +357,7 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
                 ? <p className="at-note">Every scored name leaned one way.</p>
                 : (
                   <div className="at-mini">
-                    {d.waiting.map((r) => <MiniRow key={r.symbol} row={r} />)}
+                    {d.waiting.map((r) => <MiniRow key={r.symbol} row={r} changed={changeMap.has(r.symbol)} />)}
                   </div>
                 )}
             </Panel>
@@ -224,11 +374,13 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
                 ? <p className="at-note">Nothing withheld.</p>
                 : (
                   <div className="at-mini">
-                    {d.held.map((r) => <MiniRow key={r.symbol} row={r} reason />)}
+                    {d.held.map((r) => <MiniRow key={r.symbol} row={r} reason changed={changeMap.has(r.symbol)} />)}
                   </div>
                 )}
             </Panel>
           </div>
+
+          <PastSessions />
 
           <p className="at-foot">
             {d.note} Built in {d.elapsed_seconds}s and cached.
@@ -266,11 +418,125 @@ function Stat({
   );
 }
 
+/** A short date label like "Mon Oct 06" from a YYYY-MM-DD day key. */
+function dayLabel(day: string): string {
+  try {
+    return new Date(day + 'T12:00:00').toLocaleDateString(undefined,
+      { weekday: 'short', month: 'short', day: '2-digit' });
+  } catch { return day; }
+}
+
+interface PastChip { symbol: string; score: number | null; }
+interface PastDay { day: string; buy: PastChip[]; sell: PastChip[]; }
+
+/** History of earlier trading days' Buy / Sell calls, read from the SAME stored
+ *  daily snapshots the Signal History page uses -- so it is the real record, not
+ *  whatever this browser happened to see. Newest day first, capped per side. */
+function PastSessions() {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(true);
+  const hist = useApi<any>((s) => api2.signalHistory(10, '', s), [], { refreshMs: 600_000 });
+
+  const days: PastDay[] = useMemo(() => {
+    const data = hist.data;
+    if (!data || data.status !== 'OK') return [];
+    const today = etDay();
+    const dates: string[] = (data.dates || []).filter((dt: string) => dt < today);
+    const rows: any[] = data.rows || [];
+    return dates.slice().reverse().map((date) => {
+      const buy: PastChip[] = [];
+      const sell: PastChip[] = [];
+      for (const r of rows) {
+        const cell = (r.cells || []).find((c: any) => c.date === date);
+        const call = cell?.stock;
+        if (call === 'BUY') buy.push({ symbol: r.symbol, score: cell.score ?? null });
+        else if (call === 'SELL') sell.push({ symbol: r.symbol, score: cell.score ?? null });
+      }
+      buy.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));       // strongest buy first
+      sell.sort((a, b) => (a.score ?? 0) - (b.score ?? 0));      // strongest sell first
+      return { day: date, buy: buy.slice(0, 15), sell: sell.slice(0, 15) };
+    }).filter((s) => s.buy.length || s.sell.length);
+  }, [hist.data]);
+
+  if (days.length === 0) return null;
+
+  const chip = (c: PastChip, tone: 'buy' | 'sell') => (
+    <button key={c.symbol} className={`at-pastchip ${tone}`}
+      onClick={() => navigate(`/trade-plan/${c.symbol}`)} title={c.symbol}>
+      <b>{c.symbol}</b>{c.score != null && <em>{Math.round(c.score)}</em>}
+    </button>
+  );
+
+  return (
+    <Panel
+      title={<span className="at-col-title">Previous sessions</span>}
+      right={(
+        <button className="at-chip at-past-toggle" onClick={() => setOpen((v) => !v)}>
+          {open ? 'Hide' : `${days.length} day${days.length === 1 ? '' : 's'}`}
+        </button>
+      )}
+    >
+      {open && (
+        <div className="at-past">
+          {days.map((snap) => (
+            <div key={snap.day} className="at-past-day">
+              <div className="at-past-date">{dayLabel(snap.day)}</div>
+              <div className="at-past-lists">
+                <div className="at-past-side">
+                  <span className="at-past-h buy">Buyers</span>
+                  <div className="at-past-chips">
+                    {snap.buy.length ? snap.buy.map((c) => chip(c, 'buy'))
+                      : <span className="at-past-none">—</span>}
+                  </div>
+                </div>
+                <div className="at-past-side">
+                  <span className="at-past-h sell">Sellers</span>
+                  <div className="at-past-chips">
+                    {snap.sell.length ? snap.sell.map((c) => chip(c, 'sell'))
+                      : <span className="at-past-none">—</span>}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+/** The "N calls changed" notice, mirroring the earnings-trade banner: a pink
+ *  box listing each name's OLD -> NEW side. */
+function ChangedBanner({ changes }: { changes: Change[] }) {
+  const [showAll, setShowAll] = useState(false);
+  if (changes.length === 0) return null;
+  const shown = showAll ? changes : changes.slice(0, 12);
+  const more = changes.length - shown.length;
+  return (
+    <div className="at-chgnote">
+      <div className="at-chgnote-top">
+        <ShieldAlert size={13} />
+        <span className="at-chgnote-h">{changes.length} call{changes.length === 1 ? '' : 's'} changed today</span>
+      </div>
+      <div className="at-chgnote-list">
+        {shown.map((c) => (
+          <span key={c.symbol} className={`at-chgchip to-${c.to}`}>
+            <b>{c.symbol}</b> {SIDE_LABEL[c.from]}→{SIDE_LABEL[c.to]}
+          </span>
+        ))}
+        {more > 0 && (
+          <button className="at-chgmore" onClick={() => setShowAll(true)}>+{more} more</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Column({
-  title, icon, tone, rows, empty,
+  title, icon, tone, rows, empty, changeMap,
 }: {
   title: string; icon: React.ReactNode; tone: string;
-  rows: Row[]; empty: string;
+  rows: Row[]; empty: string; changeMap: Map<string, Change>;
 }) {
   return (
     <Panel
@@ -283,7 +549,8 @@ function Column({
         : (
           <div className="at-rows">
             {rows.map((r, i) => (
-              <BigRow key={r.symbol} row={r} rank={i + 1} tone={tone} />
+              <BigRow key={r.symbol} row={r} rank={i + 1} tone={tone}
+                change={changeMap.get(r.symbol)} />
             ))}
           </div>
         )}
@@ -292,52 +559,84 @@ function Column({
 }
 
 function BigRow({
-  row, rank, tone,
-}: { row: Row; rank: number; tone: string }) {
+  row, rank, change,
+}: { row: Row; rank: number; tone: string; change?: Change }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const lean = row.lean ?? 0;
-  // Distance from neutral, against the widest reading the model produces in
-  // practice, so two rows are comparable to each other rather than each being
-  // scaled to itself.
-  const width = Math.min(100, (Math.abs(lean) / 35) * 100);
+  // Colour the card by the intraday signal STATE (green = Active, yellow =
+  // Weakening, grey = No Trade), per the model's state table. Fall back to the
+  // side colour for any row without an intraday read.
+  const stateClass = row.im_color ? `state-${row.im_color}` : rowTone(row);
+  // The headline number is the live score for this name's side.
+  const sideScore = row.im_side === 'sell' ? row.sell_score
+    : row.im_side === 'buy' ? row.buy_score
+    : row.direction_score;
+  // A changed card is split old-colour -> new-colour, like the earnings cards.
+  const splitBg = change
+    ? {
+        background: `linear-gradient(100deg, ${TINT[change.from]} 0%, `
+          + `${TINT[change.from]} 42%, ${TINT[change.to]} 58%, ${TINT[change.to]} 100%)`,
+      }
+    : undefined;
 
   return (
     <>
-      {/* A click opens why this name is on the list, read from the stored
-          call; the analysis is one further click from there. Going straight
-          to a fresh analysis answered a different question -- what the model
-          thinks now -- not why it put this row here. */}
+      {/* A click opens why this name is on the list, read from the stored call.
+          The card is coloured like the earnings cards, by its current call. */}
       <button
-        className={`at-row ${tone} ${open ? 'at-open' : ''}`}
+        className={`at-card ${stateClass} ${open ? 'at-open' : ''} ${change ? 'at-changed' : ''}`}
+        style={splitBg}
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        title="Why this call"
+        title={change ? `${SIDE_LABEL[change.from]} → ${SIDE_LABEL[change.to]}` : 'Why this call'}
       >
         <span className="at-rank">{rank}</span>
-        <span className="at-sym">{row.symbol}</span>
-        <span className="at-decision">{row.decision}</span>
 
-        <span className="at-bar"><i style={{ width: `${width}%` }} /></span>
+        <div className="at-card-body">
+          <div className="at-card-head">
+            <span className="at-sym">{row.symbol}</span>
+            <span className="at-decision">{rowDecision(row)}</span>
+            {change && <span className="at-why-pill">why?</span>}
+          </div>
+          <div className="at-meta">
+            {row.buy_score != null && (
+              <em className="im-buy" title="Intraday BUY score (0-100)">BUY {Math.round(row.buy_score)}</em>
+            )}
+            {row.sell_score != null && (
+              <em className="im-sell" title="Intraday SELL score (0-100)">SELL {Math.round(row.sell_score)}</em>
+            )}
+            <em title="How long ago this name was scored">{ago(row.age_seconds)}</em>
+          </div>
+          {(row.spot != null || row.target != null || row.stop != null) && (
+            <div className="at-levels">
+              {row.spot != null && (
+                <span className="at-lvl now" title="Current price">
+                  Price ${row.spot}
+                </span>
+              )}
+              {row.target != null && (
+                <span className="at-lvl tgt" title="Exit target (take profit)">
+                  Target ${row.target}
+                </span>
+              )}
+              {row.stop != null && (
+                <span className="at-lvl stp" title="Stop loss">
+                  Stop ${row.stop}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* The direction score, rounded exactly as the analysis screen's ring
             rounds it, so the two screens cannot appear to disagree. */}
         <span className="at-score"
           title={`${lean > 0 ? '+' : ''}${num(lean)} from neutral`}>
-          {row.direction_score == null ? '--' : Math.round(row.direction_score)}
+          {sideScore == null ? '--' : Math.round(sideScore)}
         </span>
 
-        <span className="at-meta">
-          <em title="How sure the model is of this reading">
-            Conf {Math.round(row.confidence ?? 0)}%
-          </em>
-          <em title="How much of the model leans the same way">
-            Agree {Math.round(row.agreement_pct ?? 0)}%
-          </em>
-          <em title="How long ago this name was scored">{ago(row.age_seconds)}</em>
-        </span>
-
-        <ArrowRight size={14} className={`at-go ${open ? 'at-go-open' : ''}`} />
+        <ArrowRight size={15} className={`at-go ${open ? 'at-go-open' : ''}`} />
       </button>
 
       {open && (
@@ -370,15 +669,17 @@ function RowWhy({ symbol, horizon }: { symbol: string; horizon?: string }) {
   return <WhyCall call={call.data.call} compact />;
 }
 
-function MiniRow({ row, reason }: { row: Row; reason?: boolean }) {
+function MiniRow({ row, reason, changed }: { row: Row; reason?: boolean; changed?: boolean }) {
   const navigate = useNavigate();
   return (
-    <button className="at-mini-row"
-      onClick={() => navigate(`/ai-insights/${row.symbol}?run=1`)}>
+    <button className={`at-mini-row ${changed ? 'at-changed' : ''}`}
+      onClick={() => navigate(`/ai-insights/${row.symbol}?run=1`)}
+      title={changed ? 'Call just changed' : undefined}>
       <b>{row.symbol}</b>
       <span className="at-mini-call">
         {reason ? <PauseCircle size={12} /> : null}
-        {row.decision}
+        {rowDecision(row)}
+        {changed && <span className="at-changed-tag">changed</span>}
       </span>
       <em title={`${(row.lean ?? 0) > 0 ? '+' : ''}${num(row.lean)} from neutral`}>
         {row.direction_score == null ? '--' : Math.round(row.direction_score)}

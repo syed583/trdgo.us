@@ -817,6 +817,51 @@ function StoredWhy({ symbol, horizon, result }: {
  * Score gauge is drawn from. The stored call, when it is the same run, lends
  * its id (for the explanation request), any saved explanation and its outcome.
  */
+// Intraday dual-model weights (BUY, SELL) per parameter, mirroring the backend.
+const IM_WEIGHTS: Record<string, [number, number]> = {
+  vwap: [8, 10], intraday_trend: [7, 7], ema_trend: [7, 7], opening_range: [6, 7],
+  price_action: [5, 6], rsi: [4, 5], options_flow: [9, 7], unusual_activity: [6, 4],
+  volume_pcr: [5, 3], key_levels: [5, 4], flow_by_expiry: [3, 2], oi_positioning: [2, 0],
+  relative_volume: [8, 7], market_direction: [7, 10], relative_strength_day: [5, 7],
+  sector_strength: [5, 6], analyst_action: [4, 4], earnings_results: [3, 3],
+  insider_activity: [2, 2],
+};
+function imBias(s: any): number | null {
+  if (s.bias != null) return s.bias;
+  if (s.points != null && s.weight) return Math.max(-1, Math.min(1, s.points / s.weight));
+  return null;
+}
+function computeBuySell(sigs: any[]): any {
+  const rows: any[] = [];
+  let bn = 0, sn = 0, bd = 0, sd = 0;
+  for (const s of sigs) {
+    const w = IM_WEIGHTS[s.name];
+    if (!w) continue;
+    const [bw, sw] = w;
+    const b = imBias(s);
+    const avail = !!s.available && b != null;
+    const bb = b || 0;
+    rows.push({
+      name: s.name, label: s.label || s.name, buy_weight: bw, sell_weight: sw,
+      buy_points: avail ? Math.round(Math.max(0, bb) * bw * 10) / 10 : null,
+      sell_points: avail ? Math.round(Math.max(0, -bb) * sw * 10) / 10 : null,
+      available: avail,
+    });
+    if (avail) {
+      if (bw) { bn += Math.max(0, bb) * bw; bd += bw; }
+      if (sw) { sn += Math.max(0, -bb) * sw; sd += sw; }
+    }
+  }
+  rows.sort((a, b) => (b.buy_weight + b.sell_weight) - (a.buy_weight + a.sell_weight));
+  return {
+    buy_score: bd ? Math.round(1000 * bn / bd) / 10 : null,
+    sell_score: sd ? Math.round(1000 * sn / sd) / 10 : null,
+    buy_points_total: Math.round(bn * 10) / 10, buy_weight_total: Math.round(bd * 10) / 10,
+    sell_points_total: Math.round(sn * 10) / 10, sell_weight_total: Math.round(sd * 10) / 10,
+    rows,
+  };
+}
+
 function buildWhyFromResult(symbol: string, horizon: Horizon, result: any,
                             stored: any): any {
   const sigs: any[] = result.signals || [];
@@ -849,6 +894,7 @@ function buildWhyFromResult(symbol: string, horizon: Horizon, result: any,
       missing,
       blocked: result.blocked_reasons || [],
       explanation: stored?.why?.explanation ?? null,
+      buy_sell: stored?.why?.buy_sell ?? computeBuySell(sigs),
     },
     outcome: stored?.outcome,
   };
