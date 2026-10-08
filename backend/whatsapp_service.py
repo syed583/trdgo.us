@@ -56,14 +56,14 @@ def send_otp(phone: str, code: str) -> dict:
 
     base = (os.getenv("WHATSAPP_API_BASE") or _DEFAULT_BASE).rstrip("/")
     phone_id = os.getenv("WHATSAPP_PHONE_ID") or _DEFAULT_PHONE_ID
-    template = os.getenv("WHATSAPP_TEMPLATE") or "otpp"
+    template = os.getenv("WHATSAPP_TEMPLATE") or "verify_01"
     lang = os.getenv("WHATSAPP_LANG") or "en"
 
     components = [
         {"type": "body", "parameters": [{"type": "text", "text": code}]},
     ]
-    # The "otpp" template has a dynamic URL button at index 0; its parameter is
-    # the code (the one-tap copy/verify button). A body-only template skips this.
+    # Body-only templates (e.g. "verify_01") send just the code. Only the "otpp"
+    # template has a dynamic URL button at index 0, whose parameter is the code.
     if template == "otpp":
         components.append({
             "type": "button",
