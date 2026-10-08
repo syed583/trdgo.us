@@ -42,7 +42,7 @@ function HeaderNav({ search }: { search: string }) {
 
 export default function TopBar({
   variant, symbol, onSymbol, quote, health, demo, onRefresh, refreshing, search,
-  isAdmin, username,
+  isAdmin, username, displayName,
 }: {
   variant: 'earnings' | 'options';
   symbol: string;
@@ -55,6 +55,7 @@ export default function TopBar({
   search: string;
   isAdmin?: boolean;
   username?: string;
+  displayName?: string;
 }) {
   const chgTone = tone2(quote?.change);
   // The Analysis page carries its own prominent ticker search (the centred hero
@@ -119,7 +120,7 @@ export default function TopBar({
 
       <ThemeToggle />
 
-      <AccountMenu isAdmin={isAdmin} username={username} search={search} demo={demo} />
+      <AccountMenu isAdmin={isAdmin} username={username} displayName={displayName} search={search} demo={demo} />
     </header>
   );
 }
@@ -130,8 +131,8 @@ export default function TopBar({
  * here; regular users never see it (Settings is the admin panel).
  */
 function AccountMenu({
-  isAdmin, username, search, demo,
-}: { isAdmin?: boolean; username?: string; search: string; demo?: boolean }) {
+  isAdmin, username, displayName, search, demo,
+}: { isAdmin?: boolean; username?: string; displayName?: string; search: string; demo?: boolean }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -151,8 +152,11 @@ function AccountMenu({
     };
   }, [open]);
 
-  const name = username || (isAdmin ? 'admin' : 'account');
-  const role = isAdmin ? 'Administrator' : 'User';
+  // Prefer the person's chosen name; fall back to the phone/username. When a
+  // name is shown, the phone becomes the secondary line instead of a generic
+  // "User" label.
+  const name = displayName || username || (isAdmin ? 'admin' : 'account');
+  const role = isAdmin ? 'Administrator' : (displayName && username ? username : 'User');
   const initial = (name[0] || 'U').toUpperCase();
 
   const signOut = async () => {

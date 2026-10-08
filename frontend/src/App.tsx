@@ -250,6 +250,7 @@ function Shell() {
           search={location.search}
           isAdmin={isAdmin}
           username={me.data?.username}
+          displayName={me.data?.display_name}
         />
 
         {!online && (
