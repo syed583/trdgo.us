@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Ban, Check, Copy, KeyRound, Plus, RotateCcw, Search, ShieldCheck, Trash2, UserPlus } from 'lucide-react';
+import { Ban, Check, Copy, KeyRound, RotateCcw, Search, ShieldCheck, Trash2 } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
@@ -27,24 +27,11 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
   const [showDeleted, setShowDeleted] = useState(false);
   const users = useApi<any>((s) => api2.adminUsers(s, search, showDeleted), [search, showDeleted]);
   const logins = useApi<any>((s) => api2.adminLogins(60, s), []);
-  const [newName, setNewName] = useState('');
-  const [newPass, setNewPass] = useState('');
-  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [issued, setIssued] = useState<{ username: string; password: string } | null>(null);
   const [copied, setCopied] = useState(false);
 
   const refresh = () => { users.refresh(); logins.refresh(); };
-
-  const create = async () => {
-    setErr(null); setBusy(true); setIssued(null); setCopied(false);
-    try {
-      const r = await api2.adminCreateUser(newName.trim().toLowerCase(), newPass.trim() || undefined);
-      if (r.status !== 'OK') { setErr(r.detail || 'Could not create the user.'); }
-      else { setIssued({ username: r.username, password: r.password }); setNewName(''); setNewPass(''); refresh(); }
-    } catch (e: any) { setErr(e?.message || 'Request failed.'); }
-    finally { setBusy(false); }
-  };
 
   const reset = async (u: string) => {
     const pw = window.prompt(
@@ -94,45 +81,27 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
   return (
     <div className="page">
       <PageHead title="Users & Access"
-        subtitle="Create the logins you hand out, and see who has signed in and from where. You (admin) sign in with the app password and are not listed here." />
+        subtitle="People sign up themselves with their phone number and an OTP. Here you grant or revoke access, change roles, block or remove accounts, and see who has signed in. You (admin) sign in with the app password and are not listed here." />
 
-      {users.error && (users.error.includes('403') || users.error.includes('Admin'))
+      {users.error && (users.error.includes('403') || users.error.includes('Admin') || users.error.includes('ermitted'))
         ? <ErrorState error="Admin only. Sign in as the owner to manage users." />
         : (
           <>
-            <Panel title="Create a user" icon={<UserPlus size={13} />}>
-              <div className="usr-create">
-                <input className="usr-input" placeholder="username (e.g. jordan)"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && create()} />
-                <input className="usr-input" placeholder="password (optional — auto if blank)"
-                  value={newPass}
-                  onChange={(e) => setNewPass(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && create()} />
-                <button className="usr-btn primary" onClick={create} disabled={busy || !newName.trim()}>
-                  <Plus size={13} /> Create
-                </button>
-              </div>
-              <div className="usr-hint">
-                Set a password to hand out, or leave it blank to generate a strong one.
-              </div>
-              {err && <div className="usr-err">{err}</div>}
-              {issued && (
-                <div className="usr-issued">
-                  <ShieldCheck size={14} />
-                  <div>
-                    <b>{issued.username}</b> created. One-time password — copy it now, it is not shown again:
-                    <div className="usr-pw">
-                      <code>{issued.password}</code>
-                      <button className="usr-copy" onClick={() => {
-                        navigator.clipboard?.writeText(issued.password); setCopied(true);
-                      }}><Copy size={12} /> {copied ? 'Copied' : 'Copy'}</button>
-                    </div>
+            {err && <div className="usr-err">{err}</div>}
+            {issued && (
+              <div className="usr-issued">
+                <ShieldCheck size={14} />
+                <div>
+                  New password for <b>{issued.username}</b> — copy it now, it is not shown again:
+                  <div className="usr-pw">
+                    <code>{issued.password}</code>
+                    <button className="usr-copy" onClick={() => {
+                      navigator.clipboard?.writeText(issued.password); setCopied(true);
+                    }}><Copy size={12} /> {copied ? 'Copied' : 'Copy'}</button>
                   </div>
                 </div>
-              )}
-            </Panel>
+              </div>
+            )}
 
             <div className="adm-filters">
               <div className="usr-search">
