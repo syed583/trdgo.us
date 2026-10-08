@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import urllib.error
 import urllib.request
 from typing import Optional
 
@@ -93,7 +94,28 @@ def send_otp(phone: str, code: str) -> dict:
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=15) as r:
-            r.read()
-        return {"status": "SENT"}
+            raw = r.read().decode("utf-8", "replace")
+        # Surface the provider's own answer so a message that is accepted but
+        # routed to the wrong number (or a template error returned with HTTP 200)
+        # is visible instead of being reported as a blind "SENT".
+        try:
+            body = json.loads(raw)
+        except ValueError:
+            body = {}
+        msg = (body.get("messages") or [{}])[0]
+        contact = (body.get("contacts") or [{}])[0]
+        if body.get("error"):
+            err = body["error"]
+            detail = err.get("message") if isinstance(err, dict) else str(err)
+            return {"status": "ERROR", "detail": f"Provider error: {detail}"}
+        return {"status": "SENT", "message_id": msg.get("id"),
+                "message_status": msg.get("message_status"),
+                "routed_to": contact.get("wa_id")}
+    except urllib.error.HTTPError as e:  # noqa: BLE001
+        try:
+            detail = e.read().decode("utf-8", "replace")[:300]
+        except Exception:  # noqa: BLE001
+            detail = str(e)
+        return {"status": "ERROR", "detail": f"Could not send the code: {detail}"}
     except Exception as e:  # noqa: BLE001 - a provider failure is not a server fault
         return {"status": "ERROR", "detail": f"Could not send the code: {e}"}
