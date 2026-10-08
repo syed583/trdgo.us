@@ -23,6 +23,7 @@ import os
 import secrets
 import threading
 import time
+from pathlib import Path
 from typing import Optional
 
 from fastapi import HTTPException, Request
@@ -55,16 +56,62 @@ def _password() -> str:
     return (os.getenv("ACCESS_PASSWORD") or "").strip()
 
 
+# Where a generated session secret is persisted when SESSION_SECRET is unset.
+# Lives in the gitignored .sec_cache/ (same dir sec_service uses), so it is
+# never committed and survives restarts/deploys (the dir is not wiped by a
+# git pull). SEC_CACHE_DIR overrides the location, matching sec_service.
+_SECRET_FILE = (Path(os.getenv("SEC_CACHE_DIR") or (Path(__file__).parent / ".sec_cache"))
+                / "session_secret")
+_secret_lock = threading.Lock()
+_secret_cache: Optional[bytes] = None
+
+
+def _persisted_secret() -> Optional[bytes]:
+    """A stable random secret from disk, generated once on first use.
+
+    Returns None only if the file cannot be read or created (e.g. a read-only
+    filesystem), in which case the caller falls back to the password.
+    """
+    global _secret_cache
+    if _secret_cache is not None:
+        return _secret_cache
+    with _secret_lock:
+        if _secret_cache is not None:
+            return _secret_cache
+        try:
+            val = ""
+            if _SECRET_FILE.exists():
+                val = _SECRET_FILE.read_text(encoding="utf-8").strip()
+            if not val:
+                _SECRET_FILE.parent.mkdir(parents=True, exist_ok=True)
+                val = new_secret()
+                _SECRET_FILE.write_text(val, encoding="utf-8")
+                try:
+                    os.chmod(_SECRET_FILE, 0o600)
+                except OSError:
+                    pass  # best effort; Windows/locked-down FS may refuse
+            _secret_cache = val.encode("utf-8")
+            return _secret_cache
+        except OSError:
+            return None
+
+
 def _secret() -> bytes:
     """
     Key used to sign session cookies.
 
-    Derived from the password when no explicit SESSION_SECRET is set, so
-    changing the password invalidates every existing session -- which is what
-    you want when revoking access.
+    Priority: an explicit SESSION_SECRET env var (lets several instances share
+    one key); else a random secret persisted to .sec_cache/ and generated once,
+    so cookie integrity never rests on the admin password's entropy; else, only
+    if that file is unwritable, derive from the password as a last resort.
     """
     explicit = (os.getenv("SESSION_SECRET") or "").strip()
-    return (explicit or f"usr::{_password()}").encode("utf-8")
+    if explicit:
+        return explicit.encode("utf-8")
+    persisted = _persisted_secret()
+    if persisted:
+        return persisted
+    return f"usr::{_password()}".encode("utf-8")
 
 
 def enabled() -> bool:
