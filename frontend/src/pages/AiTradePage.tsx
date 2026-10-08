@@ -25,13 +25,6 @@ function toneOf(decision: string): 'buy' | 'sell' | 'neutral' {
   return 'neutral';
 }
 
-// The same tints the cards use, for the split-colour "changed" gradient and
-// the banner chips. rgba (not color-mix) so they render on every browser.
-const TINT: Record<'buy' | 'sell' | 'neutral', string> = {
-  buy: 'rgba(46, 184, 122, .28)',
-  sell: 'rgba(242, 70, 90, .26)',
-  neutral: 'rgba(217, 164, 65, .24)',
-};
 const SIDE_LABEL: Record<'buy' | 'sell' | 'neutral', string> = {
   buy: 'BUY', sell: 'SELL', neutral: 'NEUTRAL',
 };
@@ -577,21 +570,12 @@ function BigRow({
     : (row.buy_score != null || row.sell_score != null)
       ? Math.max(row.buy_score ?? 0, row.sell_score ?? 0)
       : row.direction_score;
-  // A changed card is split old-colour -> new-colour, like the earnings cards.
-  const splitBg = change
-    ? {
-        background: `linear-gradient(100deg, ${TINT[change.from]} 0%, `
-          + `${TINT[change.from]} 42%, ${TINT[change.to]} 58%, ${TINT[change.to]} 100%)`,
-      }
-    : undefined;
-
   return (
     <>
       {/* A click opens why this name is on the list, read from the stored call.
           The card is coloured like the earnings cards, by its current call. */}
       <button
         className={`at-card ${stateClass} ${open ? 'at-open' : ''} ${change ? 'at-changed' : ''}`}
-        style={splitBg}
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         title={change ? `${SIDE_LABEL[change.from]} → ${SIDE_LABEL[change.to]}` : 'Why this call'}
