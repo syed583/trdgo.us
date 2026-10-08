@@ -564,10 +564,10 @@ function BigRow({
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const lean = row.lean ?? 0;
-  // Colour the card by the intraday signal STATE (green = Active, yellow =
-  // Weakening, grey = No Trade), per the model's state table. Fall back to the
-  // side colour for any row without an intraday read.
-  const stateClass = row.im_color ? `state-${row.im_color}` : rowTone(row);
+  // Colour the card by DIRECTION so buy / sell / neutral read at a glance:
+  // green = buy, red = sell, grey = no trade. The signal STATE (Strong /
+  // Active / Weakening / No Trade) is carried by the badge text.
+  const stateClass = rowTone(row);
   // The headline number is the intraday score for this name's side; for a
   // No-Trade name it is the stronger of the two sides. It is never the old
   // directional score (that belongs to the other model) -- that mismatch is

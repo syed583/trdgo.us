@@ -108,12 +108,12 @@
   background: rgba(242, 70, 90, .26);
 }
 .at-card.neutral {
-  border-color: var(--border); border-left-color: var(--amber);
-  background: rgba(217, 164, 65, .24);
+  border-color: var(--border); border-left-color: var(--text-mute);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
 }
 .at-card.buy .at-sym { color: var(--green); }
 .at-card.sell .at-sym { color: var(--red); }
-.at-card.neutral .at-sym { color: var(--amber); }
+.at-card.neutral .at-sym { color: var(--text); }
 
 /* Intraday signal-STATE colours: green = Active, yellow = Weakening, grey =
    No Trade -- per the model's state table, regardless of side. */
@@ -262,7 +262,7 @@
 @media (max-width: 560px) { .at-past-lists { grid-template-columns: minmax(0, 1fr); } }
 .at-card.buy .at-score { color: var(--green); }
 .at-card.sell .at-score { color: var(--red); }
-.at-card.neutral .at-score { color: var(--amber); }
+.at-card.neutral .at-score { color: var(--text-mute); }
 
 .at-go { color: var(--text-mute); justify-self: end; }
 .at-card:hover .at-go { color: var(--blue); }
