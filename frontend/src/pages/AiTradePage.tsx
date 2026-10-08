@@ -568,10 +568,15 @@ function BigRow({
   // Weakening, grey = No Trade), per the model's state table. Fall back to the
   // side colour for any row without an intraday read.
   const stateClass = row.im_color ? `state-${row.im_color}` : rowTone(row);
-  // The headline number is the live score for this name's side.
+  // The headline number is the intraday score for this name's side; for a
+  // No-Trade name it is the stronger of the two sides. It is never the old
+  // directional score (that belongs to the other model) -- that mismatch is
+  // what showed "NO TRADE" next to an 82.
   const sideScore = row.im_side === 'sell' ? row.sell_score
     : row.im_side === 'buy' ? row.buy_score
-    : row.direction_score;
+    : (row.buy_score != null || row.sell_score != null)
+      ? Math.max(row.buy_score ?? 0, row.sell_score ?? 0)
+      : row.direction_score;
   // A changed card is split old-colour -> new-colour, like the earnings cards.
   const splitBg = change
     ? {
