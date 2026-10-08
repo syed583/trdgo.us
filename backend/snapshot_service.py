@@ -28,6 +28,7 @@ that says it does, and rather more likely.
 from __future__ import annotations
 
 import json
+import threading
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
 
@@ -35,6 +36,13 @@ from sqlalchemy import and_, or_
 
 from database import SessionLocal, engine
 from models_snapshots import ScoreSnapshot, create_all
+
+# Only one capture runs at a time in this process. Two captures of the same
+# session (e.g. the daily loop and the on-demand one Signal History fires when
+# it finds no rows) would otherwise race on the same (symbol, snapshot_date)
+# rows -- redoing the expensive scoring and, before the upsert below, colliding
+# on the unique key and filling the Postgres log with duplicate-key errors.
+_CAPTURE_LOCK = threading.Lock()
 
 # Trading sessions ahead to measure. Five is a week, twenty about a month --
 # long enough for a positioning signal to play out, short enough that the
@@ -73,72 +81,116 @@ def capture(symbols: list[str], on: Optional[date] = None) -> dict:
 
     create_all(engine)
     day = on or _today()
-    session = SessionLocal()
-    stored, skipped = 0, []
 
-    try:
-        for symbol in symbols:
-            symbol = (symbol or "").upper().strip()
-            if not symbol:
-                continue
+    # Serialise captures in this process so two of them don't redo the same
+    # scoring and race on the same rows.
+    with _CAPTURE_LOCK:
+        session = SessionLocal()
+        values: list[dict] = []
+        skipped: list[dict] = []
+        try:
+            for symbol in symbols:
+                symbol = (symbol or "").upper().strip()
+                if not symbol:
+                    continue
 
-            try:
-                scored = ds.get_directional_score(symbol)
-            except Exception as exc:  # noqa: BLE001
-                skipped.append({"symbol": symbol, "reason": str(exc)[:120]})
-                continue
+                try:
+                    scored = ds.get_directional_score(symbol)
+                except Exception as exc:  # noqa: BLE001
+                    skipped.append({"symbol": symbol, "reason": str(exc)[:120]})
+                    continue
 
-            if scored.get("status") != "OK":
-                skipped.append({"symbol": symbol,
-                                "reason": scored.get("status", "NO_DATA")})
-                continue
+                if scored.get("status") != "OK":
+                    skipped.append({"symbol": symbol,
+                                    "reason": scored.get("status", "NO_DATA")})
+                    continue
 
-            price = None
-            try:
-                quote = market.get_quote(symbol)
-                price = (quote or {}).get("price")
-            except Exception:  # noqa: BLE001
-                pass
+                price = None
+                try:
+                    quote = market.get_quote(symbol)
+                    price = (quote or {}).get("price")
+                except Exception:  # noqa: BLE001
+                    pass
 
-            # Only the fields a later measurement needs. Storing the full
-            # payload would bloat the table with explanations that are useful
-            # on screen and useless to a regression.
-            signals = {
-                s["name"]: {
-                    "bias": s.get("bias"),
-                    "points": s.get("points"),
-                    "available": s.get("available"),
-                    "directional": s.get("directional"),
+                # Only the fields a later measurement needs. Storing the full
+                # payload would bloat the table with explanations that are useful
+                # on screen and useless to a regression.
+                signals = {
+                    s["name"]: {
+                        "bias": s.get("bias"),
+                        "points": s.get("points"),
+                        "available": s.get("available"),
+                        "directional": s.get("directional"),
+                    }
+                    for s in scored.get("signals", [])
                 }
-                for s in scored.get("signals", [])
-            }
 
-            row = (session.query(ScoreSnapshot)
-                   .filter_by(symbol=symbol, snapshot_date=day).one_or_none())
-            if row is None:
-                row = ScoreSnapshot(symbol=symbol, snapshot_date=day)
-                session.add(row)
+                values.append({
+                    "symbol": symbol,
+                    "snapshot_date": day,
+                    "direction_score": scored.get("direction_score"),
+                    "confidence": scored.get("confidence"),
+                    "decision": scored.get("decision"),
+                    "lean": scored.get("lean"),
+                    "actionable": scored.get("actionable"),
+                    "coverage_pct": scored.get("coverage_pct"),
+                    "agreement_pct": scored.get("agreement_pct"),
+                    "conviction_pct": scored.get("conviction_pct"),
+                    "signals": json.dumps(signals),
+                    "price": price,
+                })
 
-            row.direction_score = scored.get("direction_score")
-            row.confidence = scored.get("confidence")
-            row.decision = scored.get("decision")
-            row.lean = scored.get("lean")
-            row.actionable = scored.get("actionable")
-            row.coverage_pct = scored.get("coverage_pct")
-            row.agreement_pct = scored.get("agreement_pct")
-            row.conviction_pct = scored.get("conviction_pct")
-            row.signals = json.dumps(signals)
-            row.price = price
-            stored += 1
+            if values:
+                _upsert_snapshots(session, values)
+                session.commit()
+            return {"status": "OK", "date": day.isoformat(),
+                    "stored": len(values), "skipped": skipped}
+        except Exception as exc:  # noqa: BLE001
+            session.rollback()
+            return {"status": "ERROR", "detail": type(exc).__name__}
+        finally:
+            session.close()
 
-        session.commit()
-        return {"status": "OK", "date": day.isoformat(),
-                "stored": stored, "skipped": skipped}
-    except Exception as exc:  # noqa: BLE001
-        session.rollback()
-        return {"status": "ERROR", "detail": type(exc).__name__}
-    finally:
-        session.close()
+
+# Columns the upsert refreshes when a (symbol, snapshot_date) row already
+# exists -- everything except the key and the forward-return fields, which a
+# later pass owns.
+_UPSERT_COLS = (
+    "direction_score", "confidence", "decision", "lean", "actionable",
+    "coverage_pct", "agreement_pct", "conviction_pct", "signals", "price",
+)
+
+
+def _upsert_snapshots(session, values: list[dict]) -> None:
+    """Insert the day's rows, overwriting any that already exist -- atomically,
+    so a concurrent capture (another thread, or the VPS and a dev box on the
+    same database) can never collide on the unique key.
+
+    Postgres does it in one statement via ON CONFLICT. On other backends
+    (SQLite in tests) fall back to a per-row read-or-create, which is safe
+    there because those runs are single-writer.
+    """
+    if engine.dialect.name == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        stmt = pg_insert(ScoreSnapshot).values(values)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["symbol", "snapshot_date"],
+            set_={c: getattr(stmt.excluded, c) for c in _UPSERT_COLS},
+        )
+        session.execute(stmt)
+        return
+
+    for v in values:
+        row = (session.query(ScoreSnapshot)
+               .filter_by(symbol=v["symbol"], snapshot_date=v["snapshot_date"])
+               .one_or_none())
+        if row is None:
+            row = ScoreSnapshot(symbol=v["symbol"],
+                                snapshot_date=v["snapshot_date"])
+            session.add(row)
+        for c in _UPSERT_COLS:
+            setattr(row, c, v[c])
 
 
 # ---------------------------------------------------------------------------
