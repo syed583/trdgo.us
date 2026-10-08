@@ -788,7 +788,26 @@ export const api2 = {
   resetPassword: (phone: string, code: string, password: string) =>
     send<any>('/auth/reset', 'POST', { phone, code, password }),
   logout: () => send<any>('/auth/logout', 'POST'),
-  adminUsers: (s?: AbortSignal) => request<any>('/api/admin/users', s),
+  adminUsers: (s?: AbortSignal, search = '', includeDeleted = false) =>
+    request<any>('/api/admin/users?search=' + encodeURIComponent(search)
+      + (includeDeleted ? '&include_deleted=true' : ''), s),
+  adminUserDetail: (username: string, s?: AbortSignal) =>
+    request<any>(`/api/admin/users/${encodeURIComponent(username)}`, s),
+  adminStats: (s?: AbortSignal) => request<any>('/api/admin/stats', s),
+  adminAudit: (s?: AbortSignal, opts: { limit?: number; actor?: string;
+    action?: string; target?: string; days?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (opts.limit) q.set('limit', String(opts.limit));
+    if (opts.actor) q.set('actor', opts.actor);
+    if (opts.action) q.set('action', opts.action);
+    if (opts.target) q.set('target', opts.target);
+    if (opts.days) q.set('days', String(opts.days));
+    return request<any>('/api/admin/audit?' + q.toString(), s);
+  },
+  adminSetRole: (username: string, role: string) =>
+    send<any>(`/api/admin/users/${encodeURIComponent(username)}/role`, 'POST', { role }),
+  adminRestoreUser: (username: string) =>
+    send<any>(`/api/admin/users/${encodeURIComponent(username)}/restore`, 'POST', {}),
   adminLogins: (limit = 50, s?: AbortSignal) =>
     request<any>(`/api/admin/logins?limit=${limit}`, s),
   adminCreateUser: (username: string, password?: string) =>
@@ -796,8 +815,9 @@ export const api2 = {
   adminResetUser: (username: string, password?: string) =>
     send<any>(`/api/admin/users/${encodeURIComponent(username)}/reset`, 'POST',
       password ? { password } : undefined),
-  adminSetActive: (username: string, active: boolean) =>
-    send<any>(`/api/admin/users/${encodeURIComponent(username)}/active`, 'POST', { active }),
+  adminSetActive: (username: string, active: boolean, reason?: string) =>
+    send<any>(`/api/admin/users/${encodeURIComponent(username)}/active`, 'POST',
+      reason ? { active, reason } : { active }),
   adminSetAccess: (username: string, full: boolean) =>
     send<any>(`/api/admin/users/${encodeURIComponent(username)}/access`, 'POST', { full }),
   adminProviderKey: (s?: AbortSignal) => request<any>('/api/admin/provider/key', s),

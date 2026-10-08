@@ -1,0 +1,61 @@
+/* Admin dashboard + audit shared styles. */
+
+.adm-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.adm-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: relative;
+}
+.adm-card-ic {
+  position: absolute; top: 12px; right: 12px;
+  color: var(--mute); opacity: .7;
+}
+.adm-card-v { font-size: 26px; font-weight: 700; line-height: 1.1; }
+.adm-card-k { font-size: 12px; color: var(--dim); }
+.adm-card.blue .adm-card-v { color: #5b8cff; }
+.adm-card.green .adm-card-v { color: #22b07d; }
+.adm-card.red .adm-card-v { color: #e5484d; }
+.adm-card.amber .adm-card-v { color: #d9893b; }
+
+.adm-rowlink { cursor: pointer; }
+.adm-rowlink:hover { background: var(--hover, rgba(127,127,127,.06)); }
+
+.adm-filters { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+.adm-filters .usr-input { max-width: 240px; }
+
+.usr-search { display: flex; align-items: center; gap: 6px; color: var(--mute); }
+.usr-search .usr-input { min-width: 220px; }
+.usr-checkbox { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--dim); cursor: pointer; }
+.usr-role {
+  font-size: 12px; padding: 3px 6px; border-radius: 7px; text-transform: capitalize;
+  background: var(--panel); color: var(--text); border: 1px solid var(--border);
+}
+.usr-reason { font-size: 11px; color: #e5484d; margin-top: 2px; }
+.usr-row-deleted { opacity: .55; }
+
+.adm-role-tag {
+  font-size: 11px; color: #5b8cff; text-transform: uppercase;
+  letter-spacing: .03em; margin-left: 4px;
+}
+
+/* role badge in the users table */
+.adm-role-badge {
+  display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--dim); text-transform: capitalize;
+}
+.adm-role-badge.staff { color: #5b8cff; border-color: #5b8cff55; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .adm-rowlink:hover { background: rgba(255,255,255,.04); }
+}
+:root[data-theme="dark"] .adm-rowlink:hover { background: rgba(255,255,255,.04); }

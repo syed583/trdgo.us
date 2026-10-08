@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
-import { Copy, KeyRound, Plus, ShieldCheck, Trash2, UserPlus } from 'lucide-react';
+import { Copy, KeyRound, Plus, RotateCcw, Search, ShieldCheck, Trash2, UserPlus } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import { PageHead, Loading, ErrorState } from './shared';
 import { Panel } from '../components/common';
+import './admin.css';
+
+const ROLE_OPTIONS = ['user', 'support', 'marketing', 'finance', 'operations', 'super_admin'];
+const STAFF = new Set(['super_admin', 'operations', 'finance', 'marketing', 'support']);
 
 function fmt(iso?: string | null): string {
   if (!iso) return '—';
@@ -19,7 +23,9 @@ function fmt(iso?: string | null): string {
  * here -- it is the ACCESS_PASSWORD account.
  */
 export default function UsersPage({ ctx }: { ctx: PageContext }) {
-  const users = useApi<any>((s) => api2.adminUsers(s), []);
+  const [search, setSearch] = useState('');
+  const [showDeleted, setShowDeleted] = useState(false);
+  const users = useApi<any>((s) => api2.adminUsers(s, search, showDeleted), [search, showDeleted]);
   const logins = useApi<any>((s) => api2.adminLogins(60, s), []);
   const [newName, setNewName] = useState('');
   const [newPass, setNewPass] = useState('');
@@ -49,13 +55,30 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
     else if (r?.detail) { setErr(r.detail); }
   };
   const toggle = async (u: string, active: boolean) => {
-    await api2.adminSetActive(u, active).catch(() => undefined); refresh();
+    let reason: string | undefined;
+    if (!active) {
+      const r = window.prompt(`Block ${u}? Optional reason (shown in their record):`, '');
+      if (r === null) return; // cancelled
+      reason = r.trim() || undefined;
+    }
+    await api2.adminSetActive(u, active, reason).catch(() => undefined); refresh();
   };
   const toggleAccess = async (u: string, full: boolean) => {
     await api2.adminSetAccess(u, full).catch(() => undefined); refresh();
   };
+  const changeRole = async (u: string, role: string) => {
+    if (STAFF.has(role) && !window.confirm(
+      `Make ${u} a ${role.replace('_', ' ')}? They will gain admin access.`)) return;
+    const r = await api2.adminSetRole(u, role).catch(() => null);
+    if (r?.status && r.status !== 'OK') window.alert(r.detail || `Could not set role: ${r.status}`);
+    refresh();
+  };
+  const restore = async (u: string) => {
+    await api2.adminRestoreUser(u).catch(() => undefined); refresh();
+  };
   const remove = async (u: string) => {
-    if (!window.confirm(`Remove ${u}? They will lose access immediately.`)) return;
+    if (!window.confirm(`Delete ${u}? They lose access immediately. This is a soft `
+      + `delete — you can restore them from "Show deleted".`)) return;
     try {
       const r = await api2.adminDeleteUser(u);
       if (r?.status && r.status !== 'OK') window.alert(`Could not delete ${u}: ${r.status}`);
@@ -111,26 +134,59 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
               )}
             </Panel>
 
+            <div className="adm-filters">
+              <div className="usr-search">
+                <Search size={13} />
+                <input className="usr-input" placeholder="Search username or name…"
+                  value={search} onChange={(e) => setSearch(e.target.value)} />
+              </div>
+              <label className="usr-checkbox">
+                <input type="checkbox" checked={showDeleted}
+                  onChange={(e) => setShowDeleted(e.target.checked)} /> Show deleted
+              </label>
+            </div>
+
             <Panel title="Accounts" noBody>
               {users.initialLoading ? <Loading />
-                : rows.length === 0 ? <div className="usr-empty">No users yet. Create one above.</div>
+                : rows.length === 0 ? <div className="usr-empty">
+                    {search ? `No accounts match “${search}”.` : 'No users yet. Create one above.'}
+                  </div>
                   : (
                     <div className="table-wrap">
                       <table className="tbl">
                         <thead>
                           <tr>
-                            <th>User</th><th>Status</th><th>Access</th><th>Last login</th>
+                            <th>User</th><th>Role</th><th>Status</th><th>Access</th><th>Last login</th>
                             <th>From IP</th><th className="r">Logins</th><th>Created</th><th></th>
                           </tr>
                         </thead>
                         <tbody>
                           {rows.map((u) => (
-                            <tr key={u.username}>
-                              <td><b>{u.username}</b></td>
+                            <tr key={u.username} className={u.deleted ? 'usr-row-deleted' : ''}>
                               <td>
-                                <span className={`badge ${u.active ? 'green' : 'gray'}`}>
-                                  {u.active ? 'Active' : 'Disabled'}
-                                </span>
+                                <b>{u.username}</b>
+                                {u.display_name && <span className="mf-dim"> · {u.display_name}</span>}
+                                {!u.active && u.blocked_reason && (
+                                  <div className="usr-reason" title="Block reason">
+                                    blocked: {u.blocked_reason}
+                                  </div>
+                                )}
+                              </td>
+                              <td>
+                                <select className="usr-role"
+                                  value={u.role}
+                                  onChange={(e) => changeRole(u.username, e.target.value)}>
+                                  {ROLE_OPTIONS.map((r) => (
+                                    <option key={r} value={r}>{r.replace('_', ' ')}</option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td>
+                                {u.deleted
+                                  ? <span className="badge red">Deleted</span>
+                                  : <span className={`badge ${u.active ? 'green' : 'gray'}`}>
+                                      {u.active ? 'Active' : 'Blocked'}
+                                    </span>}
                               </td>
                               <td>
                                 <span className={`badge ${u.full_access ? 'green' : 'gray'}`}>
@@ -142,22 +198,31 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
                               <td className="num r">{u.login_count}</td>
                               <td className="num mf-dim">{fmt(u.created_at)}</td>
                               <td className="usr-actions">
-                                <button title={u.full_access ? 'Revoke full access' : 'Give full access'}
-                                  className={u.full_access ? '' : 'primary'}
-                                  onClick={() => toggleAccess(u.username, !u.full_access)}>
-                                  {u.full_access ? 'Make view-only' : 'Give full access'}
-                                </button>
-                                <button title="New password" onClick={() => reset(u.username)}>
-                                  <KeyRound size={13} />
-                                </button>
-                                <button title={u.active ? 'Disable' : 'Enable'}
-                                  onClick={() => toggle(u.username, !u.active)}>
-                                  {u.active ? 'Disable' : 'Enable'}
-                                </button>
-                                <button title="Delete" className="danger"
-                                  onClick={() => remove(u.username)}>
-                                  <Trash2 size={13} />
-                                </button>
+                                {u.deleted ? (
+                                  <button title="Restore account" className="primary"
+                                    onClick={() => restore(u.username)}>
+                                    <RotateCcw size={13} /> Restore
+                                  </button>
+                                ) : (
+                                  <>
+                                    <button title={u.full_access ? 'Revoke full access' : 'Give full access'}
+                                      className={u.full_access ? '' : 'primary'}
+                                      onClick={() => toggleAccess(u.username, !u.full_access)}>
+                                      {u.full_access ? 'Make view-only' : 'Give full access'}
+                                    </button>
+                                    <button title="New password" onClick={() => reset(u.username)}>
+                                      <KeyRound size={13} />
+                                    </button>
+                                    <button title={u.active ? 'Block' : 'Unblock'}
+                                      onClick={() => toggle(u.username, !u.active)}>
+                                      {u.active ? 'Block' : 'Unblock'}
+                                    </button>
+                                    <button title="Delete" className="danger"
+                                      onClick={() => remove(u.username)}>
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </>
+                                )}
                               </td>
                             </tr>
                           ))}

@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom';
 import {
   Activity, Brain, CalendarDays, Crosshair, Gauge, History, Layers, LineChart, Users,
   LayoutDashboard, ListOrdered, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
-  Scale, Settings, Sparkles, Star, Target, TrendingUp, UserCog, Waves, Waypoints, X,
+  Scale, ScrollText, Settings, Sparkles, Star, Target, TrendingUp, UserCog, Waves, Waypoints, X,
 } from 'lucide-react';
 import { BrandLockup, BRAND_QUOTE_EARNINGS } from './Brand';
 
@@ -98,7 +98,9 @@ export default function Sidebar({
   // Regular users get every data page and neither admin link.
   const groups: NavGroup[] = isAdmin
     ? [{ heading: '', items: [
+        { to: '/admin', label: 'Dashboard', icon: <LayoutDashboard size={S} /> },
         { to: '/admin/users', label: 'Users', icon: <Users size={S} /> },
+        { to: '/admin/audit', label: 'Audit Log', icon: <ScrollText size={S} /> },
         { to: '/admin/workflow', label: 'Workflow', icon: <Waypoints size={S} /> },
         { to: '/settings', label: 'Settings', icon: <Settings size={S} /> }] }]
     : NAV_GROUPS;

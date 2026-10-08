@@ -31,6 +31,8 @@ const PeersPage = lazy(() => import('./pages/PeersPage'));
 const DarkPoolPage = lazy(() => import('./pages/DarkPoolPage'));
 const MarketInsidersPage = lazy(() => import('./pages/MarketInsidersPage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
+const AdminDashboardPage = lazy(() => import('./pages/AdminDashboardPage'));
+const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
 const WorkflowPage = lazy(() => import('./pages/WorkflowPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
@@ -296,7 +298,7 @@ function Shell() {
         <ErrorBoundary key={location.pathname}>
         <Suspense fallback={<div className="page"><Loading /></div>}>
         <Routes>
-          <Route path="/" element={<Navigate to={`${isAdmin ? '/admin/users' : '/dashboard'}${location.search}`} replace />} />
+          <Route path="/" element={<Navigate to={`${isAdmin ? '/admin' : '/dashboard'}${location.search}`} replace />} />
           <Route path="/dashboard" element={<OverviewPage ctx={ctx} />} />
           <Route path="/dashboard/:symbol" element={<OverviewPage ctx={ctx} />} />
           <Route path="/stocks" element={<StocksPage ctx={ctx} />} />
@@ -365,7 +367,9 @@ function Shell() {
           <Route path="/trade-journal" element={<JournalPage ctx={ctx} />} />
           <Route path="/strategy" element={<StrategyPage ctx={ctx} />} />
           <Route path="/settings" element={adminGate(<SettingsPage ctx={ctx} />)} />
+          <Route path="/admin" element={adminGate(<AdminDashboardPage ctx={ctx} />)} />
           <Route path="/admin/users" element={adminGate(<UsersPage ctx={ctx} />)} />
+          <Route path="/admin/audit" element={adminGate(<AuditLogPage ctx={ctx} />)} />
           <Route path="/admin/workflow" element={adminGate(<WorkflowPage ctx={ctx} />)} />
           <Route path="/community" element={<CommunityPage ctx={ctx} />} />
 
