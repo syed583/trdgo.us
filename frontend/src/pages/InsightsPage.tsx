@@ -481,7 +481,9 @@ function SearchScreen({
             <Search size={17} color={DIM} />
             <input value={draft} onChange={(e) => onDraft(e.target.value.toUpperCase())}
               placeholder="Search ticker (e.g. NVDA)" aria-label="Ticker"
-              spellCheck={false} autoFocus />
+              spellCheck={false} autoFocus
+              autoComplete="off" autoCorrect="off" autoCapitalize="characters"
+              name="ticker-search" />
             {draft && (
               <button type="button" className="icon-btn" onClick={() => onDraft('')}
                 aria-label="Clear"><X size={14} /></button>
