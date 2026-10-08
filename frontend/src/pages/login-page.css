@@ -21,6 +21,7 @@
   color: #fff;
 }
 .ld-logo { display: flex; align-items: center; gap: 9px; }
+.ld-logo-img { height: 34px; width: auto; display: block; }
 .ld-logo-mark {
   width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center;
   background: rgba(255, 255, 255, .14); border: 1px solid rgba(255, 255, 255, .25);

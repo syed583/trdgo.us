@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import AuthCard, { type AuthView } from '../components/AuthCard';
+import logoImg from '../assets/logo.png';
 import './login-page.css';
 
 // A faint candlestick backdrop (decorative). Deterministic so it never jitters.
@@ -45,8 +46,7 @@ export default function LoginPage() {
 
       <header className="ld-nav">
         <div className="ld-logo">
-          <span className="ld-logo-mark">▶</span>
-          <span className="ld-logo-word">Trdgo<b>.us</b></span>
+          <img src={logoImg} alt="Tradgo.us" className="ld-logo-img" />
         </div>
         <nav className="ld-nav-links">
           <a href="#knowledge">Knowledge</a>

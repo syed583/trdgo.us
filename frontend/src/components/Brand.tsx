@@ -1,5 +1,5 @@
 import React from 'react';
-import logoImg from '../assets/logo.jpg';
+import logoImg from '../assets/logo.png';
 
 /**
  * Trdgo.us mark: a bull's head on a black disc, ringed in copper.
