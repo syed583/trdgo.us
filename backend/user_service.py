@@ -316,10 +316,11 @@ def set_role(username: str, role: str) -> dict:
     return {"status": "OK", "username": username, "role": role}
 
 
-def delete_user(username: str, hard: bool = False) -> dict:
-    """Soft-delete by default: the row stays (so history/audit still resolves)
-    but the account is marked deleted, deactivated, and excluded everywhere.
-    `hard=True` permanently removes the row (reserved for a purge)."""
+def delete_user(username: str, hard: bool = True) -> dict:
+    """Remove an account. `hard=True` (the default) permanently deletes the row
+    AND the user's own workspace data (watchlist/alerts/journal/strategy), so the
+    phone number is freed to sign up again and nothing is left orphaned.
+    `hard=False` soft-deletes instead (row kept, deactivated, excluded)."""
     username = (username or "").strip().lower()
     db = SessionLocal()
     try:
@@ -328,6 +329,15 @@ def delete_user(username: str, hard: bool = False) -> dict:
             return {"status": "NOT_FOUND", "username": username}
         if hard:
             db.delete(user)
+            # Free the user's own records too, so a deleted account leaves no
+            # orphaned rows behind (the username is the owner key).
+            try:
+                from models_user import (AlertRule, JournalEntry,
+                                         StrategySetting, WatchlistItem)
+                for Model in (WatchlistItem, AlertRule, JournalEntry, StrategySetting):
+                    db.query(Model).filter(Model.owner == username).delete()
+            except Exception:  # noqa: BLE001 - never block the user delete
+                pass
         else:
             user.deleted_at = datetime.now(timezone.utc)
             user.active = False

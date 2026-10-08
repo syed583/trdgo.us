@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Ban, Check, Copy, KeyRound, RotateCcw, Search, ShieldCheck, Trash2 } from 'lucide-react';
+import { Ban, Check, Copy, KeyRound, Search, ShieldCheck, Trash2 } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
@@ -24,8 +24,7 @@ function fmt(iso?: string | null): string {
  */
 export default function UsersPage({ ctx }: { ctx: PageContext }) {
   const [search, setSearch] = useState('');
-  const [showDeleted, setShowDeleted] = useState(false);
-  const users = useApi<any>((s) => api2.adminUsers(s, search, showDeleted), [search, showDeleted]);
+  const users = useApi<any>((s) => api2.adminUsers(s, search), [search]);
   const logins = useApi<any>((s) => api2.adminLogins(60, s), []);
   const [err, setErr] = useState<string | null>(null);
   const [issued, setIssued] = useState<{ username: string; password: string } | null>(null);
@@ -60,12 +59,10 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
     if (r?.status && r.status !== 'OK') window.alert(r.detail || `Could not set role: ${r.status}`);
     refresh();
   };
-  const restore = async (u: string) => {
-    await api2.adminRestoreUser(u).catch(() => undefined); refresh();
-  };
   const remove = async (u: string) => {
-    if (!window.confirm(`Delete ${u}? They lose access immediately. This is a soft `
-      + `delete — you can restore them from "Show deleted".`)) return;
+    if (!window.confirm(`Permanently delete ${u}?\n\nThis removes the account and `
+      + `their data from the database and frees the phone number to sign up again. `
+      + `This cannot be undone.`)) return;
     try {
       const r = await api2.adminDeleteUser(u);
       if (r?.status && r.status !== 'OK') window.alert(`Could not delete ${u}: ${r.status}`);
@@ -109,16 +106,13 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
                 <input className="usr-input" placeholder="Search username or name…"
                   value={search} onChange={(e) => setSearch(e.target.value)} />
               </div>
-              <label className="usr-checkbox">
-                <input type="checkbox" checked={showDeleted}
-                  onChange={(e) => setShowDeleted(e.target.checked)} /> Show deleted
-              </label>
             </div>
 
             <Panel title="Accounts" noBody>
               {users.initialLoading ? <Loading />
                 : rows.length === 0 ? <div className="usr-empty">
-                    {search ? `No accounts match “${search}”.` : 'No users yet. Create one above.'}
+                    {search ? `No accounts match “${search}”.`
+                      : 'No accounts yet — they appear here when people sign up.'}
                   </div>
                   : (
                     <div className="table-wrap">
@@ -131,7 +125,7 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
                         </thead>
                         <tbody>
                           {rows.map((u) => (
-                            <tr key={u.username} className={u.deleted ? 'usr-row-deleted' : ''}>
+                            <tr key={u.username}>
                               <td>
                                 <b>{u.username}</b>
                                 {u.display_name && <span className="mf-dim"> · {u.display_name}</span>}
@@ -151,11 +145,9 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
                                 </select>
                               </td>
                               <td>
-                                {u.deleted
-                                  ? <span className="badge red">Deleted</span>
-                                  : <span className={`badge ${u.active ? 'green' : 'gray'}`}>
-                                      {u.active ? 'Active' : 'Blocked'}
-                                    </span>}
+                                <span className={`badge ${u.active ? 'green' : 'gray'}`}>
+                                  {u.active ? 'Active' : 'Blocked'}
+                                </span>
                               </td>
                               <td>
                                 <span className={`badge ${u.full_access ? 'green' : 'gray'}`}>
@@ -167,36 +159,27 @@ export default function UsersPage({ ctx }: { ctx: PageContext }) {
                               <td className="num r">{u.login_count}</td>
                               <td className="num mf-dim">{fmt(u.created_at)}</td>
                               <td className="usr-actions">
-                                {u.deleted ? (
-                                  <button title="Restore account" className="primary"
-                                    onClick={() => restore(u.username)}>
-                                    <RotateCcw size={13} /> Restore
-                                  </button>
-                                ) : (
-                                  <>
-                                    <button
-                                      title={u.full_access
-                                        ? 'Full access — click to make view-only'
-                                        : 'View-only — click to give full access'}
-                                      className={`ico ${u.full_access ? 'on' : ''}`}
-                                      onClick={() => toggleAccess(u.username, !u.full_access)}>
-                                      <ShieldCheck size={15} />
-                                    </button>
-                                    <button className="ico" title="Reset password"
-                                      onClick={() => reset(u.username)}>
-                                      <KeyRound size={15} />
-                                    </button>
-                                    <button className="ico"
-                                      title={u.active ? 'Block account' : 'Unblock account'}
-                                      onClick={() => toggle(u.username, !u.active)}>
-                                      {u.active ? <Ban size={15} /> : <Check size={15} />}
-                                    </button>
-                                    <button className="ico danger" title="Delete account"
-                                      onClick={() => remove(u.username)}>
-                                      <Trash2 size={15} />
-                                    </button>
-                                  </>
-                                )}
+                                <button
+                                  title={u.full_access
+                                    ? 'Full access — click to make view-only'
+                                    : 'View-only — click to give full access'}
+                                  className={`ico ${u.full_access ? 'on' : ''}`}
+                                  onClick={() => toggleAccess(u.username, !u.full_access)}>
+                                  <ShieldCheck size={15} />
+                                </button>
+                                <button className="ico" title="Reset password"
+                                  onClick={() => reset(u.username)}>
+                                  <KeyRound size={15} />
+                                </button>
+                                <button className="ico"
+                                  title={u.active ? 'Block account' : 'Unblock account'}
+                                  onClick={() => toggle(u.username, !u.active)}>
+                                  {u.active ? <Ban size={15} /> : <Check size={15} />}
+                                </button>
+                                <button className="ico danger" title="Delete account (permanent)"
+                                  onClick={() => remove(u.username)}>
+                                  <Trash2 size={15} />
+                                </button>
                               </td>
                             </tr>
                           ))}

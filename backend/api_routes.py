@@ -2054,14 +2054,14 @@ def admin_set_provider_key(request: Request, payload: dict = Body(...)) -> dict:
 @router.post("/admin/users/{username}/delete")
 def admin_delete_user(request: Request, username: str) -> dict:
     # Also exposed over POST: some reverse proxies (IIS WebDAV) block the DELETE
-    # verb, which silently failed user deletion in the admin panel. Soft delete
-    # by default: the row is kept so audit/history still resolves.
+    # verb. This is a permanent delete -- the account row and the user's own
+    # workspace data are removed, freeing the phone number to sign up again.
     import auth_service as auth
     user = auth.require_permission(request, "users.manage")
     import user_service
-    res = user_service.delete_user(username)
+    res = user_service.delete_user(username)   # hard delete (default)
     if res.get("status") == "OK":
-        _audit(user, request, "user.delete", username, "soft delete")
+        _audit(user, request, "user.delete", username, "permanent delete")
     return res
 
 
