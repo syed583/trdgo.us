@@ -517,9 +517,9 @@
 /* Top Buyers (left) and Withheld (right) grow and scroll inside; the short
    No-edge / Top Sellers cards stay their natural size. */
 .at2-col:first-child > .at2-card:first-child { flex: 1 1 auto; }
-.at2-col:first-child > .at2-card:last-child { flex: 0 1 auto; max-height: 34%; }
-.at2-col:last-child > .at2-card:first-child { flex: 0 1 auto; max-height: 40%; }
-.at2-col:last-child > .at2-card:last-child { flex: 1 1 auto; }
+.at2-col:first-child > .at2-card:last-child { flex: 0 0 auto; max-height: 34%; }
+.at2-col:last-child > .at2-card:first-child { flex: 0 0 auto; max-height: 45%; }
+.at2-col:last-child > .at2-card:last-child { flex: 1 1 auto; min-height: 120px; }
 @media (max-width: 1050px) {
   .at2-stats { grid-template-columns: repeat(2, 1fr); }
   .at2-minibars { display: block; }
