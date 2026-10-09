@@ -555,7 +555,7 @@ function SignalLog({ horizon }: { horizon: string }) {
           <table className="at-logtbl">
             <thead>
               <tr>
-                <th>Time</th><th>Symbol</th><th>Event</th><th>Change</th>
+                <th>Time (Dubai)</th><th>Symbol</th><th>Event</th><th>Change</th>
                 <th>Price</th><th>Buy</th><th>Sell</th>
               </tr>
             </thead>

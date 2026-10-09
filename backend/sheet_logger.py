@@ -25,9 +25,13 @@ import json
 import os
 import threading
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
+
+# Timestamps are kept in Dubai time (UTC+4, no daylight saving), so the log and
+# the sheet read in the operator's local time.
+_DUBAI = timezone(timedelta(hours=4))
 
 _STATE_FILE = Path(__file__).with_name(".sec_cache") / "sheet_state.json"
 _LOG_FILE = Path(__file__).with_name(".sec_cache") / "signal_log.json"
@@ -100,7 +104,7 @@ def _post(payload: dict) -> None:
 
 def _event(sym: str, horizon: str, prev: Optional[str], side: str, row: dict) -> dict:
     return {
-        "time": datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S"),
+        "time": datetime.now(_DUBAI).strftime("%Y-%m-%d %H:%M:%S"),
         "symbol": sym,
         "horizon": horizon,
         "event": _LABEL.get(side, "NO TRADE"),
