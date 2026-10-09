@@ -19,12 +19,17 @@
  * After that, every signal change on Trdgo Stock -- a new BUY or SELL, or a
  * BUY/SELL that goes NO TRADE -- appends a row with the price it happened at.
  */
+// The spreadsheet to write to, by its ID (the long part of its /d/<ID>/edit URL).
+// Using openById instead of getActiveSpreadsheet guarantees rows land in THIS
+// sheet even if the script is not container-bound to it.
+var SHEET_ID = '1xeAB13U4PwVOUy6gqUAL8vxTL8w6i6JPBw35HQC47Fw';
+
 function doPost(e) {
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
     var d = JSON.parse(e.postData.contents);
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var ss = SpreadsheetApp.openById(SHEET_ID);
     var sheet = ss.getSheetByName('Signals') || ss.insertSheet('Signals');
     if (sheet.getLastRow() === 0) {
       sheet.appendRow(['Time', 'Symbol', 'Horizon', 'Event', 'From', 'To',
