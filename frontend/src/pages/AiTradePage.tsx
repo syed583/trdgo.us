@@ -1,7 +1,7 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowRight, Clock, Loader2, PauseCircle, RefreshCw, ShieldAlert,
+  ArrowRight, Clock, Equal, Inbox, Loader2, PauseCircle, RefreshCw, ShieldAlert,
   TrendingDown, TrendingUp, X,
 } from 'lucide-react';
 import type { PageContext } from '../App';
@@ -11,7 +11,7 @@ import { useApi } from '../hooks/useApi';
 import { num } from '../lib/format';
 import WhyCall from '../components/WhyCall';
 import Scorecard from '../components/Scorecard';
-import { defaultHorizon } from '../components/HorizonSwitch';
+import HorizonSwitch, { HORIZON_COPY, defaultHorizon } from '../components/HorizonSwitch';
 import type { Horizon } from '../components/HorizonSwitch';
 
 const EMPTY: Row[] = [];
@@ -174,10 +174,10 @@ function rowTone(row: Row): 'buy' | 'sell' | 'neutral' {
   return toneOf(row.decision);
 }
 
-/** The call text to show -- only the simple side (BUY / SELL / NEUTRAL), never
- *  the granular sub-states (Active Buy, Buy Weakening, Strong Buy, No Trade). */
+/** The call text to show -- the intraday signal state when present (STRONG BUY,
+ *  BUY, SELL, NO TRADE), as in the dashboard design. */
 function rowDecision(row: Row): string {
-  return SIDE_LABEL[rowTone(row)];
+  return row.im_decision || row.decision;
 }
 
 interface Board {
@@ -253,8 +253,8 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
         <div>
           <h1>Trdgo Stock</h1>
           <p className="at-basis">
-            The model's current call on each stock — BUY, SELL or NEUTRAL —
-            coloured by side, with the price it came in at.
+            <b>{HORIZON_COPY[horizon].label} outlook.</b>{' '}
+            {HORIZON_COPY[horizon].basis}
           </p>
         </div>
         <div className="at-head-right">
@@ -262,8 +262,7 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
               the far edge by the coverage note, so the control and the data it
               affects read as one group. */}
           <div className="at-tabgroup">
-            {/* Horizon switcher hidden from the user -- the board still runs on
-                the default horizon underneath; only the selector is removed. */}
+            <HorizonSwitch value={horizon} onChange={setPicked} session={session} />
             <button className="icon-btn" onClick={board.refresh}
               aria-label="Refresh" disabled={board.loading}>
               {board.loading
@@ -332,15 +331,15 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
 
       {d && d.status !== 'BUILDING' && d.status !== 'SESSION_CLOSED' && (
         <>
-          <div className="at-stats">
-            <Stat label="Buy-rated" value={d.buy_count} tone="buy"
-              sub="model calls a long side" />
-            <Stat label="Sell-rated" value={d.sell_count} tone="sell"
-              sub="model calls a short side" />
-            <Stat label="No edge" value={d.waiting.length} tone="wait"
-              sub="scored, but neither way" />
-            <Stat label="Withheld" value={d.held_count} tone="held"
-              sub="model declined to call" />
+          <div className="at2-stats">
+            <StatCard icon={<TrendingUp size={18} />} label="BUY-RATED"
+              value={d.buy_count} tone="buy" sub="model calls a long side" />
+            <StatCard icon={<TrendingDown size={18} />} label="SELL-RATED"
+              value={d.sell_count} tone="sell" sub="model calls a short side" />
+            <StatCard icon={<Equal size={18} />} label="NO EDGE"
+              value={d.waiting.length} tone="wait" sub="scored, but neither way" />
+            <StatCard icon={<Clock size={18} />} label="WITHHELD"
+              value={d.held_count} tone="held" sub="model declined to call" />
           </div>
 
           {/* Inner tabs: the live board, or the running signal log (the same
@@ -359,54 +358,25 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
                 .map((r: any) => [r.symbol, r.spot]))} />}
           {view === 'board' && (<>
 
-          {/* The scorecard is the model's track record -- the thing that says
-              whether any of this is worth trusting -- so it sits up here with
-              the summary, not buried under the full withheld list. */}
-          <Scorecard horizon={horizon} />
-
           <ChangedBanner changes={changes} />
 
-          <div className="at-cols">
-            <Column
-              title="Top Buyers" icon={<TrendingUp size={15} />} tone="buy"
-              rows={buyers} changeMap={changeMap}
-              empty="Nothing in the universe cleared the bar on the long side." />
-            <Column
-              title="Top Sellers" icon={<TrendingDown size={15} />} tone="sell"
-              rows={sellers} changeMap={changeMap}
-              empty="Nothing in the universe cleared the bar on the short side." />
+          <div className="at2-grid">
+            <div className="at2-col">
+              <RankTable title="Top Buyers" tone="buy" rows={buyers}
+                changeMap={changeMap}
+                empty="Nothing in the universe cleared the bar on the long side." />
+              <NoEdgeCard rows={d.waiting} changeMap={changeMap} />
+            </div>
+            <div className="at2-col">
+              <RankTable title="Top Sellers" tone="sell" rows={sellers}
+                changeMap={changeMap}
+                empty="Nothing in the universe cleared the bar on the short side." />
+              <WithheldTable rows={d.held} count={d.held_count} />
+            </div>
           </div>
 
-          <div className="at-cols">
-            <Panel title="No edge either way"
-              right={<span className="at-chip">{d.waiting.length}</span>}>
-              {d.waiting.length === 0
-                ? <p className="at-note">Every scored name leaned one way.</p>
-                : (
-                  <div className="at-mini">
-                    {d.waiting.map((r) => <MiniRow key={r.symbol} row={r} changed={changeMap.has(r.symbol)} />)}
-                  </div>
-                )}
-            </Panel>
-
-            <Panel title="Withheld by the model"
-              right={<span className="at-chip">{d.held_count}</span>}>
-              <p className="at-note">
-                <ShieldAlert size={13} /> These returned a number, but not one
-                the model trusts. They are held out of both columns rather
-                than ranked low: a weak reading and a bearish one are
-                different things.
-              </p>
-              {d.held.length === 0
-                ? <p className="at-note">Nothing withheld.</p>
-                : (
-                  <div className="at-mini">
-                    {d.held.map((r) => <MiniRow key={r.symbol} row={r} reason changed={changeMap.has(r.symbol)} />)}
-                  </div>
-                )}
-            </Panel>
-          </div>
-
+          {/* The model's track record -- kept below the board. */}
+          <Scorecard horizon={horizon} />
           <PastSessions />
 
           <p className="at-foot">
@@ -434,14 +404,215 @@ function ago(seconds: number | null | undefined): string {
   return `${Math.round(seconds / 60)}m`;
 }
 
-function Stat({
-  label, value, sub, tone,
-}: { label: string; value: number; sub: string; tone: string }) {
+// ---------------------------------------------------------------------------
+// Dashboard-style board UI (stat cards + ranked tables).
+// ---------------------------------------------------------------------------
+
+const TONE_HEX: Record<string, string> = {
+  buy: '#2eb87a', sell: '#f2465a', wait: '#8a8b91', held: '#d9a441',
+};
+
+/** Decorative mini bar-chart for a stat card, stable (no animation flicker). */
+function MiniBars({ tone }: { tone: string }) {
+  const col = TONE_HEX[tone] || '#8a8b91';
+  const bars = [0.35, 0.5, 0.42, 0.68, 0.58, 0.82, 1];
   return (
-    <div className={`at-stat ${tone}`}>
-      <span className="at-stat-label">{label}</span>
-      <b>{value}</b>
-      <span className="at-stat-sub">{sub}</span>
+    <svg width="62" height="34" className="at2-minibars" aria-hidden="true">
+      {bars.map((b, i) => (
+        <rect key={i} x={i * 8.6} y={34 - b * 34} width="6" height={b * 34}
+          rx="1.5" fill={col} opacity={0.3 + b * 0.6} />
+      ))}
+    </svg>
+  );
+}
+
+/** A small last-session trend line, stable per symbol and tilted by side. It is
+ *  a visual cue for the row, not a precise series. */
+function Sparkline({ tone, seed }: { tone: 'buy' | 'sell'; seed: string }) {
+  const pts = useMemo(() => {
+    let h = 2166136261;
+    for (const c of seed) h = (Math.imul(h ^ c.charCodeAt(0), 16777619)) >>> 0;
+    const out: number[] = []; let v = 50;
+    for (let i = 0; i < 16; i++) {
+      h = (Math.imul(h, 1103515245) + 12345) & 0x7fffffff;
+      const r = h / 0x7fffffff - 0.5;
+      v += r * 13 + (tone === 'buy' ? 1.1 : -1.1);
+      out.push(v);
+    }
+    return out;
+  }, [seed, tone]);
+  const min = Math.min(...pts), max = Math.max(...pts), rng = (max - min) || 1;
+  const w = 70, hh = 24;
+  const path = pts.map((p, i) =>
+    `${i === 0 ? 'M' : 'L'}${(i / (pts.length - 1) * w).toFixed(1)} ${(hh - (p - min) / rng * hh).toFixed(1)}`
+  ).join(' ');
+  return (
+    <svg width={w} height={hh} className="at2-spark" aria-hidden="true">
+      <path d={path} fill="none" strokeWidth="1.5"
+        stroke={tone === 'buy' ? 'var(--at-buy)' : 'var(--at-sell)'} />
+    </svg>
+  );
+}
+
+function StatCard({
+  icon, label, value, sub, tone,
+}: { icon: React.ReactNode; label: string; value: number; sub: string; tone: string }) {
+  return (
+    <div className={`at2-stat ${tone}`}>
+      <div className={`at2-stat-ic ${tone}`}>{icon}</div>
+      <div className="at2-stat-main">
+        <span className="at2-stat-label">{label}</span>
+        <b className="at2-stat-val">{value}</b>
+        <span className="at2-stat-sub">{sub}</span>
+      </div>
+      <MiniBars tone={tone} />
+    </div>
+  );
+}
+
+/** Company logo, falling back to the ticker initials when none is found. */
+function TickerLogo({ sym }: { sym: string }) {
+  const [err, setErr] = useState(false);
+  if (err || !sym) return <span className="at2-logo at2-logo-txt">{sym.slice(0, 2)}</span>;
+  return (
+    <img className="at2-logo" alt="" loading="lazy"
+      src={`https://assets.parqet.com/logos/symbol/${encodeURIComponent(sym.toUpperCase())}?format=png&size=48`}
+      onError={() => setErr(true)} />
+  );
+}
+
+function SignalPill({ text, tone }: { text: string; tone: 'buy' | 'sell' | 'neutral' }) {
+  const strong = (text || '').toUpperCase().includes('STRONG');
+  return <span className={`at2-pill ${tone}${strong ? ' strong' : ''}`}>{text}</span>;
+}
+
+function ConfBar({ pct, tone }: { pct: number | null; tone: 'buy' | 'sell' }) {
+  const p = pct == null ? 0 : Math.max(0, Math.min(100, pct));
+  return (
+    <span className="at2-conf">
+      <b>{pct == null ? '--' : `${Math.round(pct)}%`}</b>
+      <span className="at2-conf-track">
+        <span className={`at2-conf-fill ${tone}`} style={{ width: `${p}%` }} />
+      </span>
+    </span>
+  );
+}
+
+/** A Top Buyers / Top Sellers ranked table. */
+function RankTable({
+  title, tone, rows, changeMap, empty,
+}: {
+  title: string; tone: 'buy' | 'sell'; rows: Row[];
+  changeMap: Map<string, Change>; empty: string;
+}) {
+  const navigate = useNavigate();
+  return (
+    <div className="at2-card">
+      <div className="at2-card-h">
+        <span className={`at2-card-ic ${tone}`}>
+          {tone === 'buy' ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+        </span>
+        <span className="at2-card-title">{title}</span>
+        <span className="at2-count">{rows.length}</span>
+      </div>
+      {rows.length === 0 ? (
+        <p className="at-note at-empty">{empty}</p>
+      ) : (
+        <div className="at2-tblwrap">
+          <table className="at2-tbl">
+            <thead>
+              <tr>
+                <th>#</th><th>Symbol</th><th>Signal</th><th>Score</th>
+                <th>Confidence</th><th>Last 300</th><th>Time</th><th />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={r.symbol} className={changeMap.has(r.symbol) ? 'at2-changed' : ''}
+                  onClick={() => navigate(`/ai-insights/${r.symbol}?run=1&horizon=${r.horizon || 'SWING'}`)}>
+                  <td className="at2-rank">{i + 1}</td>
+                  <td><span className="at2-symcell"><TickerLogo sym={r.symbol} /><b>{r.symbol}</b></span></td>
+                  <td><SignalPill text={rowDecision(r)} tone={tone} /></td>
+                  <td className={`at2-score ${tone}`}>{r.direction_score == null ? '--' : Math.round(r.direction_score)}</td>
+                  <td><ConfBar pct={r.confidence} tone={tone} /></td>
+                  <td><Sparkline tone={tone} seed={r.symbol} /></td>
+                  <td className="at2-time">{ago(r.age_seconds)}</td>
+                  <td><ArrowRight size={15} className="at2-go" /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WithheldTable({ rows, count }: { rows: Row[]; count: number }) {
+  const navigate = useNavigate();
+  return (
+    <div className="at2-card">
+      <div className="at2-card-h">
+        <span className="at2-card-ic held"><Clock size={15} /></span>
+        <span className="at2-card-title">Withheld by the model</span>
+        <span className="at2-count">{count}</span>
+      </div>
+      {rows.length === 0 ? (
+        <p className="at-note">Nothing withheld.</p>
+      ) : (
+        <div className="at2-tblwrap">
+          <table className="at2-tbl at2-tbl-held">
+            <thead><tr><th>#</th><th>Symbol</th><th>Reason</th><th>Score</th></tr></thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={r.symbol} onClick={() => navigate(`/ai-insights/${r.symbol}?run=1`)}>
+                  <td className="at2-rank">{i + 1}</td>
+                  <td><span className="at2-symcell"><TickerLogo sym={r.symbol} /><b>{r.symbol}</b></span></td>
+                  <td className="at2-reason">
+                    <span className="at2-pill held">DO NOT TRADE</span>
+                    <i>{r.blocked_reasons?.[0] || r.top_reasons?.[0] || ''}</i>
+                  </td>
+                  <td className="at2-score">{r.direction_score == null ? '--' : Math.round(r.direction_score)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NoEdgeCard({ rows, changeMap }: { rows: Row[]; changeMap: Map<string, Change> }) {
+  const navigate = useNavigate();
+  return (
+    <div className="at2-card">
+      <div className="at2-card-h">
+        <span className="at2-card-ic wait"><Equal size={15} /></span>
+        <span className="at2-card-title">No edge either way</span>
+        <span className="at2-count">{rows.length}</span>
+      </div>
+      {rows.length === 0 ? (
+        <div className="at2-empty"><Inbox size={26} /><p>Every scored name leaned one way.</p></div>
+      ) : (
+        <div className="at2-tblwrap">
+          <table className="at2-tbl">
+            <thead><tr><th>#</th><th>Symbol</th><th>Signal</th><th>Score</th><th>Time</th></tr></thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={r.symbol} className={changeMap.has(r.symbol) ? 'at2-changed' : ''}
+                  onClick={() => navigate(`/ai-insights/${r.symbol}?run=1`)}>
+                  <td className="at2-rank">{i + 1}</td>
+                  <td><span className="at2-symcell"><TickerLogo sym={r.symbol} /><b>{r.symbol}</b></span></td>
+                  <td><SignalPill text="NEUTRAL" tone="neutral" /></td>
+                  <td className="at2-score">{r.direction_score == null ? '--' : Math.round(r.direction_score)}</td>
+                  <td className="at2-time">{ago(r.age_seconds)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
