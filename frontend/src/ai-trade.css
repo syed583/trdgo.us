@@ -103,6 +103,18 @@
 .ev-badge.pos { color: var(--green); background: rgba(46, 184, 122, .16); }
 .ev-badge.neg { color: var(--red); background: rgba(242, 70, 90, .16); }
 .ev-badge.neu { color: var(--amber); background: rgba(217, 164, 65, .18); }
+.at-log-search { display: inline-flex; align-items: center; gap: 6px; }
+.at-log-search input {
+  padding: 4px 9px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--panel-2); color: var(--text); font: inherit; font-size: 12px;
+  width: 150px; outline: none;
+}
+.at-log-search input:focus { border-color: var(--accent); }
+.at-log-x {
+  display: grid; place-items: center; background: none; border: 0;
+  cursor: pointer; color: var(--text-mute); padding: 2px;
+}
+.at-log-x:hover { color: var(--text); }
 .at-col-title { display: inline-flex; align-items: center; gap: 7px; }
 .at-col-title.buy { color: var(--green); }
 .at-col-title.sell { color: var(--red); }

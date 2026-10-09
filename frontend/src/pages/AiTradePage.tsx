@@ -2,7 +2,7 @@
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight, Clock, Loader2, PauseCircle, RefreshCw, ShieldAlert,
-  TrendingDown, TrendingUp,
+  TrendingDown, TrendingUp, X,
 } from 'lucide-react';
 import type { PageContext } from '../App';
 import { Panel } from '../components/common';
@@ -530,9 +530,15 @@ function PastSessions() {
 /** The running signal log -- every BUY / SELL / NO TRADE change with the price
  *  it happened at. The same events that are sent to the Google Sheet. */
 function SignalLog({ horizon }: { horizon: string }) {
-  const q = useApi<any>((s) => api2.aiTradeSignalLog(horizon, 200, s),
+  const resp = useApi<any>((s) => api2.aiTradeSignalLog(horizon, 500, s),
     [horizon], { refreshMs: 60000 });
-  const events: any[] = q.data?.events || [];
+  const [query, setQuery] = useState('');
+  const all: any[] = resp.data?.events || [];
+  const qq = query.trim().toUpperCase();
+  const events = qq
+    ? all.filter((e) => String(e.symbol).toUpperCase().includes(qq)
+      || String(e.event || '').toUpperCase().includes(qq))
+    : all;
   const cls = (ev: string) => {
     const e = (ev || '').toUpperCase();
     return e.includes('BUY') ? 'pos' : e.includes('SELL') ? 'neg' : 'neu';
@@ -540,16 +546,25 @@ function SignalLog({ horizon }: { horizon: string }) {
   return (
     <Panel
       title={<span className="at-col-title">Signal log · {horizon.toLowerCase()}</span>}
-      right={<span className="at-chip">{events.length}</span>}
+      right={(
+        <span className="at-log-search">
+          <input value={query} placeholder="Filter ticker / state…"
+            spellCheck={false} onChange={(e) => setQuery(e.target.value)} />
+          {query && <button className="at-log-x" onClick={() => setQuery('')}><X size={12} /></button>}
+          <span className="at-chip">{events.length}</span>
+        </span>
+      )}
     >
-      {q.initialLoading ? (
+      {resp.initialLoading ? (
         <p className="at-note"><Loader2 size={12} className="spin" /> Loading…</p>
-      ) : events.length === 0 ? (
+      ) : all.length === 0 ? (
         <p className="at-note">
           No signal changes logged yet. As the board flips a call — BUY, SELL or
           NO TRADE — it is recorded here with the price, the same events sent to
           your Google Sheet.
         </p>
+      ) : events.length === 0 ? (
+        <p className="at-note">No log rows match “{query}”.</p>
       ) : (
         <div className="at-logwrap">
           <table className="at-logtbl">

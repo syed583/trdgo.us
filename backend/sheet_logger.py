@@ -102,16 +102,16 @@ def _post(payload: dict) -> None:
         pass
 
 
-def _event(sym: str, horizon: str, prev: Optional[str], side: str, row: dict) -> dict:
+def _event(sym: str, horizon: str, prev: Optional[str], dec: str, row: dict) -> dict:
     return {
         "time": datetime.now(_DUBAI).strftime("%Y-%m-%d %H:%M:%S"),
         "symbol": sym,
         "horizon": horizon,
-        "event": _LABEL.get(side, "NO TRADE"),
-        "from": _LABEL.get(prev or "none", ""),
-        "to": _LABEL.get(side, "NO TRADE"),
+        "event": dec,
+        "from": prev or "",
+        "to": dec,
         "price": row.get("spot"),
-        "decision": row.get("im_decision"),
+        "decision": dec,
         "buy_score": row.get("buy_score"),
         "sell_score": row.get("sell_score"),
         "target": row.get("target"),
@@ -138,17 +138,19 @@ def process(horizon: str, board: dict) -> None:
             sym = r.get("symbol")
             if not sym:
                 continue
-            side = r.get("im_side") or "none"
+            # Track the FULL signal state, so every status change is logged --
+            # Strong Buy -> Active Buy -> Buy Weakening -> No Trade -> Sell, etc.
+            dec = r.get("im_decision") or "NO TRADE"
             key = f"{horizon}:{sym}"
             prev = _last.get(key)
-            if prev == side:
+            if prev == dec:
                 continue
-            _last[key] = side
+            _last[key] = dec
             changed = True
-            # First sighting: log an opening BUY/SELL once; skip a first NO TRADE.
-            if prev is None and side == "none":
+            # First sighting: log an opening call once; skip a first NO TRADE.
+            if prev is None and dec == "NO TRADE":
                 continue
-            events.append(_event(sym, horizon, prev, side, r))
+            events.append(_event(sym, horizon, prev, dec, r))
         if events:
             _log.extend(events)
             del _log[:-_LOG_CAP]
