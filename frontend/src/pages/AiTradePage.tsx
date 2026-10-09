@@ -356,6 +356,7 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
           </div>
 
           {view === 'log' && <SignalLog horizon={horizon}
+            board={[...buyers, ...sellers]}
             nowBySym={Object.fromEntries(
               [...(d.buyers || []), ...(d.sellers || []), ...(d.held || [])]
                 .filter((r: any) => r.symbol && r.spot != null)
@@ -698,8 +699,8 @@ function PastSessions() {
 
 /** The running signal log -- every BUY / SELL / NO TRADE change with the price
  *  it happened at. The same events that are sent to the Google Sheet. */
-function SignalLog({ horizon, nowBySym = {} }:
-  { horizon: string; nowBySym?: Record<string, number> }) {
+function SignalLog({ horizon, nowBySym = {}, board = [] }:
+  { horizon: string; nowBySym?: Record<string, number>; board?: Row[] }) {
   const resp = useApi<any>((s) => api2.aiTradeSignalLog(horizon, 500, s),
     [horizon], { refreshMs: 60000 });
   const [query, setQuery] = useState('');
@@ -708,16 +709,24 @@ function SignalLog({ horizon, nowBySym = {} }:
   const [logView, setLogView] = useState<'stock' | 'changes'>('stock');
   const all: any[] = resp.data?.events || [];
 
-  // One row per stock: the most recent event is the start of its current call,
-  // so it carries today's entry price/time for that call. Events are newest-first.
-  const perStock: any[] = [];
-  const seen = new Set<string>();
-  for (const e of all) {
-    if (seen.has(e.symbol)) continue;
-    seen.add(e.symbol);
-    perStock.push(e);
-  }
-  perStock.sort((a, b) => String(a.symbol).localeCompare(String(b.symbol)));
+  // "By stock" is built from the live board's pinned buyers + sellers, so every
+  // call on the board -- including a seller the server log did not record on this
+  // horizon -- shows with the price it came in at and where it is now.
+  const dubai = (ts?: number | null) => (ts
+    ? new Date(ts).toLocaleTimeString('en-GB',
+      { timeZone: 'Asia/Dubai', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : '');
+  const perStock: any[] = (board || [])
+    .filter((r) => r && r.symbol)
+    .map((r) => ({
+      symbol: r.symbol,
+      event: rowDecision(r),
+      price: r.entry_price,
+      time: r.entry_at ? dubai(r.entry_at) : '',
+      buy_score: r.buy_score,
+      sell_score: r.sell_score,
+    }))
+    .sort((a, b) => String(a.symbol).localeCompare(String(b.symbol)));
 
   const src = logView === 'stock' ? perStock : all;
   const qq = query.trim().toUpperCase();
@@ -755,13 +764,13 @@ function SignalLog({ horizon, nowBySym = {} }:
         </span>
       )}
     >
-      {resp.initialLoading ? (
+      {resp.initialLoading && src.length === 0 ? (
         <p className="at-note"><Loader2 size={12} className="spin" /> Loading…</p>
-      ) : all.length === 0 ? (
+      ) : src.length === 0 ? (
         <p className="at-note">
-          No calls logged yet today. As the board gives a call — BUY, SELL or
-          NEUTRAL — each stock appears here with the price it came in at, the same
-          events sent to your Google Sheet.
+          No calls yet today. As the board gives a call — BUY, SELL or NEUTRAL —
+          each stock appears here with the price it came in at, the same events
+          sent to your Google Sheet.
         </p>
       ) : events.length === 0 ? (
         <p className="at-note">No rows match “{query}”.</p>
