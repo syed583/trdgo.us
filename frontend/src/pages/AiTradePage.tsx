@@ -248,13 +248,12 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
   }, [building, tick]);
 
   return (
-    <div className="page">
+    <div className={`page${view === 'board' ? ' at-board' : ''}`}>
       <div className="at-head">
         <div>
           <h1>Trdgo Stock</h1>
-          <p className="at-basis">
-            <b>{HORIZON_COPY[horizon].label} outlook.</b>{' '}
-            {HORIZON_COPY[horizon].basis}
+          <p className="at-basis at-basis-sm" title={HORIZON_COPY[horizon].basis}>
+            <b>{HORIZON_COPY[horizon].label} outlook</b>
           </p>
         </div>
         <div className="at-head-right">
@@ -374,18 +373,6 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
               <WithheldTable rows={d.held} count={d.held_count} />
             </div>
           </div>
-
-          {/* The model's track record -- kept below the board. */}
-          <Scorecard horizon={horizon} />
-          <PastSessions />
-
-          <p className="at-foot">
-            {d.note} Built in {d.elapsed_seconds}s and cached.
-            {d.pending.length > 0
-              ? ` Still waiting on ${d.pending.slice(0, 8).join(', ')}${
-                d.pending.length > 8 ? ` +${d.pending.length - 8} more` : ''}.`
-              : ''}
-          </p>
           </>)}
         </>
       )}
