@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowUpRight, ArrowDownRight, RefreshCw, Info, ShieldAlert,
@@ -205,22 +205,12 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
   const { symbol, demo } = ctx;
   const navigate = useNavigate();
   const [horizon, setHorizon] = useState('SWING');
-  const [addQ, setAddQ] = useState('');
 
   // Personal watchlist shown as a quick-switch bar at the top: pick a ticker to
   // load its plan, or add more. Every signed-in user manages their own.
   const wl = useApi<any>((s) => (demo ? Promise.resolve(null) : api2.watchlist(s)), [demo]);
   const wlRows: any[] = wl.data?.rows || [];
   const goSym = (s: string) => navigate(`/trade-plan/${s.toUpperCase()}${ctx.search}`);
-  const addStock = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const t = addQ.trim().toUpperCase();
-    if (!t) return;
-    setAddQ('');
-    try { await api2.watchlistAdd(t); } catch { /* ignore */ }
-    wl.refresh();
-    goSym(t);
-  };
   const removeStock = async (e: React.MouseEvent, s: string) => {
     e.stopPropagation();
     try { await api2.watchlistRemove(s); } catch { /* ignore */ }
@@ -316,13 +306,11 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
               <span className="tp-wl-empty">No stocks yet — add one →</span>
             )}
           </div>
-          <form className="tp-wl-add" onSubmit={addStock}>
-            <input value={addQ} onChange={(e) => setAddQ(e.target.value)}
-              placeholder="Add ticker…" aria-label="Add ticker to watchlist" />
-            <button type="submit" aria-label="Add" title="Add to watchlist">
-              <Plus size={14} />
-            </button>
-          </form>
+          <TickerSearch onPick={(t) => {
+            api2.watchlistAdd(t).catch(() => { /* ignore */ });
+            wl.refresh();
+            goSym(t);
+          }} />
         </div>
       )}
 
@@ -559,6 +547,68 @@ export default function TradePlanPage({ ctx }: { ctx: PageContext }) {
 
       {/* Signals + watchlist live right here in the Trade Plan. */}
       <SignalsPanel demo={demo} search={ctx.search} />
+    </div>
+  );
+}
+
+/** Ticker search with a live suggestion dropdown (symbol + company name), so a
+ *  stock is picked from the list rather than mistyped (ORCAL -> ORCL). Picking
+ *  a suggestion opens that stock's plan. */
+function TickerSearch({ onPick }: { onPick: (s: string) => void }) {
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState(false);
+  const [matches, setMatches] = useState<any[]>([]);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const t = q.trim();
+    if (t.length < 1) { setMatches([]); return; }
+    let cancelled = false;
+    const id = window.setTimeout(async () => {
+      try {
+        const r = await api2.searchSymbols(t);
+        if (!cancelled) { setMatches((r?.matches || []).slice(0, 8)); setOpen(true); }
+      } catch { /* ignore */ }
+    }, 160);
+    return () => { cancelled = true; window.clearTimeout(id); };
+  }, [q]);
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
+
+  const pick = (s: string) => {
+    const t = (s || '').trim().toUpperCase();
+    if (!t) return;
+    setQ(''); setMatches([]); setOpen(false);
+    onPick(t);
+  };
+
+  return (
+    <div className="tp-wl-search" ref={boxRef}>
+      <form className="tp-wl-add"
+        onSubmit={(e) => { e.preventDefault(); pick(matches[0]?.symbol || q); }}>
+        <input value={q} onChange={(e) => setQ(e.target.value)}
+          onFocus={() => matches.length > 0 && setOpen(true)}
+          placeholder="Search ticker…" aria-label="Search a stock"
+          autoComplete="off" autoCorrect="off" autoCapitalize="characters" spellCheck={false} />
+        <button type="submit" aria-label="Open plan" title="Open plan">
+          <Plus size={14} />
+        </button>
+      </form>
+      {open && matches.length > 0 && (
+        <ul className="tp-wl-sugg">
+          {matches.map((m) => (
+            <li key={m.symbol} onMouseDown={() => pick(m.symbol)}>
+              <b>{m.symbol}</b><span>{m.name}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

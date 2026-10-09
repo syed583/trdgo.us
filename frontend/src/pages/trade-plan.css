@@ -41,6 +41,27 @@
   padding: 5px 9px; border: 1px solid var(--blue); background: var(--blue);
   color: #fff; border-radius: 0 var(--r) var(--r) 0; cursor: pointer;
 }
+.tp-wl-add input { width: 150px; }
+
+/* Live ticker suggestions. */
+.tp-wl-search { position: relative; flex: 0 0 auto; }
+.tp-wl-sugg {
+  position: absolute; z-index: 30; top: calc(100% + 4px); left: 0;
+  min-width: 240px; max-width: 320px; max-height: 300px; overflow-y: auto;
+  list-style: none; margin: 0; padding: 4px;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: 0 16px 40px rgba(17, 25, 70, .18);
+}
+.tp-wl-sugg li {
+  display: flex; align-items: baseline; gap: 9px; cursor: pointer;
+  padding: 7px 9px; border-radius: 7px; font-size: 13px;
+}
+.tp-wl-sugg li:hover { background: var(--panel-2); }
+.tp-wl-sugg li b { font-weight: 800; color: var(--text); min-width: 46px; }
+.tp-wl-sugg li span {
+  color: var(--text-mute); font-size: 12px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
 
 .tp-horizons { display: flex; gap: 4px; }
 .tp-h-btn {
