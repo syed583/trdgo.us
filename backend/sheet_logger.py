@@ -138,17 +138,20 @@ def process(horizon: str, board: dict) -> None:
             sym = r.get("symbol")
             if not sym:
                 continue
-            # Track the FULL signal state, so every status change is logged --
-            # Strong Buy -> Active Buy -> Buy Weakening -> No Trade -> Sell, etc.
-            dec = r.get("im_decision") or "NO TRADE"
+            # Track only the simple side -- BUY / SELL / NEUTRAL. Sub-states
+            # (Active Buy, Buy Weakening, Strong Buy...) all collapse to BUY, so a
+            # new row is logged only when the actual call flips, not on every
+            # intraday wobble within the same side.
+            side = (r.get("im_side") or "").lower()
+            dec = "BUY" if side == "buy" else "SELL" if side == "sell" else "NEUTRAL"
             key = f"{horizon}:{sym}"
             prev = _last.get(key)
             if prev == dec:
                 continue
             _last[key] = dec
             changed = True
-            # First sighting: log an opening call once; skip a first NO TRADE.
-            if prev is None and dec == "NO TRADE":
+            # First sighting: log an opening call once; skip a first NEUTRAL.
+            if prev is None and dec == "NEUTRAL":
                 continue
             events.append(_event(sym, horizon, prev, dec, r))
         if events:

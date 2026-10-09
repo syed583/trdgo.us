@@ -11,7 +11,7 @@ import { useApi } from '../hooks/useApi';
 import { num } from '../lib/format';
 import WhyCall from '../components/WhyCall';
 import Scorecard from '../components/Scorecard';
-import HorizonSwitch, { HORIZON_COPY, defaultHorizon } from '../components/HorizonSwitch';
+import { defaultHorizon } from '../components/HorizonSwitch';
 import type { Horizon } from '../components/HorizonSwitch';
 
 const EMPTY: Row[] = [];
@@ -174,9 +174,10 @@ function rowTone(row: Row): 'buy' | 'sell' | 'neutral' {
   return toneOf(row.decision);
 }
 
-/** The call text to show -- the intraday signal state when present. */
+/** The call text to show -- only the simple side (BUY / SELL / NEUTRAL), never
+ *  the granular sub-states (Active Buy, Buy Weakening, Strong Buy, No Trade). */
 function rowDecision(row: Row): string {
-  return row.im_decision || row.decision;
+  return SIDE_LABEL[rowTone(row)];
 }
 
 interface Board {
@@ -252,8 +253,8 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
         <div>
           <h1>Trdgo Stock</h1>
           <p className="at-basis">
-            <b>{HORIZON_COPY[horizon].label} outlook.</b>{' '}
-            {HORIZON_COPY[horizon].basis}
+            The model's current call on each stock — BUY, SELL or NEUTRAL —
+            coloured by side, with the price it came in at.
           </p>
         </div>
         <div className="at-head-right">
@@ -261,7 +262,8 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
               the far edge by the coverage note, so the control and the data it
               affects read as one group. */}
           <div className="at-tabgroup">
-            <HorizonSwitch value={horizon} onChange={setPicked} session={session} />
+            {/* Horizon switcher hidden from the user -- the board still runs on
+                the default horizon underneath; only the selector is removed. */}
             <button className="icon-btn" onClick={board.refresh}
               aria-label="Refresh" disabled={board.loading}>
               {board.loading
@@ -350,7 +352,11 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
               onClick={() => setView('log')}>Signal log</button>
           </div>
 
-          {view === 'log' && <SignalLog horizon={horizon} />}
+          {view === 'log' && <SignalLog horizon={horizon}
+            nowBySym={Object.fromEntries(
+              [...(d.buyers || []), ...(d.sellers || []), ...(d.held || [])]
+                .filter((r: any) => r.symbol && r.spot != null)
+                .map((r: any) => [r.symbol, r.spot]))} />}
           {view === 'board' && (<>
 
           {/* The scorecard is the model's track record -- the thing that says
@@ -529,25 +535,56 @@ function PastSessions() {
 
 /** The running signal log -- every BUY / SELL / NO TRADE change with the price
  *  it happened at. The same events that are sent to the Google Sheet. */
-function SignalLog({ horizon }: { horizon: string }) {
+function SignalLog({ horizon, nowBySym = {} }:
+  { horizon: string; nowBySym?: Record<string, number> }) {
   const resp = useApi<any>((s) => api2.aiTradeSignalLog(horizon, 500, s),
     [horizon], { refreshMs: 60000 });
   const [query, setQuery] = useState('');
+  // "stock" = one row per stock for the whole day (its current call, entered at
+  // what price, where it is now). "changes" = every individual flip.
+  const [logView, setLogView] = useState<'stock' | 'changes'>('stock');
   const all: any[] = resp.data?.events || [];
+
+  // One row per stock: the most recent event is the start of its current call,
+  // so it carries today's entry price/time for that call. Events are newest-first.
+  const perStock: any[] = [];
+  const seen = new Set<string>();
+  for (const e of all) {
+    if (seen.has(e.symbol)) continue;
+    seen.add(e.symbol);
+    perStock.push(e);
+  }
+  perStock.sort((a, b) => String(a.symbol).localeCompare(String(b.symbol)));
+
+  const src = logView === 'stock' ? perStock : all;
   const qq = query.trim().toUpperCase();
   const events = qq
-    ? all.filter((e) => String(e.symbol).toUpperCase().includes(qq)
+    ? src.filter((e) => String(e.symbol).toUpperCase().includes(qq)
       || String(e.event || '').toUpperCase().includes(qq))
-    : all;
+    : src;
   const cls = (ev: string) => {
     const e = (ev || '').toUpperCase();
     return e.includes('BUY') ? 'pos' : e.includes('SELL') ? 'neg' : 'neu';
+  };
+  // Move since the call came in; a SELL gains when price drops, so flip the sign.
+  const moveOf = (e: any) => {
+    const now = nowBySym[e.symbol];
+    const ev = (e.event || '').toUpperCase();
+    if (e.price == null || now == null || !e.price) return { now, movePct: null as number | null };
+    const raw = (now - e.price) / e.price * 100;
+    return { now, movePct: ev.includes('SELL') ? -raw : ev.includes('BUY') ? raw : null };
   };
   return (
     <Panel
       title={<span className="at-col-title">Signal log · {horizon.toLowerCase()}</span>}
       right={(
         <span className="at-log-search">
+          <span className="at-logview">
+            <button className={logView === 'stock' ? 'on' : ''}
+              onClick={() => setLogView('stock')}>By stock</button>
+            <button className={logView === 'changes' ? 'on' : ''}
+              onClick={() => setLogView('changes')}>Changes</button>
+          </span>
           <input value={query} placeholder="Filter ticker / state…"
             spellCheck={false} onChange={(e) => setQuery(e.target.value)} />
           {query && <button className="at-log-x" onClick={() => setQuery('')}><X size={12} /></button>}
@@ -559,33 +596,70 @@ function SignalLog({ horizon }: { horizon: string }) {
         <p className="at-note"><Loader2 size={12} className="spin" /> Loading…</p>
       ) : all.length === 0 ? (
         <p className="at-note">
-          No signal changes logged yet. As the board flips a call — BUY, SELL or
-          NO TRADE — it is recorded here with the price, the same events sent to
-          your Google Sheet.
+          No calls logged yet today. As the board gives a call — BUY, SELL or
+          NEUTRAL — each stock appears here with the price it came in at, the same
+          events sent to your Google Sheet.
         </p>
       ) : events.length === 0 ? (
-        <p className="at-note">No log rows match “{query}”.</p>
+        <p className="at-note">No rows match “{query}”.</p>
+      ) : logView === 'stock' ? (
+        <div className="at-logwrap">
+          <table className="at-logtbl">
+            <thead>
+              <tr>
+                <th>Symbol</th><th>Call</th><th>Since (Dubai)</th>
+                <th>Entry $</th><th>Now $</th><th>Move</th><th>Buy</th><th>Sell</th>
+              </tr>
+            </thead>
+            <tbody>
+              {events.map((e, i) => {
+                const { now, movePct } = moveOf(e);
+                const moveCls = movePct == null ? 'neu' : movePct >= 0 ? 'pos' : 'neg';
+                return (
+                <tr key={i}>
+                  <td className="ev-sym">{e.symbol}</td>
+                  <td><span className={`ev-badge ${cls(e.event)}`}>{e.event}</span></td>
+                  <td className="ev-time">{e.time}</td>
+                  <td className="ev-price">{e.price != null ? `$${e.price}` : '—'}</td>
+                  <td className="ev-price">{now != null ? `$${now}` : '—'}</td>
+                  <td className={moveCls}>{movePct == null ? '—'
+                    : `${movePct >= 0 ? '+' : ''}${movePct.toFixed(1)}%`}</td>
+                  <td className="pos">{e.buy_score != null ? Math.round(e.buy_score) : '—'}</td>
+                  <td className="neg">{e.sell_score != null ? Math.round(e.sell_score) : '—'}</td>
+                </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <div className="at-logwrap">
           <table className="at-logtbl">
             <thead>
               <tr>
                 <th>Time (Dubai)</th><th>Symbol</th><th>Event</th><th>Change</th>
-                <th>Price</th><th>Buy</th><th>Sell</th>
+                <th>Entry $</th><th>Now $</th><th>Move</th><th>Buy</th><th>Sell</th>
               </tr>
             </thead>
             <tbody>
-              {events.map((e, i) => (
+              {events.map((e, i) => {
+                const { now, movePct } = moveOf(e);
+                const moveCls = movePct == null ? 'neu' : movePct >= 0 ? 'pos' : 'neg';
+                return (
                 <tr key={i}>
                   <td className="ev-time">{e.time}</td>
                   <td className="ev-sym">{e.symbol}</td>
                   <td><span className={`ev-badge ${cls(e.event)}`}>{e.event}</span></td>
                   <td className="ev-chg">{e.from || '—'} → {e.to}</td>
                   <td className="ev-price">{e.price != null ? `$${e.price}` : '—'}</td>
+                  <td className="ev-price">{now != null ? `$${now}` : '—'}</td>
+                  <td className={moveCls}>{movePct == null ? '—'
+                    : `${movePct >= 0 ? '+' : ''}${movePct.toFixed(1)}%`}</td>
                   <td className="pos">{e.buy_score != null ? Math.round(e.buy_score) : '—'}</td>
                   <td className="neg">{e.sell_score != null ? Math.round(e.sell_score) : '—'}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

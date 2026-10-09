@@ -104,6 +104,15 @@
 .ev-badge.neg { color: var(--red); background: rgba(242, 70, 90, .16); }
 .ev-badge.neu { color: var(--amber); background: rgba(217, 164, 65, .18); }
 .at-log-search { display: inline-flex; align-items: center; gap: 6px; }
+.at-logview {
+  display: inline-flex; gap: 2px; padding: 2px;
+  background: var(--panel-2); border-radius: 8px;
+}
+.at-logview button {
+  border: none; background: none; cursor: pointer; font: inherit; font-size: 11px;
+  font-weight: 700; color: var(--text-mute); padding: 4px 10px; border-radius: 6px;
+}
+.at-logview button.on { background: var(--panel); color: var(--accent); }
 .at-log-search input {
   padding: 4px 9px; border-radius: 8px; border: 1px solid var(--border);
   background: var(--panel-2); color: var(--text); font: inherit; font-size: 12px;
