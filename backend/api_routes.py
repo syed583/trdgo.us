@@ -1337,7 +1337,13 @@ def signals_latest(symbols: str = "", source: str = "directional") -> dict:
 
     syms = [s.strip().upper() for s in (symbols or "").split(",") if s.strip()][:300]
 
-    if source == "earnings":
+    if source == "earnings-options":
+        # Options (straddle) side, for the Earnings Trade Options tab. Served
+        # from captured snapshots, so there is nothing heavy to warm.
+        out = swr.serve(f"siglatest:earnopt:{','.join(sorted(syms))[:300]}",
+                        lambda: sh.earnings_options_signals(syms), 20.0)
+        missing = out.get("missing") or []
+    elif source == "earnings":
         out = swr.serve(f"siglatest:earn:{','.join(sorted(syms))[:300]}",
                         lambda: sh.earnings_signals(syms), 20.0)
         missing = out.get("missing") or []

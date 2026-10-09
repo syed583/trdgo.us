@@ -18,7 +18,7 @@ function fmtCap(v: number): string {
  * Pick one and it opens that ticker's full analysis on the same engine (`base`).
  */
 export default function UpcomingEarnings({
-  base, title, demo, search, timeline, hideChanges, profile,
+  base, title, demo, search, timeline, hideChanges, profile, mode,
 }: {
   base: string; title: string; demo?: boolean; search: string;
   // timeline: show each stock's past-15-day signal track inline on its card.
@@ -28,6 +28,9 @@ export default function UpcomingEarnings({
   hideChanges?: boolean;
   // profile: scoring profile for the per-card "why" prefetch (e.g. "final").
   profile?: string;
+  // mode: which side colours the cards -- 'stock' (equity call) or 'options'
+  // (straddle call). Undefined keeps the original combined (equity) colouring.
+  mode?: 'stock' | 'options';
 }) {
   const navigate = useNavigate();
   const [q, setQ] = useState('');
@@ -59,10 +62,11 @@ export default function UpcomingEarnings({
 
   // Latest Buy/Sell/Neutral per listed symbol, to color each card.
   const symKey = rows.map((r) => r.symbol).sort().join(',');
+  const sigSource = mode === 'options' ? 'earnings-options' : 'earnings';
   const sig = useApi<any>(
     (s) => (demo || !rows.length ? Promise.resolve(null)
-      : api2.signalsLatest(rows.map((r) => r.symbol), 'earnings', s)),
-    [demo, symKey],
+      : api2.signalsLatest(rows.map((r) => r.symbol), sigSource, s)),
+    [demo, symKey, sigSource],
     // Poll so cards colour in as the backend warms the missing symbols. 30s
     // (was 15s) halves the background-warm churn while cards still fill in.
     { refreshMs: demo ? undefined : 30_000 },

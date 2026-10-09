@@ -211,6 +211,62 @@ def earnings_signals(symbols: list[str]) -> dict:
             "missing": missing, "source": SOURCE}
 
 
+def earnings_options_signals(symbols: list[str]) -> dict:
+    """
+    {symbol: BUY/SELL/NEUTRAL} for the OPTIONS (straddle) side, so the Options
+    tab of the Earnings Trade list colours by the options call -- never the
+    equity call. Read from the most recent captured ``options`` snapshot per
+    symbol (the same series the 15-day options track shows), with a day-over-day
+    change flag so a flipped options call shows as a split card.
+    """
+    syms = [s.upper() for s in (symbols or []) if s]
+    out: dict[str, str] = {}
+    prev: dict[str, str] = {}
+    kind: dict[str, str] = {}
+    since: dict[str, str] = {}
+    missing: list[str] = []
+    if not syms:
+        return {"status": "OK", "signals": out, "prev": prev,
+                "change_kind": kind, "change_since": since,
+                "missing": missing, "source": SOURCE}
+    try:
+        from datetime import date as _date, timedelta as _td
+        from sqlalchemy import text
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            rows = db.execute(text(
+                "SELECT symbol, options, snapshot_date "
+                "FROM earnings_signal_snapshots "
+                "WHERE symbol = ANY(:syms) AND snapshot_date >= :since "
+                "ORDER BY symbol, snapshot_date DESC"),
+                {"syms": syms, "since": _date.today() - _td(days=10)}).all()
+            today = _date.today()
+            hist: dict[str, list] = {}
+            for sym, op, d in rows:
+                hist.setdefault(sym, []).append((d, op))
+            for sym in syms:
+                series = [(d, v) for d, v in hist.get(sym, []) if v]
+                if not series:
+                    missing.append(sym)
+                    continue
+                latest_d, cur = series[0]
+                out[sym] = _signal(cur)
+                prd = next(((d, v) for d, v in series[1:] if v and v != cur),
+                           (None, None))
+                if prd[1]:
+                    prev[sym] = _signal(prd[1])
+                    kind[sym] = "intraday" if latest_d == today else "session"
+                    since[sym] = prd[0].isoformat()
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001 - no history just means no colour yet
+        missing = [s for s in syms if s not in out]
+    return {"status": "OK", "signals": out, "prev": prev,
+            "change_kind": kind, "change_since": since,
+            "missing": missing, "source": SOURCE}
+
+
 def _backfill_estimates(symbol: str, cols: list, stock: list, options: list) -> tuple:
     """
     Estimate the stock/options call for days with no captured snapshot, from the

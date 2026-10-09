@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Area, AreaChart, Bar, BarChart, Cell, Line, LineChart, ReferenceLine,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -32,6 +32,26 @@ const DEC_TONE: Record<string, string> = {
 const LEAN_TONE: Record<string, string> = {
   Bullish: 'buy', Bearish: 'sell', Neutral: 'flat',
 };
+
+// Earnings Trade runs as two fully separate tabs -- Stock (equity) and Options
+// (straddle) -- so the two trade types never share a view. The choice lives in
+// the URL (?mode=stock|options) so a refresh or bookmark keeps it. My Calls
+// (profile="final") does NOT use this split; it keeps the original combined view.
+export type EarnMode = 'stock' | 'options';
+
+function ModeToggle({ mode, onChange }:
+  { mode: EarnMode; onChange: (m: EarnMode) => void }) {
+  return (
+    <div className="ets-mode" role="tablist" aria-label="Trade type">
+      <button type="button" role="tab" aria-selected={mode === 'stock'}
+        className={`ets-mode-btn${mode === 'stock' ? ' on' : ''}`}
+        onClick={() => onChange('stock')}>Stock</button>
+      <button type="button" role="tab" aria-selected={mode === 'options'}
+        className={`ets-mode-btn${mode === 'options' ? ' on' : ''}`}
+        onClick={() => onChange('options')}>Options</button>
+    </div>
+  );
+}
 
 function Gauge({ score, label, title }: { score: number | null; label: string; title: string }) {
   const c = SETUP_COLOR(score);
@@ -120,18 +140,27 @@ function Signal15View({ symbol }: { symbol: string }) {
 
 // The landing view: the two change tabs (Intraday / Last 10 days) live in the
 // page header and drive the Upcoming-earnings list's change banner below.
-function EarningsTradeLanding({ demo, search, base, profile, embedded }:
-  { demo?: boolean; search: string; base: string; profile?: string; embedded?: boolean }) {
+function EarningsTradeLanding({ demo, search, base, profile, embedded, mode, onMode }:
+  { demo?: boolean; search: string; base: string; profile?: string; embedded?: boolean;
+    mode: EarnMode; onMode: (m: EarnMode) => void }) {
+  // My Calls (embedded) keeps the original single combined list.
+  const split = !embedded;
   return (
     <div className="page ets">
       {!embedded && (
         <div className="ets-landing-head">
-          <h1>Earnings Trade</h1>
-          <p>Combined equity + options earnings analysis. Pick a stock reporting soon.</p>
+          <div className="ets-landing-head-row">
+            <h1>Earnings Trade</h1>
+            {split && <ModeToggle mode={mode} onChange={onMode} />}
+          </div>
+          <p>{mode === 'options'
+            ? 'Options straddle earnings trade. Pick a stock reporting soon.'
+            : 'Directional stock (equity) earnings trade. Pick a stock reporting soon.'}</p>
         </div>
       )}
       <UpcomingEarnings base={base} title="Upcoming earnings"
-        demo={demo} search={search} hideChanges profile={profile} />
+        demo={demo} search={search} hideChanges profile={profile}
+        mode={split ? mode : undefined} />
     </div>
   );
 }
@@ -139,9 +168,10 @@ function EarningsTradeLanding({ demo, search, base, profile, embedded }:
 // Score Breakdown: splits one engine's parameters into what's pushing the score
 // up (+) vs down (-), with each one's points and the net total. Self-contained
 // -- the only maths shown is this box's own +/- and net.
-function ScoreSplit({ equity, options }: { equity: any; options: any }) {
-  const [side, setSide] = useState<'equity' | 'options'>('equity');
-  const src = side === 'equity' ? equity : options;
+function ScoreSplit({ equity, options, lock }:
+  { equity: any; options: any; lock?: 'equity' | 'options' }) {
+  const [side, setSide] = useState<'equity' | 'options'>(lock || 'equity');
+  const src = (lock || side) === 'equity' ? equity : options;
   const rows: any[] = (src?.why || []).filter((w: any) => w.available && w.points != null);
   const ups = rows.filter((w) => w.points > 0).sort((a, b) => b.points - a.points);
   const downs = rows.filter((w) => w.points < 0).sort((a, b) => a.points - b.points);
@@ -160,12 +190,14 @@ function ScoreSplit({ equity, options }: { equity: any; options: any }) {
     <div className="ets-card ets-split">
       <div className="ets-card-h">
         <span><Scale size={15} /> Score Breakdown</span>
-        <div className="ets-split-toggle">
-          <button className={side === 'equity' ? 'on' : ''}
-            onClick={() => setSide('equity')}>Stock Trade</button>
-          <button className={side === 'options' ? 'on' : ''}
-            onClick={() => setSide('options')}>Options Straddle</button>
-        </div>
+        {!lock && (
+          <div className="ets-split-toggle">
+            <button className={side === 'equity' ? 'on' : ''}
+              onClick={() => setSide('equity')}>Stock Trade</button>
+            <button className={side === 'options' ? 'on' : ''}
+              onClick={() => setSide('options')}>Options Straddle</button>
+          </div>
+        )}
       </div>
       <div className="ets-split-cols">
         <div className="ets-split-col up">
@@ -221,6 +253,16 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
   const on = !!pathSym && !demo;
   const [whyOpen, setWhyOpen] = useState(false);
   const [view, setView] = useState<'trade' | 'signal15'>('trade');
+  // Stock vs Options is a hard split kept in the URL. My Calls ("final") never
+  // splits -- it shows the original combined view.
+  const dual = profile === 'final';
+  const [sp, setSp] = useSearchParams();
+  const mode: EarnMode = sp.get('mode') === 'options' ? 'options' : 'stock';
+  const setMode = (m: EarnMode) => {
+    const next = new URLSearchParams(sp);
+    if (m === 'stock') next.delete('mode'); else next.set('mode', m);
+    setSp(next, { replace: true });
+  };
   // Carry the scoring profile into the equity/options subtab links.
   const subSearch = profile && profile !== 'default'
     ? (ctx.search ? `${ctx.search}&profile=${profile}` : `?profile=${profile}`)
@@ -242,6 +284,10 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
   const em = d?.expected_move || {};
   const strat = d?.strategy || {};
   const earn = d?.earnings || {};
+  // The one side the current tab shows (Earnings Trade only; My Calls is dual).
+  const side = mode === 'stock' ? d?.equity : d?.options;
+  const sideTitle = mode === 'stock' ? 'Stock Trade' : 'Options Straddle';
+  const sideDecision = side?.decision || d?.overall_decision;
 
   // Straddle payoff curve.
   const payoff = useMemo(() => {
@@ -266,14 +312,18 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
   // List view (no ticker) -- all hooks above have run, safe to branch now.
   if (!pathSym) {
     return <EarningsTradeLanding demo={demo} search={ctx.search}
-      base={base} profile={profile} embedded={embedded} />;
+      base={base} profile={profile} embedded={embedded}
+      mode={mode} onMode={setMode} />;
   }
 
   return (
     <div className="page ets">
-      <Link to={`${base}${ctx.search}`} className="ets-back">
-        <ChevronRight size={14} style={{ transform: 'rotate(180deg)' }} /> Upcoming earnings
-      </Link>
+      <div className="ets-back-row">
+        <Link to={`${base}${ctx.search}`} className="ets-back">
+          <ChevronRight size={14} style={{ transform: 'rotate(180deg)' }} /> Upcoming earnings
+        </Link>
+        {!demo && !dual && <ModeToggle mode={mode} onChange={setMode} />}
+      </div>
 
       {demo ? (
         <div className="ets-empty">Disabled in demo mode.</div>
@@ -351,9 +401,18 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
               onClick={() => setView('trade')}>Earnings Trade</button>
             <button type="button" className={`ets-subtab${view === 'signal15' ? ' active' : ''}`}
               onClick={() => setView('signal15')}>15-Day Signal</button>
-            <Link className="ets-subtab" to={`/earnings-equity/${symbol}${subSearch}`}>Equity detail</Link>
-            <Link className="ets-subtab" to={`/earnings-options/${symbol}${subSearch}`}>Options detail</Link>
-            <Link className="ets-subtab" to={`/options-flow/${symbol}${ctx.search}`}>Options Chain</Link>
+            {dual ? <>
+              <Link className="ets-subtab" to={`/earnings-equity/${symbol}${subSearch}`}>Equity detail</Link>
+              <Link className="ets-subtab" to={`/earnings-options/${symbol}${subSearch}`}>Options detail</Link>
+              <Link className="ets-subtab" to={`/options-flow/${symbol}${ctx.search}`}>Options Chain</Link>
+            </> : <>
+              {mode === 'stock'
+                ? <Link className="ets-subtab" to={`/earnings-equity/${symbol}${subSearch}`}>Stock detail</Link>
+                : <>
+                  <Link className="ets-subtab" to={`/earnings-options/${symbol}${subSearch}`}>Options detail</Link>
+                  <Link className="ets-subtab" to={`/options-flow/${symbol}${ctx.search}`}>Options Chain</Link>
+                </>}
+            </>}
             <Link className="ets-subtab" to={`/news/${symbol}${ctx.search}`}>News &amp; Sentiment</Link>
           </div>
 
@@ -364,13 +423,19 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
           <div className="ets-row ets-row-3">
             <div className="ets-card">
               <div className="ets-card-h">
-                <span><Target size={15} /> Earnings Trade Signal</span>
-                <span className={`ets-badge ${DEC_TONE[d.overall_decision] || 'flat'}`}>{d.overall_decision}</span>
+                <span><Target size={15} /> {dual ? 'Earnings Trade Signal' : `${sideTitle} Signal`}</span>
+                <span className={`ets-badge ${DEC_TONE[dual ? d.overall_decision : sideDecision] || 'flat'}`}>{dual ? d.overall_decision : sideDecision}</span>
               </div>
-              <div className="ets-gauges">
-                <Gauge title="Stock Trade" score={d.equity?.score} label={SETUP(d.equity?.score)} />
-                <Gauge title="Options Straddle" score={d.options?.score} label={SETUP(d.options?.score)} />
-              </div>
+              {dual ? (
+                <div className="ets-gauges">
+                  <Gauge title="Stock Trade" score={d.equity?.score} label={SETUP(d.equity?.score)} />
+                  <Gauge title="Options Straddle" score={d.options?.score} label={SETUP(d.options?.score)} />
+                </div>
+              ) : (
+                <div className="ets-gauges ets-gauges-one">
+                  <Gauge title={sideTitle} score={side?.score} label={SETUP(side?.score)} />
+                </div>
+              )}
               <button className="ets-why-toggle" onClick={() => setWhyOpen((v) => !v)}
                 aria-expanded={whyOpen}>
                 {whyOpen ? 'Hide' : 'Why these scores?'}
@@ -379,33 +444,35 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
               </button>
               {whyOpen && (
                 <div className="ets-why">
-                  {([['Stock Trade', d.equity], ['Options Straddle', d.options]] as const)
-                    .map(([title, side]) => (
-                      <div key={title} className="ets-why-side">
-                        <div className="ets-why-h">{title}
-                          <span className="ets-why-score">{side?.score != null
-                            ? `${Math.round(side.score)}/100 · ${SETUP(side.score)}` : '--'}</span>
-                        </div>
-                        {(side?.why || []).map((w: any, i: number) => (
-                          <div key={i} className="ets-why-row">
-                            <span className={`ets-why-dot ${
-                              w.available === false ? 'none'
-                                : w.leaning === 'Bullish' ? 'buy'
-                                  : w.leaning === 'Bearish' ? 'sell' : 'flat'}`} />
-                            <div>
-                              <div className="ets-why-t">
-                                <b>{w.label}</b>
-                                <em>{w.available === false ? 'no data' : w.points_label}</em>
-                              </div>
-                              {w.detail && <div className="ets-why-d">{w.detail}</div>}
-                            </div>
-                          </div>
-                        ))}
-                        {!(side?.why || []).length && (
-                          <div className="ets-why-d">No parameter detail available.</div>
-                        )}
+                  {(dual
+                    ? ([['Stock Trade', d.equity], ['Options Straddle', d.options]] as const)
+                    : ([[sideTitle, side]] as const)
+                  ).map(([title, sd]: any) => (
+                    <div key={title} className="ets-why-side">
+                      <div className="ets-why-h">{title}
+                        <span className="ets-why-score">{sd?.score != null
+                          ? `${Math.round(sd.score)}/100 · ${SETUP(sd.score)}` : '--'}</span>
                       </div>
-                    ))}
+                      {(sd?.why || []).map((w: any, i: number) => (
+                        <div key={i} className="ets-why-row">
+                          <span className={`ets-why-dot ${
+                            w.available === false ? 'none'
+                              : w.leaning === 'Bullish' ? 'buy'
+                                : w.leaning === 'Bearish' ? 'sell' : 'flat'}`} />
+                          <div>
+                            <div className="ets-why-t">
+                              <b>{w.label}</b>
+                              <em>{w.available === false ? 'no data' : w.points_label}</em>
+                            </div>
+                            {w.detail && <div className="ets-why-d">{w.detail}</div>}
+                          </div>
+                        </div>
+                      ))}
+                      {!(sd?.why || []).length && (
+                        <div className="ets-why-d">No parameter detail available.</div>
+                      )}
+                    </div>
+                  ))}
                   <div className="ets-note">Every parameter the engine scored,
                     strongest mover first. The score is the sum of their points.</div>
                 </div>
@@ -457,10 +524,12 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
             </div>
           </div>
 
-          {/* Score Breakdown: +/- parameter contributions and the net. */}
-          {(d.equity?.why?.length || d.options?.why?.length) ? (
+          {/* Score Breakdown: +/- parameter contributions and the net. Locked to
+              the active side on the split tabs; both-side toggle on My Calls. */}
+          {(dual ? (d.equity?.why?.length || d.options?.why?.length) : side?.why?.length) ? (
             <div className="ets-row">
-              <ScoreSplit equity={d.equity} options={d.options} />
+              <ScoreSplit equity={d.equity} options={d.options}
+                lock={dual ? undefined : (mode === 'stock' ? 'equity' : 'options')} />
             </div>
           ) : null}
 
@@ -486,8 +555,9 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
             </div>
           )}
 
-          {/* Row 2: price chart / payoff / strategy */}
-          <div className="ets-row ets-row-chart">
+          {/* Row 2: price chart / payoff / strategy. Payoff + strategy are
+              options-only; the Stock tab shows just the price chart. */}
+          <div className={`ets-row ets-row-chart${(!dual && mode === 'stock') ? ' ets-row-chart-one' : ''}`}>
             <div className="ets-card">
               <div className="ets-card-h"><span>Price Chart · 3M</span></div>
               <ResponsiveContainer width="100%" height={230}>
@@ -500,6 +570,7 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
               </ResponsiveContainer>
             </div>
 
+            {(dual || mode === 'options') && <>
             <div className="ets-card">
               <div className="ets-card-h"><span>Options Straddle · Payoff</span></div>
               {payoff.length ? (
@@ -535,6 +606,7 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
                 View Options Chain <ChevronRight size={15} />
               </button>
             </div>
+            </>}
           </div>
 
           {/* Row 3: history / takeaway / alerts */}

@@ -25,6 +25,23 @@
 .ets-empty-sm { padding: 30px 12px; background: none; border: none; }
 .ets-landing-head h1 { margin: 0 0 4px; }
 .ets-landing-head p { color: var(--text-mute); font-size: 13px; margin: 0 0 14px; }
+.ets-landing-head-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+/* Stock | Options tab toggle -- the hard split between the two trade types. */
+.ets-mode { display: inline-flex; gap: 2px; padding: 3px;
+  background: var(--panel-2, rgba(128,128,128,.1)); border-radius: 10px; }
+.ets-mode-btn { border: none; background: none; cursor: pointer; font-size: 13px;
+  font-weight: 700; color: var(--text-mute); padding: 6px 16px; border-radius: 8px;
+  transition: all .12s; }
+.ets-mode-btn.on { background: var(--panel); color: var(--blue);
+  box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.ets-back-row { display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 10px; }
+.ets-back-row .ets-back { margin-bottom: 0; }
+
+/* Single-side layouts: one gauge, and (stock tab) just the price chart. */
+.ets-gauges-one { justify-content: center; }
+.ets-row-chart-one { grid-template-columns: 1fr; }
 
 /* header */
 .ets-header {
