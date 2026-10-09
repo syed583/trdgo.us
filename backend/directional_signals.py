@@ -142,16 +142,21 @@ def options_flow(flow: dict) -> Signal:
                       unavailable_reason="No prints crossed the bid or ask, "
                                          "so no side could be attributed.")
 
-    bias = _scale(share, 35.0, 65.0)
+    prints = _num(pressure.get("prints")) or 0.0
+    # Band widened to 25/75 so only a strong imbalance saturates. Sample-size
+    # guard: a handful of prints must not produce a full reading, so the bias is
+    # shrunk toward zero until there are at least ~20 prints behind it.
+    bias = _scale(share, 25.0, 75.0) * min(1.0, prints / 20.0)
     return Signal(
         "options_flow", bias, label="Options Flow",
         detail=(f"{share}% of directional premium was bullish across "
-                f"{pressure.get('prints', 0):,.0f} prints"),
+                f"{prints:,.0f} prints"),
         rule="Buying calls and selling puts are both bullish pressure; the "
              "mirror is bearish. Prints between the bid and ask have no "
              "aggressor and are left out of both sides rather than assigned "
-             "a direction they do not have. 35% maps to fully bearish, 65% "
-             "to fully bullish.",
+             "a direction they do not have. 25% maps to fully bearish, 75% "
+             "to fully bullish, and the reading is scaled down until at least "
+             "20 prints stand behind it.",
         evidence={
             "bullish_premium": pressure.get("bullish_premium"),
             "bearish_premium": pressure.get("bearish_premium"),
@@ -525,6 +530,10 @@ def insider_activity(form4: dict, ownership: dict,
             score = (buys - sells) / traded
             if cluster:
                 score = min(1.0, score + 0.35)
+            # Insider selling is often routine or pre-scheduled, so a net sell
+            # reads at half the strength of a net buy.
+            if score < 0:
+                score *= 0.5
             parts.append(("form4", score, INSIDER_SPLIT["form4"]))
         evidence["form4"] = {
             "discretionary_buys": buys, "discretionary_sells": sells,
