@@ -385,8 +385,14 @@ def get_risk_zones(chain: dict, positioning: Optional[dict] = None) -> dict:
     calls = [r for r in rows if r["right"] == "C" and r.get("open_interest")]
     puts = [r for r in rows if r["right"] == "P" and r.get("open_interest")]
 
-    call_wall = max(calls, key=lambda r: r["open_interest"]) if calls else None
-    put_wall = max(puts, key=lambda r: r["open_interest"]) if puts else None
+    # A wall is resistance overhead or support beneath, so the call wall is the
+    # heaviest-OI strike AT OR ABOVE spot and the put wall the heaviest AT OR
+    # BELOW it. Taking the global max either way let a far-OTM strike price will
+    # never reach (e.g. a put at 150 with spot at 380) be called the wall.
+    call_cands = [r for r in calls if r["strike"] >= spot] or calls
+    put_cands = [r for r in puts if r["strike"] <= spot] or puts
+    call_wall = max(call_cands, key=lambda r: r["open_interest"]) if calls else None
+    put_wall = max(put_cands, key=lambda r: r["open_interest"]) if puts else None
 
     # Max pain: the strike at which the aggregate intrinsic value owed to
     # option holders at expiry is smallest.

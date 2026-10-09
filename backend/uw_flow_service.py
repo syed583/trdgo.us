@@ -334,7 +334,10 @@ def get_flow(symbol: str) -> dict:
             "bullish_share": round(bullish / total * 100, 1) if total else None,
             "bullish_premium": round(bullish, 0),
             "total_premium": round(total, 0),
-            "status": "OK" if total else "NO_DATA",
+            # The number of prints the share is actually measured over, so the
+            # explanation can say "across N prints" truthfully instead of 0.
+            "prints": len(trades),
+            "status": "OK" if (total and trades) else "NO_DATA",
             "source": SOURCE,
         },
         "bullish_premium_share": round(bullish / total * 100, 1) if total else None,
