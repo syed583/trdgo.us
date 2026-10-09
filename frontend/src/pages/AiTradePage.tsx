@@ -368,15 +368,16 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
           <div className="at2-grid">
             <div className="at2-col">
               <RankTable title="Top Buyers" tone="buy" rows={buyers}
-                changeMap={changeMap}
+                changeMap={changeMap} onViewAll={() => setView('log')}
                 empty="Nothing in the universe cleared the bar on the long side." />
               <NoEdgeCard rows={d.waiting} changeMap={changeMap} />
             </div>
             <div className="at2-col">
               <RankTable title="Top Sellers" tone="sell" rows={sellers}
-                changeMap={changeMap}
+                changeMap={changeMap} onViewAll={() => setView('log')}
                 empty="Nothing in the universe cleared the bar on the short side." />
-              <WithheldTable rows={d.held} count={d.held_count} />
+              <WithheldTable rows={d.held} count={d.held_count}
+                onViewAll={() => setView('log')} />
             </div>
           </div>
           </>)}
@@ -493,10 +494,10 @@ function ConfBar({ pct, tone }: { pct: number | null; tone: 'buy' | 'sell' }) {
 
 /** A Top Buyers / Top Sellers ranked table. */
 function RankTable({
-  title, tone, rows, changeMap, empty,
+  title, tone, rows, changeMap, empty, onViewAll,
 }: {
   title: string; tone: 'buy' | 'sell'; rows: Row[];
-  changeMap: Map<string, Change>; empty: string;
+  changeMap: Map<string, Change>; empty: string; onViewAll?: () => void;
 }) {
   const navigate = useNavigate();
   return (
@@ -507,6 +508,9 @@ function RankTable({
         </span>
         <span className="at2-card-title">{title}</span>
         <span className="at2-count">{rows.length}</span>
+        {onViewAll && (
+          <button className="at2-viewall" onClick={onViewAll}>View All <ArrowRight size={13} /></button>
+        )}
       </div>
       {rows.length === 0 ? (
         <p className="at-note at-empty">{empty}</p>
@@ -541,7 +545,8 @@ function RankTable({
   );
 }
 
-function WithheldTable({ rows, count }: { rows: Row[]; count: number }) {
+function WithheldTable({ rows, count, onViewAll }:
+  { rows: Row[]; count: number; onViewAll?: () => void }) {
   const navigate = useNavigate();
   return (
     <div className="at2-card">
@@ -549,6 +554,9 @@ function WithheldTable({ rows, count }: { rows: Row[]; count: number }) {
         <span className="at2-card-ic held"><Clock size={15} /></span>
         <span className="at2-card-title">Withheld by the model</span>
         <span className="at2-count">{count}</span>
+        {onViewAll && (
+          <button className="at2-viewall" onClick={onViewAll}>View All <ArrowRight size={13} /></button>
+        )}
       </div>
       {rows.length === 0 ? (
         <p className="at-note">Nothing withheld.</p>
