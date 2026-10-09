@@ -55,12 +55,16 @@ PARAM_MAP: dict[str, tuple[int, int]] = {
     "insider_activity": (2, 2),   # Insider & fund
 }
 
-# Spec thresholds (section 5, 6, 8).
-BUY_ON, BUY_OFF = 60.0, 50.0        # hysteresis: active >=60, exit <50
-SELL_ON, SELL_OFF = 65.0, 55.0      # sell runs stricter: 65 on / 55 off
-BUY_OPP_MAX = 40.0                  # BUY needs SELL <= 40
-SELL_OPP_MAX = 35.0                 # SELL needs BUY <= 35
-FULL_BUY, FULL_SELL = 75.0, 80.0    # full-size thresholds
+# Thresholds. Buy and sell are kept SYMMETRIC so a bearish name surfaces as
+# readily as a bullish one -- the old "sell runs stricter" (65 vs 60) asymmetry
+# left the Top Sellers column permanently empty on anything but an extreme down
+# tape. The weakening floor is low enough that a moderate lean (either side) is
+# shown rather than withheld.
+BUY_ON, BUY_OFF = 52.0, 35.0
+SELL_ON, SELL_OFF = 52.0, 35.0
+BUY_OPP_MAX = 45.0                  # active BUY needs SELL <= 45
+SELL_OPP_MAX = 45.0                 # active SELL needs BUY <= 45
+FULL_BUY, FULL_SELL = 70.0, 70.0    # full-size (STRONG) thresholds
 
 
 def _bias_of(s: dict) -> Optional[float]:

@@ -87,15 +87,20 @@ function useDailyPinned(d: Board | null, horizon: string): {
         ...(d.waiting ?? EMPTY), ...(d.held ?? EMPTY),
       ];
       const allMap = new Map(all.map((r) => [r.symbol, r]));
-      const pinned = new Set([...store.buy, ...store.sell]);
 
-      // A name joins the side it FIRST appears on, and stays there.
+      // A name sits in the column matching its CURRENT call, and a genuine flip
+      // (BUY <-> SELL) moves it to the other column. A call that merely weakens
+      // to NO TRADE keeps the name pinned where it was, so a live call never
+      // silently drops off the board mid-session.
       for (const r of (d.buyers ?? EMPTY)) {
-        if (!pinned.has(r.symbol)) { store.buy.push(r.symbol); pinned.add(r.symbol); }
+        store.sell = store.sell.filter((s) => s !== r.symbol);
+        if (!store.buy.includes(r.symbol)) store.buy.push(r.symbol);
       }
       for (const r of (d.sellers ?? EMPTY)) {
-        if (!pinned.has(r.symbol)) { store.sell.push(r.symbol); pinned.add(r.symbol); }
+        store.buy = store.buy.filter((s) => s !== r.symbol);
+        if (!store.sell.includes(r.symbol)) store.sell.push(r.symbol);
       }
+      const pinned = new Set([...store.buy, ...store.sell]);
       // Refresh each pinned name, and record a change when its SIDE flips
       // (green/yellow/red), persisted for the day so the banner accumulates.
       for (const sym of pinned) {
