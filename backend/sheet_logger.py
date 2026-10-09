@@ -30,8 +30,11 @@ from pathlib import Path
 from typing import Optional
 
 _STATE_FILE = Path(__file__).with_name(".sec_cache") / "sheet_state.json"
+_LOG_FILE = Path(__file__).with_name(".sec_cache") / "signal_log.json"
+_LOG_CAP = 1000
 _lock = threading.Lock()
 _last: dict[str, str] = {}      # "HORIZON:SYMBOL" -> side ("buy"/"sell"/"none")
+_log: list[dict] = []           # recent events, newest last; shown in the app
 _loaded = False
 
 _LABEL = {"buy": "BUY", "sell": "SELL", "none": "NO TRADE"}
@@ -51,6 +54,11 @@ def _load() -> None:
             _last.update(json.loads(_STATE_FILE.read_text("utf-8")))
     except Exception:  # noqa: BLE001
         pass
+    try:
+        if _LOG_FILE.exists():
+            _log.extend(json.loads(_LOG_FILE.read_text("utf-8")))
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _save() -> None:
@@ -59,6 +67,22 @@ def _save() -> None:
         _STATE_FILE.write_text(json.dumps(_last), "utf-8")
     except Exception:  # noqa: BLE001
         pass
+
+
+def _save_log() -> None:
+    try:
+        _LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _LOG_FILE.write_text(json.dumps(_log[-_LOG_CAP:]), "utf-8")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def recent(horizon: Optional[str] = None, limit: int = 200) -> list[dict]:
+    """Recent signal-change events, newest first, for the in-app log tab."""
+    _load()
+    with _lock:
+        rows = [e for e in _log if (not horizon or e.get("horizon") == horizon)]
+    return list(reversed(rows))[:max(1, min(limit, _LOG_CAP))]
 
 
 def _post(payload: dict) -> None:
@@ -92,9 +116,11 @@ def _event(sym: str, horizon: str, prev: Optional[str], side: str, row: dict) ->
 
 
 def process(horizon: str, board: dict) -> None:
-    """Compare this board pass to the last and log any call changes."""
-    if not _webhook():
-        return
+    """Compare this board pass to the last and log any call changes.
+
+    Events are always recorded to the in-app log; they are also POSTed to the
+    Google Sheet when the webhook is configured.
+    """
     _load()
 
     rows = []
@@ -119,8 +145,13 @@ def process(horizon: str, board: dict) -> None:
             if prev is None and side == "none":
                 continue
             events.append(_event(sym, horizon, prev, side, r))
+        if events:
+            _log.extend(events)
+            del _log[:-_LOG_CAP]
+            _save_log()
         if changed:
             _save()
 
-    for e in events:
-        threading.Thread(target=_post, args=(e,), daemon=True).start()
+    if _webhook():
+        for e in events:
+            threading.Thread(target=_post, args=(e,), daemon=True).start()

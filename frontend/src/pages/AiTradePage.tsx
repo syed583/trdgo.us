@@ -212,6 +212,7 @@ interface Board {
 export default function AiTradePage({ ctx }: { ctx: PageContext }) {
   void ctx;
   const [tick, setTick] = useState(0);
+  const [view, setView] = useState<'board' | 'log'>('board');
 
   // Which outlook is on screen. It starts from the market clock -- today
   // during the session, tomorrow otherwise -- and stays wherever the reader
@@ -340,6 +341,18 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
               sub="model declined to call" />
           </div>
 
+          {/* Inner tabs: the live board, or the running signal log (the same
+              events sent to the Google Sheet). */}
+          <div className="at-viewtabs">
+            <button className={view === 'board' ? 'active' : ''}
+              onClick={() => setView('board')}>Signals board</button>
+            <button className={view === 'log' ? 'active' : ''}
+              onClick={() => setView('log')}>Signal log</button>
+          </div>
+
+          {view === 'log' && <SignalLog horizon={horizon} />}
+          {view === 'board' && (<>
+
           {/* The scorecard is the model's track record -- the thing that says
               whether any of this is worth trusting -- so it sits up here with
               the summary, not buried under the full withheld list. */}
@@ -397,6 +410,7 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
                 d.pending.length > 8 ? ` +${d.pending.length - 8} more` : ''}.`
               : ''}
           </p>
+          </>)}
         </>
       )}
 
@@ -507,6 +521,58 @@ function PastSessions() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+/** The running signal log -- every BUY / SELL / NO TRADE change with the price
+ *  it happened at. The same events that are sent to the Google Sheet. */
+function SignalLog({ horizon }: { horizon: string }) {
+  const q = useApi<any>((s) => api2.aiTradeSignalLog(horizon, 200, s),
+    [horizon], { refreshMs: 60000 });
+  const events: any[] = q.data?.events || [];
+  const cls = (ev: string) => {
+    const e = (ev || '').toUpperCase();
+    return e.includes('BUY') ? 'pos' : e.includes('SELL') ? 'neg' : 'neu';
+  };
+  return (
+    <Panel
+      title={<span className="at-col-title">Signal log · {horizon.toLowerCase()}</span>}
+      right={<span className="at-chip">{events.length}</span>}
+    >
+      {q.initialLoading ? (
+        <p className="at-note"><Loader2 size={12} className="spin" /> Loading…</p>
+      ) : events.length === 0 ? (
+        <p className="at-note">
+          No signal changes logged yet. As the board flips a call — BUY, SELL or
+          NO TRADE — it is recorded here with the price, the same events sent to
+          your Google Sheet.
+        </p>
+      ) : (
+        <div className="at-logwrap">
+          <table className="at-logtbl">
+            <thead>
+              <tr>
+                <th>Time</th><th>Symbol</th><th>Event</th><th>Change</th>
+                <th>Price</th><th>Buy</th><th>Sell</th>
+              </tr>
+            </thead>
+            <tbody>
+              {events.map((e, i) => (
+                <tr key={i}>
+                  <td className="ev-time">{e.time}</td>
+                  <td className="ev-sym">{e.symbol}</td>
+                  <td><span className={`ev-badge ${cls(e.event)}`}>{e.event}</span></td>
+                  <td className="ev-chg">{e.from || '—'} → {e.to}</td>
+                  <td className="ev-price">{e.price != null ? `$${e.price}` : '—'}</td>
+                  <td className="pos">{e.buy_score != null ? Math.round(e.buy_score) : '—'}</td>
+                  <td className="neg">{e.sell_score != null ? Math.round(e.sell_score) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </Panel>

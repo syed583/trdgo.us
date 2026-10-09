@@ -604,6 +604,8 @@ export const api2 = {
   },
   aiTradeBoard: (horizon: string = 'SWING', s?: AbortSignal) =>
     request<any>(`/api/ai-trade/board?horizon=${encodeURIComponent(horizon)}`, s),
+  aiTradeSignalLog: (horizon?: string, limit = 200, s?: AbortSignal) =>
+    request<any>(`/api/ai-trade/signal-log?limit=${limit}${horizon ? `&horizon=${encodeURIComponent(horizon)}` : ''}`, s),
   callScorecard: (horizon?: string, days = 30, symbol?: string, s?: AbortSignal) =>
     request<any>(
       `/api/calls/scorecard?days=${days}`

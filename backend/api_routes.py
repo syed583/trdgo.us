@@ -688,6 +688,15 @@ def calls_get(call_id: int) -> dict:
             else {"status": "NO_DATA", "call": None})
 
 
+@router.get("/ai-trade/signal-log")
+def ai_trade_signal_log(horizon: Optional[str] = None, limit: int = 200) -> dict:
+    """The recorded signal-change log (same events sent to the Google Sheet)."""
+    import sheet_logger
+    hz = (horizon or "").upper() or None
+    return {"status": "OK", "horizon": hz or "ALL",
+            "events": sheet_logger.recent(hz, limit)}
+
+
 @router.get("/ai-trade/board")
 def ai_trade_board(limit: int = 10, refresh: bool = False,
                    horizon: Optional[str] = None) -> dict:
