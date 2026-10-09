@@ -697,6 +697,28 @@ def ai_trade_signal_log(horizon: Optional[str] = None, limit: int = 200) -> dict
             "events": sheet_logger.recent(hz, limit)}
 
 
+@router.get("/ai-trade/signal-audit")
+def ai_trade_signal_audit(horizon: Optional[str] = None, limit: int = 500) -> dict:
+    """Per-name intraday signal audit: every signal taken OR blocked, with the
+    scores, SPY/QQQ vs VWAP, which gates passed/failed, and the state."""
+    import signal_audit_log as audit
+    hz = (horizon or "").upper() or None
+    return {"status": "OK", "horizon": hz or "ALL",
+            "rows": audit.recent(hz, limit)}
+
+
+@router.get("/ai-trade/signal-audit.csv")
+def ai_trade_signal_audit_csv(horizon: Optional[str] = None):
+    """Download the intraday signal audit log as CSV."""
+    from fastapi.responses import StreamingResponse
+    import signal_audit_log as audit
+    hz = (horizon or "").upper() or None
+    csv_text = audit.to_csv(hz)
+    return StreamingResponse(
+        iter([csv_text]), media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=signal_audit_{hz or 'all'}.csv"})
+
+
 @router.get("/ai-trade/board")
 def ai_trade_board(limit: int = 10, refresh: bool = False,
                    horizon: Optional[str] = None) -> dict:

@@ -165,6 +165,9 @@ interface Row {
   im_side?: 'buy' | 'sell' | 'none' | null;
   im_color?: 'green' | 'yellow' | 'none' | null;
   im_full_size?: boolean | null;
+  im_size?: string | null;       // FULL SIZE / HALF SIZE (intraday engine)
+  im_blocked?: string | null;    // e.g. "Blocked: SPY not above VWAP"
+  square_off?: boolean | null;
   // Where the call was first given today (set client-side on first appearance).
   entry_price?: number | null;
   entry_decision?: string | null;
@@ -529,7 +532,11 @@ function RankTable({
                   onClick={() => navigate(`/ai-insights/${r.symbol}?run=1&horizon=${r.horizon || 'SWING'}`)}>
                   <td className="at2-rank">{i + 1}</td>
                   <td><span className="at2-symcell"><TickerLogo sym={r.symbol} /><b>{r.symbol}</b></span></td>
-                  <td><SignalPill text={rowDecision(r)} tone={tone} /></td>
+                  <td>
+                    <SignalPill text={rowDecision(r)} tone={tone} />
+                    {r.im_size && <span className={`at2-size${r.im_size === 'FULL SIZE' ? ' full' : ''}`}>
+                      {r.im_size === 'FULL SIZE' ? 'FULL' : 'HALF'}</span>}
+                  </td>
                   <td className={`at2-score ${tone}`}>{r.direction_score == null ? '--' : Math.round(r.direction_score)}</td>
                   <td><ConfBar pct={r.confidence} tone={tone} /></td>
                   <td className="at2-spark-col"><Sparkline tone={tone} seed={r.symbol} /></td>
@@ -571,7 +578,7 @@ function WithheldTable({ rows, count, onViewAll }:
                   <td><span className="at2-symcell"><TickerLogo sym={r.symbol} /><b>{r.symbol}</b></span></td>
                   <td className="at2-reason">
                     <span className="at2-pill held">DO NOT TRADE</span>
-                    <i>{r.blocked_reasons?.[0] || r.top_reasons?.[0] || ''}</i>
+                    <i>{r.im_blocked || r.blocked_reasons?.[0] || r.top_reasons?.[0] || ''}</i>
                   </td>
                   <td className="at2-score">{r.direction_score == null ? '--' : Math.round(r.direction_score)}</td>
                 </tr>

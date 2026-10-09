@@ -608,3 +608,9 @@
 .at2-empty { display: flex; flex-direction: column; align-items: center; gap: 8px;
   color: var(--text-mute); padding: 26px 10px; }
 .at2-empty p { margin: 0; font-size: 13px; }
+
+/* FULL / HALF position-size badge next to the signal pill. */
+.at2-size { display: inline-block; margin-left: 6px; font-size: 9px; font-weight: 800;
+  letter-spacing: .03em; padding: 2px 6px; border-radius: 6px;
+  background: var(--panel-2); color: var(--text-mute); }
+.at2-size.full { background: rgba(46,184,122,.18); color: #1c9c63; }

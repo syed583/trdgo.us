@@ -278,6 +278,123 @@ def _score_horizons(symbol: str, base: dict) -> None:
             pass
 
 
+# SPY/QQQ position vs their own VWAP, computed once per 5-min slot (the gates
+# read it for every name, so it must not re-fetch per symbol).
+_INDEX_VWAP: dict[str, tuple] = {}
+
+
+def _above_vwap(symbol: str) -> Optional[bool]:
+    """Is `symbol` trading above its intraday VWAP right now? None if unknown."""
+    try:
+        import horizon_model as hz
+        import live_market_service as market
+        intraday = hz._intraday(symbol, cached=True)
+        bars = hz._today_bars(intraday)
+        if not bars:
+            return None
+        num = den = 0.0
+        for b in bars:
+            v = float(b.get("volume") or 0)
+            hi, lo, cl = b.get("high"), b.get("low"), b.get("close")
+            if v <= 0 or None in (hi, lo, cl):
+                continue
+            num += (float(hi) + float(lo) + float(cl)) / 3.0 * v
+            den += v
+        price = (market.get_quote(symbol) or {}).get("price")
+        if not den or price is None:
+            return None
+        return float(price) > num / den
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _index_vwap_status(slot: str) -> tuple:
+    """(spy_above_vwap, qqq_above_vwap) cached for the current 5-min slot."""
+    cached = _INDEX_VWAP.get("v")
+    if cached and cached[0] == slot:
+        return cached[1], cached[2]
+    spy, qqq = _above_vwap("SPY"), _above_vwap("QQQ")
+    _INDEX_VWAP["v"] = (slot, spy, qqq)
+    return spy, qqq
+
+
+def _evidence(signals: list, name: str) -> dict:
+    for s in signals:
+        if s.get("name") == name:
+            return s.get("evidence") or {}
+    return {}
+
+
+def _apply_intraday_engine(symbol: str, horizon: str, signals: list, ev: dict) -> dict:
+    """
+    For the TODAY (intraday) horizon, resolve the shown signal through the rules
+    engine: hard gates, time rules, candle-close, entry and the state ladder.
+    The two scores are NOT changed -- only which signal/state is shown. Any
+    failure falls back to the plain dual-score read.
+    """
+    if horizon != "TODAY":
+        return ev
+    try:
+        import intraday_signal_engine as eng
+        import signal_state_store as store
+        import signal_audit_log as audit
+
+        win = eng.session_window()
+        now = win.now_et
+        slot = now.strftime("%Y-%m-%d ") + f"{now.hour:02d}:{(now.minute // 5) * 5:02d}"
+
+        vw = _evidence(signals, "vwap")
+        orn = _evidence(signals, "opening_range")
+        rv = _evidence(signals, "relative_volume")
+        vwap = vw.get("vwap")
+        dist = vw.get("distance_pct")
+        price = (vwap * (1 + dist / 100.0)) if (vwap is not None and dist is not None) else None
+        spy_above, qqq_above = _index_vwap_status(slot)
+
+        gates = eng.Gates(
+            price=price, vwap=vwap,
+            spy_above_vwap=spy_above, qqq_above_vwap=qqq_above,
+            rvol=rv.get("relative_volume"), or_low=orn.get("or_low"),
+        )
+
+        prev = store.get(horizon, symbol)
+        candle_closed = prev.get("candle") != slot
+        dec = eng.decide(
+            ev.get("buy_score"), ev.get("sell_score"), gates,
+            prior_active=prev.get("active"), candle_closed=candle_closed,
+            window=win, prior_state=prev.get("state") or eng.NO_TRADE,
+        )
+
+        store.update(horizon, symbol, active=dec.active_after,
+                     state=dec.state, candle=slot)
+        audit.record([{
+            "time_et": win.et_str(), "time_dubai": win.dubai_str(),
+            "horizon": horizon, "symbol": symbol, "state": dec.state,
+            "side": dec.side, "size": dec.size,
+            "buy_score": ev.get("buy_score"), "sell_score": ev.get("sell_score"),
+            "spy_vs_vwap": "above" if spy_above else "below" if spy_above is False else "?",
+            "qqq_vs_vwap": "above" if qqq_above else "below" if qqq_above is False else "?",
+            "price_vs_vwap": "above" if gates.price_above_vwap else "below" if gates.price_below_vwap is False else "?",
+            "rvol": gates.rvol,
+            "buy_gates_pass": dec.gates.get("buy_gates_pass"),
+            "sell_gates_pass": dec.gates.get("sell_gates_pass"),
+            "gate_fails": (dec.gates.get("buy_gate_fails") or []) + (dec.gates.get("sell_gate_fails") or []),
+            "blocked_reason": dec.blocked_reason,
+        }])
+
+        out = dict(ev)
+        out["decision"] = dec.state
+        out["side"] = dec.side
+        out["color"] = dec.color
+        out["full_size"] = (dec.size == "FULL SIZE")
+        out["intraday_size"] = dec.size
+        out["intraday_blocked"] = dec.blocked_reason
+        out["square_off"] = dec.square_off
+        return out
+    except Exception:  # noqa: BLE001 - the engine must never break the board
+        return ev
+
+
 def _as_row(symbol: str, d: dict, horizon: str = "SWING") -> dict:
     """
     Shape one directional score into a board row.
@@ -303,6 +420,9 @@ def _as_row(symbol: str, d: dict, horizon: str = "SWING") -> dict:
     except Exception:  # noqa: BLE001 - extras are additive, never break scoring
         pass
     ev = im.evaluate(signals)
+    # TODAY only: run the dual scores through the intraday rules engine (gates,
+    # time rules, candle close, entry, state ladder). Scores are left untouched.
+    ev = _apply_intraday_engine(symbol, horizon, signals, ev)
 
     return {
         "symbol": symbol,
@@ -326,6 +446,9 @@ def _as_row(symbol: str, d: dict, horizon: str = "SWING") -> dict:
         "im_side": ev.get("side"),
         "im_color": ev.get("color"),
         "im_full_size": ev.get("full_size"),
+        "im_size": ev.get("intraday_size"),
+        "im_blocked": ev.get("intraday_blocked"),
+        "square_off": ev.get("square_off", False),
     }
 
 
@@ -533,6 +656,40 @@ def _compose(limit: int = TOP_N, building: bool = False,
         key=lambda r: r.get("sell_score") or 0.0, reverse=True)
     held = [r for r in scored if r.get("im_side") not in ("buy", "sell")]
     waiting: list[dict] = []
+
+    # Portfolio limits (intraday / TODAY only): at most 4 active signals and at
+    # most 2 per sector, and never a BUY and a SELL in the same sector. Strongest
+    # first; anything over a limit is shown as WAITING - LIMIT FULL.
+    if horizon == "TODAY":
+        try:
+            from intraday_inputs import _TICKER_ETF
+        except Exception:  # noqa: BLE001
+            _TICKER_ETF = {}
+        MAX_ACTIVE, MAX_PER_SECTOR = 4, 2
+        strength = lambda r: (r.get("buy_score") if r.get("im_side") == "buy"
+                              else r.get("sell_score")) or 0.0
+        cands = sorted(buyers + sellers, key=strength, reverse=True)
+        admitted: list[dict] = []
+        sec_count: dict = {}
+        sec_side: dict = {}
+        for r in cands:
+            sec = _TICKER_ETF.get(r["symbol"]) or r["symbol"]
+            side = r.get("im_side")
+            full = len(admitted) >= MAX_ACTIVE
+            clash = sec in sec_side and sec_side[sec] != side
+            crowded = sec_count.get(sec, 0) >= MAX_PER_SECTOR
+            if full or clash or crowded:
+                r["im_decision"] = "WAITING - LIMIT FULL"
+                r["im_side"] = "none"
+                r["im_color"] = "none"
+                r["limit_waiting"] = True
+                waiting.append(r)
+                continue
+            admitted.append(r)
+            sec_count[sec] = sec_count.get(sec, 0) + 1
+            sec_side[sec] = side
+        buyers = [r for r in admitted if r.get("im_side") == "buy"]
+        sellers = [r for r in admitted if r.get("im_side") == "sell"]
 
     ages = [r.get("age_seconds") or 0 for r in scored]
 
