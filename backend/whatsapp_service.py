@@ -7,8 +7,8 @@ come from the environment -- nothing is hardcoded or committed:
     WHATSAPP_API_TOKEN     Bearer token (required)
     WHATSAPP_PHONE_ID      sender phone-number id (default from the panel setup)
     WHATSAPP_API_BASE      API base incl. version (default .../V23.0)
-    WHATSAPP_TEMPLATE      approved template name (default "otpp")
-    WHATSAPP_LANG          template language code (default "en")
+    WHATSAPP_TEMPLATE      approved template name (default "verify02")
+    WHATSAPP_LANG          template language code (default "en_GB")
 
 The "otpp" template has a body parameter (the code) and a URL button whose
 dynamic parameter is also the code (the one-tap copy/verify button), so the
@@ -56,8 +56,11 @@ def send_otp(phone: str, code: str) -> dict:
 
     base = (os.getenv("WHATSAPP_API_BASE") or _DEFAULT_BASE).rstrip("/")
     phone_id = os.getenv("WHATSAPP_PHONE_ID") or _DEFAULT_PHONE_ID
-    template = os.getenv("WHATSAPP_TEMPLATE") or "verify_01"
-    lang = os.getenv("WHATSAPP_LANG") or "en"
+    # Default to the Authentication-category template. OTP must NOT go through a
+    # Marketing-category template -- Meta drops those with error 131049
+    # ("healthy ecosystem engagement" frequency cap). verify_01 was Marketing.
+    template = os.getenv("WHATSAPP_TEMPLATE") or "verify02"
+    lang = os.getenv("WHATSAPP_LANG") or "en_GB"
 
     components = [
         {"type": "body", "parameters": [{"type": "text", "text": code}]},
@@ -82,6 +85,9 @@ def send_otp(phone: str, code: str) -> dict:
             "language": {"code": lang},
             "components": components,
         },
+        # Opaque tag the provider echoes back on delivery/status callbacks, so an
+        # OTP send can be traced without exposing the code or recipient.
+        "biz_opaque_callback_data": f"otp:{to[-4:]}",
     }
     try:
         req = urllib.request.Request(
