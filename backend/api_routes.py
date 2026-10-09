@@ -730,6 +730,14 @@ def ai_trade_board(limit: int = 10, refresh: bool = False,
                     row["spot"] = lv.get("spot")
     except Exception:  # noqa: BLE001 - levels are a nicety, never break the board
         pass
+
+    # Log any signal change (new BUY/SELL, or a BUY/SELL gone NO TRADE) to the
+    # Google Sheet, with the price it happened at. No-op unless the webhook is set.
+    try:
+        import sheet_logger
+        sheet_logger.process(hz, b)
+    except Exception:  # noqa: BLE001
+        pass
     return b
 
 
