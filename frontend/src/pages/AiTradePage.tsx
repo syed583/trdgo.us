@@ -523,7 +523,7 @@ function RankTable({
             <thead>
               <tr>
                 <th>#</th><th>Symbol</th><th>Signal</th><th>Score</th>
-                <th>Confidence</th><th>Last 300</th><th>Time</th><th />
+                <th>Confidence</th><th className="at2-spark-col">Last 300</th><th>Time</th><th />
               </tr>
             </thead>
             <tbody>
@@ -535,7 +535,7 @@ function RankTable({
                   <td><SignalPill text={rowDecision(r)} tone={tone} /></td>
                   <td className={`at2-score ${tone}`}>{r.direction_score == null ? '--' : Math.round(r.direction_score)}</td>
                   <td><ConfBar pct={r.confidence} tone={tone} /></td>
-                  <td><Sparkline tone={tone} seed={r.symbol} /></td>
+                  <td className="at2-spark-col"><Sparkline tone={tone} seed={r.symbol} /></td>
                   <td className="at2-time">{ago(r.age_seconds)}</td>
                   <td><ArrowRight size={15} className="at2-go" /></td>
                 </tr>

@@ -464,16 +464,16 @@
 
 /* Stat cards */
 .at2-stats {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
   margin: 4px 0 16px;
 }
 .at2-stat {
-  display: flex; align-items: center; gap: 12px;
+  display: flex; align-items: center; gap: 10px;
   background: var(--panel); border: 1px solid var(--border);
-  border-radius: 16px; padding: 16px 16px;
+  border-radius: 14px; padding: 13px 14px; min-width: 0;
 }
 .at2-stat-ic {
-  width: 42px; height: 42px; border-radius: 50%; flex: 0 0 auto;
+  width: 38px; height: 38px; border-radius: 50%; flex: 0 0 auto;
   display: flex; align-items: center; justify-content: center; color: #fff;
 }
 .at2-stat-ic.buy { background: var(--at-buy); }
@@ -481,19 +481,23 @@
 .at2-stat-ic.wait { background: #9aa0a6; }
 .at2-stat-ic.held { background: #e0a93b; }
 .at2-stat-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.at2-stat-label { font-size: 11px; font-weight: 700; letter-spacing: .04em;
-  color: var(--text-mute); }
+.at2-stat-label { font-size: 10px; font-weight: 800; letter-spacing: .04em;
+  color: var(--text-mute); white-space: nowrap; }
 .at2-stat.buy .at2-stat-label { color: var(--at-buy); }
 .at2-stat.sell .at2-stat-label { color: var(--at-sell); }
 .at2-stat.held .at2-stat-label { color: #d19a2e; }
-.at2-stat-val { font-size: 30px; font-weight: 800; line-height: 1.05; color: var(--text); }
-.at2-stat-sub { font-size: 11px; color: var(--text-mute); margin-top: 2px; }
-.at2-minibars { flex: 0 0 auto; align-self: flex-end; }
+.at2-stat-val { font-size: 28px; font-weight: 800; line-height: 1.08; color: var(--text); }
+.at2-stat-sub { font-size: 10.5px; color: var(--text-mute); margin-top: 1px;
+  line-height: 1.25; }
+.at2-minibars { flex: 0 0 auto; align-self: flex-end; width: 46px; height: 30px; }
+/* Narrow pane: drop the mini bars so the number + label stay clean, never wrap. */
+@media (max-width: 1180px) { .at2-minibars { display: none; } }
 
 /* Two-column board grid */
 .at2-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; align-items: start; }
-.at2-col { display: flex; flex-direction: column; gap: 16px; }
+.at2-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 @media (max-width: 1050px) { .at2-stats { grid-template-columns: repeat(2, 1fr); }
+  .at2-minibars { display: block; }
   .at2-grid { grid-template-columns: 1fr; } }
 
 /* Cards */
@@ -511,12 +515,12 @@
   background: var(--panel-2); border-radius: 999px; padding: 2px 10px; }
 
 /* Tables */
-.at2-tblwrap { overflow-x: auto; }
-.at2-tbl { width: 100%; border-collapse: collapse; }
+.at2-tblwrap { overflow-x: hidden; }
+.at2-tbl { width: 100%; border-collapse: collapse; table-layout: auto; }
 .at2-tbl th { text-align: left; font-size: 10px; font-weight: 700;
   letter-spacing: .04em; color: var(--text-mute); text-transform: uppercase;
-  padding: 6px 8px; border-bottom: 1px solid var(--border); }
-.at2-tbl td { padding: 9px 8px; border-bottom: 1px solid var(--border);
+  padding: 6px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.at2-tbl td { padding: 8px 6px; border-bottom: 1px solid var(--border);
   font-size: 13px; vertical-align: middle; }
 .at2-tbl tbody tr { cursor: pointer; }
 .at2-tbl tbody tr:hover { background: var(--panel-2); }
@@ -524,8 +528,9 @@
 .at2-rank { color: var(--text-mute); font-weight: 700; width: 24px; }
 .at2-symcell { display: inline-flex; align-items: center; gap: 8px; }
 .at2-symcell b { font-weight: 700; color: var(--text); }
-.at2-logo { width: 24px; height: 24px; border-radius: 6px; object-fit: contain;
+.at2-logo { width: 22px; height: 22px; border-radius: 6px; object-fit: contain;
   background: #fff; border: 1px solid var(--border); flex: 0 0 auto; }
+.at2-symcell b { white-space: nowrap; }
 .at2-logo-txt { display: inline-flex; align-items: center; justify-content: center;
   font-size: 9px; font-weight: 800; color: var(--text-mute); }
 .at2-score { font-weight: 800; }
@@ -545,20 +550,28 @@
 .at2-pill.held { background: rgba(224,169,59,.18); color: #c08a24; }
 
 /* Confidence bar */
-.at2-conf { display: inline-flex; align-items: center; gap: 8px; min-width: 120px; }
-.at2-conf b { font-size: 12px; font-weight: 700; color: var(--text); width: 34px; }
+.at2-conf { display: inline-flex; align-items: center; gap: 7px; min-width: 84px; }
+.at2-conf b { font-size: 12px; font-weight: 700; color: var(--text); width: 30px;
+  flex: 0 0 auto; }
 .at2-conf-track { flex: 1; height: 6px; border-radius: 999px; background: var(--panel-2);
-  overflow: hidden; min-width: 54px; }
+  overflow: hidden; min-width: 40px; }
 .at2-conf-fill { display: block; height: 100%; border-radius: 999px; }
 .at2-conf-fill.buy { background: var(--at-buy); }
 .at2-conf-fill.sell { background: var(--at-sell); }
 
 .at2-spark { display: block; }
 .at2-changed { box-shadow: inset 3px 0 0 var(--pink, #ec4899); }
+/* Drop the decorative sparkline column when the table is too narrow for it
+   (keeps the essential columns aligned instead of overflowing). */
+@media (max-width: 1320px) { .at2-spark-col { display: none; } }
 
 /* Withheld reason + no-edge empty */
-.at2-reason { display: flex; align-items: center; gap: 8px; }
-.at2-reason i { font-style: normal; color: var(--text-mute); font-size: 11.5px; }
+.at2-reason { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.at2-reason i { font-style: normal; color: var(--text-mute); font-size: 11.5px;
+  line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden; }
+.at2-tbl-held td:nth-child(3) { width: 99%; }
+.at2-tbl-held .at2-pill.held { flex: 0 0 auto; }
 .at2-tbl-held td { font-size: 12.5px; }
 .at2-empty { display: flex; flex-direction: column; align-items: center; gap: 8px;
   color: var(--text-mute); padding: 26px 10px; }
