@@ -183,6 +183,23 @@ def get_summary(symbol: str, profile: str = "default") -> dict:
         for n in _FC_ORDER if (p := _by_name.get(n))
     ]
 
+    # Earnings Exit & Risk Protection: Confidence score + Exit module, shown as
+    # two inner tabs on the detail page. Directional equity trade only; reuses
+    # the equity params / expected move / history already computed above.
+    try:
+        import earnings_risk_module as _risk
+        risk = _risk.build(
+            decision=ed,
+            equity=equity,
+            spot=spot,
+            change_pct=change_pct,
+            em_pct=em_pct,
+            em_dollars=(round(spot * em_pct / 100, 2) if spot and em_pct else None),
+            historical_moves=hm,
+        )
+    except Exception:  # noqa: BLE001
+        risk = None
+
     return {
         "status": "OK", "symbol": symbol, "source": SOURCE,
         "name": name, "exchange": exchange, "sector": sector,
@@ -201,4 +218,5 @@ def get_summary(symbol: str, profile: str = "default") -> dict:
         "historical_moves": hm,
         "takeaways": takeaways,
         "forecast": forecast,
+        "risk": risk,
     }
