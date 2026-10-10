@@ -634,3 +634,8 @@
 .at-pastday-chip.pos { background: rgba(46,184,122,.16); color: #1c9c63; }
 .at-pastday-chip.neg { background: rgba(242,70,90,.16); color: #d8324a; }
 .at-pastday-chip em { font-style: normal; opacity: .7; font-weight: 800; }
+
+/* Now-price coloured by P/L (buy up / sell down = green profit). */
+.at-logtbl .ev-now { font-weight: 700; }
+.at-logtbl td.ev-now.pos { color: var(--green); }
+.at-logtbl td.ev-now.neg { color: var(--red); }

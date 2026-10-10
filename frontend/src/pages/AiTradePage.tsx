@@ -825,20 +825,21 @@ function SignalLog({ horizon, nowBySym = {}, board = [] }:
             <thead>
               <tr>
                 <th>Symbol</th><th>Call</th><th>Since (Dubai)</th>
-                <th>Entry $</th><th>Now $</th><th>Move</th><th>Buy</th><th>Sell</th>
+                <th>Entry $</th><th>Now $</th><th>P/L</th><th>Buy</th><th>Sell</th>
               </tr>
             </thead>
             <tbody>
               {events.map((e, i) => {
                 const { now, movePct } = moveOf(e);
-                const moveCls = movePct == null ? 'neu' : movePct >= 0 ? 'pos' : 'neg';
+                const moveCls = (movePct == null || Math.abs(movePct) < 0.05) ? 'neu'
+                  : movePct > 0 ? 'pos' : 'neg';
                 return (
                 <tr key={i}>
                   <td className="ev-sym">{e.symbol}</td>
                   <td><span className={`ev-badge ${cls(e.event)}`}>{e.event}</span></td>
                   <td className="ev-time">{e.time}</td>
                   <td className="ev-price">{e.price != null ? `$${e.price}` : '—'}</td>
-                  <td className="ev-price">{now != null ? `$${now}` : '—'}</td>
+                  <td className={`ev-now ${(now != null && movePct != null) ? moveCls : ''}`}>{now != null ? `$${now}` : '—'}</td>
                   <td className={moveCls}>{movePct == null ? '—'
                     : `${movePct >= 0 ? '+' : ''}${movePct.toFixed(1)}%`}</td>
                   <td className="pos">{e.buy_score != null ? Math.round(e.buy_score) : '—'}</td>
@@ -855,13 +856,14 @@ function SignalLog({ horizon, nowBySym = {}, board = [] }:
             <thead>
               <tr>
                 <th>Time (Dubai)</th><th>Symbol</th><th>Event</th><th>Change</th>
-                <th>Entry $</th><th>Now $</th><th>Move</th><th>Buy</th><th>Sell</th>
+                <th>Entry $</th><th>Now $</th><th>P/L</th><th>Buy</th><th>Sell</th>
               </tr>
             </thead>
             <tbody>
               {events.map((e, i) => {
                 const { now, movePct } = moveOf(e);
-                const moveCls = movePct == null ? 'neu' : movePct >= 0 ? 'pos' : 'neg';
+                const moveCls = (movePct == null || Math.abs(movePct) < 0.05) ? 'neu'
+                  : movePct > 0 ? 'pos' : 'neg';
                 return (
                 <tr key={i}>
                   <td className="ev-time">{e.time}</td>
@@ -869,7 +871,7 @@ function SignalLog({ horizon, nowBySym = {}, board = [] }:
                   <td><span className={`ev-badge ${cls(e.event)}`}>{e.event}</span></td>
                   <td className="ev-chg">{e.from || '—'} → {e.to}</td>
                   <td className="ev-price">{e.price != null ? `$${e.price}` : '—'}</td>
-                  <td className="ev-price">{now != null ? `$${now}` : '—'}</td>
+                  <td className={`ev-now ${(now != null && movePct != null) ? moveCls : ''}`}>{now != null ? `$${now}` : '—'}</td>
                   <td className={moveCls}>{movePct == null ? '—'
                     : `${movePct >= 0 ? '+' : ''}${movePct.toFixed(1)}%`}</td>
                   <td className="pos">{e.buy_score != null ? Math.round(e.buy_score) : '—'}</td>
