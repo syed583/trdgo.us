@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import {
   CalendarDays, Plus, TrendingUp, Target, Lightbulb, AlertTriangle, ChevronRight,
-  Loader2, Scale, DoorOpen,
+  Loader2, Scale,
 } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api, api2 } from '../api/client';
@@ -638,33 +638,6 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
                 ))}
               </ul>
             </div>
-
-            {d.exit_plan && (
-              <div className={`ets-card ets-exit ets-exit-${(d.exit_plan.verdict || '').toLowerCase()}`}>
-                <div className="ets-card-h">
-                  <span><DoorOpen size={15} /> Exit Plan</span>
-                  <span className={`ets-exit-badge ${(d.exit_plan.verdict || '').toLowerCase()}`}>
-                    {d.exit_plan.verdict}
-                  </span>
-                </div>
-                <div className="ets-exit-reason">{d.exit_plan.reason}</div>
-                {d.exit_plan.exit_level != null && (
-                  <div className="ets-exit-level">
-                    Exit level ≈ <b>${d.exit_plan.exit_level}</b>
-                    {d.exit_plan.grade ? <span className="ets-exit-grade">Grade {d.exit_plan.grade}</span> : null}
-                  </div>
-                )}
-                <ul className="ets-exit-list">
-                  {(d.exit_plan.checklist || []).map((c: any) => (
-                    <li key={c.key} className={`ets-exit-row st-${c.state}`}>
-                      <span className="ets-exit-dot" />
-                      <span className="ets-exit-lbl">{c.label}</span>
-                      <span className="ets-exit-note">{c.note}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
 
             <div className="ets-card">
               <div className="ets-card-h"><span><CalendarDays size={15} /> Earnings Calendar</span></div>

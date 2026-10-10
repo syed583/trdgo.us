@@ -170,23 +170,6 @@ def get_summary(symbol: str, profile: str = "default") -> dict:
     equity_why = _drivers(equity.get("params"))
     options_why = _drivers(options.get("params"))
 
-    # Exit plan: when there is a live directional equity trade, decide HOLD /
-    # TRIM / EXIT from grade + EMA + price action + liquidity on the company
-    # now (not from the prior day). Reuses data already fetched above.
-    try:
-        import earnings_exit_plan as _exit
-        exit_plan = _exit.compute_exit_plan(
-            direction=ed,
-            score=equity.get("score"),
-            spark=spark,
-            spot=spot,
-            em_lower=lower,
-            em_upper=upper,
-            construction=con,
-        )
-    except Exception:  # noqa: BLE001
-        exit_plan = None
-
     # Forward-looking "forecast": analysts' EPS and revenue estimates plus the
     # next-quarter guidance, with the recent post-earnings reaction. Taken from
     # the equity engine already computed above, so the detail page shows the
@@ -218,5 +201,4 @@ def get_summary(symbol: str, profile: str = "default") -> dict:
         "historical_moves": hm,
         "takeaways": takeaways,
         "forecast": forecast,
-        "exit_plan": exit_plan,
     }
