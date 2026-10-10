@@ -241,6 +241,12 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
   const d = board.data;
   const building = !!d?.building;
 
+  // Past sessions for the signal-log day picker. Fetched HERE (the page stays
+  // mounted) rather than inside SignalLog, which unmounts/remounts while the
+  // board is scoring and would keep aborting the request.
+  const pastDays = useApi<any>((s) => api2.aiTradePastDays(7, s), [],
+    { refreshMs: 600000 });
+
   // Hold each card's position steady across the minute-ly re-sort, so the list
   // does not shuffle under the reader while they are looking at it.
   // Pin the day's Buy / Sell names so a card stays put once it appears, resets
@@ -360,6 +366,8 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
 
           {view === 'log' && <SignalLog horizon={horizon}
             board={[...buyers, ...sellers]}
+            pastDays={pastDays.data?.days || []}
+            pastLoading={pastDays.initialLoading}
             nowBySym={Object.fromEntries(
               [...(d.buyers || []), ...(d.sellers || []), ...(d.held || [])]
                 .filter((r: any) => r.symbol && r.spot != null)
@@ -714,8 +722,9 @@ function PastSessions() {
 
 /** The running signal log -- every BUY / SELL / NO TRADE change with the price
  *  it happened at. The same events that are sent to the Google Sheet. */
-function SignalLog({ horizon, nowBySym = {}, board = [] }:
-  { horizon: string; nowBySym?: Record<string, number>; board?: Row[] }) {
+function SignalLog({ horizon, nowBySym = {}, board = [], pastDays = [], pastLoading = false }:
+  { horizon: string; nowBySym?: Record<string, number>; board?: Row[];
+    pastDays?: any[]; pastLoading?: boolean }) {
   const resp = useApi<any>((s) => api2.aiTradeSignalLog(horizon, 500, s),
     [horizon], { refreshMs: 60000 });
   const [query, setQuery] = useState('');
@@ -724,12 +733,10 @@ function SignalLog({ horizon, nowBySym = {}, board = [] }:
   const [logView, setLogView] = useState<'stock' | 'changes'>('stock');
   const all: any[] = resp.data?.events || [];
 
-  // Past days: each captured session's up (Buy) / down (Sell) calls, read from
-  // the daily snapshots. "" = today (the live board).
+  // Past days: each captured session's up (Buy) / down (Sell) calls, from the
+  // daily snapshots (fetched by the parent so it survives this panel remounting).
   const [day, setDay] = useState('');
-  const hist = useApi<any>((s) => api2.aiTradePastDays(7, s), [],
-    { refreshMs: 600000 });
-  const sessions: any[] = hist.data?.days || [];
+  const sessions: any[] = pastDays || [];
   const today = etDay();
   const pastDates: string[] = sessions.map((s) => s.date).filter((d) => d !== today);
   const dayLabelEt = (iso: string) => {
@@ -807,7 +814,7 @@ function SignalLog({ horizon, nowBySym = {}, board = [] }:
       )}
     >
       {day ? (
-        <PastDay up={dayUp} down={dayDown} query={qq} loading={hist.initialLoading}
+        <PastDay up={dayUp} down={dayDown} query={qq} loading={pastLoading}
           label={dayLabelEt(day)} />
       ) : resp.initialLoading && src.length === 0 ? (
         <p className="at-note"><Loader2 size={12} className="spin" /> Loading…</p>
