@@ -697,6 +697,46 @@ def ai_trade_signal_log(horizon: Optional[str] = None, limit: int = 200) -> dict
             "events": sheet_logger.recent(hz, limit)}
 
 
+@router.get("/ai-trade/past-days")
+def ai_trade_past_days(days: int = 7) -> dict:
+    """Each of the last N captured sessions' calls: which stocks were called UP
+    (Buy) and DOWN (Sell), read straight from the daily snapshots (no live
+    compute, so it is fast)."""
+    from datetime import date as _date, timedelta as _td
+    from collections import OrderedDict
+    from sqlalchemy import text
+    from database import SessionLocal
+
+    days = max(1, min(int(days or 7), 30))
+    out: "OrderedDict[str, dict]" = OrderedDict()
+    try:
+        db = SessionLocal()
+        try:
+            rows = db.execute(text(
+                "SELECT symbol, snapshot_date, decision, direction_score, price "
+                "FROM score_snapshots "
+                "WHERE snapshot_date >= :since "
+                "ORDER BY snapshot_date DESC, symbol"),
+                {"since": _date.today() - _td(days=days + 2)}).all()
+        finally:
+            db.close()
+        for sym, d, dec, score, price in rows:
+            iso = d.isoformat()
+            day = out.setdefault(iso, {"date": iso, "up": [], "down": []})
+            dec_u = (dec or "").upper()
+            item = {"symbol": sym,
+                    "score": round(score, 0) if score is not None else None,
+                    "price": round(price, 2) if price is not None else None}
+            if "BUY" in dec_u:
+                day["up"].append(item)
+            elif "SELL" in dec_u:
+                day["down"].append(item)
+        sessions = [v for v in out.values() if v["up"] or v["down"]][:days]
+        return {"status": "OK", "days": sessions}
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "ERROR", "detail": type(exc).__name__, "days": []}
+
+
 @router.get("/ai-trade/signal-audit")
 def ai_trade_signal_audit(horizon: Optional[str] = None, limit: int = 500) -> dict:
     """Per-name intraday signal audit: every signal taken OR blocked, with the

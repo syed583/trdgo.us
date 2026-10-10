@@ -724,29 +724,23 @@ function SignalLog({ horizon, nowBySym = {}, board = [] }:
   const [logView, setLogView] = useState<'stock' | 'changes'>('stock');
   const all: any[] = resp.data?.events || [];
 
-  // Past days: the captured Buy/Sell/Neutral per stock per session. "" = today
-  // (the live board); a date = that session's up (Buy) / down (Sell) list.
+  // Past days: each captured session's up (Buy) / down (Sell) calls, read from
+  // the daily snapshots. "" = today (the live board).
   const [day, setDay] = useState('');
-  const hist = useApi<any>((s) => api2.signalHistory(10, '', s), [],
+  const hist = useApi<any>((s) => api2.aiTradePastDays(7, s), [],
     { refreshMs: 600000 });
-  const histRows: any[] = hist.data?.rows || [];
-  const histDates: string[] = hist.data?.dates || [];
-  // Past sessions only (exclude the latest = today's live column).
-  const pastDates = histDates.slice(0, -1).reverse();
+  const sessions: any[] = hist.data?.days || [];
+  const today = etDay();
+  const pastDates: string[] = sessions.map((s) => s.date).filter((d) => d !== today);
   const dayLabelEt = (iso: string) => {
     try {
       return new Date(iso + 'T12:00:00').toLocaleDateString(undefined,
         { weekday: 'short', month: 'short', day: '2-digit' });
     } catch { return iso; }
   };
-  const cellFor = (r: any, d: string) => (r.cells || []).find((x: any) => x.date === d);
-  const dayList = (side: string) => (day
-    ? histRows.filter((r) => (cellFor(r, day)?.stock) === side)
-      .map((r) => ({ symbol: r.symbol, score: cellFor(r, day)?.score ?? null }))
-      .sort((a, b) => String(a.symbol).localeCompare(String(b.symbol)))
-    : []);
-  const dayUp = dayList('BUY');
-  const dayDown = dayList('SELL');
+  const sel = sessions.find((s) => s.date === day);
+  const dayUp = (sel?.up || []).slice().sort((a: any, b: any) => String(a.symbol).localeCompare(String(b.symbol)));
+  const dayDown = (sel?.down || []).slice().sort((a: any, b: any) => String(a.symbol).localeCompare(String(b.symbol)));
 
   // "By stock" is built from the live board's pinned buyers + sellers, so every
   // call on the board -- including a seller the server log did not record on this
