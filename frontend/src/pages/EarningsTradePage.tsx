@@ -558,6 +558,11 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
                         <div className={`ets-conf-fill tone-${c.color}`}
                           style={{ width: `${Math.max(2, Math.min(100, c.total))}%` }} />
                       </div>
+                      <div className="ets-legend">
+                        <span><i className="dot green" /> 75-100 Full size, no hedge</span>
+                        <span><i className="dot yellow" /> 50-74 Reduce size / partial hedge</span>
+                        <span><i className="dot red" /> 0-49 Add protection or skip</span>
+                      </div>
                       <ul className="ets-risk-list">
                         {(c.rows || []).map((r: any) => (
                           <li key={r.key} className={r.available ? '' : 'na'}>
@@ -599,6 +604,11 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
                         <span className={`ets-conf-badge tone-${u.color}`}>{u.band} · {Math.round(u.total)}</span>
                       </div>
                       <div className="ets-urg-sig">{u.signal}</div>
+                      <div className="ets-legend">
+                        <span><i className="dot green" /> 0-39 HOLD / TRAIL</span>
+                        <span><i className="dot yellow" /> 40-69 TIGHTEN</span>
+                        <span><i className="dot red" /> 70-100 EXIT NOW</span>
+                      </div>
                       <ul className="ets-risk-list">
                         {(u.rows || []).map((r: any) => (
                           <li key={r.key} className={r.available ? '' : 'na'}>
