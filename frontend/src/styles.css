@@ -322,7 +322,11 @@ table { border-collapse: collapse; width: 100%; }
   margin: 7px 0 16px 2px;
 }
 
-.nav { display: flex; flex-direction: column; gap: 1px; }
+.nav { display: flex; flex-direction: column; gap: 1px;
+  /* Scroll the nav itself when it is taller than the viewport, so the lower
+     items (Markets, Watchlist, Upgrade) stay reachable on short screens. */
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: thin; }
 .nav-group { display: flex; flex-direction: column; gap: 1px; }
 .nav-group + .nav-group { margin-top: 10px; }
 .nav-group-label {
