@@ -1510,9 +1510,17 @@ def earnings_risk_batch(symbols: str = "") -> dict:
                 "price": d.get("price"),
             }
         else:
-            # Scored but not a directional trade (no exit to manage).
+            # Scored but not a directional trade (no exit to manage). Say why.
+            eqd = ((d.get("equity") or {}).get("decision") or "").upper()
+            od = (d.get("overall_decision") or "").upper()
+            if eqd in ("NEUTRAL", "FLAT", "HOLD", ""):
+                reason = "Signal is Neutral — no clear up or down edge into earnings."
+            elif od in ("STRADDLE", "STRANGLE"):
+                reason = "Only an options straddle here — no directional stock trade."
+            else:
+                reason = "No directional edge into earnings."
             data[s] = {"decision": d.get("overall_decision"), "confidence": None,
-                       "price": d.get("price")}
+                       "price": d.get("price"), "reason": reason}
 
     if missing and not _warm_off:
         batch = missing[:12]

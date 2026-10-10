@@ -434,7 +434,10 @@ export default function UpcomingEarnings({
                   const rk = riskMap[r.symbol];
                   if (!rk) return <div className="ue-risk ue-risk-wait">Checking the trade…</div>;
                   if (rk.confidence == null) return (
-                    <div className="ue-risk ue-risk-none">No clear trade — skip this one</div>
+                    <div className="ue-risk ue-risk-none">
+                      <span className="ue-none-h">No clear trade — skip this one</span>
+                      {rk.reason && <span className="ue-none-why">{rk.reason}</span>}
+                    </div>
                   );
                   const ACTION: Record<string, string> = {
                     green: 'Good trade — full size',

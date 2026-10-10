@@ -683,14 +683,17 @@ export const api2 = {
     request<any>(`/api/trade-plan/${encodeURIComponent(symbol)}/history`, s),
   earningsUpcoming: (days = 14, s?: AbortSignal) =>
     request<any>(`/api/earnings/upcoming?days=${days}`, s),
-  earningsRiskBatch: async (symbols: string[], s?: AbortSignal) => {
+  earningsRiskBatch: async (symbols: string[], _s?: AbortSignal) => {
     // Chunk so the whole list (hundreds of names) is covered without an
-    // oversized URL; merge the per-chunk maps back into one.
-    const CH = 100;
+    // oversized URL; merge the per-chunk maps back into one. The chunk requests
+    // deliberately do NOT take the caller's abort signal: this reads a cheap
+    // cache, and letting a re-render abort the 8 in-flight chunks left the list
+    // perpetually "Checking…". They always finish and populate the result.
+    const CH = 150;
     const chunks: string[][] = [];
     for (let i = 0; i < symbols.length; i += CH) chunks.push(symbols.slice(i, i + CH));
     const parts = await Promise.all(chunks.map((c) =>
-      request<any>(`/api/earnings/risk-batch?symbols=${encodeURIComponent(c.join(','))}`, s)
+      request<any>(`/api/earnings/risk-batch?symbols=${encodeURIComponent(c.join(','))}`)
         .catch(() => ({ data: {} }))));
     const data: Record<string, any> = {};
     let pending = 0;
