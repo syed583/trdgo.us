@@ -724,6 +724,30 @@ function SignalLog({ horizon, nowBySym = {}, board = [] }:
   const [logView, setLogView] = useState<'stock' | 'changes'>('stock');
   const all: any[] = resp.data?.events || [];
 
+  // Past days: the captured Buy/Sell/Neutral per stock per session. "" = today
+  // (the live board); a date = that session's up (Buy) / down (Sell) list.
+  const [day, setDay] = useState('');
+  const hist = useApi<any>((s) => api2.signalHistory(10, '', s), [],
+    { refreshMs: 600000 });
+  const histRows: any[] = hist.data?.rows || [];
+  const histDates: string[] = hist.data?.dates || [];
+  // Past sessions only (exclude the latest = today's live column).
+  const pastDates = histDates.slice(0, -1).reverse();
+  const dayLabelEt = (iso: string) => {
+    try {
+      return new Date(iso + 'T12:00:00').toLocaleDateString(undefined,
+        { weekday: 'short', month: 'short', day: '2-digit' });
+    } catch { return iso; }
+  };
+  const cellFor = (r: any, d: string) => (r.cells || []).find((x: any) => x.date === d);
+  const dayList = (side: string) => (day
+    ? histRows.filter((r) => (cellFor(r, day)?.stock) === side)
+      .map((r) => ({ symbol: r.symbol, score: cellFor(r, day)?.score ?? null }))
+      .sort((a, b) => String(a.symbol).localeCompare(String(b.symbol)))
+    : []);
+  const dayUp = dayList('BUY');
+  const dayDown = dayList('SELL');
+
   // "By stock" is built from the live board's pinned buyers + sellers, so every
   // call on the board -- including a seller the server log did not record on this
   // horizon -- shows with the price it came in at and where it is now.
@@ -766,20 +790,32 @@ function SignalLog({ horizon, nowBySym = {}, board = [] }:
       title={<span className="at-col-title">Signal log · {horizon.toLowerCase()}</span>}
       right={(
         <span className="at-log-search">
-          <span className="at-logview">
-            <button className={logView === 'stock' ? 'on' : ''}
-              onClick={() => setLogView('stock')}>By stock</button>
-            <button className={logView === 'changes' ? 'on' : ''}
-              onClick={() => setLogView('changes')}>Changes</button>
-          </span>
+          <select className="at-logdate" value={day}
+            onChange={(e) => setDay(e.target.value)} title="Pick a day">
+            <option value="">Today</option>
+            {pastDates.map((d) => (
+              <option key={d} value={d}>{dayLabelEt(d)}</option>
+            ))}
+          </select>
+          {!day && (
+            <span className="at-logview">
+              <button className={logView === 'stock' ? 'on' : ''}
+                onClick={() => setLogView('stock')}>By stock</button>
+              <button className={logView === 'changes' ? 'on' : ''}
+                onClick={() => setLogView('changes')}>Changes</button>
+            </span>
+          )}
           <input value={query} placeholder="Filter ticker / state…"
             spellCheck={false} onChange={(e) => setQuery(e.target.value)} />
           {query && <button className="at-log-x" onClick={() => setQuery('')}><X size={12} /></button>}
-          <span className="at-chip">{events.length}</span>
+          <span className="at-chip">{day ? (dayUp.length + dayDown.length) : events.length}</span>
         </span>
       )}
     >
-      {resp.initialLoading && src.length === 0 ? (
+      {day ? (
+        <PastDay up={dayUp} down={dayDown} query={qq} loading={hist.initialLoading}
+          label={dayLabelEt(day)} />
+      ) : resp.initialLoading && src.length === 0 ? (
         <p className="at-note"><Loader2 size={12} className="spin" /> Loading…</p>
       ) : src.length === 0 ? (
         <p className="at-note">
@@ -852,6 +888,50 @@ function SignalLog({ horizon, nowBySym = {}, board = [] }:
         </div>
       )}
     </Panel>
+  );
+}
+
+/** A past session's calls: which stocks the model called UP (Buy) and DOWN
+ *  (Sell) on the chosen day, from the captured daily snapshots. */
+function PastDay({ up, down, query, loading, label }:
+  { up: { symbol: string; score: number | null }[];
+    down: { symbol: string; score: number | null }[];
+    query: string; loading: boolean; label: string }) {
+  const f = (xs: { symbol: string; score: number | null }[]) =>
+    query ? xs.filter((x) => x.symbol.toUpperCase().includes(query)) : xs;
+  const u = f(up), d = f(down);
+  if (loading && up.length === 0 && down.length === 0) {
+    return <p className="at-note"><Loader2 size={12} className="spin" /> Loading {label}…</p>;
+  }
+  if (u.length === 0 && d.length === 0) {
+    return <p className="at-note">No captured calls for {label}.</p>;
+  }
+  const col = (title: string, tone: 'pos' | 'neg',
+    rows: { symbol: string; score: number | null }[]) => (
+    <div className="at-pastday-col">
+      <div className={`at-pastday-h ${tone}`}>
+        {tone === 'pos' ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+        {title} <span className="at-chip">{rows.length}</span>
+      </div>
+      {rows.length === 0 ? <div className="at-note at-empty">None</div> : (
+        <div className="at-pastday-list">
+          {rows.map((r) => (
+            <span key={r.symbol} className={`at-pastday-chip ${tone}`}>
+              <b>{r.symbol}</b>{r.score != null && <em>{Math.round(r.score)}</em>}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+  return (
+    <div className="at-pastday">
+      <div className="at-pastday-sub">Calls captured on <b>{label}</b></div>
+      <div className="at-pastday-cols">
+        {col('Up · Buy', 'pos', u)}
+        {col('Down · Sell', 'neg', d)}
+      </div>
+    </div>
   );
 }
 

@@ -614,3 +614,23 @@
   letter-spacing: .03em; padding: 2px 6px; border-radius: 6px;
   background: var(--panel-2); color: var(--text-mute); }
 .at2-size.full { background: rgba(46,184,122,.18); color: #1c9c63; }
+
+/* Signal log: pick a past day and see Up (Buy) / Down (Sell). */
+.at-logdate { font: inherit; font-size: 12px; font-weight: 700; padding: 4px 8px;
+  border-radius: 8px; border: 1px solid var(--border); background: var(--panel-2);
+  color: var(--text); cursor: pointer; }
+.at-pastday { padding: 2px 2px 8px; }
+.at-pastday-sub { font-size: 12px; color: var(--text-mute); margin: 2px 0 10px; }
+.at-pastday-sub b { color: var(--text); }
+.at-pastday-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 760px) { .at-pastday-cols { grid-template-columns: 1fr; } }
+.at-pastday-h { display: flex; align-items: center; gap: 6px; font-size: 13px;
+  font-weight: 800; margin-bottom: 8px; }
+.at-pastday-h.pos { color: var(--at-buy, #2eb87a); }
+.at-pastday-h.neg { color: var(--at-sell, #f2465a); }
+.at-pastday-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.at-pastday-chip { display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; font-weight: 700; padding: 4px 9px; border-radius: 999px; }
+.at-pastday-chip.pos { background: rgba(46,184,122,.16); color: #1c9c63; }
+.at-pastday-chip.neg { background: rgba(242,70,90,.16); color: #d8324a; }
+.at-pastday-chip em { font-style: normal; opacity: .7; font-weight: 800; }
