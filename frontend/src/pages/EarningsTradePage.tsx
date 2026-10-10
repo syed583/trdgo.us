@@ -525,6 +525,98 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
             </div>
           </div>
 
+          {/* Earnings Exit & Risk Protection: Confidence / Exit tabs, placed high
+              so it sits right under the headline signal. */}
+          {d.risk && (
+            <div className="ets-row">
+              <div className="ets-card ets-risk">
+                <div className="ets-risk-tabs">
+                  <button type="button" className={`ets-risk-tab ${riskTab === 'confidence' ? 'on' : ''}`}
+                    onClick={() => setRiskTab('confidence')}>
+                    <ShieldCheck size={14} /> Confidence
+                  </button>
+                  <button type="button" className={`ets-risk-tab ${riskTab === 'exit' ? 'on' : ''}`}
+                    onClick={() => setRiskTab('exit')}>
+                    <DoorOpen size={14} /> Exit
+                  </button>
+                </div>
+
+                {riskTab === 'confidence' && (() => {
+                  const c = d.risk.confidence;
+                  return (
+                    <div className="ets-risk-body">
+                      <div className="ets-conf-head">
+                        <div className={`ets-conf-score tone-${c.color}`}>
+                          <b>{Math.round(c.total)}</b><span>/100</span>
+                        </div>
+                        <div>
+                          <span className={`ets-conf-badge tone-${c.color}`}>{c.band}</span>
+                          <div className="ets-conf-action">{c.action}</div>
+                        </div>
+                      </div>
+                      <div className="ets-conf-bar">
+                        <div className={`ets-conf-fill tone-${c.color}`}
+                          style={{ width: `${Math.max(2, Math.min(100, c.total))}%` }} />
+                      </div>
+                      <ul className="ets-risk-list">
+                        {(c.rows || []).map((r: any) => (
+                          <li key={r.key} className={r.available ? '' : 'na'}>
+                            <span className="ets-risk-lbl">{r.label}</span>
+                            <span className="ets-risk-pts">{Math.round(r.points)}/{r.max}</span>
+                            <span className="ets-risk-note">{r.note}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      {c.hedge && (
+                        <div className="ets-hedge">
+                          <div className="ets-hedge-h"><ShieldCheck size={13} /> Add protection — {c.hedge.leg}</div>
+                          <div>Strike: {c.hedge.strike}</div>
+                          <div>Expiry: {c.hedge.expiry}</div>
+                          <div className="ets-hedge-note">{c.hedge.note}</div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {riskTab === 'exit' && (() => {
+                  const e = d.risk.exit; const u = e.urgency;
+                  return (
+                    <div className="ets-risk-body">
+                      <div className="ets-exit-side">{e.side} · exit levels set at entry</div>
+                      <ul className="ets-lvls">
+                        {(e.levels || []).map((L: any) => (
+                          <li key={L.key}>
+                            <span className="ets-lvl-l">{L.label}</span>
+                            <span className="ets-lvl-v">{L.value != null ? `$${L.value}` : '—'}</span>
+                            <span className="ets-lvl-f">{L.formula}</span>
+                            <span className="ets-lvl-a">{L.action}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="ets-urg-head">
+                        <span className="ets-urg-ttl">Exit Urgency</span>
+                        <span className={`ets-conf-badge tone-${u.color}`}>{u.band} · {Math.round(u.total)}</span>
+                      </div>
+                      <div className="ets-urg-sig">{u.signal}</div>
+                      <ul className="ets-risk-list">
+                        {(u.rows || []).map((r: any) => (
+                          <li key={r.key} className={r.available ? '' : 'na'}>
+                            <span className="ets-risk-lbl">{r.label}</span>
+                            <span className="ets-risk-pts">{Math.round(r.points)}/{r.max}</span>
+                            <span className="ets-risk-note">{r.note}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="ets-urg-note">{u.note}</div>
+                      <div className="ets-pre">{e.pre_earnings}</div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+
           {/* Score Breakdown: +/- parameter contributions and the net. Locked to
               the active side on the split tabs; both-side toggle on My Calls. */}
           {(dual ? (d.equity?.why?.length || d.options?.why?.length) : side?.why?.length) ? (
@@ -639,94 +731,6 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
                 ))}
               </ul>
             </div>
-
-            {d.risk && (
-              <div className="ets-card ets-risk">
-                <div className="ets-risk-tabs">
-                  <button type="button" className={`ets-risk-tab ${riskTab === 'confidence' ? 'on' : ''}`}
-                    onClick={() => setRiskTab('confidence')}>
-                    <ShieldCheck size={14} /> Confidence
-                  </button>
-                  <button type="button" className={`ets-risk-tab ${riskTab === 'exit' ? 'on' : ''}`}
-                    onClick={() => setRiskTab('exit')}>
-                    <DoorOpen size={14} /> Exit
-                  </button>
-                </div>
-
-                {riskTab === 'confidence' && (() => {
-                  const c = d.risk.confidence;
-                  return (
-                    <div className="ets-risk-body">
-                      <div className="ets-conf-head">
-                        <div className={`ets-conf-score tone-${c.color}`}>
-                          <b>{Math.round(c.total)}</b><span>/100</span>
-                        </div>
-                        <div>
-                          <span className={`ets-conf-badge tone-${c.color}`}>{c.band}</span>
-                          <div className="ets-conf-action">{c.action}</div>
-                        </div>
-                      </div>
-                      <div className="ets-conf-bar">
-                        <div className={`ets-conf-fill tone-${c.color}`}
-                          style={{ width: `${Math.max(2, Math.min(100, c.total))}%` }} />
-                      </div>
-                      <ul className="ets-risk-list">
-                        {(c.rows || []).map((r: any) => (
-                          <li key={r.key} className={r.available ? '' : 'na'}>
-                            <span className="ets-risk-lbl">{r.label}</span>
-                            <span className="ets-risk-pts">{Math.round(r.points)}/{r.max}</span>
-                            <span className="ets-risk-note">{r.note}</span>
-                          </li>
-                        ))}
-                      </ul>
-                      {c.hedge && (
-                        <div className="ets-hedge">
-                          <div className="ets-hedge-h"><ShieldCheck size={13} /> Add protection — {c.hedge.leg}</div>
-                          <div>Strike: {c.hedge.strike}</div>
-                          <div>Expiry: {c.hedge.expiry}</div>
-                          <div className="ets-hedge-note">{c.hedge.note}</div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-
-                {riskTab === 'exit' && (() => {
-                  const e = d.risk.exit; const u = e.urgency;
-                  return (
-                    <div className="ets-risk-body">
-                      <div className="ets-exit-side">{e.side} · exit levels set at entry</div>
-                      <ul className="ets-lvls">
-                        {(e.levels || []).map((L: any) => (
-                          <li key={L.key}>
-                            <span className="ets-lvl-l">{L.label}</span>
-                            <span className="ets-lvl-v">{L.value != null ? `$${L.value}` : '—'}</span>
-                            <span className="ets-lvl-f">{L.formula}</span>
-                            <span className="ets-lvl-a">{L.action}</span>
-                          </li>
-                        ))}
-                      </ul>
-                      <div className="ets-urg-head">
-                        <span className="ets-urg-ttl">Exit Urgency</span>
-                        <span className={`ets-conf-badge tone-${u.color}`}>{u.band} · {Math.round(u.total)}</span>
-                      </div>
-                      <div className="ets-urg-sig">{u.signal}</div>
-                      <ul className="ets-risk-list">
-                        {(u.rows || []).map((r: any) => (
-                          <li key={r.key} className={r.available ? '' : 'na'}>
-                            <span className="ets-risk-lbl">{r.label}</span>
-                            <span className="ets-risk-pts">{Math.round(r.points)}/{r.max}</span>
-                            <span className="ets-risk-note">{r.note}</span>
-                          </li>
-                        ))}
-                      </ul>
-                      <div className="ets-urg-note">{u.note}</div>
-                      <div className="ets-pre">{e.pre_earnings}</div>
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
 
             <div className="ets-card">
               <div className="ets-card-h"><span><CalendarDays size={15} /> Earnings Calendar</span></div>
