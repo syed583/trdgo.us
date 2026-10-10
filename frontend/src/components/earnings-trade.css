@@ -405,21 +405,16 @@
   }
 }
 
-/* ---- Per-card Confidence + Exit (bigger earnings cards) ---- */
-.ue-risk { padding: 8px 12px 10px; border-top: 1px dashed var(--border); }
-.ue-risk-wait, .ue-risk-none { padding: 8px 12px; font-size: 11px; color: var(--text-mute);
+/* ---- Per-card "what to do" line (earnings list) ---- */
+.ue-risk { padding: 8px 12px 10px; border-top: 1px dashed var(--border);
+  display: flex; flex-direction: column; gap: 4px; }
+.ue-risk-wait, .ue-risk-none { padding: 8px 12px; font-size: 11.5px; color: var(--text-mute);
   border-top: 1px dashed var(--border); }
-.ue-risk-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.ue-rt { background: var(--bg-2); border-radius: var(--r); padding: 6px 9px;
-  display: flex; flex-direction: column; gap: 1px; }
-.ue-rt-l { font-size: 10px; color: var(--text-mute); }
-.ue-rt-v { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.ue-rt-v em { font-style: normal; font-size: 10px; color: var(--text-mute); font-weight: 600; }
-.ue-rt-b { font-size: 9.5px; font-weight: 800; letter-spacing: .03em; }
-.ue-risk-lvls { display: flex; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
-.ue-rl { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums;
-  display: inline-flex; flex-direction: column; }
-.ue-rl i { font-style: normal; font-size: 9.5px; font-weight: 600; color: var(--text-mute); }
-.ue-rl.pos { color: #16a34a; } .ue-rl.neg { color: #dc2626; }
+.ue-act { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 800; }
+.ue-act-dot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
+.ue-act-conf { margin-left: auto; font-size: 10.5px; font-weight: 600; color: var(--text-mute); }
+.ue-plan { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ue-plan .pos { color: #16a34a; } .ue-plan .neg { color: #dc2626; }
+.ue-plan .sep { color: var(--text-dim); margin: 0 6px; }
 .tone-green { color: #16a34a !important; } .tone-yellow { color: #d97706 !important; }
 .tone-red { color: #dc2626 !important; }

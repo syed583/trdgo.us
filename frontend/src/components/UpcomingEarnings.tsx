@@ -432,28 +432,29 @@ export default function UpcomingEarnings({
                 </button>
                 {riskOn && (() => {
                   const rk = riskMap[r.symbol];
-                  if (!rk) return <div className="ue-risk ue-risk-wait">Scoring…</div>;
+                  if (!rk) return <div className="ue-risk ue-risk-wait">Checking the trade…</div>;
                   if (rk.confidence == null) return (
-                    <div className="ue-risk ue-risk-none">No directional trade</div>
+                    <div className="ue-risk ue-risk-none">No clear trade — skip this one</div>
                   );
+                  const ACTION: Record<string, string> = {
+                    green: 'Good trade — full size',
+                    yellow: 'OK — take half size',
+                    red: 'Risky — hedge it or skip',
+                  };
                   return (
                     <div className="ue-risk">
-                      <div className="ue-risk-tiles">
-                        <div className="ue-rt">
-                          <span className="ue-rt-l">Confidence</span>
-                          <span className={`ue-rt-v tone-${rk.conf_color}`}>{Math.round(rk.confidence)}<em>/100</em></span>
-                          <span className={`ue-rt-b tone-${rk.conf_color}`}>{rk.conf_band}</span>
-                        </div>
-                        <div className="ue-rt">
-                          <span className="ue-rt-l">Exit</span>
-                          <span className={`ue-rt-v tone-${rk.urgency_color}`}>{rk.urgency_band}</span>
-                        </div>
+                      <div className={`ue-act tone-${rk.conf_color}`}>
+                        <span className="ue-act-dot" />
+                        {ACTION[rk.conf_color] || 'Review'}
+                        <span className="ue-act-conf">Confidence {Math.round(rk.confidence)}/100</span>
                       </div>
-                      <div className="ue-risk-lvls">
-                        <span className="ue-rl pos"><i>Target</i>{rk.target != null ? `$${rk.target}` : '—'}</span>
-                        <span className="ue-rl neg"><i>Stop</i>{rk.stop != null ? `$${rk.stop}` : '—'}</span>
-                        <span className="ue-rl"><i>Trailing</i>{rk.trailing || '—'}</span>
-                      </div>
+                      {(rk.target != null || rk.stop != null) && (
+                        <div className="ue-plan">
+                          <span className="pos">Aim ${rk.target ?? '—'}</span>
+                          <span className="sep">·</span>
+                          <span className="neg">Exit if it hits ${rk.stop ?? '—'}</span>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
