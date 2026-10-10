@@ -78,7 +78,7 @@ export default function UpcomingEarnings({
     (s) => (demo || !rows.length || !riskOn ? Promise.resolve(null)
       : api2.earningsRiskBatch(rows.map((r) => r.symbol), s)),
     [demo, symKey, riskOn],
-    { refreshMs: demo || !riskOn ? undefined : 30_000 },
+    { refreshMs: demo || !riskOn ? undefined : 60_000 },
   );
   const riskMap: Record<string, any> = risk.data?.data || {};
 
