@@ -400,12 +400,19 @@ def warm_trade(symbols: list[str]) -> None:
 
         def one(sym: str) -> None:
             try:
-                swr.serve(f"earn:trade:{sym}", lambda: ets.get_summary(sym), 1800.0)
+                # Same key the detail route and the list risk-batch read, and a
+                # long (6h) cache so re-warming the whole universe each cycle only
+                # recomputes the ~1/12 that actually went stale -- self-pacing the
+                # work across the day, well within the UW daily budget.
+                swr.serve(f"earn:trade:default:{sym}",
+                          lambda sym=sym: ets.get_summary(sym, "default"), 21600.0)
             except Exception:  # noqa: BLE001
                 pass
 
-        targets = [s.upper() for s in (symbols or []) if s][:80]
-        with ThreadPoolExecutor(max_workers=2) as pool:
+        # Warm the whole provided universe (no 80 cap) -- the 6h cache above keeps
+        # each cycle cheap, so every upcoming name fills in over the day.
+        targets = [s.upper() for s in (symbols or []) if s]
+        with ThreadPoolExecutor(max_workers=3) as pool:
             list(pool.map(one, targets))
     except Exception:  # noqa: BLE001
         pass
