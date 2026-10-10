@@ -299,3 +299,25 @@
 .ets-split-calc b { font-variant-numeric: tabular-nums; }
 .ets-split-calc b.pos { color: var(--green); } .ets-split-calc b.neg { color: var(--red); }
 .ets-split-calc .ets-split-final { color: var(--text); font-size: 14px; }
+
+/* ---- Exit Plan card ---- */
+.ets-exit .ets-card-h { display:flex; align-items:center; justify-content:space-between; }
+.ets-exit-badge { font-size:11px; font-weight:800; letter-spacing:.04em; padding:2px 8px;
+  border-radius:999px; border:1px solid transparent; }
+.ets-exit-badge.hold { color:#16a34a; background:rgba(22,163,74,.12); border-color:rgba(22,163,74,.3); }
+.ets-exit-badge.trim { color:#d97706; background:rgba(217,119,6,.12); border-color:rgba(217,119,6,.3); }
+.ets-exit-badge.exit { color:#dc2626; background:rgba(220,38,38,.14); border-color:rgba(220,38,38,.35); }
+.ets-exit-exit { border-color:rgba(220,38,38,.4) !important; }
+.ets-exit-reason { font-size:13px; font-weight:600; margin:6px 0 2px; }
+.ets-exit-level { font-size:12.5px; opacity:.85; margin-bottom:8px; display:flex; gap:10px; align-items:center; }
+.ets-exit-grade { font-size:11px; padding:1px 7px; border-radius:999px; background:rgba(127,127,127,.15); }
+.ets-exit-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:5px; }
+.ets-exit-row { display:grid; grid-template-columns:10px 120px 1fr; align-items:baseline; gap:8px;
+  font-size:12px; }
+.ets-exit-lbl { font-weight:700; opacity:.9; }
+.ets-exit-note { opacity:.75; }
+.ets-exit-dot { width:8px; height:8px; border-radius:50%; margin-top:4px; background:#9ca3af; }
+.ets-exit-row.st-ok .ets-exit-dot { background:#16a34a; }
+.ets-exit-row.st-warn .ets-exit-dot { background:#eab308; }
+.ets-exit-row.st-trim .ets-exit-dot { background:#d97706; }
+.ets-exit-row.st-exit .ets-exit-dot { background:#dc2626; }
