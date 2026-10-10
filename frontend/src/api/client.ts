@@ -683,6 +683,8 @@ export const api2 = {
     request<any>(`/api/trade-plan/${encodeURIComponent(symbol)}/history`, s),
   earningsUpcoming: (days = 14, s?: AbortSignal) =>
     request<any>(`/api/earnings/upcoming?days=${days}`, s),
+  earningsRiskBatch: (symbols: string[], s?: AbortSignal) =>
+    request<any>(`/api/earnings/risk-batch?symbols=${encodeURIComponent(symbols.join(','))}`, s),
   tradgoCall: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/tradgo-call/${encodeURIComponent(symbol)}`, s),
   earningsTrade: (symbol: string, profile?: string, s?: AbortSignal) =>

@@ -1465,6 +1465,72 @@ def signal_history(request: Request, days: int = 10, end: str = "") -> dict:
     return out
 
 
+@router.get("/earnings/risk-batch")
+def earnings_risk_batch(symbols: str = "") -> dict:
+    """Per-symbol Confidence + Exit summary for the earnings list cards.
+
+    Serves whatever is already cached (the same earn:trade:default:{SYM} entry
+    the detail page fills) and warms a small batch of the missing ones in the
+    background, so the cards fill in progressively over successive polls instead
+    of scoring the whole list at once.
+    """
+    import earnings_trade_service as ets
+    import threading
+    import os
+
+    _warm_off = bool((os.getenv("DISABLE_WARMERS") or "").strip())
+    syms = [s.strip().upper() for s in (symbols or "").split(",") if s.strip()][:300]
+    cached = swr.peek_many([f"earn:trade:default:{s}" for s in syms])
+
+    data: dict = {}
+    missing: list[str] = []
+    for s in syms:
+        d = cached.get(f"earn:trade:default:{s}")
+        if not d:
+            missing.append(s)
+            continue
+        r = d.get("risk") or None
+        if r:
+            ex = r.get("exit") or {}
+            conf = r.get("confidence") or {}
+            urg = ex.get("urgency") or {}
+            levels = {L.get("key"): L for L in (ex.get("levels") or [])}
+            data[s] = {
+                "decision": d.get("overall_decision"),
+                "side": r.get("side"),
+                "confidence": conf.get("total"),
+                "conf_color": conf.get("color"),
+                "conf_band": conf.get("band"),
+                "urgency": urg.get("total"),
+                "urgency_band": urg.get("band"),
+                "urgency_color": urg.get("color"),
+                "target": (levels.get("target") or {}).get("value"),
+                "stop": (levels.get("stop") or {}).get("value"),
+                "trailing": "to entry",
+                "price": d.get("price"),
+            }
+        else:
+            # Scored but not a directional trade (no exit to manage).
+            data[s] = {"decision": d.get("overall_decision"), "confidence": None,
+                       "price": d.get("price")}
+
+    if missing and not _warm_off:
+        batch = missing[:12]
+
+        def _warm() -> None:
+            for sym in batch:
+                try:
+                    swr.serve(f"earn:trade:default:{sym}",
+                              lambda sym=sym: ets.get_summary(sym, "default"),
+                              market.session_ttl(120, 1800))
+                except Exception:  # noqa: BLE001
+                    pass
+
+        threading.Thread(target=_warm, daemon=True).start()
+
+    return {"data": data, "pending": len(missing)}
+
+
 @router.get("/earnings/trade/{symbol}")
 def earnings_trade(symbol: str, profile: str = "default") -> dict:
     """Combined Earnings Trade summary (equity + options + calendar + strategy).

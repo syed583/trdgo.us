@@ -71,6 +71,17 @@ export default function UpcomingEarnings({
     // (was 15s) halves the background-warm churn while cards still fill in.
     { refreshMs: demo ? undefined : 30_000 },
   );
+  // Per-card Confidence + Exit (Stock tab only). Served from cache and warmed
+  // in the background, so cards fill in over successive polls.
+  const riskOn = mode !== 'options';
+  const risk = useApi<any>(
+    (s) => (demo || !rows.length || !riskOn ? Promise.resolve(null)
+      : api2.earningsRiskBatch(rows.map((r) => r.symbol), s)),
+    [demo, symKey, riskOn],
+    { refreshMs: demo || !riskOn ? undefined : 30_000 },
+  );
+  const riskMap: Record<string, any> = risk.data?.data || {};
+
   // Pre-earnings signal timeline (only when that tab is active).
   const timelineOn = !!timeline;
   const tl = useApi<any>(
@@ -419,6 +430,33 @@ export default function UpcomingEarnings({
                     <ChevronRight size={15} className="ue-chev" />
                   </div>
                 </button>
+                {riskOn && (() => {
+                  const rk = riskMap[r.symbol];
+                  if (!rk) return <div className="ue-risk ue-risk-wait">Scoring…</div>;
+                  if (rk.confidence == null) return (
+                    <div className="ue-risk ue-risk-none">No directional trade</div>
+                  );
+                  return (
+                    <div className="ue-risk">
+                      <div className="ue-risk-tiles">
+                        <div className="ue-rt">
+                          <span className="ue-rt-l">Confidence</span>
+                          <span className={`ue-rt-v tone-${rk.conf_color}`}>{Math.round(rk.confidence)}<em>/100</em></span>
+                          <span className={`ue-rt-b tone-${rk.conf_color}`}>{rk.conf_band}</span>
+                        </div>
+                        <div className="ue-rt">
+                          <span className="ue-rt-l">Exit</span>
+                          <span className={`ue-rt-v tone-${rk.urgency_color}`}>{rk.urgency_band}</span>
+                        </div>
+                      </div>
+                      <div className="ue-risk-lvls">
+                        <span className="ue-rl pos"><i>Target</i>{rk.target != null ? `$${rk.target}` : '—'}</span>
+                        <span className="ue-rl neg"><i>Stop</i>{rk.stop != null ? `$${rk.stop}` : '—'}</span>
+                        <span className="ue-rl"><i>Trailing</i>{rk.trailing || '—'}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
                 {renderStrip(r.symbol)}
                 </div>
                 );
