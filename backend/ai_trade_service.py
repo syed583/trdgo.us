@@ -648,13 +648,39 @@ def _compose(limit: int = TOP_N, building: bool = False,
     # page. A name is a buyer when its signal state is a BUY state (Active or
     # Weakening), ranked by its BUY score; a seller likewise by SELL score;
     # everything else is the model's NO TRADE (withheld).
-    buyers = sorted(
-        [r for r in scored if r.get("im_side") == "buy"],
-        key=lambda r: r.get("buy_score") or 0.0, reverse=True)
-    sellers = sorted(
-        [r for r in scored if r.get("im_side") == "sell"],
-        key=lambda r: r.get("sell_score") or 0.0, reverse=True)
-    held = [r for r in scored if r.get("im_side") not in ("buy", "sell")]
+    if horizon == "TODAY":
+        # Intraday horizon: the dual-score / rules-engine call (im_side).
+        buyers = sorted(
+            [r for r in scored if r.get("im_side") == "buy"],
+            key=lambda r: r.get("buy_score") or 0.0, reverse=True)
+        sellers = sorted(
+            [r for r in scored if r.get("im_side") == "sell"],
+            key=lambda r: r.get("sell_score") or 0.0, reverse=True)
+        held = [r for r in scored if r.get("im_side") not in ("buy", "sell")]
+    else:
+        # TOMORROW / SWING: use the DIRECTIONAL call (the same decision stored in
+        # the daily snapshots and shown in the past-day view), so the board's
+        # sellers match the history instead of the stricter intraday read.
+        def _dside(r: dict) -> str:
+            dec = (r.get("decision") or "").upper()
+            if "BUY" in dec:
+                return "buy"
+            if "SELL" in dec:
+                return "sell"
+            return "none"
+        for r in scored:
+            side = _dside(r)
+            r["im_side"] = side
+            r["im_color"] = "green" if side == "buy" else "red" if side == "sell" else "none"
+            # Show the directional call text (STRONG BUY / BUY / SELL / ...).
+            r["im_decision"] = r.get("decision") if side in ("buy", "sell") else "NEUTRAL"
+        buyers = sorted(
+            [r for r in scored if r.get("im_side") == "buy"],
+            key=lambda r: r.get("direction_score") or 0.0, reverse=True)
+        sellers = sorted(
+            [r for r in scored if r.get("im_side") == "sell"],
+            key=lambda r: r.get("direction_score") or 100.0)   # most bearish first
+        held = [r for r in scored if r.get("im_side") not in ("buy", "sell")]
     waiting: list[dict] = []
 
     # Portfolio limits (intraday / TODAY only): at most 4 active signals and at
