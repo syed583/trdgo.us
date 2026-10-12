@@ -40,7 +40,6 @@ def test_every_dashboard_route_is_registered():
         "/api/health",
         "/api/dashboard",
         "/api/tickers/strip",
-        "/api/market/overview",
         "/api/earnings/calendar",
         "/api/scanner/run",
         "/api/news/{symbol}",

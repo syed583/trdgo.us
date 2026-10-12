@@ -842,7 +842,12 @@ def _compose(limit: int = TOP_N, building: bool = False,
                 return "sell"
             return "none"
         for r in scored:
+            # A name the model withheld (NO TRADE, or any row flagged not
+            # actionable / blocked) never enters a column, even if its decision
+            # text reads BUY/SELL -- it falls through to the Withheld card.
             side = _dside(r)
+            if r.get("blocked") or not r.get("actionable", True):
+                side = "none"
             r["im_side"] = side
             r["im_color"] = "green" if side == "buy" else "red" if side == "sell" else "none"
             # Show the directional call text (STRONG BUY / BUY / SELL / ...).
