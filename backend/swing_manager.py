@@ -32,6 +32,43 @@ def initial_stop(bias: str, entry: float, atr: Optional[float],
     return round(entry - dist if bias == "LONG" else entry + dist, 2)
 
 
+def hi_lo_filter(*, bias: str, price: float,
+                 hi_52w: Optional[float], lo_52w: Optional[float],
+                 rvol: Optional[float], rsi_new_extreme: Optional[bool]) -> dict:
+    """52-week / multi-month high-low filter (spec 1C / 2C).
+
+    A LONG near/at the 52-week HIGH (or SHORT near/at the LOW) is allowed only
+    when the breakout confirms: volume >= HI_LO_VOLUME_MULT x its average AND no
+    momentum divergence (RSI making a new extreme with price). A weak breakout
+    (thin volume, or RSI divergence) is downgraded by DIVERGENCE_SCORE_ADJUST
+    points and flagged. `near` drives the tighter stop (1.0x ATR).
+
+    Returns {near, at_extreme, score_adjust, flag}. score_adjust is a signed
+    delta on the 0-100 score (negative cools a LONG, positive cools a SHORT).
+    """
+    long_ = bias == "LONG"
+    extreme = hi_52w if long_ else lo_52w
+    if extreme is None or not price:
+        return {"near": False, "at_extreme": False, "score_adjust": 0.0, "flag": None}
+
+    band = extreme * (cfg.NEAR_52W_PCT / 100.0)
+    near = (price >= extreme - band) if long_ else (price <= extreme + band)
+    at_extreme = (price >= extreme) if long_ else (price <= extreme)
+    if not near:
+        return {"near": False, "at_extreme": False, "score_adjust": 0.0, "flag": None}
+
+    volume_ok = rvol is not None and rvol >= cfg.HI_LO_VOLUME_MULT
+    momentum_ok = rsi_new_extreme is True
+    if volume_ok and momentum_ok:
+        return {"near": True, "at_extreme": at_extreme, "score_adjust": 0.0,
+                "flag": None}
+    # Weak breakout: cool a LONG (exhaustion) / a SHORT (bounce) by 10 points.
+    adjust = -cfg.DIVERGENCE_SCORE_ADJUST if long_ else cfg.DIVERGENCE_SCORE_ADJUST
+    flag = "exhaustion risk" if long_ else "bounce risk"
+    return {"near": True, "at_extreme": at_extreme, "score_adjust": adjust,
+            "flag": flag}
+
+
 def manage(*, bias: str, entry: float, price: float,
            best_price: Optional[float], stop: Optional[float],
            score: Optional[float], atr: Optional[float],

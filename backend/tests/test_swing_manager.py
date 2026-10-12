@@ -64,3 +64,36 @@ def test_short_breakeven_and_trail():
                   stop=103.0, score=35.0, atr=2.0)
     assert r["moved_to_breakeven"] is True
     assert r["stop"] <= 100.0
+
+
+# --- 52-week filter (spec 1C / 2C) ----------------------------------------
+
+def test_strong_breakout_is_allowed_no_penalty():
+    r = sm.hi_lo_filter(bias="LONG", price=101.0, hi_52w=100.0, lo_52w=50.0,
+                        rvol=2.0, rsi_new_extreme=True)
+    assert r["near"] and r["at_extreme"]
+    assert r["score_adjust"] == 0.0 and r["flag"] is None
+
+
+def test_weak_breakout_thin_volume_is_cooled():
+    r = sm.hi_lo_filter(bias="LONG", price=101.0, hi_52w=100.0, lo_52w=50.0,
+                        rvol=0.9, rsi_new_extreme=True)
+    assert r["score_adjust"] == -10.0 and r["flag"] == "exhaustion risk"
+
+
+def test_rsi_divergence_at_high_is_cooled():
+    r = sm.hi_lo_filter(bias="LONG", price=101.0, hi_52w=100.0, lo_52w=50.0,
+                        rvol=2.0, rsi_new_extreme=False)
+    assert r["score_adjust"] == -10.0 and r["flag"] == "exhaustion risk"
+
+
+def test_away_from_extreme_no_effect():
+    r = sm.hi_lo_filter(bias="LONG", price=80.0, hi_52w=100.0, lo_52w=50.0,
+                        rvol=0.5, rsi_new_extreme=False)
+    assert not r["near"] and r["score_adjust"] == 0.0
+
+
+def test_short_near_low_bounce_risk():
+    r = sm.hi_lo_filter(bias="SHORT", price=50.3, hi_52w=100.0, lo_52w=50.0,
+                        rvol=0.8, rsi_new_extreme=True)
+    assert r["near"] and r["score_adjust"] == 10.0 and r["flag"] == "bounce risk"
