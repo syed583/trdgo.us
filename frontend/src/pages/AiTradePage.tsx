@@ -250,6 +250,8 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
 
   // Live swing positions (ATR stop + trailing) and their alert feed.
   const swing = useApi<any>((s) => api2.aiTradeSwing(s), [], { refreshMs: 60000 });
+  const swingMap = new Map<string, any>(
+    (((swing.data?.positions) as any[]) ?? []).map((p) => [p.symbol, p]));
 
   // Hold each card's position steady across the minute-ly re-sort, so the list
   // does not shuffle under the reader while they are looking at it.
@@ -389,13 +391,13 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
           <div className="at2-grid">
             <div className="at2-col">
               <RankTable title="Top Buyers" tone="buy" rows={buyers}
-                changeMap={changeMap} onViewAll={() => setView('log')}
+                changeMap={changeMap} onViewAll={() => setView('log')} swingMap={swingMap}
                 empty="Nothing in the universe cleared the bar on the long side." />
               <NoEdgeCard rows={d.waiting} changeMap={changeMap} />
             </div>
             <div className="at2-col">
               <RankTable title="Top Sellers" tone="sell" rows={sellers}
-                changeMap={changeMap} onViewAll={() => setView('log')}
+                changeMap={changeMap} onViewAll={() => setView('log')} swingMap={swingMap}
                 empty="Nothing in the universe cleared the bar on the short side." />
               <WithheldTable rows={d.held} count={d.held_count}
                 onViewAll={() => setView('log')} />
@@ -571,10 +573,11 @@ function SwingPanel({ data }: { data: any }) {
 }
 
 function RankTable({
-  title, tone, rows, changeMap, empty, onViewAll,
+  title, tone, rows, changeMap, empty, onViewAll, swingMap,
 }: {
   title: string; tone: 'buy' | 'sell'; rows: Row[];
   changeMap: Map<string, Change>; empty: string; onViewAll?: () => void;
+  swingMap?: Map<string, any>;
 }) {
   const navigate = useNavigate();
   return (
@@ -596,7 +599,8 @@ function RankTable({
           <table className="at2-tbl">
             <thead>
               <tr>
-                <th>#</th><th>Symbol</th><th>Signal</th><th>Score</th>
+                <th>#</th><th>Symbol</th><th>Signal</th>
+                <th>Price</th><th>TP</th><th>SL</th><th>Score</th>
                 <th>Confidence</th><th className="at2-spark-col">Last 300</th><th>Time</th><th />
               </tr>
             </thead>
@@ -611,6 +615,16 @@ function RankTable({
                     {r.im_size && <span className={`at2-size${r.im_size === 'FULL SIZE' ? ' full' : ''}`}>
                       {r.im_size === 'FULL SIZE' ? 'FULL' : 'HALF'}</span>}
                   </td>
+                  {(() => {
+                    const sp = swingMap?.get(r.symbol);
+                    const tp = sp?.target ?? r.target;
+                    const sl = sp?.stop ?? r.stop;
+                    return (<>
+                      <td className="at2-px"><b>{r.spot != null ? `$${r.spot.toFixed(2)}` : '—'}</b></td>
+                      <td className="at2-px pos">{tp != null ? `$${tp}` : '—'}</td>
+                      <td className="at2-px neg">{sl != null ? `$${sl}` : '—'}</td>
+                    </>);
+                  })()}
                   <td className={`at2-score ${tone}`}>{r.direction_score == null ? '--' : Math.round(r.direction_score)}</td>
                   <td><ConfBar pct={r.confidence} tone={tone} /></td>
                   <td className="at2-spark-col"><Sparkline tone={tone} seed={r.symbol} /></td>

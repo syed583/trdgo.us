@@ -667,3 +667,5 @@
 .at-swing-alert.warn { color: #d97706; background: rgba(217,119,6,.12); }
 .at-swing-reason { color: var(--text-mute); }
 .at-swing .pos { color: #16a34a; } .at-swing .neg { color: #dc2626; }
+.at2-px { font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 12px; }
+.at2-px.pos { color: #16a34a; } .at2-px.neg { color: #dc2626; }
