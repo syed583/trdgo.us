@@ -1310,6 +1310,36 @@ async def _mark_foreground(request: Request, call_next):
         return await call_next(request)
 
 
+# Origins the browser is allowed to make state-changing requests from. Kept in
+# sync with the CORS allow_origins above (the dev dashboard on :5173/:4173);
+# production is same-origin, which the host check below covers.
+_WRITE_ORIGINS = frozenset({
+    "http://localhost:5173", "http://127.0.0.1:5173",
+    "http://localhost:4173", "http://127.0.0.1:4173",
+})
+
+
+def _csrf_ok(request: Request) -> bool:
+    """CSRF defence-in-depth beyond the SameSite=Lax session cookie.
+
+    A browser always attaches an Origin header to a cross-site state-changing
+    request, so we allow a write only when its Origin is same-origin or one of
+    the known dev origins. A missing Origin (curl, server-to-server, or a
+    same-origin GET that the browser chose not to label) is allowed -- a forged
+    cross-site request cannot suppress its own Origin.
+    """
+    origin = request.headers.get("origin")
+    if not origin:
+        return True
+    if origin in _WRITE_ORIGINS:
+        return True
+    try:
+        from urllib.parse import urlparse
+        return urlparse(origin).hostname == request.url.hostname
+    except Exception:  # noqa: BLE001
+        return False
+
+
 @app.middleware("http")
 async def _gate(request: Request, call_next):
     """
@@ -1319,6 +1349,14 @@ async def _gate(request: Request, call_next):
     protected by default -- forgetting a dependency is exactly how these things
     leak.
     """
+    # Block cross-site writes before anything else touches them.
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and (
+            request.url.path.startswith("/api")
+            or request.url.path.startswith("/market")):
+        if not _csrf_ok(request):
+            return JSONResponse({"detail": "Cross-site request blocked."},
+                                status_code=403)
+
     if auth.enabled() and not auth.is_public_path(request.url.path):
         path = request.url.path
         # Demo mode is a no-account preview built entirely from bundled sample

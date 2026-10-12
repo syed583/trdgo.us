@@ -20,7 +20,8 @@ from typing import Any, Optional
 # limit: a row click that takes a minute is a row click nobody makes twice.
 BRIEF_BUDGET = 20.0
 
-from fastapi import APIRouter, Body, Query, Request
+from fastapi import APIRouter, Body, Query, Request, Response
+from fastapi.routing import APIRoute
 from sqlalchemy import text
 
 import ai_insights_service as insights
@@ -39,7 +40,27 @@ import symbol_service as symbols
 import workspace_service as workspace
 from database import engine
 
-router = APIRouter(prefix="/api", tags=["dashboard"])
+class _SymbolGuardRoute(APIRoute):
+    """Validate a ``{symbol}`` path param before the handler runs, so a crafted
+    ticker (``../``, ``?``, overlong) can never reach a provider URL or a cache
+    key. One guard covers every current and future ``{symbol}`` route instead of
+    a per-route call that is easy to forget. The /symbols/validate route is
+    exempt -- judging raw user input is its whole job. See
+    input_validation.clean_symbol."""
+
+    def get_route_handler(self):
+        original = super().get_route_handler()
+        guard = "{symbol}" in self.path and "/symbols/validate/" not in self.path
+
+        async def handler(request: Request) -> Response:
+            if guard:
+                validate.clean_symbol(request.path_params.get("symbol") or "")
+            return await original(request)
+
+        return handler
+
+
+router = APIRouter(prefix="/api", tags=["dashboard"], route_class=_SymbolGuardRoute)
 
 
 DEFAULT_STRIP = [
