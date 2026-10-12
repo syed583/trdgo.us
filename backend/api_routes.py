@@ -721,6 +721,7 @@ def ai_trade_past_days(days: int = 7) -> dict:
 
     days = max(1, min(int(days or 7), 30))
     out: "OrderedDict[str, dict]" = OrderedDict()
+    import swing_manager as _sm  # TP/SL from the entry via the swing fallback
     try:
         db = SessionLocal()
         try:
@@ -736,10 +737,20 @@ def ai_trade_past_days(days: int = 7) -> dict:
             iso = d.isoformat()
             day = out.setdefault(iso, {"date": iso, "up": [], "down": []})
             dec_u = (dec or "").upper()
+            entry = round(price, 2) if price is not None else None
+            is_buy = "BUY" in dec_u
+            # Historical snapshots store no ATR, so TP/SL come from the swing
+            # percentage fallback off the entry -- the same levels the live
+            # engine would have shown when ATR is unknown.
+            tp = sl = None
+            if entry is not None:
+                bias = "LONG" if is_buy else "SHORT"
+                tp = _sm.target(bias, entry, None)
+                sl = _sm.initial_stop(bias, entry, None)
             item = {"symbol": sym,
                     "score": round(score, 0) if score is not None else None,
-                    "price": round(price, 2) if price is not None else None}
-            if "BUY" in dec_u:
+                    "price": entry, "tp": tp, "sl": sl}
+            if is_buy:
                 day["up"].append(item)
             elif "SELL" in dec_u:
                 day["down"].append(item)

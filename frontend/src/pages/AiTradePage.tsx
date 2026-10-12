@@ -845,6 +845,17 @@ function SignalLog({ horizon, nowBySym = {}, board = [], flipped = [],
     pastDays?: any[]; pastLoading?: boolean }) {
   const resp = useApi<any>((s) => api2.aiTradeSignalLog(horizon, 500, s),
     [horizon], { refreshMs: 60000 });
+  // Current prices for every tracked name (one cached call), so a PAST day can
+  // show where each call stands NOW and its P/L. Merged under the board's live
+  // prices, which win for today's names.
+  const pricesResp = useApi<any>((s) => api2.stocksAll(s), [], { refreshMs: 120000 });
+  const livePrices = useMemo<Record<string, number>>(() => {
+    const m: Record<string, number> = { ...nowBySym };
+    for (const r of (pricesResp.data?.rows || [])) {
+      if (r?.symbol && r.price != null && m[r.symbol] == null) m[r.symbol] = r.price;
+    }
+    return m;
+  }, [pricesResp.data, nowBySym]);
   const [query, setQuery] = useState('');
   // "stock" = one row per stock for the whole day (its current call, entered at
   // what price, where it is now). "changes" = every individual flip.
@@ -978,7 +989,7 @@ function SignalLog({ horizon, nowBySym = {}, board = [], flipped = [],
     >
       {day ? (
         <PastDay up={dayUp} down={dayDown} query={qq} loading={pastLoading}
-          label={dayLabelEt(day)} />
+          label={dayLabelEt(day)} nowBySym={livePrices} />
       ) : resp.initialLoading && src.length === 0 ? (
         <p className="at-note"><Loader2 size={12} className="spin" /> Loading…</p>
       ) : src.length === 0 ? (
@@ -1074,10 +1085,12 @@ function SignalLog({ horizon, nowBySym = {}, board = [], flipped = [],
  *  snapshot only records the call, its score and the price it was captured at
  *  -- there is no live Now/TP/SL/exit history for a past day, so those columns
  *  are not shown here. */
-type PastRow = { symbol: string; score: number | null; price?: number | null };
-function PastDay({ up, down, query, loading, label }:
+type PastRow = { symbol: string; score: number | null; price?: number | null;
+  tp?: number | null; sl?: number | null };
+function PastDay({ up, down, query, loading, label, nowBySym = {} }:
   { up: PastRow[]; down: PastRow[];
-    query: string; loading: boolean; label: string }) {
+    query: string; loading: boolean; label: string;
+    nowBySym?: Record<string, number> }) {
   const f = (xs: PastRow[]) =>
     query ? xs.filter((x) => x.symbol.toUpperCase().includes(query)) : xs;
   const u = f(up), d = f(down);
@@ -1092,9 +1105,10 @@ function PastDay({ up, down, query, loading, label }:
     ...u.map((r) => ({ ...r, call: 'BUY' as const })),
     ...d.map((r) => ({ ...r, call: 'SELL' as const })),
   ];
-  // Same columns and colours as today's "By stock" table. A past day only has
-  // the call and the capture (entry) price recorded; the live-only cells
-  // (Now / Exit / TP / SL / P/L) have no history, so they read "—".
+  // Same columns and colours as today's "By stock" table. A past day records
+  // only the call and the entry price; TP/SL come from the entry (swing
+  // fallback, from the backend) and Now $/P/L from the current live price.
+  // The day never recorded an actual exit, so Exit date stays "—".
   return (
     <div className="at-logwrap">
       <div className="at-pastday-sub">Calls captured on <b>{label}</b></div>
@@ -1107,20 +1121,29 @@ function PastDay({ up, down, query, loading, label }:
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, i) => (
+          {rows.map((r, i) => {
+            const buy = r.call === 'BUY';
+            const now = nowBySym[r.symbol];
+            const raw = (r.price != null && now != null && r.price)
+              ? (now - r.price) / r.price * 100 : null;
+            const pl = raw == null ? null : (buy ? raw : -raw);
+            const plCls = (pl == null || Math.abs(pl) < 0.05) ? 'neu' : pl > 0 ? 'pos' : 'neg';
+            return (
             <tr key={`${r.symbol}-${i}`}>
               <td className="ev-sym">{r.symbol}</td>
-              <td><span className={`ev-badge ${r.call === 'BUY' ? 'pos' : 'neg'}`}>{r.call}</span></td>
+              <td><span className={`ev-badge ${buy ? 'pos' : 'neg'}`}>{r.call}</span></td>
               <td className="ev-time">{label}</td>
               <td className="ev-time">—</td>
               <td className="ev-price">{r.price != null ? `$${r.price}` : '—'}</td>
-              <td className="ev-now">—</td>
+              <td className={`ev-now ${now != null && pl != null ? plCls : ''}`}>{now != null ? `$${now}` : '—'}</td>
               <td className="ev-price">—</td>
-              <td className="pos">—</td>
-              <td className="neg">—</td>
-              <td className="neu">—</td>
+              <td className="pos">{r.tp != null ? `$${r.tp}` : '—'}</td>
+              <td className="neg">{r.sl != null ? `$${r.sl}` : '—'}</td>
+              <td className={plCls}>{pl == null ? '—'
+                : `${pl >= 0 ? '+' : ''}${pl.toFixed(1)}%`}</td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>
