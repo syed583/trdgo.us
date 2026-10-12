@@ -6,7 +6,7 @@ import CountrySelect from './CountrySelect';
 // The Log In / Sign Up card (phone-OTP). `view` is controlled by the parent so
 // the landing hero's "Join Now" can jump straight to Sign Up. All other field
 // state lives here. No Google login; captcha to be added later.
-export type AuthView = 'login' | 'signup' | 'signupVerify' | 'forgot' | 'forgotVerify';
+export type AuthView = 'login' | 'loginVerify' | 'signup' | 'signupVerify' | 'forgot' | 'forgotVerify';
 
 export default function AuthCard({ view, setView }:
   { view: AuthView; setView: (v: AuthView) => void }) {
@@ -33,7 +33,21 @@ export default function AuthCard({ view, setView }:
   const login = async () => {
     if (busy || !phone.trim() || !password) return;
     setBusy(true); setError('');
-    try { await api2.login(fullPhone(), password); window.location.href = '/'; }
+    try {
+      const res = await api2.login(fullPhone(), password);
+      // New device: the backend sent a WhatsApp code and is waiting for it.
+      if (res && res.status === 'MFA_REQUIRED') {
+        setError(''); setCode(''); setView('loginVerify'); setBusy(false);
+        setNotice(res.detail || 'Enter the code sent to your WhatsApp.');
+        return;
+      }
+      window.location.href = '/';
+    } catch (e) { fail(e); }
+  };
+  const completeLoginVerify = async () => {
+    if (busy || !code.trim()) return;
+    setBusy(true); setError('');
+    try { await api2.loginVerify(code.trim()); window.location.href = '/'; }
     catch (e) { fail(e); }
   };
   const sendSignupOtp = async () => {
@@ -93,7 +107,7 @@ export default function AuthCard({ view, setView }:
     </div>
   );
 
-  const isSignup = view !== 'login';
+  const isSignup = view !== 'login' && view !== 'loginVerify';
 
   return (
     <div className="lp-card">
@@ -120,6 +134,25 @@ export default function AuthCard({ view, setView }:
             {busy ? <Loader2 size={16} className="lp-spin" /> : <Lock size={16} />}
             {busy ? 'Logging in…' : 'Log In'}
           </button>
+        </>
+      )}
+
+      {view === 'loginVerify' && (
+        <>
+          <h1 className="lp-title">Verify it's you</h1>
+          <p className="lp-sub">New device — enter the code we sent to your WhatsApp.</p>
+          {notice && <div className="lp-notice">{notice}</div>}
+          <label className="lp-label">Verification code</label>
+          <input className="lp-input" value={code} inputMode="numeric" autoFocus
+            placeholder="6-digit code"
+            onChange={(e) => { setCode(e.target.value); setError(''); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') completeLoginVerify(); }} />
+          {error && <div className="lp-error">{error}</div>}
+          <button className="lp-btn" disabled={busy || !code.trim()} onClick={completeLoginVerify}>
+            {busy ? <Loader2 size={16} className="lp-spin" /> : <Lock size={16} />}
+            {busy ? 'Verifying…' : 'Verify & sign in'}
+          </button>
+          <button className="lp-back" onClick={() => { clearAuth(); go('login'); }}>Back to login</button>
         </>
       )}
 

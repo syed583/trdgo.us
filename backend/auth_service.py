@@ -31,6 +31,15 @@ from fastapi import HTTPException, Request
 COOKIE_NAME = "usr_session"
 SESSION_TTL = 30 * 24 * 3600  # 30 days
 
+# Second-factor (MFA on a new device) cookies. The session payload is exactly
+# three "|"-fields (username|role|expires); these use two and four fields so
+# read_token -- which requires three -- can never accept a trust or a pending
+# token as a real session, nor the reverse. All signed with the same key.
+TRUST_COOKIE = "usr_device"       # "this browser already passed OTP"
+TRUST_TTL = 30 * 24 * 3600        # trust a device for 30 days
+PENDING_COOKIE = "usr_mfa"        # "password ok, awaiting the OTP"
+PENDING_TTL = 300                 # 5 minutes to enter the code
+
 # Paths reachable without a session: the login page itself, the endpoint that
 # checks the password, and the static assets needed to render the form.
 # Exact public paths: reachable with no session because the login screen
@@ -38,6 +47,7 @@ SESSION_TTL = 30 * 24 * 3600  # 30 days
 # also open any future "/health-internal" route by accident.
 PUBLIC_PATHS = frozenset({
     "/auth/login",
+    "/auth/login/verify",  # MFA step two: verify the new-device OTP
     "/auth/otp/request",   # phone signup: request a WhatsApp code
     "/auth/register",      # phone signup: verify code + create account
     "/auth/reset/request", # forgot password: request a WhatsApp code
@@ -164,6 +174,60 @@ def read_token(token: Optional[str]) -> Optional[dict]:
 
 def valid_token(token: Optional[str]) -> bool:
     return read_token(token) is not None
+
+
+# --- MFA: trusted-device + pending-OTP tokens ------------------------------
+# A phone account that logs in from a new browser must pass a WhatsApp OTP; the
+# browser is then "trusted" for 30 days so the code is not asked on every login.
+def issue_trust(username: str) -> str:
+    """A signed 'this device passed OTP' token (two fields: username|expires)."""
+    payload = f"{(username or '').strip().lower()}|{int(time.time()) + TRUST_TTL}"
+    return _sign(payload)
+
+
+def trust_valid(token: Optional[str], username: str) -> bool:
+    """True when `token` is a current trust token issued for `username`."""
+    if not token or "." not in token:
+        return False
+    payload, _, _mac = token.rpartition(".")
+    parts = payload.split("|")
+    if len(parts) != 2:
+        return False
+    who, stamp = parts
+    try:
+        if int(stamp) < time.time():
+            return False
+    except ValueError:
+        return False
+    if not hmac.compare_digest(token, _sign(payload)):
+        return False
+    return who == (username or "").strip().lower()
+
+
+def issue_pending(username: str, role: str) -> str:
+    """Short-lived proof the password already passed (four fields, so it can
+    never be mistaken for a real session). Carries the role for step two."""
+    payload = f"MFA|{(username or '').strip().lower()}|{role}|{int(time.time()) + PENDING_TTL}"
+    return _sign(payload)
+
+
+def pending_claims(token: Optional[str]) -> Optional[dict]:
+    """Return {username, role} from a valid pending token, or None."""
+    if not token or "." not in token:
+        return None
+    payload, _, _mac = token.rpartition(".")
+    parts = payload.split("|")
+    if len(parts) != 4 or parts[0] != "MFA":
+        return None
+    _tag, username, role, stamp = parts
+    try:
+        if int(stamp) < time.time():
+            return None
+    except ValueError:
+        return None
+    if not hmac.compare_digest(token, _sign(payload)):
+        return None
+    return {"username": username, "role": role}
 
 
 def authenticate(username: str, password: str) -> Optional[dict]:

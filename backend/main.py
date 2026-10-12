@@ -1508,25 +1508,59 @@ async def auth_login(request: Request):
         except Exception:  # noqa: BLE001
             pass
 
-    # The tunnel terminates TLS and forwards plain HTTP to us, so the scheme on
-    # this hop is always http -- but the browser sees https and several block a
-    # cookie that lacks Secure on a secure page. Trust the forwarded proto so
-    # the flag matches what the browser actually experienced.
+        # MFA: a phone account signing in from a browser that has not passed the
+        # OTP before must enter a WhatsApp code. A trusted-device cookie (set
+        # after a prior successful OTP) skips the code for 30 days. The admin
+        # (shared ACCESS_PASSWORD, no phone) is exempt.
+        if not auth.trust_valid(request.cookies.get(auth.TRUST_COOKIE),
+                                user["username"]):
+            import otp_service
+            sent = otp_service.request_code(user["username"])  # username == phone
+            detail = (sent.get("detail") if sent.get("status") != "SENT"
+                      else "Enter the code sent to your WhatsApp.")
+            forwarded = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+            over_https = forwarded == "https" or request.url.scheme == "https"
+            resp = JSONResponse({"status": "MFA_REQUIRED",
+                                 "detail": detail or "Enter the code sent to your WhatsApp."})
+            # Short-lived proof the password already passed, so step two cannot
+            # be reached with an OTP alone.
+            resp.set_cookie(auth.PENDING_COOKIE,
+                            auth.issue_pending(user["username"], user["role"]),
+                            max_age=auth.PENDING_TTL, httponly=True,
+                            samesite="lax", secure=over_https, path="/")
+            return resp
+
+    return _login_response(request, user["username"], user["role"])
+
+
+@app.post("/auth/login/verify")
+async def auth_login_verify(request: Request):
+    """Step two of a new-device login: verify the WhatsApp OTP, sign in, and
+    trust this browser for 30 days so the code is not asked again."""
+    client = _client_key(request)
+    wait = auth.login_blocked(client)
+    if wait:
+        return JSONResponse({"detail": f"Too many attempts. Try again in {wait}s."},
+                            status_code=429)
+    claims = auth.pending_claims(request.cookies.get(auth.PENDING_COOKIE))
+    if not claims:
+        return JSONResponse({"detail": "Your login timed out. Please start again."},
+                            status_code=401)
+    body = await _json_body(request)
+    code = str(body.get("code") or "")
+    import otp_service
+    if not otp_service.verify_code(claims["username"], code):
+        auth.note_login_failure(client)
+        return JSONResponse({"detail": "Incorrect or expired code."}, status_code=401)
+    auth.note_login_success(client)
     forwarded = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
     over_https = forwarded == "https" or request.url.scheme == "https"
-
-    response = JSONResponse({"status": "OK", "role": user["role"],
-                            "username": user["username"]})
-    response.set_cookie(
-        auth.COOKIE_NAME,
-        auth.issue_token(user["username"], user["role"]),
-        max_age=auth.SESSION_TTL,
-        httponly=True,      # not readable by page scripts
-        samesite="lax",
-        secure=over_https,
-        path="/",
-    )
-    return response
+    resp = _login_response(request, claims["username"], claims["role"])
+    resp.set_cookie(auth.TRUST_COOKIE, auth.issue_trust(claims["username"]),
+                    max_age=auth.TRUST_TTL, httponly=True, samesite="lax",
+                    secure=over_https, path="/")
+    resp.delete_cookie(auth.PENDING_COOKIE, path="/")
+    return resp
 
 
 async def _json_body(request: Request) -> dict:
