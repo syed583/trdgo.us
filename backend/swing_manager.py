@@ -69,6 +69,17 @@ def hi_lo_filter(*, bias: str, price: float,
             "flag": flag}
 
 
+def target(bias: str, entry: float, atr: Optional[float]) -> float:
+    """A displayed take-profit: TARGET_ATR_MULT x ATR from entry (percent
+    fallback when ATR is unknown). The exit itself is the trailing stop; this is
+    the level the trade is reaching for."""
+    if atr and atr > 0:
+        dist = cfg.TARGET_ATR_MULT * atr
+    else:
+        dist = entry * (cfg.TARGET_ATR_MULT * cfg.STOP_FALLBACK_PCT / 100.0 / cfg.STOP_ATR_MULT)
+    return round(entry + dist if bias == "LONG" else entry - dist, 2)
+
+
 def manage(*, bias: str, entry: float, price: float,
            best_price: Optional[float], stop: Optional[float],
            score: Optional[float], atr: Optional[float],

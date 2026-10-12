@@ -531,7 +531,7 @@ function SwingPanel({ data }: { data: any }) {
         <div className="at-swing-box">
           {positions.length ? (
             <table className="at-swing-tbl">
-              <thead><tr><th>Symbol</th><th>Side</th><th>Entry</th><th>Stop</th><th>Now</th><th>P/L</th><th>Days</th></tr></thead>
+              <thead><tr><th>Symbol</th><th>Side</th><th>Entry</th><th>Now</th><th>TP</th><th>SL</th><th>P/L</th><th>Days</th></tr></thead>
               <tbody>
                 {positions.map((p) => {
                   const g = pl(p);
@@ -540,8 +540,9 @@ function SwingPanel({ data }: { data: any }) {
                       <td><b>{p.symbol}</b>{p.flag ? <em className="at-swing-flag"> {p.flag}</em> : null}</td>
                       <td className={p.bias === 'LONG' ? 'pos' : 'neg'}>{p.bias}</td>
                       <td>${p.entry}</td>
-                      <td>${p.stop}</td>
-                      <td>${p.last_price ?? p.entry}</td>
+                      <td><b>${p.last_price ?? p.entry}</b></td>
+                      <td className="pos">{p.target != null ? `$${p.target}` : '—'}</td>
+                      <td className="neg">${p.stop}</td>
                       <td className={g >= 0 ? 'pos' : 'neg'}>{g >= 0 ? '+' : ''}{g.toFixed(1)}%</td>
                       <td>{p.days_held ?? 0}</td>
                     </tr>

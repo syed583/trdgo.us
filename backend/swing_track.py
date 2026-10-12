@@ -126,8 +126,9 @@ def step(symbol: str, *, decision: Optional[str], price: Optional[float],
                                rsi_new_extreme=rsi_new_extreme)
         near = filt["near"]
         stop = sm.initial_stop(bias, price, atr, near_52w=near)
+        tgt = sm.target(bias, price, atr)
         pos = {"symbol": symbol, "bias": bias, "entry": round(price, 2),
-               "stop": stop, "best_price": round(price, 2),
+               "stop": stop, "target": tgt, "best_price": round(price, 2),
                "last_price": round(price, 2), "atr": atr,
                "near_52w": near, "flag": filt["flag"], "opened_date": today,
                "days_held": 0, "decision": dec}

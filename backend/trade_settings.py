@@ -42,6 +42,7 @@ AVG_VOLUME_LOOKBACK = 20
 STOP_ATR_MULT = 1.5
 STOP_ATR_MULT_NEAR_52W = 1.0
 STOP_FALLBACK_PCT = 2.5      # used when ATR is unavailable
+TARGET_ATR_MULT = 3.0        # displayed take-profit (~2:1 vs the 1.5x stop)
 BREAKEVEN_TRIGGER_ATR = 1.0  # at +1 ATR of profit, move the stop to entry
 TRAIL_ATR_MULT = 1.5
 TRAIL_ATR_MULT_NEAR_52W = 1.0
