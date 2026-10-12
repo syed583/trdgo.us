@@ -864,6 +864,18 @@ function SignalLog({ horizon, nowBySym = {}, board = [], flipped = [],
     ? new Date(ts).toLocaleTimeString('en-GB',
       { timeZone: 'Asia/Dubai', hour: '2-digit', minute: '2-digit', second: '2-digit' })
     : '');
+  // A short date for the Buy/Exit columns -- accepts a ms timestamp (board rows)
+  // or an ISO date string (server exit records).
+  const dateLbl = (v: any): string => {
+    if (v == null || v === '') return '';
+    try {
+      const dt = typeof v === 'number'
+        ? new Date(v)
+        : new Date(String(v).length <= 10 ? `${v}T12:00:00` : String(v));
+      return dt.toLocaleDateString('en-GB',
+        { timeZone: 'Asia/Dubai', month: 'short', day: '2-digit' });
+    } catch { return ''; }
+  };
   const tpOf = (sym: string, fb: any) => swingMap?.get(sym)?.target ?? fb;
   const slOf = (sym: string, fb: any) => swingMap?.get(sym)?.trail_stop ?? swingMap?.get(sym)?.stop ?? fb;
   const called: any[] = (board || [])
@@ -872,7 +884,8 @@ function SignalLog({ horizon, nowBySym = {}, board = [], flipped = [],
       symbol: r.symbol, event: rowDecision(r), was: null as string | null,
       price: r.entry_price, tp: tpOf(r.symbol, r.target), sl: slOf(r.symbol, r.stop),
       time: r.entry_at ? dubai(r.entry_at) : '',
-      buy_score: r.buy_score, sell_score: r.sell_score,
+      buyDate: r.entry_at || null, exitDate: null as any, exitPrice: null as any,
+      alarm: false, buy_score: r.buy_score, sell_score: r.sell_score,
     }));
   // Names that CALLED earlier today (BUY/SELL) and have since gone to NO TRADE:
   // shown here (not on the board) with what they were and where they entered.
@@ -883,7 +896,10 @@ function SignalLog({ horizon, nowBySym = {}, board = [], flipped = [],
       symbol: r.symbol, event: rowDecision(r), was: r.was || null,
       price: r.entry_price, tp: tpOf(r.symbol, r.target), sl: slOf(r.symbol, r.stop),
       time: r.entry_at ? dubai(r.entry_at) : '',
-      buy_score: r.buy_score, sell_score: r.sell_score,
+      buyDate: r.entry_at || null, exitDate: today, exitPrice: null as any,
+      // Was a live BUY/SELL, now squared off to NO TRADE without a recorded
+      // stop/target hit -- the soft exit the user wants flagged.
+      alarm: true, buy_score: r.buy_score, sell_score: r.sell_score,
     }));
   // Positions that EXITED (kept 24h server-side) with their realised P/L.
   const seen = new Set([...called, ...flippedOut].map((e) => e.symbol));
@@ -893,6 +909,10 @@ function SignalLog({ horizon, nowBySym = {}, board = [], flipped = [],
       symbol: c.symbol, event: c.reason || 'EXITED',
       was: c.bias === 'LONG' ? 'BUY' : c.bias === 'SHORT' ? 'SELL' : null,
       price: c.entry, exitPrice: c.exit, tp: c.target, sl: c.stop,
+      buyDate: c.opened_date || null, exitDate: c.closed_at || null,
+      // Exited for any reason other than the trailing stop (score flip / time)
+      // means the stop was never hit -- alarm it.
+      alarm: !!(c.exit_code && c.exit_code !== 'TRAIL'),
       realized: c.pl_pct, exited: true, time: '', buy_score: null, sell_score: null,
     }));
   const perStock: any[] = [...called, ...flippedOut, ...exited]
@@ -963,36 +983,41 @@ function SignalLog({ horizon, nowBySym = {}, board = [], flipped = [],
           <table className="at-logtbl">
             <thead>
               <tr>
-                <th>Symbol</th><th>Call</th><th>Since (Dubai)</th>
-                <th>Entry $</th><th>Now $</th><th>TP</th><th>SL (trail)</th>
-                <th>P/L</th><th>Buy</th><th>Sell</th>
+                <th>Symbol</th><th>Call</th><th>Buy date</th><th>Exit date</th>
+                <th>Entry $</th><th>Now $</th><th>Exit $</th>
+                <th>TP</th><th>SL (trail)</th><th>P/L</th>
               </tr>
             </thead>
             <tbody>
               {events.map((e, i) => {
                 const mv = moveOf(e);
-                // An exited position shows its realised P/L and exit price;
-                // a live one shows the move since entry.
-                const now = e.exited ? e.exitPrice : mv.now;
-                const movePct = e.exited ? e.realized : mv.movePct;
-                const moveCls = (movePct == null || Math.abs(movePct) < 0.05) ? 'neu'
-                  : movePct > 0 ? 'pos' : 'neg';
+                // Now $ is always the live price (coloured by the live move);
+                // P/L is the realised figure once a position has exited, else
+                // the live move since entry.
+                const liveNow = mv.now;
+                const plPct = e.exited ? e.realized : mv.movePct;
+                const nowCls = (mv.movePct == null || Math.abs(mv.movePct) < 0.05) ? 'neu'
+                  : mv.movePct > 0 ? 'pos' : 'neg';
+                const plCls = (plPct == null || Math.abs(plPct) < 0.05) ? 'neu'
+                  : plPct > 0 ? 'pos' : 'neg';
                 return (
-                <tr key={i} className={e.exited ? 'ev-exited' : ''}>
+                <tr key={i} className={`${e.exited ? 'ev-exited' : ''} ${e.alarm ? 'ev-alarm' : ''}`}>
                   <td className="ev-sym">{e.symbol}</td>
                   <td>
                     <span className={`ev-badge ${e.exited ? 'neu' : cls(e.event)}`}>{e.event}</span>
                     {e.was && <span className={`ev-was ${e.was === 'BUY' ? 'pos' : 'neg'}`}>was {e.was}</span>}
+                    {e.alarm && <span className="ev-alarm-badge"
+                      title="Squared off without hitting the stop-loss">⚠ SL not hit</span>}
                   </td>
-                  <td className="ev-time">{e.exited ? 'exited' : e.time}</td>
+                  <td className="ev-time">{dateLbl(e.buyDate) || '—'}</td>
+                  <td className="ev-time">{dateLbl(e.exitDate) || '—'}</td>
                   <td className="ev-price">{e.price != null ? `$${e.price}` : '—'}</td>
-                  <td className={`ev-now ${(now != null && movePct != null) ? moveCls : ''}`}>{now != null ? `$${now}` : '—'}</td>
+                  <td className={`ev-now ${(liveNow != null && mv.movePct != null) ? nowCls : ''}`}>{liveNow != null ? `$${liveNow}` : '—'}</td>
+                  <td className="ev-price">{e.exitPrice != null ? `$${e.exitPrice}` : '—'}</td>
                   <td className="pos">{e.tp != null ? `$${e.tp}` : '—'}</td>
                   <td className="neg">{e.sl != null ? `$${e.sl}` : '—'}</td>
-                  <td className={moveCls}>{movePct == null ? '—'
-                    : `${movePct >= 0 ? '+' : ''}${Number(movePct).toFixed(1)}%`}</td>
-                  <td className="pos">{e.buy_score != null ? Math.round(e.buy_score) : '—'}</td>
-                  <td className="neg">{e.sell_score != null ? Math.round(e.sell_score) : '—'}</td>
+                  <td className={plCls}>{plPct == null ? '—'
+                    : `${plPct >= 0 ? '+' : ''}${Number(plPct).toFixed(1)}%`}</td>
                 </tr>
                 );
               })}
@@ -1005,7 +1030,7 @@ function SignalLog({ horizon, nowBySym = {}, board = [], flipped = [],
             <thead>
               <tr>
                 <th>Time (Dubai)</th><th>Symbol</th><th>Event</th><th>Change</th>
-                <th>Entry $</th><th>Now $</th><th>P/L</th><th>Buy</th><th>Sell</th>
+                <th>Entry $</th><th>Now $</th><th>P/L</th>
               </tr>
             </thead>
             <tbody>
@@ -1023,8 +1048,6 @@ function SignalLog({ horizon, nowBySym = {}, board = [], flipped = [],
                   <td className={`ev-now ${(now != null && movePct != null) ? moveCls : ''}`}>{now != null ? `$${now}` : '—'}</td>
                   <td className={moveCls}>{movePct == null ? '—'
                     : `${movePct >= 0 ? '+' : ''}${movePct.toFixed(1)}%`}</td>
-                  <td className="pos">{e.buy_score != null ? Math.round(e.buy_score) : '—'}</td>
-                  <td className="neg">{e.sell_score != null ? Math.round(e.sell_score) : '—'}</td>
                 </tr>
                 );
               })}
