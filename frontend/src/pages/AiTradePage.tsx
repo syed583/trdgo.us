@@ -1070,13 +1070,15 @@ function SignalLog({ horizon, nowBySym = {}, board = [], flipped = [],
   );
 }
 
-/** A past session's calls: which stocks the model called UP (Buy) and DOWN
- *  (Sell) on the chosen day, from the captured daily snapshots. */
+/** A past session's calls, in the same table as today's log. The daily
+ *  snapshot only records the call, its score and the price it was captured at
+ *  -- there is no live Now/TP/SL/exit history for a past day, so those columns
+ *  are not shown here. */
+type PastRow = { symbol: string; score: number | null; price?: number | null };
 function PastDay({ up, down, query, loading, label }:
-  { up: { symbol: string; score: number | null }[];
-    down: { symbol: string; score: number | null }[];
+  { up: PastRow[]; down: PastRow[];
     query: string; loading: boolean; label: string }) {
-  const f = (xs: { symbol: string; score: number | null }[]) =>
+  const f = (xs: PastRow[]) =>
     query ? xs.filter((x) => x.symbol.toUpperCase().includes(query)) : xs;
   const u = f(up), d = f(down);
   if (loading && up.length === 0 && down.length === 0) {
@@ -1085,31 +1087,29 @@ function PastDay({ up, down, query, loading, label }:
   if (u.length === 0 && d.length === 0) {
     return <p className="at-note">No captured calls for {label}.</p>;
   }
-  const col = (title: string, tone: 'pos' | 'neg',
-    rows: { symbol: string; score: number | null }[]) => (
-    <div className="at-pastday-col">
-      <div className={`at-pastday-h ${tone}`}>
-        {tone === 'pos' ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-        {title} <span className="at-chip">{rows.length}</span>
-      </div>
-      {rows.length === 0 ? <div className="at-note at-empty">None</div> : (
-        <div className="at-pastday-list">
-          {rows.map((r) => (
-            <span key={r.symbol} className={`at-pastday-chip ${tone}`}>
-              <b>{r.symbol}</b>{r.score != null && <em>{Math.round(r.score)}</em>}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  // BUY calls first, then SELL; each side alphabetical.
+  const rows = [
+    ...u.map((r) => ({ ...r, call: 'BUY' as const })),
+    ...d.map((r) => ({ ...r, call: 'SELL' as const })),
+  ];
   return (
-    <div className="at-pastday">
+    <div className="at-logwrap">
       <div className="at-pastday-sub">Calls captured on <b>{label}</b></div>
-      <div className="at-pastday-cols">
-        {col('Up · Buy', 'pos', u)}
-        {col('Down · Sell', 'neg', d)}
-      </div>
+      <table className="at-logtbl">
+        <thead>
+          <tr><th>Symbol</th><th>Call</th><th>Score</th><th>Price $</th></tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={`${r.symbol}-${i}`}>
+              <td className="ev-sym">{r.symbol}</td>
+              <td><span className={`ev-badge ${r.call === 'BUY' ? 'pos' : 'neg'}`}>{r.call}</span></td>
+              <td className={r.call === 'BUY' ? 'pos' : 'neg'}>{r.score != null ? Math.round(r.score) : '—'}</td>
+              <td className="ev-price">{r.price != null ? `$${r.price}` : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
