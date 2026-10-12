@@ -527,9 +527,10 @@
 /* Secondary row: No-edge and Withheld, below. */
 .at2-grid-sub { margin-top: 14px; }
 .at2-grid-sub .at2-col > .at2-card { flex: 0 0 auto; min-height: 0; max-height: none; }
-/* On the board, the tables flow to full height and the page scrolls, rather
-   than each small box scrolling on its own. */
-.page.at-board .at2-tblwrap { overflow: visible; max-height: none; }
+/* On the board the cards grow to their full height (the page scrolls for the
+   rows); each wide table is kept INSIDE its half-width card and scrolls
+   sideways, rather than spilling its extra columns over the next card. */
+.page.at-board .at2-tblwrap { overflow-x: auto; overflow-y: visible; max-height: none; }
 @media (max-width: 1050px) {
   .at2-stats { grid-template-columns: repeat(2, 1fr); }
   .at2-minibars { display: block; }
