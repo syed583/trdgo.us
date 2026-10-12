@@ -287,3 +287,26 @@ def test_a_marginal_score_is_withheld_even_with_good_coverage():
 
     assert result["lean"] == "WAIT"
     assert result["decision"] == dm.NO_TRADE
+
+
+# --------------------------------------------------------------------------
+# SELL is reachable (Oct 2026 spec item 9)
+# --------------------------------------------------------------------------
+
+
+def test_sell_is_reachable_on_broadly_bearish_input():
+    """The Oct-2026 fix requires that a broadly bearish read can actually fall
+    to <= 40 and surface a SELL -- the bug was that it never did."""
+    bearish = [_signal(n, -0.9) for n in dm.WEIGHTS
+               if n not in dm.NON_DIRECTIONAL]
+    result = dm.score_direction(bearish)
+
+    assert result["direction_score"] <= 40.0
+    assert result["decision"] in ("SELL", "STRONG SELL")
+    assert result["actionable"] is True
+
+
+def test_strong_sell_needs_a_deeply_bearish_read():
+    deep = [_signal(n, -1.0) for n in dm.WEIGHTS
+            if n not in dm.NON_DIRECTIONAL]
+    assert dm.score_direction(deep)["decision"] == "STRONG SELL"
