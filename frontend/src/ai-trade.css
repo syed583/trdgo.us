@@ -639,3 +639,9 @@
 .at-logtbl .ev-now { font-weight: 700; }
 .at-logtbl td.ev-now.pos { color: var(--green); }
 .at-logtbl td.ev-now.neg { color: var(--red); }
+
+/* End-of-day banner: TODAY board is showing the day's held calls after close */
+.at-eod-banner { display: flex; align-items: center; gap: 8px; margin: 0 0 10px;
+  padding: 7px 12px; font-size: 12.5px; font-weight: 600;
+  color: #854f0b; background: rgba(217,119,6,.10);
+  border: 1px solid rgba(217,119,6,.3); border-radius: 8px; }

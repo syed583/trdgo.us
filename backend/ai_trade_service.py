@@ -118,6 +118,14 @@ _STATE = Path(__file__).parent / ".cache" / "ai_trade_rows.json"
 # has pointed somewhere harmless.
 _DEFAULT_STATE = _STATE
 
+# The TODAY board is a live intraday read, so once the session closes the
+# rules-engine stops calling names and both columns empty out. Traders still
+# want to see what the model called during the day, so the last non-empty set
+# of TODAY buyers/sellers is held per ET date and shown after the close until
+# the date rolls over at midnight ET (then the new day starts clean).
+_HOLD = Path(__file__).parent / ".cache" / "ai_trade_today_hold.json"
+_TODAY_HOLD: dict = {}  # {"date": "YYYY-MM-DD", "buyers": [...], "sellers": [...]}
+
 
 def _save_rows() -> None:
     # Never write the real board from a test run. A scan with a fixture
@@ -166,6 +174,65 @@ def _load_rows() -> None:
         _CURSOR = int(payload.get("cursor") or 0) % max(len(UNIVERSE), 1)
     except Exception:  # noqa: BLE001 - a bad file must not stop the server
         pass
+    _load_hold()
+
+
+def _et_date() -> str:
+    """Today's date in US market time (ET). The TODAY hold is keyed on this so
+    it clears when the trading day rolls over, not on the server's local day."""
+    from datetime import datetime
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+    except Exception:  # noqa: BLE001 - no tzdata: approximate ET as UTC-4
+        from datetime import timezone, timedelta
+        return (datetime.now(timezone.utc) - timedelta(hours=4)).strftime("%Y-%m-%d")
+
+
+def _save_hold() -> None:
+    if os.environ.get("PYTEST_CURRENT_TEST") and _STATE == _DEFAULT_STATE:
+        return
+    try:
+        _HOLD.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=str(_HOLD.parent), suffix=".tmp")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(dict(_TODAY_HOLD), fh)
+        os.replace(tmp, _HOLD)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _load_hold() -> None:
+    try:
+        if _HOLD.is_file():
+            data = json.loads(_HOLD.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                _TODAY_HOLD.clear()
+                _TODAY_HOLD.update(data)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _hold_board(limit: int) -> Optional[dict]:
+    """A board built from today's held TODAY calls, or None when there is no
+    hold for the current ET date."""
+    if _TODAY_HOLD.get("date") != _et_date():
+        return None
+    buyers = list(_TODAY_HOLD.get("buyers") or [])
+    sellers = list(_TODAY_HOLD.get("sellers") or [])
+    if not buyers and not sellers:
+        return None
+    return {
+        "status": "OK", "horizon": "TODAY", "building": False, "held_eod": True,
+        "buyers": buyers[:limit], "sellers": sellers[:limit],
+        "waiting": [], "held": [], "universe": len(UNIVERSE),
+        "scored": len(buyers) + len(sellers), "pending": [],
+        "buy_count": len(buyers), "sell_count": len(sellers), "held_count": 0,
+        "youngest_seconds": None, "oldest_seconds": None, "elapsed_seconds": 0.0,
+        "ttl_seconds": int(ROW_TTL),
+        "note": "Today's session is closed — showing the calls the model made "
+                "during the day. These clear at midnight ET.",
+    }
 
 
 def _key(symbol: str, horizon: str) -> str:
@@ -555,6 +622,12 @@ def get_board(limit: int = TOP_N, refresh: bool = False,
 
     if (horizon == "TODAY" and not _fresh_rows(horizon)
             and "TODAY" not in _horizons_now()):
+        # Session is over and nothing is scored live -- but if the model made
+        # calls earlier today, show that held set (clears at midnight ET)
+        # instead of an empty board.
+        hold = _hold_board(limit)
+        if hold is not None:
+            return hold
         # Today is only scored during the session, so outside it there is
         # nothing coming -- say so instead of spinning until the bell.
         clock = market_clock() or {}
@@ -717,12 +790,30 @@ def _compose(limit: int = TOP_N, building: bool = False,
         buyers = [r for r in admitted if r.get("im_side") == "buy"]
         sellers = [r for r in admitted if r.get("im_side") == "sell"]
 
+    # TODAY persistence: while the session produces calls, keep the latest
+    # non-empty set as "today's calls". Once it empties out (session closed),
+    # show that held set instead of a blank board, until midnight ET.
+    held_eod = False
+    if horizon == "TODAY":
+        today = _et_date()
+        if buyers or sellers:
+            _TODAY_HOLD.clear()
+            _TODAY_HOLD.update({"date": today, "buyers": buyers[:limit],
+                                "sellers": sellers[:limit]})
+            _save_hold()
+        elif (_TODAY_HOLD.get("date") == today
+              and (_TODAY_HOLD.get("buyers") or _TODAY_HOLD.get("sellers"))):
+            buyers = list(_TODAY_HOLD.get("buyers") or [])
+            sellers = list(_TODAY_HOLD.get("sellers") or [])
+            held_eod = True
+
     ages = [r.get("age_seconds") or 0 for r in scored]
 
     return {
-        "status": "OK" if scored else "BUILDING",
+        "status": "OK" if (scored or held_eod) else "BUILDING",
         "horizon": horizon,
         "building": building or _BUILDING.locked(),
+        "held_eod": held_eod,
         "buyers": buyers[:limit],
         "sellers": sellers[:limit],
         "waiting": sorted(waiting, key=lambda r: abs(r.get("lean") or 0.0),

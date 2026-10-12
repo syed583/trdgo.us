@@ -203,6 +203,7 @@ interface Board {
   elapsed_seconds: number;
   note: string;
   building?: boolean;
+  held_eod?: boolean;
   youngest_seconds: number | null;
   oldest_seconds: number | null;
 }
@@ -344,6 +345,12 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
 
       {d && d.status !== 'BUILDING' && d.status !== 'SESSION_CLOSED' && (
         <>
+          {d.held_eod && (
+            <div className="at-eod-banner">
+              <Clock size={15} />
+              <span>Market closed — showing today's calls. These stay until midnight ET.</span>
+            </div>
+          )}
           <div className="at2-stats">
             <StatCard icon={<TrendingUp size={18} />} label="BUY-RATED"
               value={d.buy_count} tone="buy" sub="model calls a long side" />
