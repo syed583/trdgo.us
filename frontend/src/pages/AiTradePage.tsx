@@ -600,7 +600,7 @@ function RankTable({
             <thead>
               <tr>
                 <th>#</th><th>Symbol</th><th>Signal</th>
-                <th>Price</th><th>TP</th><th>SL</th><th>Score</th>
+                <th>Price</th><th>Entry</th><th>TP</th><th>SL</th><th>Score</th>
                 <th>Confidence</th><th className="at2-spark-col">Last 300</th><th>Time</th><th />
               </tr>
             </thead>
@@ -619,8 +619,12 @@ function RankTable({
                     const sp = swingMap?.get(r.symbol);
                     const tp = sp?.target ?? r.target;
                     const sl = sp?.stop ?? r.stop;
+                    // Where to execute: the open position's entry, else the
+                    // entry level the call was given at, else the live price.
+                    const entry = sp?.entry ?? r.entry_price ?? r.spot;
                     return (<>
                       <td className="at2-px"><b>{r.spot != null ? `$${r.spot.toFixed(2)}` : '—'}</b></td>
+                      <td className="at2-px">{entry != null ? `$${Number(entry).toFixed(2)}` : '—'}</td>
                       <td className="at2-px pos">{tp != null ? `$${tp}` : '—'}</td>
                       <td className="at2-px neg">{sl != null ? `$${sl}` : '—'}</td>
                     </>);
