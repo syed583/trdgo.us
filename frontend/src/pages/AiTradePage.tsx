@@ -908,13 +908,15 @@ function SignalLog({ horizon, nowBySym = {}, board = [], flipped = [],
     const e = (ev || '').toUpperCase();
     return e.includes('BUY') ? 'pos' : e.includes('SELL') ? 'neg' : 'neu';
   };
-  // Move since the call came in; a SELL gains when price drops, so flip the sign.
+  // Move since the call came in; a SELL gains when price drops, so flip the
+  // sign. The side is the live call, or -- once a name has gone NO TRADE -- what
+  // it WAS, so the P/L and the green/red live price keep reading correctly.
   const moveOf = (e: any) => {
     const now = nowBySym[e.symbol];
-    const ev = (e.event || '').toUpperCase();
+    const side = `${e.event || ''} ${e.was || ''}`.toUpperCase();
     if (e.price == null || now == null || !e.price) return { now, movePct: null as number | null };
     const raw = (now - e.price) / e.price * 100;
-    return { now, movePct: ev.includes('SELL') ? -raw : ev.includes('BUY') ? raw : null };
+    return { now, movePct: side.includes('SELL') ? -raw : side.includes('BUY') ? raw : null };
   };
   return (
     <Panel
