@@ -737,9 +737,11 @@ def _maybe_run_swing(buyers: list, sellers: list) -> None:
 
 
 def swing_board() -> dict:
-    """Open swing positions + the recent alert feed, for the Trdgo Stock page."""
+    """Open swing positions (with trailing stop, TP, live P/L), exited positions
+    from the last 24h (with realised P/L), and the recent alert feed."""
     import swing_track as swing
-    return {"positions": swing.positions(), "events": swing.recent_events(80)}
+    return {"positions": swing.positions(), "events": swing.recent_events(80),
+            "closed": swing.recent_closed(100)}
 
 
 def _build(limit: int) -> dict:

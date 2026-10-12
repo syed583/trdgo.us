@@ -25,6 +25,20 @@ _LOCK = threading.Lock()
 _POSITIONS: dict = {}       # symbol -> position dict
 _EVENTS: list = []          # most-recent-first alert feed
 _EVENTS_CAP = 300
+_CLOSED: list = []          # positions that exited, with realised P/L
+_CLOSED_TTL = 24 * 3600     # keep exit records for 24h, then drop them
+_CLOSED_CAP = 400
+
+
+def _pl_pct(bias: str, entry: float, price: float) -> Optional[float]:
+    if not entry:
+        return None
+    g = (price - entry) if bias == "LONG" else (entry - price)
+    return round(g / entry * 100, 2)
+
+
+def _prune_closed(now: float) -> None:
+    _CLOSED[:] = [c for c in _CLOSED if now - (c.get("closed_ts") or 0) < _CLOSED_TTL][:_CLOSED_CAP]
 
 
 def _save() -> None:
@@ -35,7 +49,8 @@ def _save() -> None:
         _STORE.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=str(_STORE.parent), suffix=".tmp")
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump({"positions": _POSITIONS, "events": _EVENTS[:_EVENTS_CAP]}, fh)
+            json.dump({"positions": _POSITIONS, "events": _EVENTS[:_EVENTS_CAP],
+                       "closed": _CLOSED[:_CLOSED_CAP]}, fh)
         os.replace(tmp, _STORE)
     except Exception:  # noqa: BLE001
         pass
@@ -50,6 +65,9 @@ def load() -> None:
                 _POSITIONS.update(data.get("positions") or {})
                 _EVENTS.clear()
                 _EVENTS.extend(data.get("events") or [])
+                _CLOSED.clear()
+                _CLOSED.extend(data.get("closed") or [])
+                _prune_closed(__import__("time").time())
     except Exception:  # noqa: BLE001
         pass
 
@@ -108,7 +126,16 @@ def step(symbol: str, *, decision: Optional[str], price: Optional[float],
             pos["stop"] = r["stop"]
             pos["days_held"] = days
             if r["exit"]:
+                import time as _t
                 _emit(symbol, pos["bias"], r["alert"], r["reason"] or "", price)
+                _prune_closed(_t.time())
+                _CLOSED.insert(0, {
+                    "symbol": symbol, "bias": pos["bias"], "entry": pos["entry"],
+                    "exit": round(price, 2), "target": pos.get("target"),
+                    "stop": pos.get("stop"), "pl_pct": _pl_pct(pos["bias"], pos["entry"], price),
+                    "reason": r["alert"], "exit_code": r["exit"],
+                    "opened_date": pos.get("opened_date"),
+                    "closed_at": date.today().isoformat(), "closed_ts": _t.time()})
                 _POSITIONS.pop(symbol, None)
                 _save()
                 return None
@@ -144,9 +171,25 @@ def step(symbol: str, *, decision: Optional[str], price: Optional[float],
 
 def positions() -> list:
     with _LOCK:
-        return list(_POSITIONS.values())
+        out = []
+        for p in _POSITIONS.values():
+            q = dict(p)
+            q["pl_pct"] = _pl_pct(p["bias"], p.get("entry"),
+                                  p.get("last_price") or p.get("entry"))
+            # `stop` is the trailing stop -- surface it under a clear name too.
+            q["trail_stop"] = p.get("stop")
+            out.append(q)
+        return out
 
 
 def recent_events(limit: int = 60) -> list:
     with _LOCK:
         return _EVENTS[:limit]
+
+
+def recent_closed(limit: int = 100) -> list:
+    """Positions that exited in the last 24h, with realised P/L (then dropped)."""
+    import time as _t
+    with _LOCK:
+        _prune_closed(_t.time())
+        return _CLOSED[:limit]

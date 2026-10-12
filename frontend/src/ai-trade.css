@@ -671,3 +671,5 @@
 .at2-px.pos { color: #16a34a; } .at2-px.neg { color: #dc2626; }
 .ev-was { margin-left: 6px; font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 999px; background: var(--bg-2); }
 .ev-was.pos { color: #16a34a; } .ev-was.neg { color: #dc2626; }
+.at-logtbl tr.ev-exited { opacity: .85; }
+.at-logtbl tr.ev-exited .ev-badge { font-size: 9px; }
