@@ -351,13 +351,14 @@ def _decision(score: float) -> str:
     that says BUY or SELL every day is not reading the market -- it is
     reading its own thresholds.
     """
-    if score >= 70:
+    import trade_settings as cfg
+    if score >= cfg.STRONG_BUY_SCORE_MIN:
         return "STRONG BUY"
-    if score >= 58:
+    if score >= cfg.BUY_SCORE_MIN:
         return "BUY"
-    if score <= 30:
+    if score <= cfg.STRONG_SELL_SCORE_MAX:
         return "STRONG SELL"
-    if score <= 42:
+    if score <= cfg.SELL_SCORE_MAX:
         return "SELL"
     return "WAIT"
 

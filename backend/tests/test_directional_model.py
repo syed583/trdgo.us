@@ -107,8 +107,12 @@ def test_the_neutral_band_is_wide_enough_to_say_wait():
     """
     assert dm._decision(52) == "WAIT"
     assert dm._decision(45) == "WAIT"
-    assert dm._decision(58) == "BUY"
-    assert dm._decision(42) == "SELL"
+    # Spec (Oct 2026): BUY needs >= 60, SELL needs <= 40; the old 58/42 edges
+    # are now inside the neutral band.
+    assert dm._decision(58) == "WAIT"
+    assert dm._decision(60) == "BUY"
+    assert dm._decision(42) == "WAIT"
+    assert dm._decision(40) == "SELL"
 
 
 # --------------------------------------------------------------------------

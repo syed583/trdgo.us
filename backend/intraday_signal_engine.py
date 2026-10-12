@@ -138,6 +138,7 @@ class Gates:
     qqq_above_vwap: Optional[bool] = None
     rvol: Optional[float] = None
     or_low: Optional[float] = None          # opening-range (first 15 min) low
+    or_high: Optional[float] = None         # opening-range (first 15 min) high
 
     # --- derived ---
     @property
@@ -161,6 +162,10 @@ class Gates:
             fails.append("SPY not above VWAP")
         if self.qqq_above_vwap is not True:
             fails.append("QQQ not above VWAP")
+        # A BUY must break the opening-range HIGH (mirror of the SELL OR-low
+        # rule) so the entry confirms the breakout instead of firing on noise.
+        if self.or_high is None or self.price is None or not (self.price > self.or_high):
+            fails.append("price not above opening-range high" if self.or_high is not None else "no opening range yet")
         if self.rvol is None or self.rvol < RVOL_MIN:
             fails.append(f"RVOL < {RVOL_MIN}" if self.rvol is not None else "no RVOL yet")
         return (not fails, fails)

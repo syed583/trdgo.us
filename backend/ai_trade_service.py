@@ -422,6 +422,7 @@ def _apply_intraday_engine(symbol: str, horizon: str, signals: list, ev: dict) -
             price=price, vwap=vwap,
             spy_above_vwap=spy_above, qqq_above_vwap=qqq_above,
             rvol=rv.get("relative_volume"), or_low=orn.get("or_low"),
+            or_high=orn.get("or_high"),
         )
 
         prev = store.get(horizon, symbol)
