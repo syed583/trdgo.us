@@ -771,6 +771,13 @@ def ai_trade_signal_audit_csv(horizon: Optional[str] = None):
         headers={"Content-Disposition": f"attachment; filename=signal_audit_{hz or 'all'}.csv"})
 
 
+@router.get("/ai-trade/swing")
+def ai_trade_swing() -> dict:
+    """Open swing positions (ATR stop + trailing) and the recent alert feed."""
+    import ai_trade_service as board
+    return swr.serve("ai-trade:swing", board.swing_board, 20.0)
+
+
 @router.get("/ai-trade/board")
 def ai_trade_board(limit: int = 10, refresh: bool = False,
                    horizon: Optional[str] = None) -> dict:

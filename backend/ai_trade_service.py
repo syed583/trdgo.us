@@ -175,6 +175,11 @@ def _load_rows() -> None:
     except Exception:  # noqa: BLE001 - a bad file must not stop the server
         pass
     _load_hold()
+    try:
+        import swing_track as swing
+        swing.load()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _et_date() -> str:
@@ -654,7 +659,87 @@ def get_board(limit: int = TOP_N, refresh: bool = False,
         reply["horizon"] = horizon
         return reply
 
-    return _compose(limit, building=_BUILDING.locked(), horizon=horizon)
+    out = _compose(limit, building=_BUILDING.locked(), horizon=horizon)
+    if horizon == "SWING":
+        _maybe_run_swing(out.get("buyers") or [], out.get("sellers") or [])
+    return out
+
+
+# --------------------------------------------------------------------------
+# Swing/positional track (Oct 2026 spec). Enters on the directional BUY/SELL
+# call and manages each name as a multi-day position (ATR stop + trailing +
+# score/time exit) via swing_manager / swing_track. Runs in the background off
+# the SWING board, at most once per ~50s, so it never blocks a request.
+# --------------------------------------------------------------------------
+_SWING_LAST = 0.0
+
+
+def _swing_inputs(symbol: str, price: Optional[float]) -> dict:
+    try:
+        import live_market_service as market
+        import trade_plan_service as tp
+        import technical_service as tech
+        bars = ((market.get_chart(symbol, "1Y") or {}).get("bars")) or []
+        if len(bars) < 20:
+            return {}
+        atr = tp._atr([{"high": b["high"], "low": b["low"], "close": b["close"]}
+                       for b in bars])
+        vols = [b.get("volume") or 0 for b in bars]
+        avg20 = (sum(vols[-20:]) / 20) if (len(vols) >= 20 and sum(vols[-20:])) else None
+        rvol = (vols[-1] / avg20) if (avg20 and vols[-1]) else None
+        rsi = tech.calculate_rsi([b["close"] for b in bars], 14)
+        return {"atr": atr, "hi_52w": max(b["high"] for b in bars),
+                "lo_52w": min(b["low"] for b in bars), "rvol": rvol, "rsi": rsi}
+    except Exception:  # noqa: BLE001 - a data gap must never break the board
+        return {}
+
+
+def _run_swing(rows: list) -> None:
+    import swing_track as swing
+    import live_market_service as market
+    by_sym = {r.get("symbol"): r for r in rows if r.get("symbol")}
+    symbols = set(by_sym) | {p["symbol"] for p in swing.positions()}
+    for sym in symbols:
+        try:
+            r = by_sym.get(sym, {})
+            price = r.get("price")
+            if price is None:
+                price = (market.get_quote(sym) or {}).get("price")
+            if not price:
+                continue
+            dec = r.get("im_decision") or r.get("decision")
+            ins = _swing_inputs(sym, price)
+            rsi, bias = ins.get("rsi"), None
+            d = (dec or "").upper()
+            if "BUY" in d:
+                bias = "LONG"
+            elif "SELL" in d:
+                bias = "SELL"
+            rsi_new = None
+            if rsi is not None and bias:
+                rsi_new = rsi >= 55 if bias == "LONG" else rsi <= 45
+            swing.step(sym, decision=dec, price=price,
+                       score=r.get("direction_score"), atr=ins.get("atr"),
+                       hi_52w=ins.get("hi_52w"), lo_52w=ins.get("lo_52w"),
+                       rvol=ins.get("rvol"), rsi_new_extreme=rsi_new)
+        except Exception:  # noqa: BLE001
+            continue
+
+
+def _maybe_run_swing(buyers: list, sellers: list) -> None:
+    global _SWING_LAST
+    if time.time() - _SWING_LAST < 50:
+        return
+    _SWING_LAST = time.time()
+    rows = list(buyers) + list(sellers)
+    threading.Thread(target=lambda: _run_swing(rows), daemon=True,
+                     name="swing-track").start()
+
+
+def swing_board() -> dict:
+    """Open swing positions + the recent alert feed, for the Trdgo Stock page."""
+    import swing_track as swing
+    return {"positions": swing.positions(), "events": swing.recent_events(80)}
 
 
 def _build(limit: int) -> dict:
