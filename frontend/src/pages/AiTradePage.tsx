@@ -1,8 +1,8 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowRight, Clock, Equal, Inbox, Loader2, PauseCircle, RefreshCw, ShieldAlert,
-  TrendingDown, TrendingUp, X,
+  ArrowRight, Clock, Equal, Inbox, Loader2, Maximize2, Minimize2, PauseCircle,
+  RefreshCw, ShieldAlert, TrendingDown, TrendingUp, X,
 } from 'lucide-react';
 import type { PageContext } from '../App';
 import { Panel } from '../components/common';
@@ -626,8 +626,16 @@ function RankTable({
   swingMap?: Map<string, any>;
 }) {
   const navigate = useNavigate();
+  const [full, setFull] = useState(false);
+  // Esc closes the full-screen view.
+  useEffect(() => {
+    if (!full) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setFull(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [full]);
   return (
-    <div className="at2-card">
+    <div className={`at2-card${full ? ' at2-card-full' : ''}`}>
       <div className="at2-card-h">
         <span className={`at2-card-ic ${tone}`}>
           {tone === 'buy' ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
@@ -637,6 +645,11 @@ function RankTable({
         {onViewAll && (
           <button className="at2-viewall" onClick={onViewAll}>View All <ArrowRight size={13} /></button>
         )}
+        <button className="at2-fsbtn" onClick={() => setFull((v) => !v)}
+          title={full ? 'Exit full screen (Esc)' : 'Full screen'}
+          aria-label={full ? 'Exit full screen' : 'Full screen'}>
+          {full ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+        </button>
       </div>
       {rows.length === 0 ? (
         <p className="at-note at-empty">{empty}</p>

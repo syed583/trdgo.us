@@ -555,6 +555,17 @@
   background: none; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700;
   color: var(--blue); padding: 2px 4px; white-space: nowrap; }
 .at2-viewall:hover { text-decoration: underline; }
+/* Full-screen toggle on a card header. */
+.at2-fsbtn { display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: none; cursor: pointer; color: var(--text-mute);
+  padding: 4px; border-radius: 6px; flex: 0 0 auto; }
+.at2-fsbtn:hover { background: var(--panel-2); color: var(--text); }
+/* A card popped out to (near) full screen; its table fills it and scrolls. */
+.at2-card.at2-card-full { position: fixed; inset: 16px; z-index: 1000; margin: 0;
+  min-height: 0; max-height: none; overflow: hidden;
+  display: flex; flex-direction: column;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, .28); }
+.at2-card.at2-card-full .at2-tblwrap { flex: 1 1 auto; overflow: auto; min-height: 0; }
 
 /* Tables -- the list body scrolls inside the card, header stays pinned. */
 .at2-tblwrap { overflow-x: hidden; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
