@@ -525,14 +525,14 @@
 .at-chgchip { flex: 0 0 auto; }
 .at2-col { flex: 1; min-width: 0; min-height: 0; display: flex;
   flex-direction: column; gap: 16px; }
-.at2-col:first-child { flex: 1.15; }
 .at2-card { display: flex; flex-direction: column; min-height: 0; }
-/* Top Buyers (left) and Withheld (right) grow and scroll inside; the short
-   No-edge / Top Sellers cards stay their natural size. */
-.at2-col:first-child > .at2-card:first-child { flex: 1 1 auto; }
-.at2-col:first-child > .at2-card:last-child { flex: 0 0 auto; max-height: 34%; }
-.at2-col:last-child > .at2-card:first-child { flex: 0 0 auto; max-height: 45%; }
-.at2-col:last-child > .at2-card:last-child { flex: 1 1 auto; min-height: 120px; }
+/* Main row: Top Buyers (left half) and Top Sellers (right half), equal and
+   big -- each grows to fill the screen and scrolls inside. */
+.at2-grid-main { flex: 1 1 auto; min-height: 0; }
+.at2-grid-main .at2-col > .at2-card { flex: 1 1 auto; min-height: 0; max-height: none; }
+/* Secondary row: No-edge and Withheld, below, in a shorter band. */
+.at2-grid-sub { flex: 0 0 auto; max-height: 34vh; margin-top: 14px; }
+.at2-grid-sub .at2-col > .at2-card { flex: 1 1 auto; min-height: 0; max-height: none; }
 @media (max-width: 1050px) {
   .at2-stats { grid-template-columns: repeat(2, 1fr); }
   .at2-minibars { display: block; }

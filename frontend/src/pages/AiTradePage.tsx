@@ -426,17 +426,25 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
 
           <ChangedBanner changes={changes} />
 
-          <div className="at2-grid">
+          {/* Two big half-screen columns: Buyers (left), Sellers (right). */}
+          <div className="at2-grid at2-grid-main">
             <div className="at2-col">
               <RankTable title="Top Buyers" tone="buy" rows={buyers}
                 changeMap={changeMap} onViewAll={() => setView('log')} swingMap={swingMap}
                 empty="Nothing in the universe cleared the bar on the long side." />
-              <NoEdgeCard rows={d.waiting} changeMap={changeMap} />
             </div>
             <div className="at2-col">
               <RankTable title="Top Sellers" tone="sell" rows={sellers}
                 changeMap={changeMap} onViewAll={() => setView('log')} swingMap={swingMap}
                 empty="Nothing in the universe cleared the bar on the short side." />
+            </div>
+          </div>
+          {/* Secondary row below: No-edge and Withheld. */}
+          <div className="at2-grid at2-grid-sub">
+            <div className="at2-col">
+              <NoEdgeCard rows={d.waiting} changeMap={changeMap} />
+            </div>
+            <div className="at2-col">
               <WithheldTable rows={d.held} count={d.held_count}
                 onViewAll={() => setView('log')} />
             </div>
