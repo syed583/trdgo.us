@@ -60,7 +60,7 @@ UNIVERSE: list[str] = [
 # recomposed from live scores on every request. This is the pause between
 # background scan passes: short, because the page polls every minute and a
 # ranking that never changes between polls is not worth polling.
-SCAN_PAUSE = 20.0
+SCAN_PAUSE = 45.0
 
 # A whole-market scan runs long. This is the ceiling on the whole board, not
 # per symbol: whatever has finished when it expires is what gets returned,
