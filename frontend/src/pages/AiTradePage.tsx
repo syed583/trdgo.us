@@ -973,7 +973,10 @@ function SignalLog({ horizon, nowBySym = {}, board = [], flipped = [],
   // sign. The side is the live call, or -- once a name has gone NO TRADE -- what
   // it WAS, so the P/L and the green/red live price keep reading correctly.
   const moveOf = (e: any) => {
-    const now = nowBySym[e.symbol];
+    // Use the merged price map (board + stocks/all) so a name that has flipped
+    // out of the live columns, or isn't in today's scored set, still shows a
+    // Now $ and P/L instead of a blank.
+    const now = livePrices[e.symbol];
     const side = `${e.event || ''} ${e.was || ''}`.toUpperCase();
     if (e.price == null || now == null || !e.price) return { now, movePct: null as number | null };
     const raw = (now - e.price) / e.price * 100;
