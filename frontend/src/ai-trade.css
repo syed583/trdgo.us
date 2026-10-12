@@ -83,7 +83,7 @@
 /* Signal log table. */
 .at-logwrap { overflow-x: auto; }
 .at-logtbl {
-  width: 100%; border-collapse: collapse; font-size: 12px;
+  width: 100%; min-width: 880px; border-collapse: collapse; font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 .at-logtbl th {

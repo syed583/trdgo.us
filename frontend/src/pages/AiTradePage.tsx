@@ -110,11 +110,14 @@ function useDailyPinned(d: Board | null, horizon: string): {
         if (!fresh) continue;
         const old = store.rows[sym];
         const to = rowTone(fresh);
+        // Carry forward the last status-change time; stamp a new one on a flip.
+        fresh.changed_at = old?.changed_at ?? null;
         if (old) {
           const from = rowTone(old);
           if (from !== to) {
             store.changes = store.changes.filter((c) => c.symbol !== sym);
             store.changes.push({ symbol: sym, from, to });
+            fresh.changed_at = Date.now();
           }
         }
         // Carry forward the entry (the price and call when the name first
@@ -201,6 +204,9 @@ interface Row {
   // Where the call came OUT -- captured once, the moment it flipped to NO TRADE.
   exit_price?: number | null;
   exit_at?: number | null;
+  // When the call last changed side (BUY<->SELL<->NEUTRAL), for the status
+  // change time shown in the log.
+  changed_at?: number | null;
 }
 
 /** The side a row reads as, preferring the intraday model's call. */
@@ -897,6 +903,15 @@ function SignalLog({ horizon, nowBySym = {}, board = [], flipped = [],
         { timeZone: 'Asia/Dubai', month: 'short', day: '2-digit' });
     } catch { return ''; }
   };
+  // Time of day (Dubai) from a ms timestamp -- ISO date-only values have no
+  // time and return ''.
+  const timeLbl = (v: any): string => {
+    if (typeof v !== 'number') return '';
+    try {
+      return new Date(v).toLocaleTimeString('en-GB',
+        { timeZone: 'Asia/Dubai', hour: '2-digit', minute: '2-digit' });
+    } catch { return ''; }
+  };
   const tpOf = (sym: string, fb: any) => swingMap?.get(sym)?.target ?? fb;
   const slOf = (sym: string, fb: any) => swingMap?.get(sym)?.trail_stop ?? swingMap?.get(sym)?.stop ?? fb;
   const called: any[] = (board || [])
@@ -905,7 +920,8 @@ function SignalLog({ horizon, nowBySym = {}, board = [], flipped = [],
       symbol: r.symbol, event: rowDecision(r), was: null as string | null,
       price: r.entry_price, tp: tpOf(r.symbol, r.target), sl: slOf(r.symbol, r.stop),
       time: r.entry_at ? dubai(r.entry_at) : '',
-      buyDate: r.entry_at || null, exitDate: null as any, exitPrice: null as any,
+      buyDate: r.entry_at || null, buyAt: r.entry_at || null,
+      exitDate: null as any, chgRaw: r.changed_at || null, exitPrice: null as any,
       alarm: false, buy_score: r.buy_score, sell_score: r.sell_score,
     }));
   // Names that CALLED earlier today (BUY/SELL) and have since gone to NO TRADE:
@@ -917,7 +933,8 @@ function SignalLog({ horizon, nowBySym = {}, board = [], flipped = [],
       symbol: r.symbol, event: rowDecision(r), was: r.was || null,
       price: r.entry_price, tp: tpOf(r.symbol, r.target), sl: slOf(r.symbol, r.stop),
       time: r.entry_at ? dubai(r.entry_at) : '',
-      buyDate: r.entry_at || null, exitDate: r.exit_at || today,
+      buyDate: r.entry_at || null, buyAt: r.entry_at || null,
+      exitDate: r.exit_at || today, chgRaw: r.exit_at || r.changed_at || null,
       exitPrice: r.exit_price ?? null,
       // Was a live BUY/SELL, now squared off to NO TRADE without a recorded
       // stop/target hit -- the soft exit the user wants flagged.
@@ -931,7 +948,9 @@ function SignalLog({ horizon, nowBySym = {}, board = [], flipped = [],
       symbol: c.symbol, event: c.reason || 'EXITED',
       was: c.bias === 'LONG' ? 'BUY' : c.bias === 'SHORT' ? 'SELL' : null,
       price: c.entry, exitPrice: c.exit, tp: c.target, sl: c.stop,
-      buyDate: c.opened_date || null, exitDate: c.closed_at || null,
+      buyDate: c.opened_date || null, buyAt: null,
+      exitDate: c.closed_at || null,
+      chgRaw: c.closed_ts ? c.closed_ts * 1000 : (c.closed_at || null),
       // Exited for any reason other than the trailing stop (score flip / time)
       // means the stop was never hit -- alarm it.
       alarm: !!(c.exit_code && c.exit_code !== 'TRAIL'),
@@ -1005,7 +1024,9 @@ function SignalLog({ horizon, nowBySym = {}, board = [], flipped = [],
           <table className="at-logtbl">
             <thead>
               <tr>
-                <th>Symbol</th><th>Call</th><th>Buy date</th><th>Exit date</th>
+                <th>Symbol</th><th>Call</th>
+                <th>Buy date</th><th>Buy time</th>
+                <th>Status date</th><th>Status time</th>
                 <th>Entry $</th><th>Now $</th><th>Exit $</th>
                 <th>TP</th><th>SL (trail)</th><th>P/L</th>
               </tr>
@@ -1032,7 +1053,9 @@ function SignalLog({ horizon, nowBySym = {}, board = [], flipped = [],
                       title="Squared off without hitting the stop-loss">⚠ SL not hit</span>}
                   </td>
                   <td className="ev-time">{dateLbl(e.buyDate) || '—'}</td>
-                  <td className="ev-time">{dateLbl(e.exitDate) || '—'}</td>
+                  <td className="ev-time">{timeLbl(e.buyAt) || '—'}</td>
+                  <td className="ev-time">{dateLbl(e.chgRaw) || '—'}</td>
+                  <td className="ev-time">{timeLbl(e.chgRaw) || '—'}</td>
                   <td className="ev-price">{e.price != null ? `$${e.price}` : '—'}</td>
                   <td className={`ev-now ${(liveNow != null && mv.movePct != null) ? nowCls : ''}`}>{liveNow != null ? `$${liveNow}` : '—'}</td>
                   <td className="ev-price">{e.exitPrice != null ? `$${e.exitPrice}` : '—'}</td>
@@ -1115,7 +1138,9 @@ function PastDay({ up, down, query, loading, label, nowBySym = {} }:
       <table className="at-logtbl">
         <thead>
           <tr>
-            <th>Symbol</th><th>Call</th><th>Buy date</th><th>Exit date</th>
+            <th>Symbol</th><th>Call</th>
+            <th>Buy date</th><th>Buy time</th>
+            <th>Status date</th><th>Status time</th>
             <th>Entry $</th><th>Now $</th><th>Exit $</th>
             <th>TP</th><th>SL (trail)</th><th>P/L</th>
           </tr>
@@ -1133,6 +1158,8 @@ function PastDay({ up, down, query, loading, label, nowBySym = {} }:
               <td className="ev-sym">{r.symbol}</td>
               <td><span className={`ev-badge ${buy ? 'pos' : 'neg'}`}>{r.call}</span></td>
               <td className="ev-time">{label}</td>
+              <td className="ev-time">—</td>
+              <td className="ev-time">—</td>
               <td className="ev-time">—</td>
               <td className="ev-price">{r.price != null ? `$${r.price}` : '—'}</td>
               <td className={`ev-now ${now != null && pl != null ? plCls : ''}`}>{now != null ? `$${now}` : '—'}</td>
