@@ -1092,20 +1092,33 @@ function PastDay({ up, down, query, loading, label }:
     ...u.map((r) => ({ ...r, call: 'BUY' as const })),
     ...d.map((r) => ({ ...r, call: 'SELL' as const })),
   ];
+  // Same columns and colours as today's "By stock" table. A past day only has
+  // the call and the capture (entry) price recorded; the live-only cells
+  // (Now / Exit / TP / SL / P/L) have no history, so they read "—".
   return (
     <div className="at-logwrap">
       <div className="at-pastday-sub">Calls captured on <b>{label}</b></div>
       <table className="at-logtbl">
         <thead>
-          <tr><th>Symbol</th><th>Call</th><th>Score</th><th>Price $</th></tr>
+          <tr>
+            <th>Symbol</th><th>Call</th><th>Buy date</th><th>Exit date</th>
+            <th>Entry $</th><th>Now $</th><th>Exit $</th>
+            <th>TP</th><th>SL (trail)</th><th>P/L</th>
+          </tr>
         </thead>
         <tbody>
           {rows.map((r, i) => (
             <tr key={`${r.symbol}-${i}`}>
               <td className="ev-sym">{r.symbol}</td>
               <td><span className={`ev-badge ${r.call === 'BUY' ? 'pos' : 'neg'}`}>{r.call}</span></td>
-              <td className={r.call === 'BUY' ? 'pos' : 'neg'}>{r.score != null ? Math.round(r.score) : '—'}</td>
+              <td className="ev-time">{label}</td>
+              <td className="ev-time">—</td>
               <td className="ev-price">{r.price != null ? `$${r.price}` : '—'}</td>
+              <td className="ev-now">—</td>
+              <td className="ev-price">—</td>
+              <td className="pos">—</td>
+              <td className="neg">—</td>
+              <td className="neu">—</td>
             </tr>
           ))}
         </tbody>
