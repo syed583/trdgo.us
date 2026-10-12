@@ -568,8 +568,15 @@
 .at2-tbl td { padding: 8px 6px; border-bottom: 1px solid var(--border);
   font-size: 13px; vertical-align: middle; }
 .at2-tbl tbody tr { cursor: pointer; }
-.at2-tbl tbody tr:hover { background: var(--panel-2); }
 .at2-tbl tbody tr:last-child td { border-bottom: none; }
+/* Excel-style grid for the board tables (match the Signal log): vertical
+ * gridlines, a solid header and zebra rows. */
+.at2-tbl th, .at2-tbl td { border-right: 1px solid var(--border); }
+.at2-tbl th:last-child, .at2-tbl td:last-child { border-right: none; }
+.at2-tbl thead th { background: var(--panel-2); border-bottom: 2px solid var(--border); }
+.at2-tbl tbody tr:nth-child(even) { background: rgba(127, 127, 127, .045); }
+.at2-tbl tbody tr:hover,
+.at2-tbl tbody tr:nth-child(even):hover { background: var(--panel-2); }
 .at2-rank { color: var(--text-mute); font-weight: 700; width: 24px; }
 .at2-symcell { display: inline-flex; align-items: center; gap: 8px; }
 .at2-symcell b { font-weight: 700; color: var(--text); }
