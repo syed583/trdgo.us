@@ -422,3 +422,8 @@
 .ue-plan .sep { color: var(--text-dim); margin: 0 6px; }
 .tone-green { color: #16a34a !important; } .tone-yellow { color: #d97706 !important; }
 .tone-red { color: #dc2626 !important; }
+
+.ue-showmore { display: block; margin: 14px auto 4px; padding: 8px 18px; font-size: 13px;
+  font-weight: 700; cursor: pointer; background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--r-pill); }
+.ue-showmore:hover { border-color: var(--blue); }

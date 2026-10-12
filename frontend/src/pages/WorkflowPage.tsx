@@ -216,7 +216,7 @@ function LivePipeline({ m, loading }: { m?: any; loading: boolean }) {
 
 export default function WorkflowPage({ ctx }: { ctx: PageContext }) {
   void ctx;
-  const metrics = useApi<any>((s) => api2.flowMetrics(s), [], { refreshMs: 3000 });
+  const metrics = useApi<any>((s) => api2.flowMetrics(s), [], { refreshMs: 20_000 });
   const m = metrics.data;
   return (
     <div className="page">

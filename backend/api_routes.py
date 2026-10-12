@@ -164,15 +164,6 @@ def market_tide() -> dict:
                      market.session_ttl(60, 1800))
 
 
-@router.get("/market/overview")
-def market_overview() -> dict:
-    # Stale-while-revalidate: the Market Overview build fans out to every
-    # index and sector, so a synchronous rebuild on expiry blocked the page
-    # for the length of that fan-out. Now the page gets the held answer
-    # instantly and the refresh happens behind it.
-    return swr.serve("market_overview", overview.get_market_overview, 180)
-
-
 # ---------------------------------------------------------------------------
 # ticker strip / scores
 # ---------------------------------------------------------------------------

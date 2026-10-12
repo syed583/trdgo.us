@@ -613,8 +613,6 @@ export const api2 = {
       `/api/calls/scorecard?days=${days}`
       + (horizon ? `&horizon=${encodeURIComponent(horizon)}` : '')
       + (symbol ? `&symbol=${encodeURIComponent(symbol)}` : ''), s),
-  callsHistory: (limit = 50, s?: AbortSignal) =>
-    request<any>(`/api/calls/history?limit=${limit}`, s),
   paramEdge: (horizon = 5, s?: AbortSignal) =>
     request<any>(`/api/snapshots/evaluate?horizon=${horizon}`, s),
   peers: (symbol: string, s?: AbortSignal) =>
@@ -664,7 +662,6 @@ export const api2 = {
   validateSymbol: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/symbols/validate/${encodeURIComponent(symbol)}`, s),
 
-  marketOverview: (s?: AbortSignal) => request<any>('/api/market/overview', s),
   marketTide: (s?: AbortSignal) => request<any>('/api/market/tide', s),
   stocksAll: (s?: AbortSignal) => request<any>('/api/stocks/all', s),
   marketPulse: (s?: AbortSignal) => request<any>('/api/market/pulse', s),
@@ -726,7 +723,6 @@ export const api2 = {
       + (symbol ? `&symbol=${encodeURIComponent(symbol)}` : ''), s),
   signals: (limit = 60, s?: AbortSignal) =>
     request<any>(`/api/signals?limit=${limit}`, s),
-  signalsUnread: (s?: AbortSignal) => request<any>('/api/signals/unread', s),
   signalsSeen: () => send<any>('/api/signals/seen', 'POST'),
   signalsScan: () => send<any>('/api/signals/scan', 'POST'),
 

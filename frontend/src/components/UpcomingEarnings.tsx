@@ -42,6 +42,11 @@ export default function UpcomingEarnings({
   // live drivers rather than diffing yesterday's parameters.
   const [whyFor, setWhyFor] = useState<string | null>(null);
   const [whyCache, setWhyCache] = useState<Record<string, any>>({});
+  // Render only the nearest few days by default; the full 3-week window is 700+
+  // cards, which bloats the DOM and the per-card risk fetch. "Show more" reveals
+  // the rest on demand.
+  const DAYS_STEP = 5;
+  const [daysShown, setDaysShown] = useState(DAYS_STEP);
   const toggleWhy = (sym: string) => {
     if (whyFor === sym) { setWhyFor(null); return; }
     setWhyFor(sym);
@@ -71,16 +76,7 @@ export default function UpcomingEarnings({
     // (was 15s) halves the background-warm churn while cards still fill in.
     { refreshMs: demo ? undefined : 30_000 },
   );
-  // Per-card Confidence + Exit (Stock tab only). Served from cache and warmed
-  // in the background, so cards fill in over successive polls.
   const riskOn = mode !== 'options';
-  const risk = useApi<any>(
-    (s) => (demo || !rows.length || !riskOn ? Promise.resolve(null)
-      : api2.earningsRiskBatch(rows.map((r) => r.symbol), s)),
-    [demo, symKey, riskOn],
-    { refreshMs: demo || !riskOn ? undefined : 60_000 },
-  );
-  const riskMap: Record<string, any> = risk.data?.data || {};
 
   // Pre-earnings signal timeline (only when that tab is active).
   const timelineOn = !!timeline;
@@ -146,6 +142,23 @@ export default function UpcomingEarnings({
     }
     return Object.entries(byDay);
   }, [rows, q]);
+
+  // While searching, show every match; otherwise cap to the nearest N days.
+  const shownGroups = q.trim() ? groups : groups.slice(0, daysShown);
+  const moreDays = q.trim() ? 0 : Math.max(0, groups.length - daysShown);
+
+  // Per-card Confidence + Exit (Stock tab only), fetched ONLY for the days
+  // actually on screen -- not the whole 3-week universe -- so the list stays
+  // light. Served from cache and warmed in the background.
+  const visSyms = shownGroups.flatMap(([, items]) => items.map((r: any) => r.symbol));
+  const visKey = visSyms.slice().sort().join(',');
+  const risk = useApi<any>(
+    (s) => (demo || !visSyms.length || !riskOn ? Promise.resolve(null)
+      : api2.earningsRiskBatch(visSyms, s)),
+    [demo, visKey, riskOn],
+    { refreshMs: demo || !riskOn ? undefined : 60_000 },
+  );
+  const riskMap: Record<string, any> = risk.data?.data || {};
 
   const open = (sym: string) => navigate(`${base}/${sym}${search}`);
 
@@ -388,7 +401,7 @@ export default function UpcomingEarnings({
           {q ? `No matches for “${q}”.` : 'No scheduled reports in the window.'}
         </div>
       ) : (
-        groups.map(([day, items]) => (
+        shownGroups.map(([day, items]) => (
           <div key={day} className="ue-day">
             <div className="ue-day-h">{day}</div>
             <div className={`ue-grid${timeline ? ' ue-grid-timeline' : ''}`}>
@@ -468,6 +481,13 @@ export default function UpcomingEarnings({
             </div>
           </div>
         ))
+      )}
+
+      {moreDays > 0 && (
+        <button type="button" className="ue-showmore"
+          onClick={() => setDaysShown((n) => n + DAYS_STEP)}>
+          Show more days ({moreDays} more)
+        </button>
       )}
     </div>
   );
