@@ -59,7 +59,8 @@ interface PinStore {
  * set of names whose call changed since the last refresh.
  */
 function useDailyPinned(d: Board | null, horizon: string): {
-  buyers: Row[]; sellers: Row[]; changeMap: Map<string, Change>; changes: Change[];
+  buyers: Row[]; sellers: Row[]; changeMap: Map<string, Change>;
+  changes: Change[]; flipped: Row[];
 } {
   const key = `at-pinned:${horizon}`;
   const storeRef = useRef<PinStore | null>(null);
@@ -101,15 +102,16 @@ function useDailyPinned(d: Board | null, horizon: string): {
         if (!store.sell.includes(r.symbol)) store.sell.push(r.symbol);
       }
       const pinned = new Set([...store.buy, ...store.sell]);
+      const flippedSyms: string[] = [];
       // Refresh each pinned name, and record a change when its SIDE flips
       // (green/yellow/red), persisted for the day so the banner accumulates.
       for (const sym of pinned) {
         const fresh = allMap.get(sym);
         if (!fresh) continue;
         const old = store.rows[sym];
+        const to = rowTone(fresh);
         if (old) {
           const from = rowTone(old);
-          const to = rowTone(fresh);
           if (from !== to) {
             store.changes = store.changes.filter((c) => c.symbol !== sym);
             store.changes.push({ symbol: sym, from, to });
@@ -127,6 +129,13 @@ function useDailyPinned(d: Board | null, horizon: string): {
           fresh.entry_at = Date.now();
         }
         store.rows[sym] = fresh;
+        // A name that has gone to NO TRADE leaves its column -- but it is kept in
+        // `rows` and surfaced to the Signal log as "was BUY/SELL".
+        if (to === 'neutral') flippedSyms.push(sym);
+      }
+      for (const sym of flippedSyms) {
+        store.buy = store.buy.filter((s) => s !== sym);
+        store.sell = store.sell.filter((s) => s !== sym);
       }
     }
 
@@ -138,7 +147,16 @@ function useDailyPinned(d: Board | null, horizon: string): {
     const sellers = store.sell.map((s) => store!.rows[s]).filter(Boolean);
     const changes = store.changes.slice().reverse();     // most recent first
     const changeMap = new Map(changes.map((c) => [c.symbol, c]));
-    return { buyers, sellers, changeMap, changes };
+    // Names the model CALLED earlier today (BUY/SELL) but now withholds: shown
+    // in the Signal log with what they were, never on the board columns.
+    const flipped: Row[] = (store.changes || [])
+      .filter((c) => c.to === 'neutral' && (c.from === 'buy' || c.from === 'sell'))
+      .map((c) => {
+        const row = store!.rows[c.symbol];
+        return row ? { ...row, was: c.from.toUpperCase() } : null;
+      })
+      .filter(Boolean) as Row[];
+    return { buyers, sellers, changeMap, changes, flipped };
   }, [d, key]);
 }
 
@@ -168,6 +186,7 @@ interface Row {
   im_size?: string | null;       // FULL SIZE / HALF SIZE (intraday engine)
   im_blocked?: string | null;    // e.g. "Blocked: SPY not above VWAP"
   square_off?: boolean | null;
+  was?: string | null;           // prior call for a name that flipped to NO TRADE
   // Where the call was first given today (set client-side on first appearance).
   entry_price?: number | null;
   entry_decision?: string | null;
@@ -257,7 +276,7 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
   // does not shuffle under the reader while they are looking at it.
   // Pin the day's Buy / Sell names so a card stays put once it appears, resets
   // next trading day, and lights up when its call changes.
-  const { buyers, sellers, changeMap, changes } = useDailyPinned(d ?? null, horizon);
+  const { buyers, sellers, changeMap, changes, flipped } = useDailyPinned(d ?? null, horizon);
 
   // While a build is running the answer changes every few seconds, so poll
   // until it settles rather than leaving the page on whatever it first saw.
@@ -378,6 +397,7 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
 
           {view === 'log' && <SignalLog horizon={horizon}
             board={[...buyers, ...sellers]}
+            flipped={flipped}
             pastDays={pastDays.data?.days || []}
             pastLoading={pastDays.initialLoading}
             nowBySym={Object.fromEntries(
@@ -806,9 +826,10 @@ function PastSessions() {
 
 /** The running signal log -- every BUY / SELL / NO TRADE change with the price
  *  it happened at. The same events that are sent to the Google Sheet. */
-function SignalLog({ horizon, nowBySym = {}, board = [], pastDays = [], pastLoading = false }:
+function SignalLog({ horizon, nowBySym = {}, board = [], flipped = [],
+  pastDays = [], pastLoading = false }:
   { horizon: string; nowBySym?: Record<string, number>; board?: Row[];
-    pastDays?: any[]; pastLoading?: boolean }) {
+    flipped?: Row[]; pastDays?: any[]; pastLoading?: boolean }) {
   const resp = useApi<any>((s) => api2.aiTradeSignalLog(horizon, 500, s),
     [horizon], { refreshMs: 60000 });
   const [query, setQuery] = useState('');
@@ -840,16 +861,24 @@ function SignalLog({ horizon, nowBySym = {}, board = [], pastDays = [], pastLoad
     ? new Date(ts).toLocaleTimeString('en-GB',
       { timeZone: 'Asia/Dubai', hour: '2-digit', minute: '2-digit', second: '2-digit' })
     : '');
-  const perStock: any[] = (board || [])
+  const called: any[] = (board || [])
     .filter((r) => r && r.symbol)
     .map((r) => ({
-      symbol: r.symbol,
-      event: rowDecision(r),
-      price: r.entry_price,
-      time: r.entry_at ? dubai(r.entry_at) : '',
-      buy_score: r.buy_score,
-      sell_score: r.sell_score,
-    }))
+      symbol: r.symbol, event: rowDecision(r), was: null as string | null,
+      price: r.entry_price, time: r.entry_at ? dubai(r.entry_at) : '',
+      buy_score: r.buy_score, sell_score: r.sell_score,
+    }));
+  // Names that CALLED earlier today (BUY/SELL) and have since gone to NO TRADE:
+  // shown here (not on the board) with what they were and where they entered.
+  const onBoard = new Set(called.map((e) => e.symbol));
+  const flippedOut: any[] = (flipped || [])
+    .filter((r) => r && r.symbol && !onBoard.has(r.symbol))
+    .map((r) => ({
+      symbol: r.symbol, event: rowDecision(r), was: r.was || null,
+      price: r.entry_price, time: r.entry_at ? dubai(r.entry_at) : '',
+      buy_score: r.buy_score, sell_score: r.sell_score,
+    }));
+  const perStock: any[] = [...called, ...flippedOut]
     .sort((a, b) => String(a.symbol).localeCompare(String(b.symbol)));
 
   const src = logView === 'stock' ? perStock : all;
@@ -927,7 +956,10 @@ function SignalLog({ horizon, nowBySym = {}, board = [], pastDays = [], pastLoad
                 return (
                 <tr key={i}>
                   <td className="ev-sym">{e.symbol}</td>
-                  <td><span className={`ev-badge ${cls(e.event)}`}>{e.event}</span></td>
+                  <td>
+                    <span className={`ev-badge ${cls(e.event)}`}>{e.event}</span>
+                    {e.was && <span className={`ev-was ${e.was === 'BUY' ? 'pos' : 'neg'}`}>was {e.was}</span>}
+                  </td>
                   <td className="ev-time">{e.time}</td>
                   <td className="ev-price">{e.price != null ? `$${e.price}` : '—'}</td>
                   <td className={`ev-now ${(now != null && movePct != null) ? moveCls : ''}`}>{now != null ? `$${now}` : '—'}</td>
