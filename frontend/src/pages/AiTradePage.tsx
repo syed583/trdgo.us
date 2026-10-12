@@ -1047,10 +1047,12 @@ function SignalLog({ horizon, nowBySym = {}, board = [], flipped = [],
                 <tr key={i} className={`${e.exited ? 'ev-exited' : ''} ${e.alarm ? 'ev-alarm' : ''}`}>
                   <td className="ev-sym">{e.symbol}</td>
                   <td>
-                    <span className={`ev-badge ${e.exited ? 'neu' : cls(e.event)}`}>{e.event}</span>
-                    {e.was && <span className={`ev-was ${e.was === 'BUY' ? 'pos' : 'neg'}`}>was {e.was}</span>}
-                    {e.alarm && <span className="ev-alarm-badge"
-                      title="Squared off without hitting the stop-loss">⚠ SL not hit</span>}
+                    <div className="ev-call">
+                      <span className={`ev-badge ${e.exited ? 'neu' : cls(e.event)}`}>{e.event}</span>
+                      {e.was && <span className={`ev-was ${e.was === 'BUY' ? 'pos' : 'neg'}`}>was {e.was}</span>}
+                      {e.alarm && <span className="ev-alarm-badge"
+                        title="Squared off without hitting the stop-loss">⚠ SL not hit</span>}
+                    </div>
                   </td>
                   <td className="ev-time">{dateLbl(e.buyDate) || '—'}</td>
                   <td className="ev-time">{timeLbl(e.buyAt) || '—'}</td>
