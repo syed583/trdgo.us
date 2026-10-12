@@ -808,14 +808,26 @@ def _compose(limit: int = TOP_N, building: bool = False,
     # Weakening), ranked by its BUY score; a seller likewise by SELL score;
     # everything else is the model's NO TRADE (withheld).
     if horizon == "TODAY":
-        # Intraday horizon: the dual-score / rules-engine call (im_side).
+        # Intraday horizon: a name is only a BUYER/SELLER when the rules engine
+        # is actually CALLING that side -- not merely leaning it. A NO-TRADE
+        # (or WAITING / NEUTRAL) name falls through to "held" (the Withheld
+        # card) even if its buy score leans long; its signal history still lives
+        # on the Signal log. This is what keeps the two columns to real calls.
+        _dead = {"", "NO TRADE", "NEUTRAL", "WAIT"}
+
+        def _live(r, side):
+            if r.get("im_side") != side:
+                return False
+            d = (r.get("im_decision") or "").upper().strip()
+            return d not in _dead and not d.startswith("WAITING")
+
         buyers = sorted(
-            [r for r in scored if r.get("im_side") == "buy"],
+            [r for r in scored if _live(r, "buy")],
             key=lambda r: r.get("buy_score") or 0.0, reverse=True)
         sellers = sorted(
-            [r for r in scored if r.get("im_side") == "sell"],
+            [r for r in scored if _live(r, "sell")],
             key=lambda r: r.get("sell_score") or 0.0, reverse=True)
-        held = [r for r in scored if r.get("im_side") not in ("buy", "sell")]
+        held = [r for r in scored if r not in buyers and r not in sellers]
     else:
         # TOMORROW / SWING: use the DIRECTIONAL call (the same decision stored in
         # the daily snapshots and shown in the past-day view), so the board's
