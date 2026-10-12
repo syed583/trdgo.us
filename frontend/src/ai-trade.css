@@ -81,16 +81,29 @@
 }
 
 /* Signal log table. */
-.at-logwrap { overflow-x: auto; }
+/* Spreadsheet-style grid: framed box, gridlines on every cell, a solid
+ * sticky header and zebra rows, so a wide table stays easy to read. */
+.at-logwrap {
+  overflow-x: auto; max-height: 70vh; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg-1);
+}
 .at-logtbl {
   width: 100%; min-width: 880px; border-collapse: collapse; font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
-.at-logtbl th {
-  text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
-  color: var(--text-mute); font-weight: 700; padding: 4px 10px 7px;
+.at-logtbl th, .at-logtbl td {
+  border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
 }
-.at-logtbl td { padding: 6px 10px; border-top: 1px solid var(--border); }
+.at-logtbl th:last-child, .at-logtbl td:last-child { border-right: none; }
+.at-logtbl thead th {
+  position: sticky; top: 0; z-index: 2; background: var(--bg-2);
+  text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--text-mute); font-weight: 700; padding: 7px 10px;
+  border-bottom: 2px solid var(--border);
+}
+.at-logtbl td { padding: 6px 10px; }
+.at-logtbl tbody tr:nth-child(even) { background: rgba(127, 127, 127, .045); }
+.at-logtbl tbody tr:hover { background: rgba(127, 127, 127, .09); }
 .at-logtbl .ev-time, .at-logtbl .ev-chg { color: var(--text-mute); white-space: nowrap; }
 .at-logtbl .ev-sym { font-weight: 800; color: var(--text); }
 .at-logtbl .ev-price { font-weight: 700; }
@@ -674,9 +687,10 @@
 .at-logtbl tr.ev-exited { opacity: .85; }
 .at-logtbl tr.ev-exited .ev-badge { font-size: 9px; }
 /* Soft exit: squared off (BUY/SELL -> NO TRADE) without the stop being hit. */
-.at-logtbl tr.ev-alarm { background: rgba(245, 158, 11, .14); }
-.at-logtbl tr.ev-alarm:hover { background: rgba(245, 158, 11, .20); }
-.at-logtbl tr.ev-alarm td { border-top: 1px solid rgba(245, 158, 11, .35); }
+.at-logtbl tbody tr.ev-alarm,
+.at-logtbl tbody tr.ev-alarm:nth-child(even) { background: rgba(245, 158, 11, .16); }
+.at-logtbl tbody tr.ev-alarm:hover { background: rgba(245, 158, 11, .24); }
+.at-logtbl tbody tr.ev-alarm td { border-bottom-color: rgba(245, 158, 11, .35); }
 .ev-alarm-badge { margin-left: 6px; font-size: 9.5px; font-weight: 700; padding: 1px 6px;
   border-radius: 999px; color: #b45309; background: rgba(245, 158, 11, .20);
   white-space: nowrap; }
