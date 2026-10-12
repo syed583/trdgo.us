@@ -248,6 +248,9 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
   const pastDays = useApi<any>((s) => api2.aiTradePastDays(7, s), [],
     { refreshMs: 600000 });
 
+  // Live swing positions (ATR stop + trailing) and their alert feed.
+  const swing = useApi<any>((s) => api2.aiTradeSwing(s), [], { refreshMs: 60000 });
+
   // Hold each card's position steady across the minute-ly re-sort, so the list
   // does not shuffle under the reader while they are looking at it.
   // Pin the day's Buy / Sell names so a card stays put once it appears, resets
@@ -398,6 +401,7 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
                 onViewAll={() => setView('log')} />
             </div>
           </div>
+          <SwingPanel data={swing.data} />
           </>)}
         </>
       )}
@@ -511,6 +515,60 @@ function ConfBar({ pct, tone }: { pct: number | null; tone: 'buy' | 'sell' }) {
 }
 
 /** A Top Buyers / Top Sellers ranked table. */
+function SwingPanel({ data }: { data: any }) {
+  const positions: any[] = data?.positions ?? [];
+  const events: any[] = data?.events ?? [];
+  if (!positions.length && !events.length) return null;
+  const pl = (p: any) => {
+    const e = p.entry, last = p.last_price ?? e;
+    if (!e) return 0;
+    return p.bias === 'LONG' ? (last - e) / e * 100 : (e - last) / e * 100;
+  };
+  return (
+    <div className="at-swing">
+      <div className="at-swing-h">Swing positions <span>ATR stop · trail · exit on score &lt; 50</span></div>
+      <div className="at-swing-grid">
+        <div className="at-swing-box">
+          {positions.length ? (
+            <table className="at-swing-tbl">
+              <thead><tr><th>Symbol</th><th>Side</th><th>Entry</th><th>Stop</th><th>Now</th><th>P/L</th><th>Days</th></tr></thead>
+              <tbody>
+                {positions.map((p) => {
+                  const g = pl(p);
+                  return (
+                    <tr key={p.symbol}>
+                      <td><b>{p.symbol}</b>{p.flag ? <em className="at-swing-flag"> {p.flag}</em> : null}</td>
+                      <td className={p.bias === 'LONG' ? 'pos' : 'neg'}>{p.bias}</td>
+                      <td>${p.entry}</td>
+                      <td>${p.stop}</td>
+                      <td>${p.last_price ?? p.entry}</td>
+                      <td className={g >= 0 ? 'pos' : 'neg'}>{g >= 0 ? '+' : ''}{g.toFixed(1)}%</td>
+                      <td>{p.days_held ?? 0}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : <div className="at-swing-empty">No open swing positions.</div>}
+        </div>
+        <div className="at-swing-box">
+          <div className="at-swing-feed-h">Alerts</div>
+          {events.length ? (
+            <ul className="at-swing-feed">
+              {events.slice(0, 14).map((e, i) => (
+                <li key={i}>
+                  <span className={`at-swing-alert ${/EXIT|SQUARE/.test(e.alert) ? 'neg' : /BREAKEVEN|TRAIL/.test(e.alert) ? 'warn' : 'pos'}`}>{e.alert}</span>
+                  <b>{e.symbol}</b> <span className="at-swing-reason">{e.reason}</span>
+                </li>
+              ))}
+            </ul>
+          ) : <div className="at-swing-empty">No alerts yet.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RankTable({
   title, tone, rows, changeMap, empty, onViewAll,
 }: {
