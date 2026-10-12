@@ -128,6 +128,13 @@ function useDailyPinned(d: Board | null, horizon: string): {
           fresh.entry_decision = store.buy.includes(sym) ? 'BUY' : 'SELL';
           fresh.entry_at = Date.now();
         }
+        // Carry a captured exit forward, and set it once -- the live price the
+        // moment the call flipped to NO TRADE (that is where it "came out").
+        if (old?.exit_price != null) { fresh.exit_price = old.exit_price; fresh.exit_at = old.exit_at; }
+        if (to === 'neutral' && fresh.exit_price == null) {
+          fresh.exit_price = fresh.spot ?? old?.entry_price ?? null;
+          fresh.exit_at = Date.now();
+        }
         store.rows[sym] = fresh;
         // A name that has gone to NO TRADE leaves its column -- but it is kept in
         // `rows` and surfaced to the Signal log as "was BUY/SELL".
@@ -191,6 +198,9 @@ interface Row {
   entry_price?: number | null;
   entry_decision?: string | null;
   entry_at?: number | null;
+  // Where the call came OUT -- captured once, the moment it flipped to NO TRADE.
+  exit_price?: number | null;
+  exit_at?: number | null;
 }
 
 /** The side a row reads as, preferring the intraday model's call. */
@@ -896,7 +906,8 @@ function SignalLog({ horizon, nowBySym = {}, board = [], flipped = [],
       symbol: r.symbol, event: rowDecision(r), was: r.was || null,
       price: r.entry_price, tp: tpOf(r.symbol, r.target), sl: slOf(r.symbol, r.stop),
       time: r.entry_at ? dubai(r.entry_at) : '',
-      buyDate: r.entry_at || null, exitDate: today, exitPrice: null as any,
+      buyDate: r.entry_at || null, exitDate: r.exit_at || today,
+      exitPrice: r.exit_price ?? null,
       // Was a live BUY/SELL, now squared off to NO TRADE without a recorded
       // stop/target hit -- the soft exit the user wants flagged.
       alarm: true, buy_score: r.buy_score, sell_score: r.sell_score,
