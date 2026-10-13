@@ -16,15 +16,14 @@ import { ScoreGauge } from '../components/common';
 import UpcomingEarnings from '../components/UpcomingEarnings';
 import './earnings-trade-screen.css';
 
+// Label + colour follow the decision cuts: BUY (>=65) is green, SELL (<=35)
+// red, the no-trade middle amber -- so the gauge colour matches the call.
 const SETUP = (s: number | null) =>
-  s == null ? '--' : s >= 75 ? 'Strong Setup' : s >= 55 ? 'Good Setup'
-    : s >= 45 ? 'Neutral' : 'Weak Setup';
-// This theme's --blue token is actually tan, so use an explicit blue here to
-// match the mockup's palette.
-const ETS_BLUE = '#3a63f0';
+  s == null ? '--' : s >= 80 ? 'Strong Buy' : s >= 65 ? 'Buy'
+    : s <= 20 ? 'Strong Sell' : s <= 35 ? 'Sell' : 'No Trade';
 const SETUP_COLOR = (s: number | null) =>
-  s == null ? 'var(--text-mute)' : s >= 75 ? 'var(--green)' : s >= 55 ? ETS_BLUE
-    : s >= 45 ? 'var(--amber)' : 'var(--red)';
+  s == null ? 'var(--text-mute)' : s >= 65 ? 'var(--green)'
+    : s <= 35 ? 'var(--red)' : 'var(--amber)';
 const DEC_TONE: Record<string, string> = {
   BUY: 'buy', 'STRONG BUY': 'buy', SELL: 'sell', 'STRONG SELL': 'sell',
   STRADDLE: 'buy', STRANGLE: 'buy', 'NO TRADE': 'flat',
@@ -213,9 +212,12 @@ function ScoreSplit({ equity, options, lock }:
           {!ups.length && <div className="ets-split-empty">None</div>}
         </div>
         <div className="ets-split-col down">
-          <div className="ets-split-ch">Pushing down (−) <b>{fmt(sumDown)}</b></div>
+          {/* Magnitudes shown without a minus sign (the column header already
+              says these push down), so no negative number appears anywhere. */}
+          <div className="ets-split-ch">Pushing down <b>{Math.abs(sumDown).toFixed(1)}</b></div>
           {downs.map((w, i) => (
-            <div key={i} className="ets-split-r"><span>{w.label}</span><em>{pts(w)}</em></div>
+            <div key={i} className="ets-split-r"><span>{w.label}</span>
+              <em>{Math.abs(w.points).toFixed(1)} / {w.weight}</em></div>
           ))}
           {!downs.length && <div className="ets-split-empty">None</div>}
         </div>
