@@ -83,11 +83,17 @@ export default function ClaudeLastDetail({ ctx, base = '/claude-last', pm = fals
           </div>
 
           {pm && (() => {
-            const rows = params.map((p) => ({ ...p, delta: (p.points ?? 0) - p.max / 2 }));
-            const ups = rows.filter((p) => p.delta > 0.05).sort((a, b) => b.delta - a.delta);
-            const downs = rows.filter((p) => p.delta < -0.05).sort((a, b) => a.delta - b.delta);
-            const sumUp = ups.reduce((n, p) => n + p.delta, 0);
-            const sumDn = downs.reduce((n, p) => n + p.delta, 0);
+            // Signed contribution of each parameter = bias x weight = 2*(points - weight/2).
+            // Summed, these give the net; score = 50 + (net / 100 available) x 50.
+            const rows = params.map((p) => ({ ...p, c: 2 * ((p.points ?? p.max / 2) - p.max / 2) }));
+            const ups = rows.filter((p) => p.c > 0.05).sort((a, b) => b.c - a.c);
+            const downs = rows.filter((p) => p.c < -0.05).sort((a, b) => a.c - b.c);
+            const neutral = rows.filter((p) => Math.abs(p.c) <= 0.05);
+            const sumUp = ups.reduce((n, p) => n + p.c, 0);
+            const sumDn = downs.reduce((n, p) => n + p.c, 0);   // negative
+            const net = sumUp + sumDn;
+            const present = 100;    // v3.1 weights always sum to 100 (missing data = half weight)
+            const sgn = (v: number) => (v >= 0 ? '+' : '') + v.toFixed(1);
             return (
               <div className="ets-card cnd-card">
                 <div className="ets-card-h"><span><Scale size={15} /> Score breakdown (+ / −)</span></div>
@@ -97,7 +103,7 @@ export default function ClaudeLastDetail({ ctx, base = '/claude-last', pm = fals
                     {ups.length ? ups.map((p) => (
                       <div key={p.name} className="cnd-pm-row">
                         <span className="cnd-pm-lbl">{p.label}</span>
-                        <span className="cnd-pm-val up">+{p.delta.toFixed(1)}</span>
+                        <span className="cnd-pm-val up">+{p.c.toFixed(1)}</span>
                       </div>
                     )) : <div className="cnd-pm-none">Nothing bullish</div>}
                     <div className="cnd-pm-sub">+{sumUp.toFixed(1)}</div>
@@ -107,15 +113,20 @@ export default function ClaudeLastDetail({ ctx, base = '/claude-last', pm = fals
                     {downs.length ? downs.map((p) => (
                       <div key={p.name} className="cnd-pm-row">
                         <span className="cnd-pm-lbl">{p.label}</span>
-                        <span className="cnd-pm-val down">{p.delta.toFixed(1)}</span>
+                        <span className="cnd-pm-val down">{p.c.toFixed(1)}</span>
                       </div>
                     )) : <div className="cnd-pm-none">Nothing bearish</div>}
                     <div className="cnd-pm-sub">{sumDn.toFixed(1)}</div>
                   </div>
                 </div>
-                <div className="cnd-total">Net = +{sumUp.toFixed(1)} − {Math.abs(sumDn).toFixed(1)}
-                  = <b style={{ color: sigColor(score) }}>{((score ?? 50) - 50 >= 0 ? '+' : '')}{((score ?? 50) - 50).toFixed(1)}</b>
-                  {' '}from neutral → score <b style={{ color: sigColor(score) }}>{score}</b>/100</div>
+                <div className="cnd-net">
+                  <div className="cnd-net-h">Net</div>
+                  <div className="cnd-net-big" style={{ color: sigColor(score) }}>{sgn(net)} pts</div>
+                  <div className="cnd-net-calc">= +{sumUp.toFixed(1)} − {Math.abs(sumDn).toFixed(1)}
+                    {' · '}{neutral.length} neutral</div>
+                  <div className="cnd-net-formula">Score = 50 + ({sgn(net)} ÷ {present} available) × 50
+                    = <b style={{ color: sigColor(score) }}>{score}</b> / 100</div>
+                </div>
               </div>
             );
           })()}
