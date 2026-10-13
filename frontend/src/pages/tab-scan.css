@@ -200,6 +200,26 @@
 .cnd-conf.low { color: var(--red); background: rgba(242,70,90,.13); }
 .cnd-conf-nums { font-weight: 600; color: var(--text-mute); }
 
+/* Claude New +- : two-column score breakdown (+ pushing up / - pulling down). */
+.cnd-pm { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.cnd-pm-col { border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; }
+.cnd-pm-col.up { background: rgba(46,184,122,.06); border-left: 3px solid var(--green); }
+.cnd-pm-col.down { background: rgba(242,70,90,.06); border-left: 3px solid var(--red); }
+.cnd-pm-h { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em;
+  color: var(--text-mute); margin-bottom: 7px; }
+.cnd-pm-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  font-size: 12.5px; padding: 3px 0; border-bottom: 1px solid var(--border); }
+.cnd-pm-lbl { color: var(--text); }
+.cnd-pm-val { font-weight: 800; font-variant-numeric: tabular-nums; }
+.cnd-pm-val.up { color: var(--green); }
+.cnd-pm-val.down { color: var(--red); }
+.cnd-pm-none { font-size: 11.5px; color: var(--text-mute); font-style: italic; padding: 4px 0; }
+.cnd-pm-sub { margin-top: 7px; text-align: right; font-size: 13px; font-weight: 800;
+  font-variant-numeric: tabular-nums; }
+.cnd-pm-col.up .cnd-pm-sub { color: var(--green); }
+.cnd-pm-col.down .cnd-pm-sub { color: var(--red); }
+@media (max-width: 620px) { .cnd-pm { grid-template-columns: 1fr; } }
+
 /* Low-confidence flag on a list card. */
 .cn-lowconf { display: flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 700;
   color: var(--red); background: rgba(242,70,90,.12); border-radius: 6px; padding: 2px 7px;

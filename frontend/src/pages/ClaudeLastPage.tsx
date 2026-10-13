@@ -43,7 +43,8 @@ const dayLabel = (iso: string) => {
   } catch { return iso; }
 };
 
-export default function ClaudeLastPage({ ctx }: { ctx: PageContext }) {
+export default function ClaudeLastPage({ ctx, base = '/claude-last', pm = false }:
+  { ctx: PageContext; base?: string; pm?: boolean }) {
   const navigate = useNavigate();
   const [days, setDays] = useState(15);
   const [query, setQuery] = useState('');
@@ -75,10 +76,11 @@ export default function ClaudeLastPage({ ctx }: { ctx: PageContext }) {
   return (
     <div className="page">
       <div className="ts-head">
-        <h1><Target size={20} /> Claude Last · Direction v3</h1>
+        <h1><Target size={20} /> {pm ? 'Claude New +-' : 'Claude New'} · Direction v3.1</h1>
         <p>Two-sided, SELL-capable pre-earnings direction. Each box is a stock reporting soon,
-          coloured by its signal. BUY ≥ 55 · SELL ≤ 45. Click a card for its full breakdown and
-          confidence meter.</p>
+          coloured by its signal. BUY ≥ 55 · SELL ≤ 45. Click a card for
+          {pm ? ' the +/− parameter form (what pushes the score up vs down).'
+              : ' its full breakdown and confidence meter.'}</p>
       </div>
 
       <div className="cn-toolbar">
@@ -114,7 +116,7 @@ export default function ClaudeLastPage({ ctx }: { ctx: PageContext }) {
                 return (
                   <div key={r.symbol} className="ue-cardwrap">
                     <button className={`ue-row sig-${t}`}
-                      onClick={() => !pending && navigate(`/claude-last/${r.symbol}`)}>
+                      onClick={() => !pending && navigate(`${base}/${r.symbol}`)}>
                       <div className="ue-row-l">
                         <span className="ue-sym">{r.symbol}</span>
                         <span className="ue-co">{r.company || ''}</span>
