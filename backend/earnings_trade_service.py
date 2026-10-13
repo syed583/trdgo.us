@@ -196,6 +196,9 @@ def get_summary(symbol: str, profile: str = "default") -> dict:
             em_pct=em_pct,
             em_dollars=(round(spot * em_pct / 100, 2) if spot and em_pct else None),
             historical_moves=hm,
+            # The old "Claude +-" tab keeps the implied-move hard stop/target;
+            # the current tab uses the score-cross exit.
+            exit_mode="implied" if profile == "plusminus" else "score",
         )
     except Exception:  # noqa: BLE001
         risk = None

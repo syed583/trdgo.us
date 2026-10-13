@@ -1496,10 +1496,10 @@ def signal_history(request: Request, days: int = 10, end: str = "") -> dict:
 
 
 @router.get("/earnings/risk-batch")
-def earnings_risk_batch(symbols: str = "") -> dict:
+def earnings_risk_batch(symbols: str = "", profile: str = "default") -> dict:
     """Per-symbol Confidence + Exit summary for the earnings list cards.
 
-    Serves whatever is already cached (the same earn:trade:default:{SYM} entry
+    Serves whatever is already cached (the same earn:trade:{profile}:{SYM} entry
     the detail page fills) and warms a small batch of the missing ones in the
     background, so the cards fill in progressively over successive polls instead
     of scoring the whole list at once.
@@ -1508,14 +1508,15 @@ def earnings_risk_batch(symbols: str = "") -> dict:
     import threading
     import os
 
+    pf = (profile or "default").strip() or "default"
     _warm_off = bool((os.getenv("DISABLE_WARMERS") or "").strip())
     syms = [s.strip().upper() for s in (symbols or "").split(",") if s.strip()][:300]
-    cached = swr.peek_many([f"earn:trade:default:{s}" for s in syms])
+    cached = swr.peek_many([f"earn:trade:{pf}:{s}" for s in syms])
 
     data: dict = {}
     missing: list[str] = []
     for s in syms:
-        d = cached.get(f"earn:trade:default:{s}")
+        d = cached.get(f"earn:trade:{pf}:{s}")
         if not d:
             missing.append(s)
             continue
@@ -1558,8 +1559,8 @@ def earnings_risk_batch(symbols: str = "") -> dict:
         def _warm() -> None:
             for sym in batch:
                 try:
-                    swr.serve(f"earn:trade:default:{sym}",
-                              lambda sym=sym: ets.get_summary(sym, "default"),
+                    swr.serve(f"earn:trade:{pf}:{sym}",
+                              lambda sym=sym: ets.get_summary(sym, pf),
                               market.session_ttl(120, 1800))
                 except Exception:  # noqa: BLE001
                     pass
@@ -1577,7 +1578,7 @@ def earnings_trade(symbol: str, profile: str = "default") -> dict:
     """
     import earnings_trade_service as ets
 
-    pf = "final" if profile == "final" else "default"
+    pf = profile if profile in ("final", "plusminus") else "default"
     return swr.serve(f"earn:trade:{pf}:{symbol.upper()}",
                      lambda: ets.get_summary(symbol, pf),
                      market.session_ttl(120, 1800))

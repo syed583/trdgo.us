@@ -150,14 +150,35 @@ def _confidence(side: int, equity: dict, em_pct: Optional[float],
 def _exit(side: int, spot: Optional[float], em_pct: Optional[float],
           em_dollars: Optional[float], change_pct: Optional[float],
           equity: dict,
-          stop_mult: float = 0.5, target_mult: float = 1.0) -> dict:
+          stop_mult: float = 0.5, target_mult: float = 1.0,
+          exit_mode: str = "score") -> dict:
     by = _params_by_name(equity)
     levels: list[dict] = []
     im = _f(em_dollars)
     if im is None and spot is not None and em_pct is not None:
         im = spot * em_pct / 100.0
 
-    if spot is not None and side != 0:
+    if exit_mode == "implied" and spot is not None and im is not None and side != 0:
+        # Old "Claude +-" exit: implied-move hard stop + target.
+        hard = spot - side * stop_mult * im
+        tgt = spot + side * target_mult * im
+        levels = [
+            {"key": "stop", "label": "Hard Stop Loss",
+             "value": round(hard, 2),
+             "formula": f"entry {'-' if side > 0 else '+'} {stop_mult}× implied move",
+             "action": "EXIT immediately, no questions"},
+            {"key": "target", "label": "Target",
+             "value": round(tgt, 2),
+             "formula": f"entry {'+' if side > 0 else '-'} {target_mult}× implied move",
+             "action": "Book half the position"},
+            {"key": "trail", "label": "Trailing Stop", "value": None,
+             "formula": "On a favourable move, lift stop to entry, then trail price",
+             "action": "EXIT the rest when hit"},
+            {"key": "time", "label": "Time Stop", "value": None,
+             "formula": "No meaningful move 1-2 trading days after the result",
+             "action": "EXIT -- don't leave money stuck"},
+        ]
+    elif spot is not None and side != 0:
         # The exit is a score cross: a long exits once the score falls back
         # below 50, a short once it rises above 50 -- at the live price.
         rule = ("Exit if the score falls below 50" if side > 0
@@ -258,7 +279,8 @@ def _exit(side: int, spot: Optional[float], em_pct: Optional[float],
 def build(*, decision: Optional[str], equity: Optional[dict],
           spot: Optional[float], change_pct: Optional[float],
           em_pct: Optional[float], em_dollars: Optional[float],
-          historical_moves: Optional[list]) -> Optional[dict]:
+          historical_moves: Optional[list],
+          exit_mode: str = "score") -> Optional[dict]:
     """Return {confidence, exit} for a directional equity earnings trade."""
     d = (decision or "").upper()
     # Accept the STRONG tier too ("STRONG BUY" / "STRONG SELL").
@@ -270,5 +292,5 @@ def build(*, decision: Optional[str], equity: Optional[dict],
         "side": "LONG" if side > 0 else "SHORT",
         "confidence": _confidence(side, eq, _f(em_pct), historical_moves or []),
         "exit": _exit(side, _f(spot), _f(em_pct), _f(em_dollars),
-                      _f(change_pct), eq),
+                      _f(change_pct), eq, exit_mode=exit_mode),
     }
