@@ -80,10 +80,12 @@ def compute(symbol: str) -> dict:
         iv_rank = None
 
     spread_pct = None
+    premium = None
     try:
-        st = opt._atm_straddle(symbol, spot)
-        sp = (st or {}).get("spread_pct")
+        st = opt._atm_straddle(symbol, spot) or {}
+        sp = st.get("spread_pct")
         spread_pct = round(sp * 100, 2) if sp is not None else None
+        premium = st.get("premium")
     except Exception:  # noqa: BLE001
         spread_pct = None
 
@@ -120,8 +122,8 @@ def compute(symbol: str) -> dict:
     return {
         "symbol": symbol, "iv_rank": iv_rank, "implied_move": implied,
         "impl_vs_hist": ratio, "avg_hist_move": avg_hist, "spread_pct": spread_pct,
-        "oi": None, "score": score, "action": action, "tilt": tilt,
-        "exclusion": excl,
+        "premium": premium, "spot": spot, "oi": None, "score": score,
+        "action": action, "tilt": tilt, "exclusion": excl,
         "filters": [
             {"name": "iv_rank", "label": "IV Rank", "points": iv_pts, "max": cfg.TAB_B_WEIGHTS["iv_rank"], "value": iv_rank},
             {"name": "implied_move", "label": "Implied Move %", "points": im_pts, "max": cfg.TAB_B_WEIGHTS["implied_move"], "value": implied},

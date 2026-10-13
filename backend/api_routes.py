@@ -309,7 +309,9 @@ def tab_b_scan(days: int = 15) -> dict:
     d = max(1, min(int(days or 15), 30))
     res = swr.serve(f"tabb:scan:{d}", lambda: tb.scan(d), 60.0)
     miss = res.get("missing") or []
-    if miss and not (os.getenv("DISABLE_WARMERS") or "").strip():
+    if miss:
+        # On-demand fill of what the user is looking at (sequential, light) --
+        # not gated by DISABLE_WARMERS, which only stops the heavy background loops.
         batch = miss[:24]
 
         def _warm() -> None:

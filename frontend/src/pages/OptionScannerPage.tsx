@@ -98,6 +98,7 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                   <Th k="implied_move" cls="ts-num">Impl %</Th>
                   <Th k="impl_vs_hist" cls="ts-num">Impl÷Hist</Th>
                   <Th k="spread_pct" cls="ts-num">Spread %</Th>
+                  <th className="ts-num">Premium $</th>
                   <Th k="score" cls="ts-num">Score</Th>
                   <th>Action</th>
                   <th>Tilt</th>
@@ -116,6 +117,7 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                     <td className="ts-num">{n1(r.implied_move)}</td>
                     <td className="ts-num">{n2(r.impl_vs_hist)}</td>
                     <td className="ts-num">{n1(r.spread_pct)}</td>
+                    <td className="ts-num">{r.premium != null ? `$${Number(r.premium).toFixed(2)}` : '—'}</td>
                     <td className={`ts-score ${actClass(r.action)}`}>{pending ? '—' : r.score}</td>
                     <td><span className={`ts-badge ${actClass(r.action)}`}>{pending ? 'warming' : r.action}</span></td>
                     <td>{r.tilt ? <span className={tiltClass(r.tilt)}>{r.tilt}</span> : '—'}</td>
