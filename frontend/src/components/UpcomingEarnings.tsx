@@ -296,9 +296,9 @@ export default function UpcomingEarnings({
 
       {/* Colour convention for the cards, by the 0-100 earnings score. */}
       <div className="ue-legend">
-        <span className="ue-leg buy"><i />Buy ≥ 65 (green)</span>
-        <span className="ue-leg neu"><i />Exit / No trade 35–65 (yellow)</span>
-        <span className="ue-leg sell"><i />Sell ≤ 35 (red)</span>
+        <span className="ue-leg buy"><i />Buy ≥ 55 (green)</span>
+        <span className="ue-leg neu"><i />Neutral 45–55 (yellow)</span>
+        <span className="ue-leg sell"><i />Sell ≤ 45 (red)</span>
       </div>
 
       {/* Plain-list mode: a notice listing which stocks changed (no Intraday
