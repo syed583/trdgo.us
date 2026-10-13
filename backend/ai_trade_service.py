@@ -183,14 +183,14 @@ def _load_rows() -> None:
 
 
 def _et_date() -> str:
-    """Today's date in US market time (ET). The TODAY hold is keyed on this so
-    it clears when the trading day rolls over, not on the server's local day."""
-    from datetime import datetime
+    """The effective trading day (ET). Rolls to the next trading day at the
+    4:00 PM ET close, so the TODAY hold clears at the close and the board
+    starts fresh for the next session rather than lingering until midnight."""
     try:
-        from zoneinfo import ZoneInfo
-        return datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
-    except Exception:  # noqa: BLE001 - no tzdata: approximate ET as UTC-4
-        from datetime import timezone, timedelta
+        from live_market_service import trading_date_et
+        return trading_date_et()
+    except Exception:  # noqa: BLE001 - fall back to the plain ET calendar date
+        from datetime import datetime, timezone, timedelta
         return (datetime.now(timezone.utc) - timedelta(hours=4)).strftime("%Y-%m-%d")
 
 

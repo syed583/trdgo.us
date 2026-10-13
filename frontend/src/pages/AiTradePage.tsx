@@ -30,9 +30,24 @@ const SIDE_LABEL: Record<'buy' | 'sell' | 'neutral', string> = {
 };
 
 /** Today's date in US market time, as the key a day's pinned list resets on. */
+// The effective trading day (ET). Rolls to the NEXT trading day at the 4:00 PM
+// ET close (not midnight): before the close on a weekday it is that day; at or
+// after the close, or on a weekend, it is the next weekday. Mirrors the
+// backend's trading_date_et so the board and the Signal log agree on "today".
 function etDay(): string {
   try {
-    return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/New_York', year: 'numeric', month: '2-digit',
+      day: '2-digit', hour: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date());
+    const get = (t: string) => parts.find((p) => p.type === t)?.value || '';
+    const y = +get('year'), m = +get('month'), d = +get('day'), hour = +get('hour');
+    const dt = new Date(Date.UTC(y, m - 1, d, 12));   // ET calendar date, UTC-noon
+    const weekday = dt.getUTCDay() >= 1 && dt.getUTCDay() <= 5;
+    if (weekday && hour < 16) return dt.toISOString().slice(0, 10);
+    do { dt.setUTCDate(dt.getUTCDate() + 1); }
+    while (dt.getUTCDay() === 0 || dt.getUTCDay() === 6);   // skip Sat/Sun
+    return dt.toISOString().slice(0, 10);
   } catch {
     return new Date().toISOString().slice(0, 10);
   }

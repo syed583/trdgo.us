@@ -202,6 +202,26 @@ def market_clock() -> dict:
     }
 
 
+def trading_date_et() -> str:
+    """The effective trading day (ET), as YYYY-MM-DD.
+
+    Rolls to the NEXT trading day at the 4:00 PM ET close, not at midnight:
+    before the close on a weekday it is that day; at/after the close, or on a
+    weekend, it is the next weekday. (The clock has no holiday calendar, so
+    only weekends are skipped.) This is what "today" means for the Trdgo Stock
+    board and the Signal log -- once the session closes, the day to trade is
+    the next one.
+    """
+    now = datetime.now(EASTERN)
+    d = now.date()
+    if now.weekday() < 5 and now.time() < RTH_CLOSE:
+        return d.isoformat()
+    d += timedelta(days=1)
+    while d.weekday() >= 5:      # skip Sat/Sun
+        d += timedelta(days=1)
+    return d.isoformat()
+
+
 # Sessions where the last regular-hours close is no longer the current price.
 EXTENDED_SESSIONS = {"PRE_MARKET", "AFTER_HOURS"}
 
