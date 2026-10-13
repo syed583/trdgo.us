@@ -295,8 +295,10 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
   // Past sessions for the signal-log day picker. Fetched HERE (the page stays
   // mounted) rather than inside SignalLog, which unmounts/remounts while the
   // board is scoring and would keep aborting the request.
+  // Only the Signal log uses the past-day snapshots, so don't fetch (or poll)
+  // them while the board is showing -- lazy-load them when the log opens.
   const pastDays = useApi<any>((s) => api2.aiTradePastDays(7, s), [],
-    { refreshMs: 600000 });
+    { refreshMs: 600000, enabled: view === 'log' });
 
   // Live swing positions (ATR stop + trailing) and their alert feed.
   const swing = useApi<any>((s) => api2.aiTradeSwing(s), [], { refreshMs: 60000 });
