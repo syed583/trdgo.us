@@ -114,16 +114,15 @@ export default function UpcomingEarnings({
   // reads "No clear trade", so it is neutral, never green/red. The STRONG shade
   // comes from the raw equity decision (`tiers`). Before the risk batch has an
   // entry, fall back to the raw tier, then the normalised signal.
-  // Only three colours by score: BUY green, SELL red, no-trade/exit yellow.
-  // (A STRONG BUY/SELL is still green/red -- same colour, no deeper shade.)
+  // Only three colours, strictly by the 0-100 score: BUY (>=65) green,
+  // SELL (<=35) red, the no-trade/exit middle yellow. Before the score is
+  // known, fall back to the raw decision / signal.
   const tiers: Record<string, string> = sig.data?.tiers || {};
+  const scores: Record<string, number> = sig.data?.scores || {};
   const tierClass = (sym: string) => {
-    const rk = riskMap[sym];
-    const raw = (tiers[sym] || rk?.decision || '').toUpperCase();
-    if (rk) {
-      if (rk.confidence == null) return 'neutral';         // "No clear trade"
-      return (rk.side === 'SHORT' || raw.includes('SELL')) ? 'sell' : 'buy';
-    }
+    const sc = scores[sym];
+    if (sc != null) return sc >= 65 ? 'buy' : sc <= 35 ? 'sell' : 'neutral';
+    const raw = (tiers[sym] || riskMap[sym]?.decision || '').toUpperCase();
     if (!raw) return sigClass(sym);                        // not warmed yet
     if (raw.includes('SELL')) return 'sell';
     if (raw.includes('BUY')) return 'buy';
