@@ -310,7 +310,7 @@ def tab_b_scan(days: int = 15) -> dict:
     res = swr.serve(f"tabb:scan:{d}", lambda: tb.scan(d), 60.0)
     miss = res.get("missing") or []
     if miss and not (os.getenv("DISABLE_WARMERS") or "").strip():
-        batch = miss[:10]
+        batch = miss[:24]
 
         def _warm() -> None:
             for s in batch:

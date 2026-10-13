@@ -152,24 +152,34 @@ def scan(days: int = 15, warm: int = 0) -> dict:
             uniq.append(r)
     cached = swr.peek_many([f"tabb:{s}" for s in seen])
 
+    def _days_to(r: dict):
+        d = r.get("date")
+        if not d:
+            return None
+        try:
+            return (datetime.fromisoformat(str(d)[:10]).date() - date.today()).days
+        except Exception:  # noqa: BLE001
+            return None
+
     out: list[dict] = []
     missing: list[str] = []
+    scored = 0
     for r in uniq:
         s = r["symbol"].upper()
         t = cached.get(f"tabb:{s}")
-        if not t:
+        meta = {"company": r.get("company"), "date": r.get("date"),
+                "date_label": r.get("date_label"), "time_label": r.get("short_label"),
+                "days_to": _days_to(r)}
+        if t:
+            out.append({**t, **meta})
+            scored += 1
+        else:
+            # Every upcoming name shows; the scan fills in as it warms.
             missing.append(s)
-            continue
-        days_to = None
-        d = r.get("date")
-        if d:
-            try:
-                days_to = (datetime.fromisoformat(str(d)[:10]).date() - date.today()).days
-            except Exception:  # noqa: BLE001
-                days_to = None
-        out.append({**t, "company": r.get("company"), "date": d,
-                    "date_label": r.get("short_label") or r.get("date_label"),
-                    "days_to": days_to})
+            out.append({"symbol": s, "score": None, "action": "PENDING",
+                        "tilt": None, "iv_rank": None, "implied_move": None,
+                        "impl_vs_hist": None, "spread_pct": None, "exclusion": None,
+                        **meta})
 
     for s in missing[:max(0, warm)]:
         try:
@@ -177,6 +187,6 @@ def scan(days: int = 15, warm: int = 0) -> dict:
         except Exception:  # noqa: BLE001
             pass
 
-    out.sort(key=lambda x: x["score"], reverse=True)
+    out.sort(key=lambda x: (x["score"] if x["score"] is not None else -1), reverse=True)
     return {"status": "OK", "source": SOURCE, "rows": out,
-            "universe": len(seen), "scored": len(out), "missing": missing[:60]}
+            "universe": len(seen), "scored": scored, "missing": missing[:60]}

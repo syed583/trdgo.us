@@ -105,7 +105,9 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                 </tr>
               </thead>
               <tbody>
-                {view.map((r) => (
+                {view.map((r) => {
+                  const pending = r.score == null;
+                  return (
                   <tr key={r.symbol}>
                     <td className="ts-sym">{r.symbol}</td>
                     <td className="ts-date">{r.date_label || r.date || '—'}</td>
@@ -114,12 +116,13 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                     <td className="ts-num">{n1(r.implied_move)}</td>
                     <td className="ts-num">{n2(r.impl_vs_hist)}</td>
                     <td className="ts-num">{n1(r.spread_pct)}</td>
-                    <td className={`ts-score ${actClass(r.action)}`}>{r.score}</td>
-                    <td><span className={`ts-badge ${actClass(r.action)}`}>{r.action}</span></td>
-                    <td><span className={tiltClass(r.tilt)}>{r.tilt}</span></td>
+                    <td className={`ts-score ${actClass(r.action)}`}>{pending ? '—' : r.score}</td>
+                    <td><span className={`ts-badge ${actClass(r.action)}`}>{pending ? 'warming' : r.action}</span></td>
+                    <td>{r.tilt ? <span className={tiltClass(r.tilt)}>{r.tilt}</span> : '—'}</td>
                     <td className="ts-date ts-excl">{r.exclusion || '—'}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
