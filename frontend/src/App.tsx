@@ -91,7 +91,7 @@ const OPTIONS_ROUTES = [
 
 /** Sections that carry a symbol in the URL. */
 const SYMBOL_SECTIONS =
-  /^\/(earnings|earnings-trade|earnings-claude|my-calls|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)(\/|$)/;
+  /^\/(earnings|earnings-trade|earnings-claude|my-calls|my-calls-claude|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)(\/|$)/;
 
 /**
  * The same sections, capturing the ticker itself.
@@ -103,7 +103,7 @@ const SYMBOL_SECTIONS =
  * ticker card changed the address bar while every panel kept showing NVDA.
  */
 const SYMBOL_IN_PATH =
-  /^\/(?:earnings|earnings-trade|earnings-claude|my-calls|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)\/([A-Za-z0-9.\-]+)/;
+  /^\/(?:earnings|earnings-trade|earnings-claude|my-calls|my-calls-claude|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)\/([A-Za-z0-9.\-]+)/;
 
 export interface PageContext {
   symbol: string;
@@ -343,6 +343,8 @@ function Shell() {
           <Route path="/earnings-trade/:symbol" element={<EarningsTradePage ctx={ctx} />} />
           <Route path="/earnings-claude" element={<EarningsClaudePage ctx={ctx} base="/earnings-claude" profile="plusminus" />} />
           <Route path="/earnings-claude/:symbol" element={<EarningsClaudePage ctx={ctx} base="/earnings-claude" profile="plusminus" />} />
+          <Route path="/my-calls-claude" element={<EarningsClaudePage ctx={ctx} base="/my-calls-claude" profile="final" />} />
+          <Route path="/my-calls-claude/:symbol" element={<EarningsClaudePage ctx={ctx} base="/my-calls-claude" profile="final" />} />
           <Route path="/earnings-equity" element={<EarningsEquityPage ctx={ctx} />} />
           <Route path="/earnings-equity/:symbol" element={<EarningsEquityPage ctx={ctx} />} />
           <Route path="/earnings-options" element={<EarningsOptionsPage ctx={ctx} />} />

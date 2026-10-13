@@ -150,7 +150,7 @@ function EarningsTradeLanding({ demo, search, base, profile, embedded, mode, onM
       {!embedded && (
         <div className="ets-landing-head">
           <div className="ets-landing-head-row">
-            <h1>Claude +-</h1>
+            <h1>{profile === 'final' ? 'My Call +-' : 'Claude +-'}</h1>
             {split && <ModeToggle mode={mode} onChange={onMode} />}
           </div>
           <p>{mode === 'options'

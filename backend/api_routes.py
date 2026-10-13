@@ -1512,13 +1512,54 @@ def earnings_risk_batch(symbols: str = "", profile: str = "default") -> dict:
     _warm_off = bool((os.getenv("DISABLE_WARMERS") or "").strip())
     syms = [s.strip().upper() for s in (symbols or "").split(",") if s.strip()][:300]
     cached = swr.peek_many([f"earn:trade:{pf}:{s}" for s in syms])
+    # The "plusminus" variant has the SAME weights as default, so its score is
+    # identical -- only the 58/42 cut and the implied-move exit differ. When its
+    # own entry isn't warmed yet, derive the card instantly from the warmed
+    # default entry instead of leaving it stuck on "Checking the trade".
+    base = (swr.peek_many([f"earn:trade:default:{s}" for s in syms])
+            if pf == "plusminus" else {})
+
+    def _derive_plusminus(dd: dict):
+        score = ((dd.get("equity") or {}).get("score"))
+        if score is None:
+            return None
+        side = 1 if score >= 58.0 else -1 if score <= 42.0 else 0
+        em = dd.get("expected_move") or {}
+        spot = em.get("current") or dd.get("price")
+        emd = em.get("dollars")
+        if side == 0:
+            return {"decision": "NO TRADE", "confidence": None,
+                    "price": dd.get("price"),
+                    "reason": "Signal is Neutral — no clear up or down edge into earnings."}
+        # Confidence depends on the score/data (not the cut), so reuse the
+        # default's when it made a directional call too (score >= 65 / <= 35).
+        rr = dd.get("risk") or {}
+        conf = rr.get("confidence") or {}
+        if conf.get("total") is None:
+            return None    # middle band (58-65 / 35-42): let it warm the real one
+        stop = target = None
+        if spot is not None and emd is not None:
+            stop = round(spot - side * 0.5 * emd, 2)
+            target = round(spot + side * 1.0 * emd, 2)
+        return {
+            "decision": ("BUY" if side > 0 else "SELL"),
+            "side": "LONG" if side > 0 else "SHORT",
+            "confidence": conf.get("total"), "conf_color": conf.get("color"),
+            "conf_band": conf.get("band"), "target": target, "stop": stop,
+            "trailing": "to entry", "price": dd.get("price"),
+        }
 
     data: dict = {}
     missing: list[str] = []
     for s in syms:
         d = cached.get(f"earn:trade:{pf}:{s}")
         if not d:
-            missing.append(s)
+            derived = _derive_plusminus(base.get(f"earn:trade:default:{s}") or {}) \
+                if pf == "plusminus" else None
+            if derived:
+                data[s] = derived
+            else:
+                missing.append(s)
             continue
         r = d.get("risk") or None
         if r:
