@@ -656,17 +656,32 @@ function SwingPanel({ data }: { data: any }) {
             </table>
           ) : <div className="at-swing-empty">No open swing positions.</div>}
         </div>
-        <div className="at-swing-box">
+        <div className="at-swing-box at-swing-alertbox">
           <div className="at-swing-feed-h">Alerts</div>
           {events.length ? (
-            <ul className="at-swing-feed">
-              {events.slice(0, 14).map((e, i) => (
-                <li key={i}>
-                  <span className={`at-swing-alert ${/EXIT|SQUARE/.test(e.alert) ? 'neg' : /BREAKEVEN|TRAIL/.test(e.alert) ? 'warn' : 'pos'}`}>{e.alert}</span>
-                  <b>{e.symbol}</b> <span className="at-swing-reason">{e.reason}</span>
-                </li>
-              ))}
-            </ul>
+            <table className="at-swing-tbl at-swing-alerts">
+              <thead><tr><th>Signal</th><th>Symbol</th><th>Detail</th></tr></thead>
+              <tbody>
+                {events.slice(0, 40).map((e, i) => {
+                  const s = (e.alert || '').toUpperCase();
+                  // Exit / stop-hit -> red; target hit -> green; breakeven /
+                  // trail update -> amber; otherwise colour by the side.
+                  const tone = /EXIT|SQUARE/.test(s) ? 'neg'
+                    : /TARGET|TP HIT/.test(s) ? 'pos'
+                    : /BREAKEVEN|TRAIL/.test(s) ? 'warn'
+                    : /SELL/.test(s) ? 'neg' : /BUY/.test(s) ? 'pos' : 'neu';
+                  const blink = /EXIT|SQUARE/.test(s) ? 'blink-sl'
+                    : /TARGET|TP HIT/.test(s) ? 'blink-tp' : '';
+                  return (
+                    <tr key={i} className={blink}>
+                      <td><span className={`at-swing-alert ${tone}`}>{e.alert}</span></td>
+                      <td><b>{e.symbol}</b></td>
+                      <td className="at-swing-reason">{e.reason}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           ) : <div className="at-swing-empty">No alerts yet.</div>}
         </div>
       </div>

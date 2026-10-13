@@ -718,7 +718,14 @@
 .at-swing-alert.pos { color: #16a34a; background: rgba(22,163,74,.12); }
 .at-swing-alert.neg { color: #dc2626; background: rgba(220,38,38,.12); }
 .at-swing-alert.warn { color: #d97706; background: rgba(217,119,6,.12); }
-.at-swing-reason { color: var(--text-mute); }
+.at-swing-alert.neu { color: var(--text-mute); background: var(--panel-2); }
+.at-swing-reason { color: var(--text-mute); white-space: nowrap; }
+/* Alerts table: keep the alert pill tight, and scroll a long feed. */
+.at-swing-alerts td { vertical-align: middle; white-space: nowrap; }
+.at-swing-alerts .at-swing-alert { display: inline-block; white-space: nowrap; }
+.at-swing-alertbox { max-height: 52vh; overflow-y: auto; }
+.at-swing-alertbox .at-swing-feed-h { position: sticky; top: 0; background: var(--panel); padding-bottom: 4px; z-index: 3; }
+.at-swing-alerts thead th { position: sticky; top: 18px; z-index: 2; }
 .at-swing .pos { color: #16a34a; } .at-swing .neg { color: #dc2626; }
 .at2-px { font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 12px; }
 .at2-px.pos { color: #16a34a; } .at2-px.neg { color: #dc2626; }
