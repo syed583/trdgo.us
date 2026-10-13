@@ -41,7 +41,7 @@ const NAV_GROUPS: NavGroup[] = [
   ] },
   { heading: 'Earnings & news', items: [
     { to: '/earnings-calendar', label: 'Earnings Calendar', icon: <CalendarDays size={S} /> },
-    { to: '/earnings-trade', label: 'Earnings Trade', icon: <Gauge size={S} /> },
+    { to: '/earnings-trade', label: 'Claude +0', icon: <Gauge size={S} /> },
     { to: '/earnings-claude', label: 'Claude +-', icon: <Scale size={S} /> },
     { to: '/claude-last', label: 'Claude New', icon: <Crosshair size={S} /> },
     { to: '/claude-new-pz', label: 'Claude New +0', icon: <Scale size={S} /> },

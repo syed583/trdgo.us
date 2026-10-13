@@ -157,7 +157,7 @@ function EarningsTradeLanding({ demo, search, base, profile, embedded, mode, onM
       {!embedded && (
         <div className="ets-landing-head">
           <div className="ets-landing-head-row">
-            <h1>Earnings Trade</h1>
+            <h1>Claude +0</h1>
             {split && <ModeToggle mode={mode} onChange={onMode} />}
           </div>
           <p>{mode === 'options'
@@ -412,7 +412,7 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
           {/* Sub-tabs */}
           <div className="ets-subtabs">
             <button type="button" className={`ets-subtab${view === 'trade' ? ' active' : ''}`}
-              onClick={() => setView('trade')}>Earnings Trade</button>
+              onClick={() => setView('trade')}>Claude +0</button>
             <button type="button" className={`ets-subtab${view === 'signal15' ? ' active' : ''}`}
               onClick={() => setView('signal15')}>15-Day Signal</button>
             {dual ? <>
@@ -437,8 +437,8 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
           <div className="ets-row ets-row-3">
             <div className="ets-card">
               <div className="ets-card-h">
-                <span><Target size={15} /> {dual ? 'Earnings Trade Signal' : `${sideTitle} Signal`}</span>
-                <span className={`ets-badge ${DEC_TONE[dual ? d.overall_decision : sideDecision] || 'flat'}`}>{dual ? d.overall_decision : sideDecision}</span>
+                <span><Target size={15} /> {dual ? 'Claude +0 Signal' : `${sideTitle} Signal`}</span>
+                <span className={`ets-badge ${DEC_TONE[dual ? d.overall_decision : sideDecision] || 'flat'}`}>{(dual ? d.overall_decision : sideDecision) === 'NO TRADE' ? 'NEUTRAL' : (dual ? d.overall_decision : sideDecision)}</span>
               </div>
               {dual ? (
                 <div className="ets-gauges">
