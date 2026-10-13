@@ -420,6 +420,8 @@ def _warm_earnings_universe() -> None:
                 # returns instantly instead of paying a cold ~multi-engine build
                 # that can exceed the first-request wait and show "No analysis".
                 sh.warm_trade(syms)
+                # The old "Claude +-" tab reads its own variant.
+                sh.warm_trade(syms, "plusminus")
             except Exception:  # noqa: BLE001
                 pass
             time.sleep(1800)

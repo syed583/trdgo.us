@@ -399,8 +399,11 @@ def warm_earnings(symbols: list[str]) -> None:
         pass
 
 
-def warm_trade(symbols: list[str]) -> None:
-    """Pre-build+cache the full Earnings Trade detail so clicking a card is instant."""
+def warm_trade(symbols: list[str], profile: str = "default") -> None:
+    """Pre-build+cache the full Earnings Trade detail so clicking a card is instant.
+
+    profile="plusminus" warms the old "Claude +-" variant alongside the default."""
+    pf = (profile or "default").strip() or "default"
     try:
         import swr
         import earnings_trade_service as ets
@@ -412,8 +415,8 @@ def warm_trade(symbols: list[str]) -> None:
                 # long (6h) cache so re-warming the whole universe each cycle only
                 # recomputes the ~1/12 that actually went stale -- self-pacing the
                 # work across the day, well within the UW daily budget.
-                swr.serve(f"earn:trade:default:{sym}",
-                          lambda sym=sym: ets.get_summary(sym, "default"), 21600.0)
+                swr.serve(f"earn:trade:{pf}:{sym}",
+                          lambda sym=sym: ets.get_summary(sym, pf), 21600.0)
             except Exception:  # noqa: BLE001
                 pass
 
