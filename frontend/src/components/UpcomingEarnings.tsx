@@ -108,16 +108,28 @@ export default function UpcomingEarnings({
   };
   const CLS: any = { BUY: 'buy', SELL: 'sell', NEUTRAL: 'neutral' };
   const sigClass = (sym: string) => CLS[signals[sym]] || 'none';
-  // The raw decision per symbol (keeps STRONG) -> a tier colour class. Falls
-  // back to the normalised signal (e.g. the Options tab sends no tiers).
+  // Card tint by the earnings score tier. The colour must agree with the trade
+  // text the card shows, so it is driven by the SAME source as that text -- the
+  // risk batch (`riskMap`, from earn:trade:default). A card with no confidence
+  // reads "No clear trade", so it is neutral, never green/red. The STRONG shade
+  // comes from the raw equity decision (`tiers`). Before the risk batch has an
+  // entry, fall back to the raw tier, then the normalised signal.
   const tiers: Record<string, string> = sig.data?.tiers || {};
   const tierClass = (sym: string) => {
-    const d = (tiers[sym] || '').toUpperCase();
-    if (!d) return sigClass(sym);
-    if (d.includes('STRONG BUY')) return 'strong-buy';
-    if (d.includes('STRONG SELL')) return 'strong-sell';
-    if (d.includes('BUY')) return 'buy';
-    if (d.includes('SELL')) return 'sell';
+    const rk = riskMap[sym];
+    const raw = (tiers[sym] || rk?.decision || '').toUpperCase();
+    if (rk) {
+      if (rk.confidence == null) return 'neutral';        // "No clear trade"
+      if (raw.includes('STRONG BUY')) return 'strong-buy';
+      if (raw.includes('STRONG SELL')) return 'strong-sell';
+      if (rk.side === 'SHORT' || raw.includes('SELL')) return 'sell';
+      return 'buy';                                        // actionable long
+    }
+    if (!raw) return sigClass(sym);                        // not warmed yet
+    if (raw.includes('STRONG BUY')) return 'strong-buy';
+    if (raw.includes('STRONG SELL')) return 'strong-sell';
+    if (raw.includes('SELL')) return 'sell';
+    if (raw.includes('BUY')) return 'buy';
     return 'neutral';
   };
   // RGB of each signal colour, for the half/half gradient on a changed card.
