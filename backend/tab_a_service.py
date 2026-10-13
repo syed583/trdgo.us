@@ -139,18 +139,37 @@ def scan(days: int = 15) -> dict:
             uniq.append(r)
     eqs = swr.peek_many([f"earn:equity:{s}" for s in seen])
 
+    def _days_to(r: dict):
+        d = r.get("date")
+        if not d:
+            return None
+        try:
+            return (datetime.fromisoformat(str(d)[:10]).date() - date.today()).days
+        except Exception:  # noqa: BLE001
+            return None
+
     out: list[dict] = []
     missing: list[str] = []
+    scored = 0
     for r in uniq:
         s = r["symbol"].upper()
         eq = eqs.get(f"earn:equity:{s}")
-        if not eq or not eq.get("params"):
+        row = None
+        if eq and eq.get("params"):
+            try:
+                row = score_one(s, eq, r)
+                scored += 1
+            except Exception:  # noqa: BLE001
+                row = None
+        if row is None:
+            # Every upcoming name shows; score fills in as the engine warms it.
             missing.append(s)
-            continue
-        try:
-            out.append(score_one(s, eq, r))
-        except Exception:  # noqa: BLE001
-            missing.append(s)
-    out.sort(key=lambda x: x["score"], reverse=True)
+            row = {"symbol": s, "company": r.get("company"), "date": r.get("date"),
+                   "date_label": r.get("short_label") or r.get("date_label"),
+                   "days_to": _days_to(r), "score": None, "signal": "PENDING",
+                   "params": []}
+        out.append(row)
+    # Scored first (highest score), pending at the bottom.
+    out.sort(key=lambda x: (x["score"] if x["score"] is not None else -1), reverse=True)
     return {"status": "OK", "source": SOURCE, "rows": out,
-            "universe": len(seen), "scored": len(out), "missing": missing[:60]}
+            "universe": len(seen), "scored": scored, "missing": missing[:60]}

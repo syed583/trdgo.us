@@ -116,16 +116,18 @@ export default function ClaudeNewPage({ ctx }: { ctx: PageContext }) {
               <tbody>
                 {view.map((r) => {
                   const m = pmap(r);
-                  const isOpen = open === r.symbol;
+                  const pending = r.score == null;
+                  const cls = pending ? 'skip' : sigClass(r.signal);
+                  const isOpen = open === r.symbol && !pending;
                   return (
                     <Fragment key={r.symbol}>
                     <tr className={isOpen ? 'ts-open' : ''}
-                      onClick={() => setOpen(isOpen ? null : r.symbol)}>
+                      onClick={() => !pending && setOpen(isOpen ? null : r.symbol)}>
                       <td className="ts-sym">{r.symbol}</td>
                       <td className="ts-date">{r.date_label || r.date || '—'}</td>
                       <td className="ts-num">{r.days_to ?? '—'}</td>
-                      <td className={`ts-score ${sigClass(r.signal)}`}>{r.score}</td>
-                      <td><span className={`ts-badge ${sigClass(r.signal)}`}>{r.signal}</span></td>
+                      <td className={`ts-score ${cls}`}>{pending ? '—' : r.score}</td>
+                      <td><span className={`ts-badge ${cls}`}>{pending ? 'warming' : r.signal}</span></td>
                       {PARAMS.map((p) => (
                         <td key={p.key} className="ts-num">{m[p.key] != null ? m[p.key].toFixed(1) : '—'}</td>
                       ))}

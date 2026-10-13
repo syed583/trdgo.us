@@ -276,12 +276,27 @@ def earnings_upcoming(days: int = 14, start: str = "") -> dict:
 
 @router.get("/tab-a/scan")
 def tab_a_scan(days: int = 15) -> dict:
-    """Tab A -- pre-earnings direction (v2, all-positive scale), ranked by score."""
+    """Tab A -- pre-earnings direction (v2, all-positive scale), ranked by score.
+    Lists every upcoming name; unscored ones warm in the background and fill in."""
     import tab_a_service as ta
+    import threading
+    import os
 
     d = max(1, min(int(days or 15), 30))
-    return swr.serve(f"taba:{d}", lambda: ta.scan(d),
-                     market.session_ttl(120, 1800))
+    res = swr.serve(f"taba:{d}", lambda: ta.scan(d), 90.0)
+    miss = res.get("missing") or []
+    if miss and not (os.getenv("DISABLE_WARMERS") or "").strip():
+        batch = miss[:12]
+
+        def _warm() -> None:
+            try:
+                import signal_history_service as sh
+                sh.warm_earnings(batch)
+            except Exception:  # noqa: BLE001
+                pass
+
+        threading.Thread(target=_warm, daemon=True).start()
+    return res
 
 
 @router.get("/tab-b/scan")
