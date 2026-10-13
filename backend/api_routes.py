@@ -284,6 +284,30 @@ def tab_a_scan(days: int = 15) -> dict:
                      market.session_ttl(120, 1800))
 
 
+@router.get("/tab-b/scan")
+def tab_b_scan(days: int = 15) -> dict:
+    """Tab B -- short-straddle scanner, ranked by inflated-premium score."""
+    import tab_b_service as tb
+    import threading
+    import os
+
+    d = max(1, min(int(days or 15), 30))
+    res = swr.serve(f"tabb:scan:{d}", lambda: tb.scan(d), 60.0)
+    miss = res.get("missing") or []
+    if miss and not (os.getenv("DISABLE_WARMERS") or "").strip():
+        batch = miss[:10]
+
+        def _warm() -> None:
+            for s in batch:
+                try:
+                    tb._cached(s)
+                except Exception:  # noqa: BLE001
+                    pass
+
+        threading.Thread(target=_warm, daemon=True).start()
+    return res
+
+
 @router.get("/earnings/signal-history")
 def earnings_signal_history(n: int = 4, symbol: str = "") -> dict:
     """

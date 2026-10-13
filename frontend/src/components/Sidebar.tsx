@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import {
-  Activity, Brain, CalendarDays, Crosshair, Gauge, History, Layers, LineChart, Users,
+  Activity, Brain, CalendarDays, Crosshair, Flame, Gauge, History, Layers, LineChart, Users,
   LayoutDashboard, ListOrdered, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
   Scale, ScrollText, Settings, Sparkles, Star, TrendingUp, UserCog, Waves, Waypoints, X,
 } from 'lucide-react';
@@ -44,6 +44,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/earnings-trade', label: 'Earnings Trade', icon: <Gauge size={S} /> },
     { to: '/earnings-claude', label: 'Claude +-', icon: <Scale size={S} /> },
     { to: '/claude-new', label: 'Claude New 13 Oct', icon: <Sparkles size={S} /> },
+    { to: '/option-scanner', label: 'Option Scanner', icon: <Flame size={S} /> },
     { to: '/my-calls', label: 'My Calls', icon: <Star size={S} /> },
     { to: '/my-calls-claude', label: 'My Call +-', icon: <Scale size={S} /> },
     { to: '/earnings-signals', label: 'Signal History', icon: <History size={S} /> },
