@@ -7,7 +7,8 @@ import { safeHref } from '../lib/format';
 import './earnings-trade.css';
 
 const DECISION_TONE: Record<string, string> = {
-  BUY: 'buy', SELL: 'sell', STRADDLE: 'buy', STRANGLE: 'buy', 'NO TRADE': 'flat',
+  BUY: 'buy', 'STRONG BUY': 'buy', SELL: 'sell', 'STRONG SELL': 'sell',
+  STRADDLE: 'buy', STRANGLE: 'buy', 'NO TRADE': 'flat',
 };
 
 export function ScoreHeader({ r }: { r: any }) {

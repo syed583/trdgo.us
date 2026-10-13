@@ -157,18 +157,25 @@ def _exit(side: int, spot: Optional[float], em_pct: Optional[float],
     if im is None and spot is not None and em_pct is not None:
         im = spot * em_pct / 100.0
 
-    if spot is not None and im is not None and side != 0:
-        hard = spot - side * stop_mult * im
-        tgt = spot + side * target_mult * im
+    if spot is not None and side != 0:
+        # The exit is a score cross: a long exits once the score falls back
+        # below 50, a short once it rises above 50 -- at the live price.
+        rule = ("Exit if the score falls below 50" if side > 0
+                else "Exit if the score rises above 50")
         levels = [
-            {"key": "stop", "label": "Hard Stop Loss",
-             "value": round(hard, 2),
-             "formula": f"entry {'-' if side > 0 else '+'} {stop_mult}× implied move",
-             "action": "EXIT immediately, no questions"},
-            {"key": "target", "label": "Target",
-             "value": round(tgt, 2),
-             "formula": f"entry {'+' if side > 0 else '-'} {target_mult}× implied move",
-             "action": "Book half the position"},
+            {"key": "stop", "label": "Score Exit",
+             "value": round(spot, 2),
+             "formula": rule + " — exit at the live price",
+             "action": "EXIT at market"},
+        ]
+        if im is not None:
+            tgt = spot + side * target_mult * im
+            levels.append(
+                {"key": "target", "label": "Target",
+                 "value": round(tgt, 2),
+                 "formula": f"entry {'+' if side > 0 else '-'} {target_mult}× implied move",
+                 "action": "Book half the position"})
+        levels += [
             {"key": "trail", "label": "Trailing Stop", "value": None,
              "formula": "On a favourable move, lift stop to entry, then trail price",
              "action": "EXIT the rest when hit"},
@@ -243,7 +250,7 @@ def _exit(side: int, spot: Optional[float], em_pct: Optional[float],
         "urgency": {"total": urg, "band": u_band, "color": u_color,
                     "signal": u_signal, "rows": rows,
                     "note": "Provisional pre-result — finalises when the result is out. "
-                            "Hard Stop always overrides this score."},
+                            "The score exit always overrides this score."},
         "pre_earnings": pre,
     }
 
@@ -254,7 +261,8 @@ def build(*, decision: Optional[str], equity: Optional[dict],
           historical_moves: Optional[list]) -> Optional[dict]:
     """Return {confidence, exit} for a directional equity earnings trade."""
     d = (decision or "").upper()
-    side = 1 if d == "BUY" else -1 if d == "SELL" else 0
+    # Accept the STRONG tier too ("STRONG BUY" / "STRONG SELL").
+    side = 1 if "BUY" in d else -1 if "SELL" in d else 0
     if side == 0:
         return None
     eq = equity or {}

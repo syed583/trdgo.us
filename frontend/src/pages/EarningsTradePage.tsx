@@ -26,7 +26,8 @@ const SETUP_COLOR = (s: number | null) =>
   s == null ? 'var(--text-mute)' : s >= 75 ? 'var(--green)' : s >= 55 ? ETS_BLUE
     : s >= 45 ? 'var(--amber)' : 'var(--red)';
 const DEC_TONE: Record<string, string> = {
-  BUY: 'buy', SELL: 'sell', STRADDLE: 'buy', STRANGLE: 'buy', 'NO TRADE': 'flat',
+  BUY: 'buy', 'STRONG BUY': 'buy', SELL: 'sell', 'STRONG SELL': 'sell',
+  STRADDLE: 'buy', STRANGLE: 'buy', 'NO TRADE': 'flat',
 };
 // Analyst-estimate lean -> colour: bullish green, bearish red, neutral amber.
 const LEAN_TONE: Record<string, string> = {
@@ -181,6 +182,10 @@ function ScoreSplit({ equity, options, lock }:
   const sumUp = ups.reduce((s, w) => s + w.points, 0);
   const sumDown = downs.reduce((s, w) => s + w.points, 0);   // <= 0
   const net = sumUp + sumDown;
+  // Shown net never goes negative (user preference): a bearish lean reads 0.
+  // The real `score` below still comes from the backend's true net, so SELL /
+  // STRONG SELL calls are unaffected -- this is display only.
+  const netShown = Math.max(0, net);
   // PRESENT = weight that actually had data; the score maps NET onto 0-100.
   const present = rows.reduce((s, w) => s + (Number(w.weight) || 0), 0);
   const score = src?.score;
@@ -225,16 +230,16 @@ function ScoreSplit({ equity, options, lock }:
       )}
       <div className="ets-split-net">
         <span className="ets-split-net-k">Net</span>
-        <b className={net >= 0 ? 'pos' : 'neg'}>{fmt(net)} pts</b>
+        <b className="pos">{fmt(netShown)} pts</b>
         <span className="ets-split-sub">
-          = {fmt(sumUp)} − {Math.abs(sumDown).toFixed(1)}
-          {neutral ? ` · ${neutral} neutral` : ''}{noData ? ` · ${noData} no data` : ''}
+          {neutral ? `${neutral} neutral` : ''}{neutral && noData ? ' · ' : ''}
+          {noData ? `${noData} no data` : ''}
         </span>
       </div>
       {score != null && present > 0 && (
         <div className="ets-split-calc">
-          Score = 50 + (<b className={net >= 0 ? 'pos' : 'neg'}>{fmt(net)}</b> ÷ {present} available)
-          × 50 = <b className="ets-split-final">{Math.round(score)}</b> / 100
+          Net <b className="pos">{fmt(netShown)}</b> pts → Score
+          = <b className="ets-split-final">{Math.round(score)}</b> / 100
         </div>
       )}
     </div>

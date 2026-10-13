@@ -57,6 +57,8 @@ class Param:
 
 def score(params: list[Param], *, pos_label: str, neg_label: str,
           buy_at: float = 58.0, sell_at: float = 42.0,
+          strong_buy_at: float | None = None,
+          strong_sell_at: float | None = None,
           min_coverage: float = 40.0) -> dict:
     """
     Combine weighted params into a 0-100 evidence score and a decision.
@@ -98,6 +100,14 @@ def score(params: list[Param], *, pos_label: str, neg_label: str,
         decision = neg_label
     else:
         decision = "NO TRADE"
+
+    # Optional STRONG tier: a called side upgrades to "STRONG <side>" past the
+    # strong cut. Callers that don't pass the strong thresholds (options, My
+    # Calls) keep the plain two-tier call.
+    if decision == pos_label and strong_buy_at is not None and s >= strong_buy_at:
+        decision = f"STRONG {pos_label}"
+    elif decision == neg_label and strong_sell_at is not None and s <= strong_sell_at:
+        decision = f"STRONG {neg_label}"
 
     # Reasons explain only a NO TRADE -- they must not contradict a live call.
     reasons: list[str] = []

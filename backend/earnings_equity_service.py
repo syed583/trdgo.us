@@ -443,7 +443,14 @@ def get_analysis(symbol: str, profile: str = "default") -> dict:
         for p in params:
             p.label, p.weight = FINAL_EQUITY[p.name]
 
-    result = eng.score(params, pos_label="BUY", neg_label="SELL")
+    # The Earnings Trade tab (default profile) uses tighter cuts and a STRONG
+    # tier; My Calls (profile="final") keeps the engine's standard 58/42 call.
+    if profile == "default":
+        result = eng.score(params, pos_label="BUY", neg_label="SELL",
+                           buy_at=65.0, sell_at=35.0,
+                           strong_buy_at=80.0, strong_sell_at=20.0)
+    else:
+        result = eng.score(params, pos_label="BUY", neg_label="SELL")
     result.update({
         "symbol": symbol,
         "engine": "EQUITY",
