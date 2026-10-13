@@ -61,3 +61,53 @@
 .ts-detail-pts b { color: var(--text); font-variant-numeric: tabular-nums; }
 .ts-detail-pts em { font-style: normal; }
 .ts-detail-sub { color: var(--text-mute); font-size: 10px; }
+
+/* Claude New -- card grid like the Earnings tab, boxes coloured by signal. */
+.cn-toolbar { display: flex; align-items: center; gap: 12px; margin: 0 0 12px;
+  font-size: 12px; color: var(--text-mute); flex-wrap: wrap; }
+.cn-toolbar label { display: inline-flex; align-items: center; gap: 5px; }
+.cn-toolbar select { font: inherit; font-size: 12px; padding: 3px 6px; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--bg-1); color: var(--text); }
+.cn-search { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border);
+  border-radius: 6px; padding: 3px 8px; background: var(--bg-1); }
+.cn-search input { border: none; background: none; font: inherit; font-size: 12px; color: var(--text);
+  outline: none; width: 200px; }
+.cn-legend { display: inline-flex; align-items: center; gap: 5px; }
+.cn-legend i { width: 14px; height: 10px; border-radius: 3px; border-left: 3px solid; }
+.cn-legend i.buy { background: rgba(46,184,122,.28); border-left-color: var(--green); }
+.cn-legend i.neu { background: rgba(217,164,65,.30); border-left-color: var(--amber); }
+.cn-legend i.sell { background: rgba(242,70,90,.26); border-left-color: var(--red); }
+
+.cn-day { margin-bottom: 14px; }
+.cn-day-h { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--text-mute); margin: 0 0 7px; display: flex; align-items: center; gap: 7px; }
+.cn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 10px; }
+
+.cn-card { border: 1px solid var(--border); border-left-width: 4px; border-radius: 10px;
+  padding: 10px 12px; background: var(--panel); }
+.cn-card.sig-buy  { border-left-color: var(--green); background: rgba(46,184,122,.10); }
+.cn-card.sig-sell { border-left-color: var(--red);   background: rgba(242,70,90,.10); }
+.cn-card.sig-neu  { border-left-color: var(--amber); background: rgba(217,164,65,.12); }
+.cn-card.sig-pend { border-left-color: var(--border); opacity: .7; }
+.cn-card-h { display: flex; align-items: baseline; gap: 8px; }
+.cn-sym { font-weight: 800; font-size: 15px; color: var(--text); }
+.cn-card.sig-buy .cn-sym { color: var(--green); }
+.cn-card.sig-sell .cn-sym { color: var(--red); }
+.cn-card.sig-neu .cn-sym { color: var(--amber); }
+.cn-co { font-size: 11px; color: var(--text-mute); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; flex: 1; }
+.cn-right { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; }
+.cn-score { font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums; }
+.cn-score em { font-style: normal; font-size: 10px; font-weight: 600; color: var(--text-mute); }
+.cn-badge { font-size: 9.5px; font-weight: 800; padding: 1px 7px; border-radius: 999px; }
+.cn-badge.buy { color: var(--green); background: rgba(46,184,122,.16); }
+.cn-badge.sell { color: var(--red); background: rgba(242,70,90,.16); }
+.cn-badge.neu { color: var(--amber); background: rgba(217,164,65,.18); }
+.cn-badge.pend { color: var(--text-mute); background: var(--panel-2); }
+
+.cn-params { display: flex; flex-wrap: wrap; gap: 4px 5px; margin-top: 9px; }
+.cn-chip { font-size: 10.5px; padding: 1px 6px; border-radius: 6px; background: var(--panel-2);
+  color: var(--text-mute); }
+.cn-chip b { font-variant-numeric: tabular-nums; }
+.cn-chip.pos { color: var(--green); background: rgba(46,184,122,.12); }
+.cn-chip.neg { color: var(--red); background: rgba(242,70,90,.12); }
