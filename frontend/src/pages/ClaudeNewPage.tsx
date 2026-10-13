@@ -39,12 +39,17 @@ export default function ClaudeNewPage({ ctx }: { ctx: PageContext }) {
       ? rows.filter((r) => String(r.symbol).toUpperCase().includes(q)
         || String(r.company || '').toUpperCase().includes(q))
       : rows;
-    const by: Record<string, any[]> = {};
+    const by: Record<string, { date: string; items: any[] }> = {};
     for (const r of xs) {
       const k = r.date_label || r.date || '—';
-      (by[k] = by[k] || []).push(r);
+      if (!by[k]) by[k] = { date: r.date || '￿', items: [] };
+      by[k].items.push(r);
     }
-    return Object.entries(by);
+    // Order the day groups chronologically (nearest earnings date first);
+    // cards within a day keep the scan's score order.
+    return Object.entries(by)
+      .sort((a, b) => (a[1].date || '').localeCompare(b[1].date || ''))
+      .map(([label, g]) => [label, g.items] as [string, any[]]);
   }, [rows, query]);
 
   const total = groups.reduce((n, [, g]) => n + g.length, 0);
