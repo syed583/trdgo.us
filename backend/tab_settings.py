@@ -53,3 +53,16 @@ TAB_B_LIQUIDITY = {"full_spread": 3.0, "full_oi": 1000,
                    "mid_spread": 6.0, "low_spread": 10.0}  # pct of straddle
 # Hard exclusions (skip regardless of score).
 TAB_B_MIN_IMPL_VS_HIST = 0.90
+
+# The 67-name straddle watchlist (high-beta, liquid options), per the spec. The
+# scanner ranks ONLY these names (intersected with the upcoming-earnings window),
+# because they are pre-selected for the liquidity a short straddle needs.
+TAB_B_WATCHLIST: list[str] = [
+    "NVDA", "AMD", "AVGO", "MU", "TSM", "ARM", "SMCI", "MRVL", "QCOM", "INTC",
+    "AMAT", "LRCX", "ON", "TSLA", "META", "AMZN", "NFLX", "GOOGL", "ORCL",
+    "PLTR", "CRWD", "SNOW", "NET", "DDOG", "MDB", "ZS", "SHOP", "NOW", "ADBE",
+    "TEAM", "OKTA", "APP", "U", "COIN", "MSTR", "MARA", "RIOT", "HOOD", "SOFI",
+    "AFRM", "UPST", "PYPL", "XYZ", "UBER", "ABNB", "DASH", "RBLX", "SNAP",
+    "PINS", "ROKU", "DKNG", "ETSY", "CVNA", "RIVN", "LCID", "NIO", "ENPH",
+    "FSLR", "BABA", "PDD", "JD", "IONQ", "RKLB", "CELH", "LULU", "CHWY", "W",
+]

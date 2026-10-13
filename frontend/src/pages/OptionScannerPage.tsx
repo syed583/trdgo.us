@@ -60,9 +60,10 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
     <div className="page">
       <div className="ts-head">
         <h1><Flame size={20} /> Option Scanner · Call &amp; Premium</h1>
-        <p>Short-straddle scanner: ranks upcoming reports by how inflated their option
-          premium / IV is (bigger IV crush = better sell). SELL ≥ 70 · WATCH 50–69 · SKIP.
-          Tilt says where to centre the short strikes. It does not predict direction.</p>
+        <p>Short-straddle scanner: ranks the 67-name watchlist (reporting in the window) by how
+          inflated their option premium / IV is (bigger IV crush = better sell). SELL ≥ 70 ·
+          WATCH 50–69 · SKIP. Tilt says where to centre the short strikes. It does not predict
+          direction.</p>
       </div>
       <Panel
         title={<span className="at-col-title">Straddle scan</span>}

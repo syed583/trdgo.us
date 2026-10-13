@@ -145,11 +145,15 @@ def scan(days: int = 15, warm: int = 0) -> dict:
     import uw_earnings_calendar as cal
 
     rows = (cal.calendar(days=days) or {}).get("rows") or []
+    # Only the 67-name straddle watchlist, intersected with the window (spec
+    # step 1). These names are pre-selected for the liquidity a short straddle
+    # needs, so the scan isn't swamped by illiquid small-caps.
+    wl = set(cfg.TAB_B_WATCHLIST)
     seen: set[str] = set()
     uniq: list[dict] = []
     for r in rows:
         s = (r.get("symbol") or "").upper()
-        if s and s not in seen:
+        if s and s in wl and s not in seen:
             seen.add(s)
             uniq.append(r)
     cached = swr.peek_many([f"tabb:{s}" for s in seen])
