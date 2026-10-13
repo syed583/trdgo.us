@@ -710,6 +710,10 @@ export const api2 = {
     request<any>(`/api/tab-a/${encodeURIComponent(symbol)}`, s),
   tabBScan: (days = 15, s?: AbortSignal) =>
     request<any>(`/api/tab-b/scan?days=${days}`, s),
+  claudeLastScan: (days = 15, s?: AbortSignal) =>
+    request<any>(`/api/claude-last/scan?days=${days}`, s),
+  claudeLastDetail: (symbol: string, s?: AbortSignal) =>
+    request<any>(`/api/claude-last/${encodeURIComponent(symbol)}`, s),
   earningsEquity: (symbol: string, profile?: string, s?: AbortSignal) =>
     request<any>(`/api/earnings/equity/${encodeURIComponent(symbol)}`
       + (profile && profile !== 'default' ? `?profile=${profile}` : ''), s),

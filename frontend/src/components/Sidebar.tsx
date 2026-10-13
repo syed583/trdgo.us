@@ -44,6 +44,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/earnings-trade', label: 'Earnings Trade', icon: <Gauge size={S} /> },
     { to: '/earnings-claude', label: 'Claude +-', icon: <Scale size={S} /> },
     { to: '/claude-new', label: 'Claude New 13 Oct', icon: <Sparkles size={S} /> },
+    { to: '/claude-last', label: 'Claude Last', icon: <Crosshair size={S} /> },
     { to: '/option-scanner', label: 'Option Scanner', icon: <Flame size={S} /> },
     { to: '/my-calls', label: 'My Calls', icon: <Star size={S} /> },
     { to: '/my-calls-claude', label: 'My Call +-', icon: <Scale size={S} /> },

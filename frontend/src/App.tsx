@@ -26,6 +26,8 @@ const EarningsTradePage = lazy(() => import('./pages/EarningsTradePage'));
 const EarningsClaudePage = lazy(() => import('./pages/EarningsClaudePage'));
 const ClaudeNewPage = lazy(() => import('./pages/ClaudeNewPage'));
 const ClaudeNewDetail = lazy(() => import('./pages/ClaudeNewDetail'));
+const ClaudeLastPage = lazy(() => import('./pages/ClaudeLastPage'));
+const ClaudeLastDetail = lazy(() => import('./pages/ClaudeLastDetail'));
 const OptionScannerPage = lazy(() => import('./pages/OptionScannerPage'));
 const MyCallsPage = lazy(() => import('./pages/MyCallsPage'));
 const TradgoCallPage = lazy(() => import('./pages/TradgoCallPage'));
@@ -94,7 +96,7 @@ const OPTIONS_ROUTES = [
 
 /** Sections that carry a symbol in the URL. */
 const SYMBOL_SECTIONS =
-  /^\/(earnings|earnings-trade|earnings-claude|my-calls|my-calls-claude|claude-new|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)(\/|$)/;
+  /^\/(earnings|earnings-trade|earnings-claude|my-calls|my-calls-claude|claude-new|claude-last|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)(\/|$)/;
 
 /**
  * The same sections, capturing the ticker itself.
@@ -106,7 +108,7 @@ const SYMBOL_SECTIONS =
  * ticker card changed the address bar while every panel kept showing NVDA.
  */
 const SYMBOL_IN_PATH =
-  /^\/(?:earnings|earnings-trade|earnings-claude|my-calls|my-calls-claude|claude-new|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)\/([A-Za-z0-9.\-]+)/;
+  /^\/(?:earnings|earnings-trade|earnings-claude|my-calls|my-calls-claude|claude-new|claude-last|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)\/([A-Za-z0-9.\-]+)/;
 
 export interface PageContext {
   symbol: string;
@@ -350,6 +352,8 @@ function Shell() {
           <Route path="/my-calls-claude/:symbol" element={<EarningsClaudePage ctx={ctx} base="/my-calls-claude" profile="final" />} />
           <Route path="/claude-new" element={<ClaudeNewPage ctx={ctx} />} />
           <Route path="/claude-new/:symbol" element={<ClaudeNewDetail ctx={ctx} />} />
+          <Route path="/claude-last" element={<ClaudeLastPage ctx={ctx} />} />
+          <Route path="/claude-last/:symbol" element={<ClaudeLastDetail ctx={ctx} />} />
           <Route path="/option-scanner" element={<OptionScannerPage ctx={ctx} />} />
           <Route path="/earnings-equity" element={<EarningsEquityPage ctx={ctx} />} />
           <Route path="/earnings-equity/:symbol" element={<EarningsEquityPage ctx={ctx} />} />

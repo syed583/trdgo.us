@@ -24,6 +24,28 @@ TAB_A_WEIGHTS: dict[str, int] = {
 TAB_A_OPTIONS_SPLIT: dict[str, int] = {"disparity": 7, "flow_oi": 6, "unusual": 3}
 TAB_A_CUTOFFS: dict[str, float] = {"buy": 65.0, "sell": 35.0}
 
+# --- Claude Last: Pre-Earnings Direction Model v3 (two-sided, SELL-capable) --
+# Replaces Tab A v2. Same all-positive point rule (points = weight*(0.5+0.5*bias)),
+# but every bias is symmetric so a stock can score below 50 and signal SELL.
+# More weight on the inputs that turn bearish on their own (price trend, skew,
+# insider selling); revenue estimates dropped (duplicate of EPS, almost always
+# positive). Weights sum to 100, so a no-signal name lands at exactly 50.
+V3_WEIGHTS: dict[str, int] = {
+    "price_action": 22,          # EMA trend + 15d drift + relative strength vs SPY/sector
+    "options": 20,               # put/call skew + flow/OI + unusual prints (both sides)
+    "eps_rev_dir": 14,           # DIRECTION of EPS revisions (raised vs cut)
+    "insider": 12,               # net open-market insider buying/selling
+    "hist_price_reaction": 12,   # actual share-price move over the last ~8 reports
+    "peers": 10,                 # peers that already reported, up or down
+    "prior_guidance": 5,         # consensus vs last quarter's guidance midpoint
+    "dark_pool": 5,              # block prints, confirmation only
+}
+V3_PRICE_SPLIT: dict[str, int] = {"ema_trend": 8, "drift_15d": 7, "rel_strength": 7}
+V3_OPTIONS_SPLIT: dict[str, int] = {"skew": 8, "flow_oi": 8, "unusual": 4}
+V3_CUTOFFS: dict[str, float] = {"buy": 55.0, "sell": 45.0}   # set 50/50 to test
+# Below either threshold -> LOW CONFIDENCE, do not trade.
+V3_CONFIDENCE: dict[str, float] = {"min_coverage": 0.50, "min_agreement": 0.55}
+
 # --- Tab B: Short Straddle Scanner (banded, 100 pts) ------------------------
 TAB_B_WEIGHTS: dict[str, int] = {
     "iv_rank": 40, "implied_move": 25, "impl_vs_hist": 20, "liquidity": 15,

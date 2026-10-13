@@ -330,6 +330,69 @@ def tab_a_detail(symbol: str) -> dict:
     return swr.serve(f"taba:one:{sym}", build, market.session_ttl(120, 1800))
 
 
+@router.get("/claude-last/scan")
+def claude_last_scan(days: int = 15) -> dict:
+    """Claude Last -- Pre-Earnings Direction v3 (two-sided, SELL-capable), ranked.
+    Lists every upcoming name; unscored ones warm in the background and fill in."""
+    import claude_last_service as v3
+    import threading
+    import os
+
+    d = max(1, min(int(days or 15), 30))
+    res = swr.serve(f"v3:scan:{d}", lambda: v3.scan(d), 90.0)
+    miss = res.get("missing") or []
+    if miss and not (os.getenv("DISABLE_WARMERS") or "").strip():
+        batch = miss[:12]
+
+        def _warm() -> None:
+            try:
+                import signal_history_service as sh
+                sh.warm_earnings(batch)
+            except Exception:  # noqa: BLE001
+                pass
+
+        threading.Thread(target=_warm, daemon=True).start()
+    return res
+
+
+@router.get("/claude-last/{symbol}")
+def claude_last_detail(symbol: str) -> dict:
+    """Claude Last single-stock detail: v3 score, signal, confidence + breakdown."""
+    import claude_last_service as v3
+    import earnings_equity_service as eq_svc
+
+    sym = symbol.upper()
+
+    eq = swr.serve(f"earn:equity:{sym}",
+                   lambda: eq_svc.get_analysis(sym), 21600.0)
+    if not eq or not eq.get("params"):
+        return {"status": "NO_DATA", "symbol": sym}
+
+    def build() -> dict:
+        # The trade summary carries the corrected earnings-move history and the
+        # price spark the relative-strength input needs.
+        trade = None
+        try:
+            import earnings_trade_service as ets
+            trade = swr.serve(f"earn:trade:default:{sym}",
+                              lambda: ets.get_summary(sym, "default"),
+                              market.session_ttl(120, 1800))
+        except Exception:  # noqa: BLE001
+            trade = None
+        row = {}
+        try:
+            import uw_earnings_calendar as uwcal
+            pv = uwcal.preview(sym) or {}
+            row = {"company": pv.get("name"), "date": pv.get("next_report"),
+                   "short_label": pv.get("next_report_time"),
+                   "sector": pv.get("sector"), "prior_close": pv.get("prior_close")}
+        except Exception:  # noqa: BLE001
+            row = {}
+        return {"status": "OK", **v3.score_one(sym, eq, trade, row)}
+
+    return swr.serve(f"v3:one:{sym}", build, market.session_ttl(120, 1800))
+
+
 @router.get("/tab-b/scan")
 def tab_b_scan(days: int = 15) -> dict:
     """Tab B -- short-straddle scanner, ranked by inflated-premium score."""
