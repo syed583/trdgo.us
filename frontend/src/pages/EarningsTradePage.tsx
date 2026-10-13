@@ -246,8 +246,8 @@ function ScoreSplit({ equity, options, lock }:
       </div>
       {score != null && present > 0 && (
         <div className="ets-split-calc">
-          Net <b className="pos">{fmt(netShown)}</b> pts → Score
-          = <b className="ets-split-final">{Math.round(score)}</b> / 100
+          Score = 50 + (<b className="pos">{netShown.toFixed(1)}</b> ÷ {present} available)
+          × 50 = <b className="ets-split-final">{Math.round(score)}</b> / 100
         </div>
       )}
     </div>
