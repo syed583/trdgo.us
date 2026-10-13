@@ -118,8 +118,8 @@ def score_one(symbol: str, eq: dict, row: Optional[dict] = None) -> dict:
         except Exception:  # noqa: BLE001
             days_to = None
     return {"symbol": symbol, "company": (row or {}).get("company"),
-            "date": d, "date_label": (row or {}).get("short_label")
-            or (row or {}).get("date_label"), "days_to": days_to,
+            "date": d, "date_label": (row or {}).get("date_label"),
+            "time_label": (row or {}).get("short_label"), "days_to": days_to,
             "score": score, "signal": signal, "params": params}
 
 
@@ -165,7 +165,7 @@ def scan(days: int = 15) -> dict:
             # Every upcoming name shows; score fills in as the engine warms it.
             missing.append(s)
             row = {"symbol": s, "company": r.get("company"), "date": r.get("date"),
-                   "date_label": r.get("short_label") or r.get("date_label"),
+                   "date_label": r.get("date_label"), "time_label": r.get("short_label"),
                    "days_to": _days_to(r), "score": None, "signal": "PENDING",
                    "params": []}
         out.append(row)

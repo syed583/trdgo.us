@@ -39,18 +39,24 @@ export default function ClaudeNewPage({ ctx }: { ctx: PageContext }) {
       ? rows.filter((r) => String(r.symbol).toUpperCase().includes(q)
         || String(r.company || '').toUpperCase().includes(q))
       : rows;
-    const by: Record<string, { date: string; items: any[] }> = {};
+    // Group by the actual earnings date (ISO), ordered nearest first.
+    const by: Record<string, any[]> = {};
     for (const r of xs) {
-      const k = r.date_label || r.date || '—';
-      if (!by[k]) by[k] = { date: r.date || '￿', items: [] };
-      by[k].items.push(r);
+      const k = r.date || '￿';
+      (by[k] = by[k] || []).push(r);
     }
-    // Order the day groups chronologically (nearest earnings date first);
-    // cards within a day keep the scan's score order.
     return Object.entries(by)
-      .sort((a, b) => (a[1].date || '').localeCompare(b[1].date || ''))
-      .map(([label, g]) => [label, g.items] as [string, any[]]);
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([iso, items]) => [iso, items] as [string, any[]]);
   }, [rows, query]);
+
+  const dayLabel = (iso: string) => {
+    if (!iso || iso === '￿') return 'Date TBD';
+    try {
+      return new Date(iso + 'T12:00:00').toLocaleDateString(undefined,
+        { weekday: 'short', month: 'short', day: '2-digit' });
+    } catch { return iso; }
+  };
 
   const total = groups.reduce((n, [, g]) => n + g.length, 0);
 
@@ -88,7 +94,7 @@ export default function ClaudeNewPage({ ctx }: { ctx: PageContext }) {
       ) : (
         groups.map(([day, items]) => (
           <div key={day} className="cn-day">
-            <div className="cn-day-h">{day} <span className="at-chip">{items.length}</span></div>
+            <div className="cn-day-h">{dayLabel(day)} <span className="at-chip">{items.length}</span></div>
             <div className="cn-grid">
               {items.map((r) => {
                 const pending = r.score == null;
@@ -99,6 +105,7 @@ export default function ClaudeNewPage({ ctx }: { ctx: PageContext }) {
                   <div key={r.symbol} className={`cn-card sig-${t}`}>
                     <div className="cn-card-h">
                       <span className="cn-sym">{r.symbol}</span>
+                      {r.time_label && <span className="cn-time">{r.time_label}</span>}
                       <span className="cn-co">{r.company || ''}</span>
                       <span className="cn-right">
                         {pending ? <span className="cn-badge pend">warming</span> : (

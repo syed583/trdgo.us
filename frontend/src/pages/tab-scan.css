@@ -94,6 +94,8 @@
 .cn-card.sig-buy .cn-sym { color: var(--green); }
 .cn-card.sig-sell .cn-sym { color: var(--red); }
 .cn-card.sig-neu .cn-sym { color: var(--amber); }
+.cn-time { font-size: 9px; font-weight: 700; color: var(--text-mute); background: var(--panel-2);
+  border-radius: 4px; padding: 1px 4px; }
 .cn-co { font-size: 11px; color: var(--text-mute); overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; flex: 1; }
 .cn-right { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; }
