@@ -46,7 +46,6 @@ export default function ClaudeNewPage({ ctx }: { ctx: PageContext }) {
   const navigate = useNavigate();
   const [days, setDays] = useState(15);
   const [query, setQuery] = useState('');
-  const [open, setOpen] = useState<string | null>(null);
 
   const resp = useApi<any>((s) => api2.tabAScan(days, s), [days],
     { refreshMs: ctx.demo ? undefined : 120_000 });
@@ -110,11 +109,10 @@ export default function ClaudeNewPage({ ctx }: { ctx: PageContext }) {
               {items.map((r) => {
                 const pending = r.score == null;
                 const t = sigTier(r.signal);
-                const isOpen = open === r.symbol && !pending;
                 return (
                   <div key={r.symbol} className="ue-cardwrap">
                     <button className={`ue-row sig-${t}`}
-                      onClick={() => !pending && setOpen(isOpen ? null : r.symbol)}>
+                      onClick={() => !pending && navigate(`/claude-new/${r.symbol}`)}>
                       <div className="ue-row-l">
                         <span className="ue-sym">{r.symbol}</span>
                         <span className="ue-co">{r.company || ''}</span>
@@ -145,43 +143,18 @@ export default function ClaudeNewPage({ ctx }: { ctx: PageContext }) {
                             </span>
                             <span className="cn-status-score">Score {r.score}/100</span>
                           </div>
-                          {!isOpen ? (
-                            <div className="cn-params">
-                              {PARAMS.map((p) => {
-                                const d = (r.params || []).find((x: any) => x.key === p.key);
-                                if (!d) return null;
-                                return (
-                                  <span key={p.key} className={`cn-chip ${leanOf(d)}`}
-                                    title={`${p.label}: ${d.points?.toFixed(1)} of ${d.max}`}>
-                                    {p.label} <b>{d.points?.toFixed(1)}</b>
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <div className="cn-breakdown">
-                              <div className="cn-bd-h">
-                                Parameter breakdown — points / max (raw lean −1…+1)
-                                <button className="cn-open-link"
-                                  onClick={(e) => { e.stopPropagation(); navigate(`/ai-insights/${r.symbol}`); }}>
-                                  Open {r.symbol} →
-                                </button>
-                              </div>
-                              {(r.params || []).map((d: any) => (
-                                <div key={d.name} className={`cn-bd-row ${leanOf(d)}`}>
-                                  <span className="cn-bd-lbl">{d.label}</span>
-                                  <span className="cn-bd-pts"><b>{d.points?.toFixed(1)}</b> / {d.max}</span>
-                                  <span className="cn-bd-raw">{d.bias != null
-                                    ? `${d.bias > 0 ? '+' : ''}${d.bias}` : 'no data'}</span>
-                                  {d.sub && (
-                                    <span className="cn-bd-sub">
-                                      {d.sub.map((s: any) => `${s.name} ${s.points?.toFixed(1)}/${s.max}`).join(' · ')}
-                                    </span>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          )}
+                          <div className="cn-params">
+                            {PARAMS.map((p) => {
+                              const d = (r.params || []).find((x: any) => x.name === p.key);
+                              if (!d) return null;
+                              return (
+                                <span key={p.key} className={`cn-chip ${leanOf(d)}`}
+                                  title={`${p.label}: ${d.points?.toFixed(1)} of ${d.max}`}>
+                                  {p.label} <b>{d.points?.toFixed(1)}</b>
+                                </span>
+                              );
+                            })}
+                          </div>
                         </>
                       )}
                     </div>

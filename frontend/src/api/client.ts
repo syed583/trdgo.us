@@ -706,6 +706,8 @@ export const api2 = {
       + (profile && profile !== 'default' ? `?profile=${profile}` : ''), s),
   tabAScan: (days = 15, s?: AbortSignal) =>
     request<any>(`/api/tab-a/scan?days=${days}`, s),
+  tabADetail: (symbol: string, s?: AbortSignal) =>
+    request<any>(`/api/tab-a/${encodeURIComponent(symbol)}`, s),
   tabBScan: (days = 15, s?: AbortSignal) =>
     request<any>(`/api/tab-b/scan?days=${days}`, s),
   earningsEquity: (symbol: string, profile?: string, s?: AbortSignal) =>

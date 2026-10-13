@@ -299,6 +299,33 @@ def tab_a_scan(days: int = 15) -> dict:
     return res
 
 
+@router.get("/tab-a/{symbol}")
+def tab_a_detail(symbol: str) -> dict:
+    """Tab A single-stock detail: the 0-100 score, signal and 9-param breakdown."""
+    import tab_a_service as ta
+    import earnings_equity_service as eq_svc
+
+    sym = symbol.upper()
+
+    def build() -> dict:
+        eq = swr.serve(f"earn:equity:{sym}",
+                       lambda: eq_svc.get_analysis(sym), 21600.0)
+        if not eq or not eq.get("params"):
+            return {"status": "NO_DATA", "symbol": sym}
+        row = {}
+        try:
+            import uw_earnings_calendar as uwcal
+            pv = uwcal.preview(sym) or {}
+            row = {"company": pv.get("name"), "date": pv.get("next_report"),
+                   "short_label": pv.get("next_report_time"),
+                   "sector": pv.get("sector"), "prior_close": pv.get("prior_close")}
+        except Exception:  # noqa: BLE001
+            row = {}
+        return {"status": "OK", **ta.score_one(sym, eq, row)}
+
+    return swr.serve(f"taba:one:{sym}", build, market.session_ttl(120, 1800))
+
+
 @router.get("/tab-b/scan")
 def tab_b_scan(days: int = 15) -> dict:
     """Tab B -- short-straddle scanner, ranked by inflated-premium score."""
