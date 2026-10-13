@@ -443,7 +443,6 @@ export default function UpcomingEarnings({
                 <div key={r.symbol + r.date} className={`ue-cardwrap${style ? ' cw-changed' : ''}`}>
                 <button
                   className={`ue-row sig-${tierClass(r.symbol)} ${chg}`}
-                  style={style}
                   onClick={() => open(r.symbol)}
                   title={style
                     ? `${changeKind[r.symbol] === 'intraday' ? 'Intraday' : 'Since ' + sinceLabel(changeSince[r.symbol])}: ${prevSig[r.symbol]} → ${signals[r.symbol]}`
