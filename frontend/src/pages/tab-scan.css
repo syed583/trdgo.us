@@ -105,6 +105,18 @@
 .cn-score.sell { color: var(--red); }
 .cn-score.neu { color: var(--amber); }
 
+/* Status line inside the earnings-style card (ue-risk provides padding/border). */
+.cn-status-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.cn-status-h { font-size: 12.5px; font-weight: 700; display: inline-flex; align-items: center; gap: 5px; }
+.cn-status.buy .cn-status-h { color: var(--green); }
+.cn-status.sell .cn-status-h { color: var(--red); }
+.cn-status.neutral .cn-status-h { color: var(--amber); }
+.cn-status.none .cn-status-h { color: var(--text-mute); }
+.cn-status-score { font-size: 11px; font-weight: 700; color: var(--text-mute);
+  font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cn-status .cn-params { margin-top: 7px; }
+.cn-status .cn-breakdown { margin-top: 7px; border-top: none; padding-top: 0; }
+
 /* Expanded parameter breakdown on a card. */
 .cn-card.cn-exp { box-shadow: 0 3px 16px rgba(0,0,0,.18); }
 .cn-breakdown { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }

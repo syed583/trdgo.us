@@ -1,14 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, TrendingUp, Search } from 'lucide-react';
+import { Loader2, TrendingUp, Search, ChevronRight } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
+import '../components/earnings-trade.css';
 import './tab-scan.css';
 
-// Tab A -- Pre-Earnings Stock Direction v2. Card list like the Earnings tab:
-// one box per stock, grouped by earnings date, coloured by signal (BUY green /
-// SELL red / NEUTRAL yellow). Each card shows Claude New's own 9 parameters.
+// Tab A -- Pre-Earnings Stock Direction v2, styled like the Earnings Trade list:
+// cards grouped by earnings date, coloured by signal (BUY green / SELL red /
+// NEUTRAL yellow), with a status line and Claude New's own 9 parameters.
 
 const PARAMS: { key: string; label: string }[] = [
   { key: 'options', label: 'Options' },
@@ -22,8 +23,24 @@ const PARAMS: { key: string; label: string }[] = [
   { key: 'dark_pool', label: 'Dark' },
 ];
 
-const tier = (sig: string) =>
-  sig === 'BUY' ? 'buy' : sig === 'SELL' ? 'sell' : sig === 'PENDING' ? 'pend' : 'neu';
+const sigTier = (sig: string) =>
+  sig === 'BUY' ? 'buy' : sig === 'SELL' ? 'sell' : sig === 'PENDING' ? 'none' : 'neutral';
+
+const fmtCap = (v: number) => {
+  if (!v) return '';
+  if (v >= 1e12) return `$${(v / 1e12).toFixed(1)}T`;
+  if (v >= 1e9) return `$${(v / 1e9).toFixed(1)}B`;
+  if (v >= 1e6) return `$${(v / 1e6).toFixed(0)}M`;
+  return `$${v}`;
+};
+
+const dayLabel = (iso: string) => {
+  if (!iso || iso === '￿') return 'Date TBD';
+  try {
+    return new Date(iso + 'T12:00:00').toLocaleDateString(undefined,
+      { weekday: 'short', month: 'short', day: '2-digit' });
+  } catch { return iso; }
+};
 
 export default function ClaudeNewPage({ ctx }: { ctx: PageContext }) {
   const navigate = useNavigate();
@@ -35,14 +52,12 @@ export default function ClaudeNewPage({ ctx }: { ctx: PageContext }) {
     { refreshMs: ctx.demo ? undefined : 120_000 });
   const rows: any[] = resp.data?.rows || [];
 
-  // Group by earnings date, keeping the scan's score order within each day.
   const groups = useMemo(() => {
     const q = query.trim().toUpperCase();
     const xs = q
       ? rows.filter((r) => String(r.symbol).toUpperCase().includes(q)
         || String(r.company || '').toUpperCase().includes(q))
       : rows;
-    // Group by the actual earnings date (ISO), ordered nearest first.
     const by: Record<string, any[]> = {};
     for (const r of xs) {
       const k = r.date || '￿';
@@ -53,23 +68,16 @@ export default function ClaudeNewPage({ ctx }: { ctx: PageContext }) {
       .map(([iso, items]) => [iso, items] as [string, any[]]);
   }, [rows, query]);
 
-  const dayLabel = (iso: string) => {
-    if (!iso || iso === '￿') return 'Date TBD';
-    try {
-      return new Date(iso + 'T12:00:00').toLocaleDateString(undefined,
-        { weekday: 'short', month: 'short', day: '2-digit' });
-    } catch { return iso; }
-  };
-
   const total = groups.reduce((n, [, g]) => n + g.length, 0);
+  const leanOf = (d: any) => d.points > d.max / 2 + 0.3 ? 'pos'
+    : d.points < d.max / 2 - 0.3 ? 'neg' : 'neu';
 
   return (
     <div className="page">
       <div className="ts-head">
         <h1><TrendingUp size={20} /> Claude New · 13 Oct</h1>
         <p>Pre-earnings direction (v2). Each box is a stock reporting soon, coloured by its
-          signal — <b className="pos">BUY ≥ 65</b>, <b className="neu">NEUTRAL</b>,
-          <b className="neg"> SELL ≤ 35</b>. The 9 parameters are Claude New's own.</p>
+          signal. Click a card for its 9-parameter breakdown.</p>
       </div>
 
       <div className="cn-toolbar">
@@ -84,7 +92,7 @@ export default function ClaudeNewPage({ ctx }: { ctx: PageContext }) {
             onChange={(e) => setQuery(e.target.value)} />
         </span>
         <span className="cn-legend">
-          <i className="buy" /> Buy <i className="neu" /> Neutral <i className="sell" /> Sell
+          <i className="buy" /> Buy ≥ 65 <i className="neu" /> Neutral 35–65 <i className="sell" /> Sell ≤ 35
         </span>
         <span className="at-chip">{total}</span>
       </div>
@@ -96,75 +104,87 @@ export default function ClaudeNewPage({ ctx }: { ctx: PageContext }) {
           : 'No upcoming reports in the window.'}</div>
       ) : (
         groups.map(([day, items]) => (
-          <div key={day} className="cn-day">
-            <div className="cn-day-h">{dayLabel(day)} <span className="at-chip">{items.length}</span></div>
-            <div className="cn-grid">
+          <div key={day} className="ue-day">
+            <div className="ue-day-h">{dayLabel(day)} <span className="at-chip">{items.length}</span></div>
+            <div className="ue-grid">
               {items.map((r) => {
                 const pending = r.score == null;
-                const t = tier(r.signal);
-                const pm: Record<string, any> = {};
-                for (const p of r.params || []) pm[p.key] = p;
-                const isOpen = open === r.symbol;
-                const leanOf = (d: any) => d.points > d.max / 2 + 0.3 ? 'pos'
-                  : d.points < d.max / 2 - 0.3 ? 'neg' : 'neu';
+                const t = sigTier(r.signal);
+                const isOpen = open === r.symbol && !pending;
                 return (
-                  <div key={r.symbol}
-                    className={`cn-card sig-${t}${pending ? '' : ' cn-link'}${isOpen ? ' cn-exp' : ''}`}
-                    onClick={() => !pending && setOpen(isOpen ? null : r.symbol)}
-                    title={pending ? '' : 'Show the parameter breakdown'}>
-                    <div className="cn-card-h">
-                      <span className="cn-sym">{r.symbol}</span>
-                      {r.time_label && <span className="cn-time">{r.time_label}</span>}
-                      <span className="cn-co">{r.company || ''}</span>
-                      <span className="cn-right">
-                        {pending ? <span className="cn-badge pend">warming</span> : (
-                          <>
-                            <span className={`cn-score ${t}`}>{r.score}<em>/100</em></span>
-                            <span className={`cn-badge ${t}`}>{r.signal}</span>
-                          </>
+                  <div key={r.symbol} className="ue-cardwrap">
+                    <button className={`ue-row sig-${t}`}
+                      onClick={() => !pending && setOpen(isOpen ? null : r.symbol)}>
+                      <div className="ue-row-l">
+                        <span className="ue-sym">{r.symbol}</span>
+                        <span className="ue-co">{r.company || ''}</span>
+                      </div>
+                      <div className="ue-row-r">
+                        {(r.prior_close != null || r.market_cap != null) && (
+                          <span className="ue-quote">
+                            {r.prior_close != null && <b>${Number(r.prior_close).toFixed(2)}</b>}
+                            {r.market_cap != null && <em>{fmtCap(Number(r.market_cap))}</em>}
+                          </span>
                         )}
-                      </span>
-                    </div>
-                    {!pending && !isOpen && (
-                      <div className="cn-params">
-                        {PARAMS.map((p) => {
-                          const d = pm[p.key];
-                          if (!d) return null;
-                          return (
-                            <span key={p.key} className={`cn-chip ${leanOf(d)}`}
-                              title={`${p.label}: ${d.points?.toFixed(1)} of ${d.max}`}>
-                              {p.label} <b>{d.points?.toFixed(1)}</b>
+                        {r.sector && <span className="ue-sector">{r.sector}</span>}
+                        {r.time_label && <span className="ue-timing">{r.time_label}</span>}
+                        <ChevronRight size={15} className="ue-chev" />
+                      </div>
+                    </button>
+
+                    <div className={`ue-risk cn-status ${t}`}>
+                      {pending ? (
+                        <span className="cn-status-h"><Loader2 size={12} className="spin" /> warming…</span>
+                      ) : (
+                        <>
+                          <div className="cn-status-top">
+                            <span className="cn-status-h">
+                              {r.signal === 'BUY' ? 'BUY — long into earnings'
+                                : r.signal === 'SELL' ? 'SELL — short into earnings'
+                                  : 'NEUTRAL — no clear direction'}
                             </span>
-                          );
-                        })}
-                      </div>
-                    )}
-                    {!pending && isOpen && (
-                      <div className="cn-breakdown">
-                        <div className="cn-bd-h">
-                          Parameter breakdown — points / max (raw lean −1…+1)
-                          <button className="cn-open-link"
-                            onClick={(e) => { e.stopPropagation(); navigate(`/ai-insights/${r.symbol}`); }}>
-                            Open {r.symbol} →
-                          </button>
-                        </div>
-                        {(r.params || []).map((d: any) => (
-                          <div key={d.name} className={`cn-bd-row ${leanOf(d)}`}>
-                            <span className="cn-bd-lbl">{d.label}</span>
-                            <span className="cn-bd-pts"><b>{d.points?.toFixed(1)}</b> / {d.max}</span>
-                            <span className="cn-bd-raw">{d.bias != null
-                              ? `${d.bias > 0 ? '+' : ''}${d.bias}` : 'no data'}</span>
-                            {d.sub && (
-                              <span className="cn-bd-sub">
-                                {d.sub.map((s: any) => `${s.name} ${s.points?.toFixed(1)}/${s.max}`).join(' · ')}
-                              </span>
-                            )}
+                            <span className="cn-status-score">Score {r.score}/100</span>
                           </div>
-                        ))}
-                        <div className="cn-bd-total">Score = sum of rows =
-                          <b> {r.score}</b> / 100 → <b className={t}>{r.signal}</b></div>
-                      </div>
-                    )}
+                          {!isOpen ? (
+                            <div className="cn-params">
+                              {PARAMS.map((p) => {
+                                const d = (r.params || []).find((x: any) => x.key === p.key);
+                                if (!d) return null;
+                                return (
+                                  <span key={p.key} className={`cn-chip ${leanOf(d)}`}
+                                    title={`${p.label}: ${d.points?.toFixed(1)} of ${d.max}`}>
+                                    {p.label} <b>{d.points?.toFixed(1)}</b>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="cn-breakdown">
+                              <div className="cn-bd-h">
+                                Parameter breakdown — points / max (raw lean −1…+1)
+                                <button className="cn-open-link"
+                                  onClick={(e) => { e.stopPropagation(); navigate(`/ai-insights/${r.symbol}`); }}>
+                                  Open {r.symbol} →
+                                </button>
+                              </div>
+                              {(r.params || []).map((d: any) => (
+                                <div key={d.name} className={`cn-bd-row ${leanOf(d)}`}>
+                                  <span className="cn-bd-lbl">{d.label}</span>
+                                  <span className="cn-bd-pts"><b>{d.points?.toFixed(1)}</b> / {d.max}</span>
+                                  <span className="cn-bd-raw">{d.bias != null
+                                    ? `${d.bias > 0 ? '+' : ''}${d.bias}` : 'no data'}</span>
+                                  {d.sub && (
+                                    <span className="cn-bd-sub">
+                                      {d.sub.map((s: any) => `${s.name} ${s.points?.toFixed(1)}/${s.max}`).join(' · ')}
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
                 );
               })}

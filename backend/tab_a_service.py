@@ -117,9 +117,12 @@ def score_one(symbol: str, eq: dict, row: Optional[dict] = None) -> dict:
             days_to = (datetime.fromisoformat(str(d)[:10]).date() - date.today()).days
         except Exception:  # noqa: BLE001
             days_to = None
-    return {"symbol": symbol, "company": (row or {}).get("company"),
-            "date": d, "date_label": (row or {}).get("date_label"),
-            "time_label": (row or {}).get("short_label"), "days_to": days_to,
+    row = row or {}
+    return {"symbol": symbol, "company": row.get("company"),
+            "date": d, "date_label": row.get("date_label"),
+            "time_label": row.get("short_label"), "days_to": days_to,
+            "prior_close": row.get("prior_close"), "market_cap": row.get("market_cap"),
+            "sector": row.get("sector"),
             "score": score, "signal": signal, "params": params}
 
 
@@ -166,8 +169,9 @@ def scan(days: int = 15) -> dict:
             missing.append(s)
             row = {"symbol": s, "company": r.get("company"), "date": r.get("date"),
                    "date_label": r.get("date_label"), "time_label": r.get("short_label"),
-                   "days_to": _days_to(r), "score": None, "signal": "PENDING",
-                   "params": []}
+                   "days_to": _days_to(r), "prior_close": r.get("prior_close"),
+                   "market_cap": r.get("market_cap"), "sector": r.get("sector"),
+                   "score": None, "signal": "PENDING", "params": []}
         out.append(row)
     # Scored first (highest score), pending at the bottom.
     out.sort(key=lambda x: (x["score"] if x["score"] is not None else -1), reverse=True)
