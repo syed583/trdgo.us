@@ -331,6 +331,23 @@ def _trade_refs(symbol: str) -> dict:
     return refs
 
 
+def _short_interest_meta(symbol: str) -> Optional[dict]:
+    """Short-interest magnitude for the v3.1 model: % of float and days-to-cover.
+    Slow twice-a-month data, so it is read together with price, never alone."""
+    try:
+        import uw_screener_service as scr
+        si = scr.short_interest(symbol)
+        if si.get("status") != "OK":
+            return None
+        pof = _f(si.get("short_percent_of_float"))
+        if pof is not None and pof > 1:
+            pof = pof / 100.0          # normalise 0..1
+        return {"pct_float": pof, "days_to_cover": _f(si.get("days_to_cover")),
+                "as_of": si.get("as_of")}
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _short_insider_bias(symbol: str, insider_bias: Optional[float]) -> Optional[float]:
     """
     Short Interest + Insider: insider open-market direction, plus a mild bullish
@@ -464,5 +481,11 @@ def get_analysis(symbol: str, profile: str = "default") -> dict:
                  "overlap."),
         "source": SOURCE,
         "status": "OK" if result.get("score") is not None else "NO_DATA",
+        # Raw directional biases and short-interest metrics so downstream models
+        # (Claude Last / v3.1) can read pure insider and short-interest signals
+        # separately. Computed here at no extra cost (sig is already built, and
+        # the short-interest call is already made for the short_insider param).
+        "signals": sig,
+        "short_interest": _short_interest_meta(symbol),
     })
     return result

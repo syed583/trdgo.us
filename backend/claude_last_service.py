@@ -24,15 +24,17 @@ from typing import Optional
 
 import tab_settings as cfg
 
-SOURCE = "Claude Last — Direction v3"
+SOURCE = "Claude Last — Direction v3.1"
 
 _LABEL = {
     "price_action": "Price Action + EMA + Rel. Strength",
-    "options": "Options Positioning",
+    "options_flow_unusual": "Options Flow + Unusual",
+    "skew_disparity": "Put-Call Skew + Disparity",
     "eps_rev_dir": "EPS Revision Direction",
-    "insider": "Insider Activity",
     "hist_price_reaction": "Historical Price Reaction",
+    "insider": "Insider Activity",
     "peers": "Peer Read-through",
+    "short_interest": "Short Interest",
     "prior_guidance": "Prior Guidance Delivery",
     "dark_pool": "Dark Pool (confirmation)",
 }
@@ -92,6 +94,32 @@ def _rel_strength_bias(spark: Optional[list]) -> Optional[float]:
     return _clamp((stock - spy) / 0.05)
 
 
+def _short_interest_bias(meta: Optional[dict], price_dir: Optional[float]) -> Optional[float]:
+    """Two-sided, read WITH price: a crowded short into a rising stock is a
+    bullish squeeze setup; a crowded/rising short into a falling stock is
+    bearish. Low short interest = no signal."""
+    if not meta:
+        return None
+    si = cfg.V3_SHORT_INT
+    pof = _f(meta.get("pct_float"))
+    dtc = _f(meta.get("days_to_cover"))
+    mags = []
+    if pof is not None:
+        mags.append(min(1.0, pof / si["high_pct_float"]))
+    if dtc is not None:
+        mags.append(min(1.0, dtc / si["high_days_to_cover"]))
+    if not mags:
+        return None
+    mag = sum(mags) / len(mags)            # 0..1 how crowded the short is
+    if mag < 0.4:
+        return 0.0                         # low/stable short interest -> no signal
+    if price_dir is None or abs(price_dir) < 0.1:
+        return 0.0                         # high short but price flat -> wait
+    # High short + rising price => squeeze (bullish); high short + falling price
+    # => short pressure confirmed (bearish).
+    return _clamp(mag * _clamp(price_dir))
+
+
 def _hist_reaction_bias(moves: Optional[list]) -> Optional[float]:
     """Direction of the actual price move over the last reports: (up-down)/n."""
     vals = [_f(m.get("move_pct")) for m in (moves or []) if _f(m.get("move_pct")) is not None]
@@ -108,14 +136,16 @@ def _hist_reaction_bias(moves: Optional[list]) -> Optional[float]:
 def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
               row: Optional[dict] = None) -> dict:
     biases = {p.get("name"): p.get("bias") for p in (eq.get("params") or [])}
+    sig = eq.get("signals") or {}        # raw directional biases (pure insider etc.)
     trade = trade or {}
     row = row or {}
     W = cfg.V3_WEIGHTS
     PS = cfg.V3_PRICE_SPLIT
-    OS = cfg.V3_OPTIONS_SPLIT
+    FS = cfg.V3_FLOW_SPLIT
+    SS = cfg.V3_SKEW_SPLIT
     params: list[dict] = []
 
-    # 1) Price Action (22) = EMA trend 8 + 15d drift 7 + relative strength 7.
+    # 1) Price Action (20) = EMA trend 7 + 15d drift 7 + relative strength 6.
     pa = biases.get("price_action")
     rs = _rel_strength_bias(trade.get("spark"))
     pa_sub = [
@@ -132,28 +162,48 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
                             "bias": (round(b, 3) if b is not None else None)}
                            for n, w, b in pa_sub]})
 
-    # 2) Options (20) = skew 8 + flow/OI 8 + unusual 4.
-    opt_sub = [
-        ("skew", OS["skew"], biases.get("disparity")),
-        ("flow_oi", OS["flow_oi"], biases.get("options_positioning")),
-        ("unusual", OS["unusual"], biases.get("unusual_options")),
+    # 2) Options Flow + Unusual (13) = flow/OI 8 + unusual 5.
+    flow_sub = [
+        ("flow_oi", FS["flow_oi"], biases.get("options_positioning")),
+        ("unusual", FS["unusual"], biases.get("unusual_options")),
     ]
-    opt_pts = sum(_pts(w, b) for _, w, b in opt_sub)
-    opt_bias = _avg([b for _, _, b in opt_sub])
-    params.append({"name": "options", "label": _LABEL["options"],
-                   "points": round(opt_pts, 2), "max": W["options"],
-                   "bias": (round(opt_bias, 3) if opt_bias is not None else None),
+    flow_pts = sum(_pts(w, b) for _, w, b in flow_sub)
+    flow_bias = _avg([b for _, _, b in flow_sub])
+    params.append({"name": "options_flow_unusual", "label": _LABEL["options_flow_unusual"],
+                   "points": round(flow_pts, 2), "max": W["options_flow_unusual"],
+                   "bias": (round(flow_bias, 3) if flow_bias is not None else None),
                    "sub": [{"name": n, "max": w, "points": round(_pts(w, b), 2),
                             "bias": (round(b, 3) if b is not None else None)}
-                           for n, w, b in opt_sub]})
+                           for n, w, b in flow_sub]})
 
-    # 3)-? single-bias parameters.
+    # 3) Put-Call Skew + Disparity (9) -- its own parameter so the earliest
+    #    bearish options signal is not diluted by the rest of the tape.
+    skew_b = biases.get("disparity")
+    skew_sub = [
+        ("atm_disparity", SS["atm_disparity"], skew_b),
+        ("skew_trend", SS["skew_trend"], skew_b),
+    ]
+    skew_pts = sum(_pts(w, b) for _, w, b in skew_sub)
+    params.append({"name": "skew_disparity", "label": _LABEL["skew_disparity"],
+                   "points": round(skew_pts, 2), "max": W["skew_disparity"],
+                   "bias": (round(skew_b, 3) if skew_b is not None else None),
+                   "sub": [{"name": n, "max": w, "points": round(_pts(w, b), 2),
+                            "bias": (round(b, 3) if b is not None else None)}
+                           for n, w, b in skew_sub]})
+
+    # 4)-? single-bias parameters. Insider is now PURE open-market insider
+    #    (raw signal), separate from short interest.
     hist_bias = _hist_reaction_bias(trade.get("historical_moves"))
+    insider_b = sig.get("insider_activity")
+    if insider_b is None:
+        insider_b = biases.get("short_insider")   # fallback for un-refreshed caches
+    short_b = _short_interest_bias(eq.get("short_interest"), pa_bias)
     singles = [
         ("eps_rev_dir", biases.get("eps_estimates")),
-        ("insider", biases.get("short_insider")),
         ("hist_price_reaction", hist_bias),
+        ("insider", insider_b),
         ("peers", biases.get("peer_readthrough")),
+        ("short_interest", short_b),
         ("prior_guidance", biases.get("guidance")),
     ]
     for name, b in singles:
@@ -161,12 +211,12 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
                        "points": round(_pts(W[name], b), 2), "max": W[name],
                        "bias": (round(b, 3) if b is not None else None)})
 
-    # Dark pool (5): confirmation only -- moves off neutral only when it agrees
-    # with price action OR options.
+    # Dark pool (4): confirmation only -- moves off neutral only when it agrees
+    # with price action OR options flow.
     dp_bias = biases.get("dark_pool")
     agrees = dp_bias is not None and (
         (pa_bias is not None and pa_bias * dp_bias > 0)
-        or (opt_bias is not None and opt_bias * dp_bias > 0))
+        or (flow_bias is not None and flow_bias * dp_bias > 0))
     dp_pts = _pts(W["dark_pool"], dp_bias) if agrees else W["dark_pool"] * 0.5
     params.append({"name": "dark_pool", "label": _LABEL["dark_pool"],
                    "points": round(dp_pts, 2), "max": W["dark_pool"],

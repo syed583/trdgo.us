@@ -367,6 +367,13 @@ def claude_last_detail(symbol: str) -> dict:
                    lambda: eq_svc.get_analysis(sym), 21600.0)
     if not eq or not eq.get("params"):
         return {"status": "NO_DATA", "symbol": sym}
+    # Older cached equity entries predate the v3.1 raw-signal / short-interest
+    # fields; recompute once for the clicked name so the detail is fully v3.1.
+    if "signals" not in eq:
+        fresh = eq_svc.get_analysis(sym)
+        if fresh and fresh.get("params"):
+            eq = fresh
+            swr._values[f"earn:equity:{sym}"] = (__import__("time").time(), fresh)
 
     def build() -> dict:
         # The trade summary carries the corrected earnings-move history and the

@@ -30,18 +30,27 @@ TAB_A_CUTOFFS: dict[str, float] = {"buy": 65.0, "sell": 35.0}
 # More weight on the inputs that turn bearish on their own (price trend, skew,
 # insider selling); revenue estimates dropped (duplicate of EPS, almost always
 # positive). Weights sum to 100, so a no-signal name lands at exactly 50.
+# v3.1: skew/disparity split out from options flow, and insider split from short
+# interest (inside view vs outside view -- they can disagree, so combining would
+# cancel the signal). Revenue estimates stay dropped. Sum = 100.
 V3_WEIGHTS: dict[str, int] = {
-    "price_action": 22,          # EMA trend + 15d drift + relative strength vs SPY/sector
-    "options": 20,               # put/call skew + flow/OI + unusual prints (both sides)
-    "eps_rev_dir": 14,           # DIRECTION of EPS revisions (raised vs cut)
-    "insider": 12,               # net open-market insider buying/selling
-    "hist_price_reaction": 12,   # actual share-price move over the last ~8 reports
-    "peers": 10,                 # peers that already reported, up or down
-    "prior_guidance": 5,         # consensus vs last quarter's guidance midpoint
-    "dark_pool": 5,              # block prints, confirmation only
+    "price_action": 20,            # EMA trend + 15d drift + relative strength vs SPY/sector
+    "options_flow_unusual": 13,    # net directional flow + OI build + unusual prints
+    "skew_disparity": 9,           # ATM call/put disparity + put-call skew trend (own param)
+    "eps_rev_dir": 12,             # DIRECTION of EPS revisions (raised vs cut)
+    "hist_price_reaction": 12,     # actual share-price move over the last ~8 reports
+    "insider": 10,                 # company insiders' open-market buys/sells (inside view)
+    "peers": 9,                    # peers that already reported, up or down
+    "short_interest": 6,           # funds' short positioning, read with price (outside view)
+    "prior_guidance": 5,           # consensus vs last quarter's guidance midpoint
+    "dark_pool": 4,                # block prints, confirmation only
 }
-V3_PRICE_SPLIT: dict[str, int] = {"ema_trend": 8, "drift_15d": 7, "rel_strength": 7}
-V3_OPTIONS_SPLIT: dict[str, int] = {"skew": 8, "flow_oi": 8, "unusual": 4}
+V3_PRICE_SPLIT: dict[str, int] = {"ema_trend": 7, "drift_15d": 7, "rel_strength": 6}
+V3_FLOW_SPLIT: dict[str, int] = {"flow_oi": 8, "unusual": 5}
+V3_SKEW_SPLIT: dict[str, int] = {"atm_disparity": 5, "skew_trend": 4}
+# Short-interest thresholds: "high" short, and "rising" between readings.
+V3_SHORT_INT: dict[str, float] = {"high_pct_float": 0.15, "high_days_to_cover": 5.0,
+                                  "rising_pct": 0.20}
 V3_CUTOFFS: dict[str, float] = {"buy": 55.0, "sell": 45.0}   # set 50/50 to test
 # Below either threshold -> LOW CONFIDENCE, do not trade.
 V3_CONFIDENCE: dict[str, float] = {"min_coverage": 0.50, "min_agreement": 0.55}

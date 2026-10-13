@@ -13,11 +13,13 @@ import './tab-scan.css';
 
 const PARAMS: { key: string; label: string }[] = [
   { key: 'price_action', label: 'Price' },
-  { key: 'options', label: 'Options' },
+  { key: 'options_flow_unusual', label: 'Flow' },
+  { key: 'skew_disparity', label: 'Skew' },
   { key: 'eps_rev_dir', label: 'EPS' },
-  { key: 'insider', label: 'Insider' },
   { key: 'hist_price_reaction', label: 'Hist' },
+  { key: 'insider', label: 'Insider' },
   { key: 'peers', label: 'Peers' },
+  { key: 'short_interest', label: 'Short' },
   { key: 'prior_guidance', label: 'Guid' },
   { key: 'dark_pool', label: 'Dark' },
 ];
