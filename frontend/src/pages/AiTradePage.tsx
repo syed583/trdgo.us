@@ -578,9 +578,48 @@ function ConfBar({ pct, tone }: { pct: number | null; tone: 'buy' | 'sell' }) {
 }
 
 /** A Top Buyers / Top Sellers ranked table. */
+/** TP/SL hit state for a position: the live price reached the target (tp) or
+ *  the stop (sl). LONG hits up for TP / down for SL; SHORT mirrors it. */
+function swingHit(p: any): 'tp' | 'sl' | null {
+  const now = p?.last_price ?? p?.entry;
+  if (now == null) return null;
+  const long = p.bias === 'LONG';
+  if (p.target != null && (long ? now >= p.target : now <= p.target)) return 'tp';
+  if (p.stop != null && (long ? now <= p.stop : now >= p.stop)) return 'sl';
+  return null;
+}
+
 function SwingPanel({ data }: { data: any }) {
   const positions: any[] = data?.positions ?? [];
   const events: any[] = data?.events ?? [];
+  // Fire a desktop notification the first time a position reaches its TP or SL,
+  // and again only after it has cleared and re-hit.
+  const notifiedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (typeof Notification === 'undefined') return;
+    if (Notification.permission === 'default') {
+      try { Notification.requestPermission(); } catch { /* ignore */ }
+    }
+    const fire = (title: string, body: string) => {
+      try { if (Notification.permission === 'granted') new Notification(title, { body }); }
+      catch { /* ignore */ }
+    };
+    const live = new Set<string>();
+    for (const p of positions) {
+      const hit = swingHit(p);
+      if (!hit) continue;
+      const key = `${p.symbol}:${hit}`;
+      live.add(key);
+      if (!notifiedRef.current.has(key)) {
+        notifiedRef.current.add(key);
+        const now = p.last_price ?? p.entry;
+        fire(hit === 'tp' ? `🎯 ${p.symbol} hit target` : `🛑 ${p.symbol} hit stop`,
+          `${p.bias} · now $${now} · ${hit === 'tp' ? `TP $${p.target}` : `SL $${p.stop}`}`);
+      }
+    }
+    // Forget a hit once it clears, so a later re-hit notifies again.
+    for (const k of Array.from(notifiedRef.current)) if (!live.has(k)) notifiedRef.current.delete(k);
+  }, [positions]);
   if (!positions.length && !events.length) return null;
   const pl = (p: any) => {
     const e = p.entry, last = p.last_price ?? e;
@@ -598,8 +637,10 @@ function SwingPanel({ data }: { data: any }) {
               <tbody>
                 {positions.map((p) => {
                   const g = pl(p);
+                  const hit = swingHit(p);
                   return (
-                    <tr key={p.symbol}>
+                    <tr key={p.symbol}
+                      className={hit === 'tp' ? 'blink-tp' : hit === 'sl' ? 'blink-sl' : ''}>
                       <td><b>{p.symbol}</b>{p.flag ? <em className="at-swing-flag"> {p.flag}</em> : null}</td>
                       <td className={p.bias === 'LONG' ? 'pos' : 'neg'}>{p.bias}</td>
                       <td>${p.entry}</td>
