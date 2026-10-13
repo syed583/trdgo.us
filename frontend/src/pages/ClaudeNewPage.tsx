@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, TrendingUp, ArrowUpDown } from 'lucide-react';
 import type { PageContext } from '../App';
@@ -31,6 +31,7 @@ export default function ClaudeNewPage({ ctx }: { ctx: PageContext }) {
   const [maxDays, setMaxDays] = useState<number | ''>('');
   const [sortKey, setSortKey] = useState<string>('score');
   const [asc, setAsc] = useState(false);
+  const [open, setOpen] = useState<string | null>(null);
 
   const resp = useApi<any>((s) => api2.tabAScan(days, s), [days],
     { refreshMs: ctx.demo ? undefined : 120_000 });
@@ -115,8 +116,11 @@ export default function ClaudeNewPage({ ctx }: { ctx: PageContext }) {
               <tbody>
                 {view.map((r) => {
                   const m = pmap(r);
+                  const isOpen = open === r.symbol;
                   return (
-                    <tr key={r.symbol} onClick={() => navigate(`/ai-insights/${r.symbol}`)}>
+                    <Fragment key={r.symbol}>
+                    <tr className={isOpen ? 'ts-open' : ''}
+                      onClick={() => setOpen(isOpen ? null : r.symbol)}>
                       <td className="ts-sym">{r.symbol}</td>
                       <td className="ts-date">{r.date_label || r.date || '—'}</td>
                       <td className="ts-num">{r.days_to ?? '—'}</td>
@@ -126,15 +130,46 @@ export default function ClaudeNewPage({ ctx }: { ctx: PageContext }) {
                         <td key={p.key} className="ts-num">{m[p.key] != null ? m[p.key].toFixed(1) : '—'}</td>
                       ))}
                     </tr>
+                    {isOpen && (
+                      <tr className="ts-detailrow">
+                        <td colSpan={5 + PARAMS.length}>
+                          <div className="ts-detail">
+                            <div className="ts-detail-h">
+                              Breakdown — points / max (raw lean −1…+1)
+                              <button className="ts-open-link"
+                                onClick={(e) => { e.stopPropagation(); navigate(`/ai-insights/${r.symbol}`); }}>
+                                Open {r.symbol} →
+                              </button>
+                            </div>
+                            <div className="ts-detail-grid">
+                              {(r.params || []).map((p: any) => (
+                                <div key={p.name} className="ts-detail-item">
+                                  <span className="ts-detail-lbl">{p.label}</span>
+                                  <span className="ts-detail-pts">
+                                    <b>{p.points?.toFixed(1)}</b> / {p.max}
+                                    <em>{p.bias != null ? ` · ${p.bias > 0 ? '+' : ''}${p.bias}` : ' · no data'}</em>
+                                  </span>
+                                  {p.sub && (
+                                    <span className="ts-detail-sub">
+                                      {p.sub.map((s: any) => `${s.name} ${s.points?.toFixed(1)}/${s.max}`).join(' · ')}
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
               </tbody>
             </table>
           </div>
         )}
-        <div className="ts-foot"><ArrowUpDown size={11} /> Click a column to sort · a row opens the stock.
-          Each cell is the parameter's points (max in the spec: Options 17.8 / Price 15.6 / Insider 13.3 /
-          Peers·EPS·Hist 11.1 / Rev 8.9 / Guid 6.7 / Dark 4.4 after normalizing to 100).</div>
+        <div className="ts-foot"><ArrowUpDown size={11} /> Click a column to sort · click a row for its
+          full breakdown (points / max / raw lean). Weights are normalized to 100 (the spec's 9 sum to 90).</div>
       </Panel>
     </div>
   );
