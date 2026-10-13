@@ -108,6 +108,18 @@ export default function UpcomingEarnings({
   };
   const CLS: any = { BUY: 'buy', SELL: 'sell', NEUTRAL: 'neutral' };
   const sigClass = (sym: string) => CLS[signals[sym]] || 'none';
+  // The raw decision per symbol (keeps STRONG) -> a tier colour class. Falls
+  // back to the normalised signal (e.g. the Options tab sends no tiers).
+  const tiers: Record<string, string> = sig.data?.tiers || {};
+  const tierClass = (sym: string) => {
+    const d = (tiers[sym] || '').toUpperCase();
+    if (!d) return sigClass(sym);
+    if (d.includes('STRONG BUY')) return 'strong-buy';
+    if (d.includes('STRONG SELL')) return 'strong-sell';
+    if (d.includes('BUY')) return 'buy';
+    if (d.includes('SELL')) return 'sell';
+    return 'neutral';
+  };
   // RGB of each signal colour, for the half/half gradient on a changed card.
   const RGB: Record<string, string> = {
     buy: '46,184,122', sell: '242,70,90', neutral: '217,164,65',
@@ -274,6 +286,15 @@ export default function UpcomingEarnings({
       <p className="ue-sub">Companies reporting in the next ~3 weeks. Pick one to
         score its earnings trade.</p>
 
+      {/* Colour convention for the cards, by the 0-100 earnings score. */}
+      <div className="ue-legend">
+        <span className="ue-leg sbuy"><i />Strong Buy ≥ 80</span>
+        <span className="ue-leg buy"><i />Buy ≥ 65</span>
+        <span className="ue-leg neu"><i />No trade 35–65</span>
+        <span className="ue-leg sell"><i />Sell ≤ 35</span>
+        <span className="ue-leg ssell"><i />Strong Sell ≤ 20</span>
+      </div>
+
       {/* Plain-list mode: a notice listing which stocks changed (no Intraday
           tabs) + the why panel. */}
       {hideChanges && changed.length > 0 && (() => {
@@ -414,7 +435,7 @@ export default function UpcomingEarnings({
                 return (
                 <div key={r.symbol + r.date} className={`ue-cardwrap${style ? ' cw-changed' : ''}`}>
                 <button
-                  className={`ue-row sig-${sigClass(r.symbol)} ${chg}`}
+                  className={`ue-row sig-${tierClass(r.symbol)} ${chg}`}
                   style={style}
                   onClick={() => open(r.symbol)}
                   title={style

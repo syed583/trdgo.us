@@ -366,9 +366,34 @@
   border-left-color: var(--amber);
   background: rgba(217, 164, 65, .30);
 }
+/* STRONG tiers (score >= 80 / <= 20): a deeper fill + thicker bar so a strong
+   call reads at a glance versus a plain BUY/SELL. */
+.ue-row.sig-strong-buy {
+  border-left-color: var(--green);
+  border-left-width: 6px;
+  background: rgba(46, 184, 122, .52);
+}
+.ue-row.sig-strong-sell {
+  border-left-color: var(--red);
+  border-left-width: 6px;
+  background: rgba(242, 70, 90, .50);
+}
 .ue-row.sig-buy .ue-sym { color: var(--green); }
 .ue-row.sig-sell .ue-sym { color: var(--red); }
 .ue-row.sig-neutral .ue-sym { color: var(--amber); }
+.ue-row.sig-strong-buy .ue-sym { color: var(--green); font-weight: 900; }
+.ue-row.sig-strong-sell .ue-sym { color: var(--red); font-weight: 900; }
+
+/* Colour-convention legend shown above the list. */
+.ue-legend { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center;
+  margin: 2px 0 10px; font-size: 11px; color: var(--text-mute); }
+.ue-legend .ue-leg { display: inline-flex; align-items: center; gap: 5px; }
+.ue-legend i { width: 20px; height: 12px; border-radius: 3px; border-left: 4px solid; }
+.ue-leg.sbuy i { background: rgba(46,184,122,.52); border-left-color: var(--green); }
+.ue-leg.buy  i { background: rgba(46,184,122,.28); border-left-color: var(--green); }
+.ue-leg.neu  i { background: rgba(217,164,65,.30); border-left-color: var(--amber); }
+.ue-leg.sell i { background: rgba(242,70,90,.26); border-left-color: var(--red); }
+.ue-leg.ssell i { background: rgba(242,70,90,.50); border-left-color: var(--red); }
 
 /* Signal changed since the last session: the card is split half the old colour,
    half the new (set inline). Only these cards BLINK -- a pink border + glow

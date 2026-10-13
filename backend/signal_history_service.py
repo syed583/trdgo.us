@@ -124,6 +124,8 @@ def earnings_signals(symbols: list[str]) -> dict:
     """
     syms = [s.upper() for s in (symbols or []) if s]
     out: dict[str, str] = {}
+    # The raw decision (keeps the STRONG tier) so the list can colour by tier.
+    tiers: dict[str, str] = {}
     missing: list[str] = []
     try:
         import swr
@@ -135,6 +137,7 @@ def earnings_signals(symbols: list[str]) -> dict:
             dec = (v or {}).get("decision") if isinstance(v, dict) else None
             if dec:
                 out[sym] = "BUY" if "BUY" in dec else "SELL" if "SELL" in dec else "NEUTRAL"
+                tiers[sym] = dec.upper()
             else:
                 missing.append(sym)
     except Exception:  # noqa: BLE001
@@ -206,7 +209,7 @@ def earnings_signals(symbols: list[str]) -> dict:
         except Exception:  # noqa: BLE001 - no history just means no change shown
             pass
 
-    return {"status": "OK", "signals": out, "prev": prev,
+    return {"status": "OK", "signals": out, "tiers": tiers, "prev": prev,
             "change_kind": kind, "change_since": since,
             "missing": missing, "source": SOURCE}
 
