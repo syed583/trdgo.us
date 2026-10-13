@@ -26,12 +26,22 @@ this app's own measurement; none of it is a forecast.
 
 from __future__ import annotations
 
+import os
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
 import unusualwhales_service as uw
 
 SOURCE = "UNUSUAL_WHALES"
+
+# Low-priced names are excluded from every Earnings & news list (per product
+# decision): a sub-$15 stock is usually too cheap/illiquid to trade the way the
+# models assume. One threshold here covers every tab, since they all build their
+# universe from calendar(). Override with EARNINGS_MIN_PRICE (0 disables it).
+try:
+    MIN_PRICE = float(os.getenv("EARNINGS_MIN_PRICE", "15") or 15)
+except ValueError:
+    MIN_PRICE = 15.0
 
 # A finished day is immutable; today and tomorrow are not.
 TTL_SETTLED = 30 * 24 * 3600.0
@@ -186,6 +196,13 @@ def calendar(start: Optional[str] = None, end: Optional[str] = None,
                 rows.extend(day_rows)
         finally:
             pool.shutdown(wait=False)
+
+    # Drop low-priced names (prior_close below the floor). The close before the
+    # report is reliably populated for scheduled names, so this is a clean cut;
+    # a row with no price at all is kept rather than hidden on missing data.
+    if MIN_PRICE > 0:
+        rows = [r for r in rows
+                if r.get("prior_close") is None or r["prior_close"] >= MIN_PRICE]
 
     rows.sort(key=lambda r: (r["date"], -(r["market_cap"] or 0)))
     by_day: dict[str, int] = {}
