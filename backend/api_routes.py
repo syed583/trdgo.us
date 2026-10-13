@@ -274,6 +274,16 @@ def earnings_upcoming(days: int = 14, start: str = "") -> dict:
                      lambda: uwcal.calendar(start=start or None, days=days), 900)
 
 
+@router.get("/tab-a/scan")
+def tab_a_scan(days: int = 15) -> dict:
+    """Tab A -- pre-earnings direction (v2, all-positive scale), ranked by score."""
+    import tab_a_service as ta
+
+    d = max(1, min(int(days or 15), 30))
+    return swr.serve(f"taba:{d}", lambda: ta.scan(d),
+                     market.session_ttl(120, 1800))
+
+
 @router.get("/earnings/signal-history")
 def earnings_signal_history(n: int = 4, symbol: str = "") -> dict:
     """

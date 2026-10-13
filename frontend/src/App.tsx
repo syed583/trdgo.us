@@ -24,6 +24,7 @@ const EarningsEquityPage = lazy(() => import('./pages/EarningsEquityPage'));
 const EarningsOptionsPage = lazy(() => import('./pages/EarningsOptionsPage'));
 const EarningsTradePage = lazy(() => import('./pages/EarningsTradePage'));
 const EarningsClaudePage = lazy(() => import('./pages/EarningsClaudePage'));
+const ClaudeNewPage = lazy(() => import('./pages/ClaudeNewPage'));
 const MyCallsPage = lazy(() => import('./pages/MyCallsPage'));
 const TradgoCallPage = lazy(() => import('./pages/TradgoCallPage'));
 const VolatilityPage = lazy(() => import('./pages/VolatilityPage'));
@@ -345,6 +346,7 @@ function Shell() {
           <Route path="/earnings-claude/:symbol" element={<EarningsClaudePage ctx={ctx} base="/earnings-claude" profile="plusminus" />} />
           <Route path="/my-calls-claude" element={<EarningsClaudePage ctx={ctx} base="/my-calls-claude" profile="final" />} />
           <Route path="/my-calls-claude/:symbol" element={<EarningsClaudePage ctx={ctx} base="/my-calls-claude" profile="final" />} />
+          <Route path="/claude-new" element={<ClaudeNewPage ctx={ctx} />} />
           <Route path="/earnings-equity" element={<EarningsEquityPage ctx={ctx} />} />
           <Route path="/earnings-equity/:symbol" element={<EarningsEquityPage ctx={ctx} />} />
           <Route path="/earnings-options" element={<EarningsOptionsPage ctx={ctx} />} />

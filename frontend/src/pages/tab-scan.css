@@ -1,0 +1,42 @@
+/* Shared styles for the two new scan tabs (Claude New / Option Scanner). */
+.ts-head { margin: 0 0 10px; }
+.ts-head h1 { display: flex; align-items: center; gap: 8px; font-size: 22px; margin: 0; }
+.ts-head p { margin: 4px 0 0; color: var(--text-mute); font-size: 12.5px; max-width: 70ch; }
+
+.ts-controls { display: inline-flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-mute); }
+.ts-controls label { display: inline-flex; align-items: center; gap: 5px; }
+.ts-controls select, .ts-controls input {
+  font: inherit; font-size: 12px; padding: 3px 6px; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--bg-1); color: var(--text); }
+.ts-controls input { width: 56px; }
+
+/* Framed, scrollable Excel-style grid. */
+.ts-wrap { overflow: auto; max-height: 72vh; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--bg-1); }
+.ts-tbl { width: 100%; min-width: 820px; border-collapse: collapse; font-size: 12px;
+  font-variant-numeric: tabular-nums; }
+.ts-tbl th, .ts-tbl td { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  padding: 6px 9px; text-align: left; white-space: nowrap; }
+.ts-tbl th:last-child, .ts-tbl td:last-child { border-right: none; }
+.ts-tbl thead th { position: sticky; top: 0; z-index: 2; background: var(--panel-2);
+  font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-mute);
+  font-weight: 700; border-bottom: 2px solid var(--border); }
+.ts-tbl th.ts-sort { cursor: pointer; user-select: none; }
+.ts-tbl th.ts-sort:hover, .ts-tbl th.ts-sort.on { color: var(--text); }
+.ts-tbl th.ts-num, .ts-tbl td.ts-num { text-align: right; }
+.ts-tbl tbody tr { cursor: pointer; }
+.ts-tbl tbody tr:nth-child(even) { background: rgba(127, 127, 127, .045); }
+.ts-tbl tbody tr:hover { background: rgba(127, 127, 127, .10); }
+.ts-tbl td.ts-sym { font-weight: 800; color: var(--text); }
+.ts-tbl td.ts-date { color: var(--text-mute); }
+.ts-tbl td.ts-score { font-weight: 800; }
+.ts-score.pos, .ts-badge.pos { color: var(--green); }
+.ts-score.neg, .ts-badge.neg { color: var(--red); }
+.ts-score.neu, .ts-badge.neu { color: var(--amber); }
+.ts-badge { font-size: 9.5px; font-weight: 800; padding: 1px 7px; border-radius: 999px; }
+.ts-badge.pos { background: rgba(46,184,122,.16); }
+.ts-badge.neg { background: rgba(242,70,90,.16); }
+.ts-badge.neu { background: rgba(217,164,65,.18); }
+
+.ts-foot { margin: 7px 2px 0; font-size: 10.5px; color: var(--text-mute);
+  display: flex; align-items: center; gap: 5px; }

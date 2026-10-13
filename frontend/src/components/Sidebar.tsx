@@ -43,6 +43,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/earnings-calendar', label: 'Earnings Calendar', icon: <CalendarDays size={S} /> },
     { to: '/earnings-trade', label: 'Earnings Trade', icon: <Gauge size={S} /> },
     { to: '/earnings-claude', label: 'Claude +-', icon: <Scale size={S} /> },
+    { to: '/claude-new', label: 'Claude New 13 Oct', icon: <Sparkles size={S} /> },
     { to: '/my-calls', label: 'My Calls', icon: <Star size={S} /> },
     { to: '/my-calls-claude', label: 'My Call +-', icon: <Scale size={S} /> },
     { to: '/earnings-signals', label: 'Signal History', icon: <History size={S} /> },

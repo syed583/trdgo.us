@@ -704,6 +704,10 @@ export const api2 = {
   earningsTrade: (symbol: string, profile?: string, s?: AbortSignal) =>
     request<any>(`/api/earnings/trade/${encodeURIComponent(symbol)}`
       + (profile && profile !== 'default' ? `?profile=${profile}` : ''), s),
+  tabAScan: (days = 15, s?: AbortSignal) =>
+    request<any>(`/api/tab-a/scan?days=${days}`, s),
+  tabBScan: (days = 15, s?: AbortSignal) =>
+    request<any>(`/api/tab-b/scan?days=${days}`, s),
   earningsEquity: (symbol: string, profile?: string, s?: AbortSignal) =>
     request<any>(`/api/earnings/equity/${encodeURIComponent(symbol)}`
       + (profile && profile !== 'default' ? `?profile=${profile}` : ''), s),
