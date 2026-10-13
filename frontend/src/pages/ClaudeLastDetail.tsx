@@ -18,8 +18,9 @@ const sigLabel = (s: number | null) =>
 const sigTier = (s: number | null) =>
   s == null ? 'neu' : s >= 55 ? 'buy' : s <= 45 ? 'sell' : 'neu';
 
-export default function ClaudeLastDetail({ ctx, base = '/claude-last', pm = false }:
-  { ctx: PageContext; base?: string; pm?: boolean }) {
+export default function ClaudeLastDetail({ ctx, base = '/claude-last', pm = false, pz = false }:
+  { ctx: PageContext; base?: string; pm?: boolean; pz?: boolean }) {
+  const splitForm = pm || pz;   // pm = two columns (+/-), pz = three columns (+/0/-)
   const { symbol } = useParams();
   const navigate = useNavigate();
   const sym = (symbol || ctx.symbol || '').toUpperCase();
@@ -44,7 +45,7 @@ export default function ClaudeLastDetail({ ctx, base = '/claude-last', pm = fals
     <div className="page">
       <div className="cnd-top">
         <button className="cnd-back" onClick={() => navigate(base)}>
-          <ArrowLeft size={15} /> {pm ? 'Claude New +-' : 'Claude New'}
+          <ArrowLeft size={15} /> {pz ? 'Claude New +0' : pm ? 'Claude New +-' : 'Claude New'}
         </button>
       </div>
 
@@ -82,7 +83,7 @@ export default function ClaudeLastDetail({ ctx, base = '/claude-last', pm = fals
             </div>
           </div>
 
-          {pm && (() => {
+          {splitForm && (() => {
             // Signed contribution of each parameter = bias x weight = 2*(points - weight/2).
             // Summed, these give the net; score = 50 + (net / 100 available) x 50.
             const rows = params.map((p) => ({ ...p, c: 2 * ((p.points ?? p.max / 2) - p.max / 2) }));
@@ -96,10 +97,11 @@ export default function ClaudeLastDetail({ ctx, base = '/claude-last', pm = fals
             const sgn = (v: number) => (v >= 0 ? '+' : '') + v.toFixed(1);
             return (
               <div className="ets-card cnd-card">
-                <div className="ets-card-h"><span><Scale size={15} /> Score breakdown (+ / −)</span></div>
-                <div className="cnd-pm">
+                <div className="ets-card-h"><span><Scale size={15} />
+                  Score breakdown ({pz ? '+ / 0 / −' : '+ / −'})</span></div>
+                <div className={`cnd-pm${pz ? ' cnd-pm3' : ''}`}>
                   <div className="cnd-pm-col up">
-                    <div className="cnd-pm-h">Pushing the score UP (+)</div>
+                    <div className="cnd-pm-h">Pushing UP (+)</div>
                     {ups.length ? ups.map((p) => (
                       <div key={p.name} className="cnd-pm-row">
                         <span className="cnd-pm-lbl">{p.label}</span>
@@ -108,8 +110,20 @@ export default function ClaudeLastDetail({ ctx, base = '/claude-last', pm = fals
                     )) : <div className="cnd-pm-none">Nothing bullish</div>}
                     <div className="cnd-pm-sub">+{sumUp.toFixed(1)}</div>
                   </div>
+                  {pz && (
+                    <div className="cnd-pm-col zero">
+                      <div className="cnd-pm-h">Neutral (0)</div>
+                      {neutral.length ? neutral.map((p) => (
+                        <div key={p.name} className="cnd-pm-row">
+                          <span className="cnd-pm-lbl">{p.label}</span>
+                          <span className="cnd-pm-val zero">{p.bias == null ? 'no data' : '0.0'}</span>
+                        </div>
+                      )) : <div className="cnd-pm-none">None neutral</div>}
+                      <div className="cnd-pm-sub">{neutral.length}</div>
+                    </div>
+                  )}
                   <div className="cnd-pm-col down">
-                    <div className="cnd-pm-h">Pulling the score DOWN (−)</div>
+                    <div className="cnd-pm-h">Pulling DOWN (−)</div>
                     {downs.length ? downs.map((p) => (
                       <div key={p.name} className="cnd-pm-row">
                         <span className="cnd-pm-lbl">{p.label}</span>
@@ -131,7 +145,7 @@ export default function ClaudeLastDetail({ ctx, base = '/claude-last', pm = fals
             );
           })()}
 
-          {!pm && (
+          {!splitForm && (
           <div className="ets-card cnd-card">
             <div className="ets-card-h"><span><Scale size={15} /> Parameter breakdown</span></div>
             <div className="cnd-params">

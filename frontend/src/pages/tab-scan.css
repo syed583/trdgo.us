@@ -202,6 +202,10 @@
 
 /* Claude New +- : two-column score breakdown (+ pushing up / - pulling down). */
 .cnd-pm { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.cnd-pm.cnd-pm3 { grid-template-columns: 1fr 1fr 1fr; }
+.cnd-pm-col.zero { background: rgba(127,127,127,.05); border-left: 3px solid var(--text-mute); }
+.cnd-pm-val.zero { color: var(--text-mute); font-weight: 600; }
+.cnd-pm-col.zero .cnd-pm-sub { color: var(--text-mute); }
 .cnd-pm-col { border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; }
 .cnd-pm-col.up { background: rgba(46,184,122,.06); border-left: 3px solid var(--green); }
 .cnd-pm-col.down { background: rgba(242,70,90,.06); border-left: 3px solid var(--red); }
@@ -218,7 +222,7 @@
   font-variant-numeric: tabular-nums; }
 .cnd-pm-col.up .cnd-pm-sub { color: var(--green); }
 .cnd-pm-col.down .cnd-pm-sub { color: var(--red); }
-@media (max-width: 620px) { .cnd-pm { grid-template-columns: 1fr; } }
+@media (max-width: 620px) { .cnd-pm, .cnd-pm.cnd-pm3 { grid-template-columns: 1fr; } }
 
 /* Net block (matches the Earnings / Claude +- form). */
 .cnd-net { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); text-align: center; }
