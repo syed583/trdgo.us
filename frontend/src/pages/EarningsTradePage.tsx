@@ -24,6 +24,13 @@ const SETUP = (s: number | null) =>
 const SETUP_COLOR = (s: number | null) =>
   s == null ? 'var(--text-mute)' : s >= 65 ? 'var(--green)'
     : s <= 35 ? 'var(--red)' : 'var(--amber)';
+// A parameter's points shown with no minus: a bearish contribution reads 0
+// (display only -- the real score still uses the true signed points).
+function clampPts(w: any): string {
+  if (w?.available === false) return 'no data';
+  const p = Math.max(0, Number(w?.points) || 0);
+  return `${p > 0 ? '+' : ''}${p.toFixed(1)} of ${w?.weight ?? 0}`;
+}
 const DEC_TONE: Record<string, string> = {
   BUY: 'buy', 'STRONG BUY': 'buy', SELL: 'sell', 'STRONG SELL': 'sell',
   STRADDLE: 'buy', STRANGLE: 'buy', 'NO TRADE': 'flat',
@@ -212,12 +219,11 @@ function ScoreSplit({ equity, options, lock }:
           {!ups.length && <div className="ets-split-empty">None</div>}
         </div>
         <div className="ets-split-col down">
-          {/* Magnitudes shown without a minus sign (the column header already
-              says these push down), so no negative number appears anywhere. */}
-          <div className="ets-split-ch">Pushing down <b>{Math.abs(sumDown).toFixed(1)}</b></div>
+          {/* No minus anywhere: a bearish contribution reads 0. */}
+          <div className="ets-split-ch">Pushing down <b>{Math.max(0, sumDown).toFixed(1)}</b></div>
           {downs.map((w, i) => (
             <div key={i} className="ets-split-r"><span>{w.label}</span>
-              <em>{Math.abs(w.points).toFixed(1)} / {w.weight}</em></div>
+              <em>{Math.max(0, w.points).toFixed(1)} / {w.weight}</em></div>
           ))}
           {!downs.length && <div className="ets-split-empty">None</div>}
         </div>
@@ -470,7 +476,7 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
                           <div>
                             <div className="ets-why-t">
                               <b>{w.label}</b>
-                              <em>{w.available === false ? 'no data' : w.points_label}</em>
+                              <em>{clampPts(w)}</em>
                             </div>
                             {w.detail && <div className="ets-why-d">{w.detail}</div>}
                           </div>
