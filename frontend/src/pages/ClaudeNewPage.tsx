@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Loader2, TrendingUp, Search } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api2 } from '../api/client';
@@ -25,6 +26,7 @@ const tier = (sig: string) =>
   sig === 'BUY' ? 'buy' : sig === 'SELL' ? 'sell' : sig === 'PENDING' ? 'pend' : 'neu';
 
 export default function ClaudeNewPage({ ctx }: { ctx: PageContext }) {
+  const navigate = useNavigate();
   const [days, setDays] = useState(15);
   const [query, setQuery] = useState('');
 
@@ -102,7 +104,9 @@ export default function ClaudeNewPage({ ctx }: { ctx: PageContext }) {
                 const pm: Record<string, any> = {};
                 for (const p of r.params || []) pm[p.key] = p;
                 return (
-                  <div key={r.symbol} className={`cn-card sig-${t}`}>
+                  <div key={r.symbol} className={`cn-card sig-${t}${pending ? '' : ' cn-link'}`}
+                    onClick={() => !pending && navigate(`/ai-insights/${r.symbol}`)}
+                    title={pending ? '' : `Open ${r.symbol}`}>
                     <div className="cn-card-h">
                       <span className="cn-sym">{r.symbol}</span>
                       {r.time_label && <span className="cn-time">{r.time_label}</span>}
