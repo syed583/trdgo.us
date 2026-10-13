@@ -114,20 +114,17 @@ export default function UpcomingEarnings({
   // reads "No clear trade", so it is neutral, never green/red. The STRONG shade
   // comes from the raw equity decision (`tiers`). Before the risk batch has an
   // entry, fall back to the raw tier, then the normalised signal.
+  // Only three colours by score: BUY green, SELL red, no-trade/exit yellow.
+  // (A STRONG BUY/SELL is still green/red -- same colour, no deeper shade.)
   const tiers: Record<string, string> = sig.data?.tiers || {};
   const tierClass = (sym: string) => {
     const rk = riskMap[sym];
     const raw = (tiers[sym] || rk?.decision || '').toUpperCase();
     if (rk) {
-      if (rk.confidence == null) return 'neutral';        // "No clear trade"
-      if (raw.includes('STRONG BUY')) return 'strong-buy';
-      if (raw.includes('STRONG SELL')) return 'strong-sell';
-      if (rk.side === 'SHORT' || raw.includes('SELL')) return 'sell';
-      return 'buy';                                        // actionable long
+      if (rk.confidence == null) return 'neutral';         // "No clear trade"
+      return (rk.side === 'SHORT' || raw.includes('SELL')) ? 'sell' : 'buy';
     }
     if (!raw) return sigClass(sym);                        // not warmed yet
-    if (raw.includes('STRONG BUY')) return 'strong-buy';
-    if (raw.includes('STRONG SELL')) return 'strong-sell';
     if (raw.includes('SELL')) return 'sell';
     if (raw.includes('BUY')) return 'buy';
     return 'neutral';
@@ -300,11 +297,9 @@ export default function UpcomingEarnings({
 
       {/* Colour convention for the cards, by the 0-100 earnings score. */}
       <div className="ue-legend">
-        <span className="ue-leg sbuy"><i />Strong Buy ≥ 80</span>
-        <span className="ue-leg buy"><i />Buy ≥ 65</span>
-        <span className="ue-leg neu"><i />No trade 35–65</span>
-        <span className="ue-leg sell"><i />Sell ≤ 35</span>
-        <span className="ue-leg ssell"><i />Strong Sell ≤ 20</span>
+        <span className="ue-leg buy"><i />Buy ≥ 65 (green)</span>
+        <span className="ue-leg neu"><i />Exit / No trade 35–65 (yellow)</span>
+        <span className="ue-leg sell"><i />Sell ≤ 35 (red)</span>
       </div>
 
       {/* Plain-list mode: a notice listing which stocks changed (no Intraday
