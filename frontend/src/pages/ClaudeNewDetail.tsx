@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader2, Scale } from 'lucide-react';
 import type { PageContext } from '../App';
@@ -25,6 +26,14 @@ export default function ClaudeNewDetail({ ctx }: { ctx: PageContext }) {
     { refreshMs: ctx.demo ? undefined : 120_000 });
   const d = resp.data;
   const ok = d?.status === 'OK';
+
+  // While the equity is still warming the endpoint returns NO_DATA; retry on a
+  // short cadence so the score fills in on its own instead of needing a reload.
+  useEffect(() => {
+    if (ctx.demo || ok || resp.loading) return;
+    const id = window.setTimeout(() => resp.refresh(), 5000);
+    return () => window.clearTimeout(id);
+  }, [ctx.demo, ok, resp.loading, resp.refresh]);
   const score: number | null = ok ? d.score : null;
   const params: any[] = ok ? (d.params || []) : [];
 
@@ -39,11 +48,12 @@ export default function ClaudeNewDetail({ ctx }: { ctx: PageContext }) {
         </button>
       </div>
 
-      {resp.initialLoading && !d ? (
-        <div className="es-empty"><Loader2 size={18} className="spin" /> Scoring {sym}…</div>
+      {(resp.initialLoading && !d) || (!ok && d?.status === 'NO_DATA') ? (
+        <div className="es-empty"><Loader2 size={18} className="spin" /> Warming {sym}'s
+          pre-earnings score — this fills in automatically…</div>
       ) : !ok ? (
-        <div className="es-empty">No pre-earnings score for {sym} yet — it may still be warming,
-          or it isn't reporting in the window.</div>
+        <div className="es-empty">No pre-earnings score for {sym} — it isn't reporting in the
+          window.</div>
       ) : (
         <>
           <div className="cnd-head">

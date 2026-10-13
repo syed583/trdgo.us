@@ -307,11 +307,15 @@ def tab_a_detail(symbol: str) -> dict:
 
     sym = symbol.upper()
 
+    # Warm (or read) the equity analysis first. If it isn't ready yet we return
+    # NO_DATA *without caching it*, so the next click retries instead of being
+    # pinned to an empty answer for the whole session TTL.
+    eq = swr.serve(f"earn:equity:{sym}",
+                   lambda: eq_svc.get_analysis(sym), 21600.0)
+    if not eq or not eq.get("params"):
+        return {"status": "NO_DATA", "symbol": sym}
+
     def build() -> dict:
-        eq = swr.serve(f"earn:equity:{sym}",
-                       lambda: eq_svc.get_analysis(sym), 21600.0)
-        if not eq or not eq.get("params"):
-            return {"status": "NO_DATA", "symbol": sym}
         row = {}
         try:
             import uw_earnings_calendar as uwcal
