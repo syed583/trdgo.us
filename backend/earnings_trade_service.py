@@ -27,8 +27,18 @@ def _historical_moves(symbol: str, limit: int = 0) -> list[dict]:
     """The 1-day price move around the reports. limit<=0 => all history available."""
     try:
         import unusualwhales_service as uw
-        dates = sorted({r.get("report_date") for r in uw._rows(uw.earnings_history(symbol))
-                        if r.get("report_date") and r.get("reported_eps") not in (None, "")})
+        # Keep the report *timing* with each date: an after-close (AMC/postmarket)
+        # report prints while the market is shut, so its reaction lands on the
+        # NEXT session, not the report day. Comparing the report day's close to
+        # the prior close for an AMC name captures an ordinary trading day and
+        # badly understates the real earnings move. Before-open (BMO/premarket)
+        # reports react on the report day itself (prior close -> report close).
+        timing: dict[str, str] = {}
+        for r in uw._rows(uw.earnings_history(symbol)):
+            d = r.get("report_date")
+            if d and r.get("reported_eps") not in (None, ""):
+                timing[d] = (r.get("report_time") or "").strip().lower()
+        dates = sorted(timing)
         if not dates:
             return []
         # Deep candle window so even old reports have a prior close to compare to.
@@ -40,14 +50,22 @@ def _historical_moves(symbol: str, limit: int = 0) -> list[dict]:
         closes = [(b["date"], _f(b["close"])) for b in bars]
         out: list[dict] = []
         for d in dates:
-            # First trading day on/after the report; move vs the prior close.
+            # First trading day on/after the report.
             idx = next((i for i, (bd, _) in enumerate(closes) if bd >= d), None)
             if idx is None or idx == 0:
                 continue
-            prev, cur = closes[idx - 1][1], closes[idx][1]
-            if prev:
+            after_close = "post" in timing.get(d, "")
+            if after_close:
+                # AMC: reaction is report day's close -> the next session's close.
+                if idx + 1 >= len(closes):
+                    continue
+                base, react = closes[idx][1], closes[idx + 1][1]
+            else:
+                # BMO / intraday / unknown: prior close -> report day's close.
+                base, react = closes[idx - 1][1], closes[idx][1]
+            if base:
                 out.append({"date": d, "label": d[:7],
-                            "move_pct": round((cur - prev) / prev * 100, 2)})
+                            "move_pct": round((react - base) / base * 100, 2)})
         return out[-limit:] if limit and limit > 0 else out
     except Exception:  # noqa: BLE001
         return []
