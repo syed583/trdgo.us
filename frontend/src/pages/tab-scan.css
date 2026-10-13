@@ -101,6 +101,31 @@
 .cn-right { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; }
 .cn-score { font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums; }
 .cn-score em { font-style: normal; font-size: 10px; font-weight: 600; color: var(--text-mute); }
+.cn-score.buy { color: var(--green); }
+.cn-score.sell { color: var(--red); }
+.cn-score.neu { color: var(--amber); }
+
+/* Expanded parameter breakdown on a card. */
+.cn-card.cn-exp { box-shadow: 0 3px 16px rgba(0,0,0,.18); }
+.cn-breakdown { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
+.cn-bd-h { display: flex; align-items: center; gap: 8px; font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .04em; color: var(--text-mute); margin-bottom: 6px; }
+.cn-open-link { margin-left: auto; border: none; background: none; cursor: pointer; font: inherit;
+  font-size: 11px; font-weight: 700; color: var(--blue); text-transform: none; letter-spacing: 0; }
+.cn-bd-row { display: grid; grid-template-columns: 1fr auto 52px; gap: 8px; align-items: baseline;
+  font-size: 12px; padding: 3px 0; border-left: 3px solid var(--border); padding-left: 8px; }
+.cn-bd-row.pos { border-left-color: var(--green); }
+.cn-bd-row.neg { border-left-color: var(--red); }
+.cn-bd-row.neu { border-left-color: var(--amber); }
+.cn-bd-lbl { color: var(--text); }
+.cn-bd-pts { color: var(--text-mute); font-variant-numeric: tabular-nums; }
+.cn-bd-pts b { color: var(--text); }
+.cn-bd-raw { text-align: right; color: var(--text-mute); font-variant-numeric: tabular-nums; }
+.cn-bd-sub { grid-column: 1 / -1; font-size: 10px; color: var(--text-mute); }
+.cn-bd-total { margin-top: 7px; font-size: 11.5px; color: var(--text-mute); }
+.cn-bd-total b.buy { color: var(--green); }
+.cn-bd-total b.sell { color: var(--red); }
+.cn-bd-total b.neu { color: var(--amber); }
 .cn-badge { font-size: 9.5px; font-weight: 800; padding: 1px 7px; border-radius: 999px; }
 .cn-badge.buy { color: var(--green); background: rgba(46,184,122,.16); }
 .cn-badge.sell { color: var(--red); background: rgba(242,70,90,.16); }

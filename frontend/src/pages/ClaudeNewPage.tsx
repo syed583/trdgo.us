@@ -29,6 +29,7 @@ export default function ClaudeNewPage({ ctx }: { ctx: PageContext }) {
   const navigate = useNavigate();
   const [days, setDays] = useState(15);
   const [query, setQuery] = useState('');
+  const [open, setOpen] = useState<string | null>(null);
 
   const resp = useApi<any>((s) => api2.tabAScan(days, s), [days],
     { refreshMs: ctx.demo ? undefined : 120_000 });
@@ -103,10 +104,14 @@ export default function ClaudeNewPage({ ctx }: { ctx: PageContext }) {
                 const t = tier(r.signal);
                 const pm: Record<string, any> = {};
                 for (const p of r.params || []) pm[p.key] = p;
+                const isOpen = open === r.symbol;
+                const leanOf = (d: any) => d.points > d.max / 2 + 0.3 ? 'pos'
+                  : d.points < d.max / 2 - 0.3 ? 'neg' : 'neu';
                 return (
-                  <div key={r.symbol} className={`cn-card sig-${t}${pending ? '' : ' cn-link'}`}
-                    onClick={() => !pending && navigate(`/ai-insights/${r.symbol}`)}
-                    title={pending ? '' : `Open ${r.symbol}`}>
+                  <div key={r.symbol}
+                    className={`cn-card sig-${t}${pending ? '' : ' cn-link'}${isOpen ? ' cn-exp' : ''}`}
+                    onClick={() => !pending && setOpen(isOpen ? null : r.symbol)}
+                    title={pending ? '' : 'Show the parameter breakdown'}>
                     <div className="cn-card-h">
                       <span className="cn-sym">{r.symbol}</span>
                       {r.time_label && <span className="cn-time">{r.time_label}</span>}
@@ -114,26 +119,50 @@ export default function ClaudeNewPage({ ctx }: { ctx: PageContext }) {
                       <span className="cn-right">
                         {pending ? <span className="cn-badge pend">warming</span> : (
                           <>
-                            <span className="cn-score">{r.score}<em>/100</em></span>
+                            <span className={`cn-score ${t}`}>{r.score}<em>/100</em></span>
                             <span className={`cn-badge ${t}`}>{r.signal}</span>
                           </>
                         )}
                       </span>
                     </div>
-                    {!pending && (
+                    {!pending && !isOpen && (
                       <div className="cn-params">
                         {PARAMS.map((p) => {
                           const d = pm[p.key];
                           if (!d) return null;
-                          const lean = d.points > d.max / 2 + 0.3 ? 'pos'
-                            : d.points < d.max / 2 - 0.3 ? 'neg' : 'neu';
                           return (
-                            <span key={p.key} className={`cn-chip ${lean}`}
+                            <span key={p.key} className={`cn-chip ${leanOf(d)}`}
                               title={`${p.label}: ${d.points?.toFixed(1)} of ${d.max}`}>
                               {p.label} <b>{d.points?.toFixed(1)}</b>
                             </span>
                           );
                         })}
+                      </div>
+                    )}
+                    {!pending && isOpen && (
+                      <div className="cn-breakdown">
+                        <div className="cn-bd-h">
+                          Parameter breakdown — points / max (raw lean −1…+1)
+                          <button className="cn-open-link"
+                            onClick={(e) => { e.stopPropagation(); navigate(`/ai-insights/${r.symbol}`); }}>
+                            Open {r.symbol} →
+                          </button>
+                        </div>
+                        {(r.params || []).map((d: any) => (
+                          <div key={d.name} className={`cn-bd-row ${leanOf(d)}`}>
+                            <span className="cn-bd-lbl">{d.label}</span>
+                            <span className="cn-bd-pts"><b>{d.points?.toFixed(1)}</b> / {d.max}</span>
+                            <span className="cn-bd-raw">{d.bias != null
+                              ? `${d.bias > 0 ? '+' : ''}${d.bias}` : 'no data'}</span>
+                            {d.sub && (
+                              <span className="cn-bd-sub">
+                                {d.sub.map((s: any) => `${s.name} ${s.points?.toFixed(1)}/${s.max}`).join(' · ')}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                        <div className="cn-bd-total">Score = sum of rows =
+                          <b> {r.score}</b> / 100 → <b className={t}>{r.signal}</b></div>
                       </div>
                     )}
                   </div>
