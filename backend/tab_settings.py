@@ -6,24 +6,6 @@ holds only decision/entry/exit thresholds.
 """
 from __future__ import annotations
 
-# --- Tab A: Pre-Earnings Stock Direction (all-positive 0..weight scale) -----
-# Each parameter scores 0..weight; half the weight = neutral; a bullish lean
-# goes above half, bearish below. Missing data = half (never 0). Sum = 100.
-TAB_A_WEIGHTS: dict[str, int] = {
-    "options": 16,          # disparity/skew + flow/OI + unusual activity (merged)
-    "price_action": 14,     # the stock's own trend + divergence from mkt/sector
-    "insider": 12,          # open-market insider buying/selling
-    "peers": 10,            # peer read-through
-    "eps_rev": 10,          # EPS estimate revisions
-    "hist_reaction": 10,    # historical earnings reaction
-    "rev_rev": 8,           # revenue revisions
-    "prior_guidance": 6,    # on track to meet prior guidance
-    "dark_pool": 4,         # block prints, confirmation only
-}
-# Split of the 16-pt "options" parameter into its three sub-signals.
-TAB_A_OPTIONS_SPLIT: dict[str, int] = {"disparity": 7, "flow_oi": 6, "unusual": 3}
-TAB_A_CUTOFFS: dict[str, float] = {"buy": 65.0, "sell": 35.0}
-
 # --- Claude Last: Pre-Earnings Direction Model v3 (two-sided, SELL-capable) --
 # Replaces Tab A v2. Same all-positive point rule (points = weight*(0.5+0.5*bias)),
 # but every bias is symmetric so a stock can score below 50 and signal SELL.

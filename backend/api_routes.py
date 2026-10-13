@@ -274,62 +274,6 @@ def earnings_upcoming(days: int = 14, start: str = "") -> dict:
                      lambda: uwcal.calendar(start=start or None, days=days), 900)
 
 
-@router.get("/tab-a/scan")
-def tab_a_scan(days: int = 15) -> dict:
-    """Tab A -- pre-earnings direction (v2, all-positive scale), ranked by score.
-    Lists every upcoming name; unscored ones warm in the background and fill in."""
-    import tab_a_service as ta
-    import threading
-    import os
-
-    d = max(1, min(int(days or 15), 30))
-    res = swr.serve(f"taba:{d}", lambda: ta.scan(d), 90.0)
-    miss = res.get("missing") or []
-    if miss and not (os.getenv("DISABLE_WARMERS") or "").strip():
-        batch = miss[:12]
-
-        def _warm() -> None:
-            try:
-                import signal_history_service as sh
-                sh.warm_earnings(batch)
-            except Exception:  # noqa: BLE001
-                pass
-
-        threading.Thread(target=_warm, daemon=True).start()
-    return res
-
-
-@router.get("/tab-a/{symbol}")
-def tab_a_detail(symbol: str) -> dict:
-    """Tab A single-stock detail: the 0-100 score, signal and 9-param breakdown."""
-    import tab_a_service as ta
-    import earnings_equity_service as eq_svc
-
-    sym = symbol.upper()
-
-    # Warm (or read) the equity analysis first. If it isn't ready yet we return
-    # NO_DATA *without caching it*, so the next click retries instead of being
-    # pinned to an empty answer for the whole session TTL.
-    eq = swr.serve(f"earn:equity:{sym}",
-                   lambda: eq_svc.get_analysis(sym), 21600.0)
-    if not eq or not eq.get("params"):
-        return {"status": "NO_DATA", "symbol": sym}
-
-    def build() -> dict:
-        row = {}
-        try:
-            import uw_earnings_calendar as uwcal
-            pv = uwcal.preview(sym) or {}
-            row = {"company": pv.get("name"), "date": pv.get("next_report"),
-                   "short_label": pv.get("next_report_time"),
-                   "sector": pv.get("sector"), "prior_close": pv.get("prior_close")}
-        except Exception:  # noqa: BLE001
-            row = {}
-        return {"status": "OK", **ta.score_one(sym, eq, row)}
-
-    return swr.serve(f"taba:one:{sym}", build, market.session_ttl(120, 1800))
-
-
 @router.get("/claude-last/scan")
 def claude_last_scan(days: int = 15) -> dict:
     """Claude Last -- Pre-Earnings Direction v3 (two-sided, SELL-capable), ranked.
