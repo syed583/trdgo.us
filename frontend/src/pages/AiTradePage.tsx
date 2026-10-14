@@ -13,6 +13,7 @@ import WhyCall from '../components/WhyCall';
 import Scorecard from '../components/Scorecard';
 import HorizonSwitch, { HORIZON_COPY, defaultHorizon } from '../components/HorizonSwitch';
 import type { Horizon } from '../components/HorizonSwitch';
+import IntradayV2Board from '../components/IntradayV2Board';
 
 const EMPTY: Row[] = [];
 
@@ -300,6 +301,13 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
   const pastDays = useApi<any>((s) => api2.aiTradePastDays(7, s), [],
     { refreshMs: 600000, enabled: view === 'log' });
 
+  // Intraday Model v2 (behind the INTRADAY_MODEL=v2 backend flag). When on, the
+  // TODAY view is the v2 board; the endpoint returns DISABLED when off, leaving
+  // the existing v1 board exactly as it was. Tomorrow/Swing never use it.
+  const im2 = useApi<any>((s) => api2.intradayBoard(s), [],
+    { refreshMs: 60000, enabled: horizon === 'TODAY' });
+  const im2On = horizon === 'TODAY' && !!im2.data && im2.data.status !== 'DISABLED';
+
   // Live swing positions (ATR stop + trailing) and their alert feed.
   const swing = useApi<any>((s) => api2.aiTradeSwing(s), [], { refreshMs: 60000 });
   const swingMap = new Map<string, any>(
@@ -318,6 +326,27 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
     const t = setTimeout(() => setTick((n) => n + 1), 8000);
     return () => clearTimeout(t);
   }, [building, tick]);
+
+  // v2 Today view: the shared intraday model + signal log, in place of the v1
+  // board. Header kept so the horizon switch still lets the reader leave Today.
+  if (im2On) {
+    return (
+      <div className="page">
+        <div className="at-head">
+          <div>
+            <h1>Trdgo Stock</h1>
+            <p className="at-basis at-basis-sm"><b>Today · Intraday Model v2</b></p>
+          </div>
+          <div className="at-head-right">
+            <div className="at-tabgroup">
+              <HorizonSwitch value={horizon} onChange={setPicked} session={session} />
+            </div>
+          </div>
+        </div>
+        <IntradayV2Board />
+      </div>
+    );
+  }
 
   return (
     <div className={`page${view === 'board' ? ' at-board' : ''}`}>

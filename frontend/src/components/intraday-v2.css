@@ -1,0 +1,85 @@
+/* Intraday Model v2 -- Analysis panel + Trdgo Today board. Theme via app tokens. */
+.im2-panel, .im2-board { border: 1px solid var(--border); border-radius: 12px;
+  background: var(--panel); padding: 14px 16px; margin: 14px 0; }
+.im2-head { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; }
+.im2-call { font-weight: 800; font-size: 11px; padding: 2px 9px; border-radius: 999px; letter-spacing: .02em; }
+.im2-buy { color: #052e13; background: #86efac; }
+.im2-sell { color: #3b0708; background: #fca5a5; }
+.im2-noedge { color: var(--text-mute); background: var(--panel-2); }
+.im2-withheld { color: #713f12; background: #fde68a; }
+.im2-excluded { color: var(--text-mute); background: var(--panel-2); }
+
+.im2-top { display: flex; gap: 20px; align-items: center; margin: 12px 0; flex-wrap: wrap; }
+.im2-score-n { font-size: 38px; font-weight: 800; line-height: 1; }
+.im2-score-l { font-size: 10px; color: var(--text-mute); margin-top: 3px; }
+.im2-meta { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 3px 14px;
+  font-size: 12.5px; color: var(--text-mute); flex: 1; min-width: 0; }
+.im2-meta b { color: var(--text); font-weight: 600; }
+
+.im2-gates { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0 4px; }
+.im2-gate { font-size: 10px; padding: 2px 7px; border-radius: 6px; text-transform: capitalize;
+  border: 1px solid var(--border); }
+.im2-gate.ok { color: var(--up, #16a34a); border-color: color-mix(in srgb, var(--up, #16a34a) 40%, transparent); }
+.im2-gate.no { color: var(--down, #dc2626); border-color: color-mix(in srgb, var(--down, #dc2626) 40%, transparent); }
+.im2-gate.na { color: var(--text-mute); }
+
+.im2-group { margin-top: 10px; }
+.im2-group-h { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-mute);
+  font-weight: 700; margin-bottom: 4px; }
+.im2-rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 2px 14px; }
+.im2-row { display: flex; align-items: baseline; gap: 8px; font-size: 12.5px; padding: 2px 0;
+  border-bottom: 1px dotted var(--border); min-width: 0; }
+.im2-row-l { flex: 0 0 110px; color: var(--text); }
+.im2-row-v { font-weight: 700; font-variant-numeric: tabular-nums; }
+.im2-row-v.pos { color: var(--up, #16a34a); }
+.im2-row-v.neg { color: var(--down, #dc2626); }
+.im2-row-v.nd { color: var(--text-mute); font-weight: 500; font-style: italic; }
+.im2-row-d { font-size: 10.5px; color: var(--text-mute); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; min-width: 0; }
+.im2-foot { font-size: 10.5px; color: var(--text-mute); margin-top: 10px; line-height: 1.45; }
+.im2-note { color: var(--text-mute); font-size: 13px; padding: 6px 0; }
+
+/* Board */
+.im2-summary { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; font-size: 13px;
+  padding: 8px 12px; background: var(--panel-2); border-radius: 9px; }
+.im2-summary .pos { color: var(--up, #16a34a); } .im2-summary .neg { color: var(--down, #dc2626); }
+.im2-closed { color: #b45309; font-weight: 600; }
+.im2-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 12px 0; }
+.im2-stat { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 12px; }
+.im2-stat-n { font-size: 22px; font-weight: 800; line-height: 1; }
+.im2-stat-l { font-size: 11px; color: var(--text-mute); }
+.im2-stat.buy { border-left: 3px solid #16a34a; } .im2-stat.sell { border-left: 3px solid #dc2626; }
+.im2-stat.noedge { border-left: 3px solid var(--text-mute); } .im2-stat.withheld { border-left: 3px solid #d97706; }
+
+.im2-tabs { display: flex; gap: 6px; margin: 10px 0; }
+.im2-tabs button { font-size: 12px; padding: 5px 12px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--panel); color: var(--text-mute); cursor: pointer; }
+.im2-tabs button.on { background: var(--panel-2); color: var(--text); font-weight: 600; }
+.im2-h { font-size: 13px; margin: 12px 0 5px; }
+.im2-split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px; }
+@media (max-width: 640px) { .im2-split { grid-template-columns: 1fr; } }
+.im2-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.im2-chip { font-size: 12px; padding: 3px 9px; border-radius: 7px; background: var(--panel-2); }
+.im2-chip em { color: var(--text-mute); font-style: normal; }
+.im2-chip.withheld { color: #92400e; background: #fef3c7; }
+
+.im2-wrap { overflow-x: auto; }
+.im2-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.im2-tbl th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--text-mute); padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.im2-tbl th.n, .im2-tbl td.n { text-align: right; font-variant-numeric: tabular-nums; }
+.im2-tbl td { padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.im2-tbl td.sym { font-weight: 700; }
+.im2-tbl td.pos, .im2-tbl .pos { color: var(--up, #16a34a); }
+.im2-tbl td.neg, .im2-tbl .neg { color: var(--down, #dc2626); }
+.im2-rowlink { cursor: pointer; } .im2-rowlink:hover { background: var(--panel-2); }
+.im2-sub { font-size: 10.5px; color: var(--text-mute); }
+.im2-closed-row { opacity: .72; }
+
+.im2-health { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; font-size: 12px;
+  color: var(--text-mute); margin: 8px 0 2px; }
+.im2-health b { color: var(--text); }
+.im2-health .ok { color: var(--up, #16a34a); }
+.im2-health .warn { color: #d97706; font-weight: 600; }
+.im2-stale-flag { color: #b45309; background: #fef3c7; border-radius: 6px; padding: 2px 8px; font-weight: 600; }

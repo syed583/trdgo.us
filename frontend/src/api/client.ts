@@ -708,6 +708,12 @@ export const api2 = {
     request<any>(`/api/tab-b/scan?days=${days}`, s),
   unusualActivityScan: (s?: AbortSignal) =>
     request<any>('/api/unusual-activity/scan', s),
+  intradayScore: (symbol: string, s?: AbortSignal) =>
+    request<any>(`/api/intraday/score/${encodeURIComponent(symbol)}`, s),
+  intradayBoard: (s?: AbortSignal) =>
+    request<any>('/api/intraday/board', s),
+  intradayLog: (date = '', s?: AbortSignal) =>
+    request<any>(`/api/intraday/log${date ? `?date=${date}` : ''}`, s),
   claudeLastScan: (days = 15, s?: AbortSignal) =>
     request<any>(`/api/claude-last/scan?days=${days}`, s),
   preEarningsDirectionScan: (days = 15, s?: AbortSignal) =>

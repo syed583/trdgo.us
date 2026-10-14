@@ -404,6 +404,55 @@ def tab_b_scan(days: int = 15) -> dict:
     return res
 
 
+def _intraday_v2_on() -> bool:
+    import os
+    return (os.getenv("INTRADAY_MODEL") or "v1").strip().lower() == "v2"
+
+
+@router.get("/intraday/score/{symbol}")
+def intraday_score(symbol: str) -> dict:
+    """Intraday Model v2 score for one ticker (Analysis page). Same function the
+    Today board uses, so the two screens match for a ticker in the same minute."""
+    if not _intraday_v2_on():
+        return {"status": "DISABLED"}
+    import intraday_model as im
+    return im.score(symbol)
+
+
+@router.get("/intraday/board")
+def intraday_board() -> dict:
+    """Trdgo Stock Today view (v2): Top Buyers / Top Sellers / NO EDGE / WITHHELD,
+    plus the daily summary. Non-blocking: serves the last scan and runs the next
+    scan cycle (which also drives confirmations and exits) in the background."""
+    if not _intraday_v2_on():
+        return {"status": "DISABLED"}
+    import intraday_signal_v2 as eng
+    import threading
+    res = swr.peek("im2:board")
+
+    def _bg() -> None:
+        try:
+            swr.serve("im2:board", lambda: eng.scan_once(), 60.0)
+        except Exception:  # noqa: BLE001
+            pass
+
+    threading.Thread(target=_bg, daemon=True).start()
+    if res is None:
+        return {"status": "WARMING", "model": eng.im.MODEL, "buyers": [], "sellers": [],
+                "no_edge": [], "withheld": [], "counts": {}, "summary": {}}
+    return res
+
+
+@router.get("/intraday/log")
+def intraday_log(date: str = "") -> dict:
+    if not _intraday_v2_on():
+        return {"status": "DISABLED"}
+    import intraday_signal_v2 as eng
+    d = date or None
+    return {"status": "OK", "rows": eng.log_rows(d), "summary": eng.summary(d),
+            "changes": eng.changes(d)}
+
+
 @router.get("/unusual-activity/scan")
 def unusual_activity_scan() -> dict:
     """Table 2 -- Unusual Activity (Part A) & Call/Put Disparity (Part B)."""

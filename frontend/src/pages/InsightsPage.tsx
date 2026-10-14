@@ -18,6 +18,7 @@ import ParameterWhy from '../components/ParameterWhy';
 import EarningsPreview from '../components/EarningsPreview';
 import InstitutionalPanel from '../components/InstitutionalPanel';
 import SymbolNews from '../components/SymbolNews';
+import IntradayV2Panel from '../components/IntradayV2Panel';
 import Dividends from '../components/Dividends';
 import FundActivity from '../components/FundActivity';
 import HorizonSwitch, { HORIZON_COPY, defaultHorizon } from '../components/HorizonSwitch';
@@ -942,6 +943,11 @@ function ResultScreen({
       </div>
 
       <StoredWhy symbol={symbol} horizon={horizon} result={result} />
+
+      {/* Intraday Model v2 -- same shared scorer as the Trdgo Stock Today board,
+          shown for the TODAY horizon when the backend flag is on (self-hides
+          otherwise). Read-only; does not change the existing score above. */}
+      {horizon === 'TODAY' && <IntradayV2Panel symbol={symbol} />}
 
       <div className="an-result-top">
         <Panel title="Score" noBody>
