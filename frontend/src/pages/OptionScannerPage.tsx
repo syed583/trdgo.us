@@ -51,6 +51,18 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
           with IV for each. Next-session reporters only. <b>Now New York {clock('America/New_York')} ·
           Dubai {clock('Asia/Dubai')}</b></p>
       </div>
+      <div className="ivc-help">
+        <b>How to read this</b> — each cell is <code>strike / rate / IV</code>.
+        <ul>
+          <li><b>Strike</b> = the option strike nearest the stock price that day (so the 10-days-ago
+            and today strikes differ when the stock has moved).</li>
+          <li><b>Rate</b> = the option's mid price, (bid + ask) ÷ 2. Today is live; 10 days ago is
+            that day's closing mid from the contract history.</li>
+          <li><b>IV</b> = that contract's implied volatility. Watch it <b>rise</b> into earnings
+            (the run-up) — e.g. TSM 40% → 56%. After the result it <b>crushes</b> back down, and
+            both the call and put lose that inflated premium. “—” means no history for that day.</li>
+        </ul>
+      </div>
       <Panel title={<span className="at-col-title">IV Crush Check</span>}>
         {resp.initialLoading && !rows.length ? (
           <p className="at-note"><Loader2 size={12} className="spin" /> Loading…</p>
