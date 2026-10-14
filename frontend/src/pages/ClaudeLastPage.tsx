@@ -130,8 +130,9 @@ export default function ClaudeLastPage({ ctx, base = '/claude-last', pz = false 
                         )}
                         {r.sector && <span className="ue-sector">{r.sector}</span>}
                         {(r.time_label || r.report_timing) && (
-                          <span className="ue-timing" title="earnings result timing">
+                          <span className="ue-timing" title="earnings result date and time">
                             {r.date_label ? `${r.date_label} · ` : ''}
+                            {r.report_clock ? `${r.report_clock} ET · ` : ''}
                             {r.report_timing || r.time_label}
                             {r.report_timing && r.time_label ? ` (${r.time_label})` : ''}
                           </span>

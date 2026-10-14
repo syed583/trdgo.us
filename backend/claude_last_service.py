@@ -281,6 +281,12 @@ def scan(days: int = 15) -> dict:
             uniq.append(r)
     eqs = swr.peek_many([f"earn:equity:{s}" for s in seen])
     trades = swr.peek_many([f"earn:trade:default:{s}" for s in seen])
+    # Finviz gives the earnings release time (e.g. "4:30 PM") that UW lacks.
+    try:
+        import finviz_service as fv
+        fmap = fv.earnings_map()
+    except Exception:  # noqa: BLE001
+        fmap = {}
 
     def _days_to(r: dict):
         d = r.get("date")
@@ -313,6 +319,10 @@ def scan(days: int = 15) -> dict:
                    "market_cap": r.get("market_cap"), "sector": r.get("sector"),
                    "score": None, "signal": "PENDING", "params": [],
                    "coverage": None, "agreement": None, "low_confidence": None}
+        # Attach the Finviz clock time when its date matches this report.
+        fvi = fmap.get(s)
+        if fvi and fvi.get("time") and str(fvi.get("date"))[:10] == str(res.get("date"))[:10]:
+            res["report_clock"] = fvi["time"]
         out.append(res)
     out.sort(key=lambda x: (x["score"] if x["score"] is not None else -1), reverse=True)
     return {"status": "OK", "source": SOURCE, "rows": out,
