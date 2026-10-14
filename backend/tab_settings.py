@@ -68,7 +68,7 @@ SS_WIDE_SPREAD_PCT = 15.0         # bid-ask > this % of mid on a leg -> WIDE SPR
 SS_BACK_GAP_DAYS = 21             # back expiry must be >= this many days after the event expiry
 SS_BACK_MAX_DAYS = 60             # if no back expiry within this, use the furthest + tag BACK FAR
 SS_HIST_REPORTS = 8               # historical move = avg of the last N reaction-session moves
-SS_HIST_MIN = 4                   # fewer than this -> tag LOW HISTORY
+SS_HIST_MIN = 8                   # fewer than this many reports -> tag LOW HISTORY (value still shown)
 SS_ATM_MODE = "nearest"           # "nearest" | "delta50"
 
 # The 67-name straddle watchlist (high-beta, liquid options), per the spec. The

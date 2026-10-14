@@ -75,6 +75,23 @@ def test_event_only_move_clips_negative(monkeypatch):
     assert r["event_move"] == 0.0           # negative variance -> 0, no crash
 
 
+def test_event_move_abs_and_ratio(monkeypatch):
+    # Event move is the expected ABSOLUTE move (0.8*sigma); event ratio = /hist.
+    _patch(monkeypatch, front_iv=60, back_iv=30, call_mid=3.2, put_mid=3.05,
+           spot=100.0, hist=4.0)
+    r = tb.compute("EVT")
+    assert r["event_move"] is not None and r["event_move"] > 0
+    assert r["event_ratio"] == round(r["event_move"] / 4.0, 2)
+
+
+def test_low_history_tag_under_8(monkeypatch):
+    _patch(monkeypatch, front_iv=60, back_iv=30, call_mid=3.2, put_mid=3.05,
+           spot=100.0, hist=3.0, n_hist=5)
+    r = tb.compute("LOWH")
+    assert "LOW HISTORY" in r["tags"]
+    assert r["hist_move"] == 3.0 and r["hist_n"] == 5    # value still shown
+
+
 # --- Test 6: NO EDGE when move ratio < 1.0 regardless of inflation -----------
 def test_no_edge_overrides_inflation(monkeypatch):
     # Inflation high (front/back = 3.0) but implied move < historical -> NO EDGE.

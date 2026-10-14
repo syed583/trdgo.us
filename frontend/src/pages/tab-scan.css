@@ -21,11 +21,15 @@
 .ss-g-id { color: var(--text); } .ss-g-px { color: var(--blue); }
 .ss-g-iv { color: var(--amber); } .ss-g-10s { color: var(--green); }
 .ss-g-mv { color: var(--text); } .ss-g-dec { color: var(--text-mute); }
-.ss-tbl .ss-freeze1 { position: sticky; left: 0; z-index: 4; background: var(--bg-1); }
-.ss-tbl .ss-freeze2 { position: sticky; left: 46px; z-index: 4; background: var(--bg-1); }
-.ss-tbl thead .ss-freeze1, .ss-tbl thead .ss-freeze2 { z-index: 5; background: var(--panel-2); }
-.ss-tbl tbody tr:hover .ss-freeze1, .ss-tbl tbody tr:hover .ss-freeze2 { background: rgba(127,127,127,.10); }
-.ss-tbl tbody tr.ts-open .ss-freeze1, .ss-tbl tbody tr.ts-open .ss-freeze2 { background: rgba(58,99,240,.14); }
+/* Frozen Rank + Ticker: OPAQUE backgrounds (var(--panel), not the undefined
+   --bg-1) + z-index so scrolled cells never show through or overlap them. */
+.ss-tbl td.ss-freeze1, .ss-tbl td.ss-freeze2 { position: sticky; z-index: 3; background: var(--panel); }
+.ss-tbl td.ss-freeze1 { left: 0; }
+.ss-tbl td.ss-freeze2 { left: 46px; box-shadow: 2px 0 0 var(--border); }
+.ss-tbl th.ss-freeze1, .ss-tbl th.ss-freeze2 { position: sticky; z-index: 6; background: var(--panel-2); }
+.ss-tbl th.ss-freeze1 { left: 0; } .ss-tbl th.ss-freeze2 { left: 46px; box-shadow: 2px 0 0 var(--border); }
+.ss-tbl tbody tr:hover td.ss-freeze1, .ss-tbl tbody tr:hover td.ss-freeze2 { background: var(--panel-2); }
+.ss-tbl tbody tr.ts-open td.ss-freeze1, .ss-tbl tbody tr.ts-open td.ss-freeze2 { background: var(--panel-2); }
 
 /* Full-screen toggle for the scan table. */
 .ts-fsbtn { display: inline-flex; align-items: center; justify-content: center; width: 26px;

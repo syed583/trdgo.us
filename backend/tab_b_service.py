@@ -172,6 +172,23 @@ def _next_session(report_date, reporting_time) -> bool:
     return False
 
 
+def _trading_days(d0, d1) -> Optional[int]:
+    """Trading sessions (weekdays) from d0 (exclusive) to d1 (inclusive)."""
+    try:
+        a = d0 if isinstance(d0, date) else datetime.fromisoformat(str(d0)[:10]).date()
+        b = datetime.fromisoformat(str(d1)[:10]).date()
+    except Exception:  # noqa: BLE001
+        return None
+    if b <= a:
+        return 0
+    n, cur = 0, a
+    while cur < b:
+        cur += timedelta(days=1)
+        if cur.weekday() < 5:
+            n += 1
+    return n
+
+
 def _reaction_date(report_date, code) -> Optional[str]:
     """The earnings reaction session: BMO -> report day; AMC -> next trading day."""
     if not report_date:
@@ -238,12 +255,17 @@ def compute(symbol: str) -> dict:
     implied_move = round(straddle / spot * 100, 2) if (straddle and spot) else None
     front_back = round(front_iv / back_iv, 2) if (front_iv and back_iv) else None
 
-    # Event-only move: strip the normal (back) vol out of the front vol.
+    # Event-only move: strip the normal (back) vol out of the front vol, on a
+    # TRADING-day clock (T = sessions / 252). Reported as the EXPECTED ABSOLUTE
+    # move (0.8 * sigma, the mean |move| of a normal) so it is directly
+    # comparable with the historical average absolute move.
     event_move = None
-    if front_iv and back_iv and event_dte and event_dte > 0:
-        t = event_dte / 365.0
-        ev_var = ((front_iv / 100.0) ** 2 - (back_iv / 100.0) ** 2) * t
-        event_move = round((max(ev_var, 0.0) ** 0.5) * 100, 2)
+    if front_iv and back_iv and event_expiry:
+        tdays = _trading_days(date.today(), event_expiry)
+        if tdays and tdays > 0:
+            t = tdays / 252.0
+            ev_var = ((front_iv / 100.0) ** 2 - (back_iv / 100.0) ** 2) * t
+            event_move = round(0.8 * (max(ev_var, 0.0) ** 0.5) * 100, 2)
 
     # Historical move: avg abs reaction-session move over the last N reports.
     hist_move = None
@@ -260,6 +282,8 @@ def compute(symbol: str) -> dict:
         pass
     low_history = hist_n < cfg.SS_HIST_MIN
     move_ratio = round(implied_move / hist_move, 2) if (implied_move and hist_move) else None
+    # Event ratio: the isolated earnings move vs the stock's usual earnings move.
+    event_ratio = round(event_move / hist_move, 2) if (event_move and hist_move) else None
 
     # 10-session multiples from stored snapshots (method 10S); else term structure.
     iv_10s = straddle_10s = iv_mult = prem_mult = None
@@ -312,7 +336,7 @@ def compute(symbol: str) -> dict:
         "call": call, "put": put, "straddle": straddle,
         "iv_call": call.get("iv"), "iv_put": put.get("iv"),
         "iv_front": front_iv, "iv_back": back_iv, "front_back": front_back,
-        "event_move": event_move,
+        "event_move": event_move, "event_ratio": event_ratio,
         "iv_10s_ago": iv_10s, "iv_multiple": iv_mult,
         "straddle_10s_ago": straddle_10s, "prem_multiple": prem_mult,
         "implied_move": implied_move, "hist_move": hist_move, "hist_n": hist_n,

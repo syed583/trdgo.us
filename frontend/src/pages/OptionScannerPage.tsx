@@ -91,7 +91,7 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                 <tr className="ss-grp">
                   <th colSpan={5} className="ss-g-id">Identity</th>
                   <th colSpan={4} className="ss-g-px">Prices</th>
-                  <th colSpan={6} className="ss-g-iv">IV breakdown</th>
+                  <th colSpan={7} className="ss-g-iv">IV breakdown</th>
                   <th colSpan={4} className="ss-g-10s">10-session</th>
                   <th colSpan={3} className="ss-g-mv">Move</th>
                   <th colSpan={3} className="ss-g-dec">Decision</th>
@@ -111,7 +111,8 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                   <th className="ts-num">Front IV</th>
                   <th className="ts-num">Back IV</th>
                   <th className="ts-num" title="Front IV / Back IV">Front/Back</th>
-                  <th className="ts-num" title="isolated earnings move">Event move</th>
+                  <th className="ts-num" title="expected absolute earnings move (0.8·√event var)">Event move</th>
+                  <th className="ts-num" title="event move / hist move">Event ratio</th>
                   <th className="ts-num">IV 10s</th>
                   <th className="ts-num">IV ×</th>
                   <th className="ts-num">Strad 10s</th>
@@ -150,6 +151,7 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                     <td className="ts-num">{pct(r.iv_back)}{r.back_expiry ? ` (${mdd(r.back_expiry)})` : ''}</td>
                     <td className="ts-num">{mult(r.front_back)}</td>
                     <td className="ts-num">{pct(r.event_move)}</td>
+                    <td className={`ts-num ${mrClass(r.event_ratio)}`}>{mult(r.event_ratio)}</td>
                     <td className="ts-num">{r.iv_10s_ago != null ? pct(r.iv_10s_ago) : <span className="ts-muted">—</span>}</td>
                     <td className="ts-num">{r.iv_multiple != null ? mult(r.iv_multiple) : <span className="ts-muted">—</span>}</td>
                     <td className="ts-num">{r.straddle_10s_ago != null ? money(r.straddle_10s_ago) : <span className="ts-muted">—</span>}</td>
@@ -163,7 +165,7 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                   </tr>
                   {isOpen && (
                     <tr className="ts-detailrow">
-                      <td colSpan={25}>
+                      <td colSpan={26}>
                         <div className="ts-detail">
                           <div className="ts-detail-h">
                             {r.symbol} — sell the ${r.atm_strike} straddle, {mdd(r.event_expiry)} expiry:
@@ -180,7 +182,7 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                                 <em> · IV {pct(p.iv)} · Δ {n2(p.delta)} · OI {p.oi ?? '—'} · vol {p.vol ?? '—'}</em></span></div>
                             <div className="ts-detail-item"><span className="ts-detail-lbl">IV term structure</span>
                               <span className="ts-detail-pts">front <b>{pct(r.iv_front)}</b> / back <b>{pct(r.iv_back)}</b> = {mult(r.front_back)}
-                                <em> · back expiry {mdd(r.back_expiry)} · event-only move {pct(r.event_move)}</em></span></div>
+                                <em> · back {mdd(r.back_expiry)} · event move {pct(r.event_move)} vs hist = {mult(r.event_ratio)}</em></span></div>
                             <div className="ts-detail-item"><span className="ts-detail-lbl">Move edge</span>
                               <span className="ts-detail-pts">implied <b>{pct(r.implied_move)}</b> vs hist <b>{pct(r.hist_move)}</b> ({r.hist_n}) = <b className={mrClass(r.move_ratio)}>{mult(r.move_ratio)}</b></span></div>
                           </div>
