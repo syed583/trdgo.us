@@ -116,8 +116,9 @@ def _last_report_date(symbol: str) -> Optional[str]:
 
 
 def log_scores(rows: list[dict]) -> int:
-    """Upsert today's event-expiry snapshot per name (feeds the 10-session multiples)."""
-    scored = [r for r in (rows or []) if r.get("straddle") is not None]
+    """Record today's report date + result expiry per name, so the date re-check
+    can tell when an earnings date has moved."""
+    scored = [r for r in (rows or []) if r.get("result_date")]
     if not scored or not _ensure_log_table():
         return 0
     try:
@@ -129,16 +130,12 @@ def log_scores(rows: list[dict]) -> int:
             for r in scored:
                 db.execute(text(
                     "INSERT INTO straddle_snap_v2 "
-                    "(symbol, snapshot_date, report_date, event_expiry, atm_strike, "
-                    " straddle, front_iv, back_iv, rank, status) "
-                    "VALUES (:s, :d, :rd, :ee, :k, :pm, :fiv, :biv, :rk, :st) "
+                    "(symbol, snapshot_date, report_date, event_expiry) "
+                    "VALUES (:s, :d, :rd, :ee) "
                     "ON CONFLICT (symbol, snapshot_date) DO UPDATE SET "
-                    "report_date = :rd, event_expiry = :ee, atm_strike = :k, "
-                    "straddle = :pm, front_iv = :fiv, back_iv = :biv, rank = :rk, status = :st"),
-                    {"s": r["symbol"].upper(), "d": today, "rd": r.get("report_date"),
-                     "ee": r.get("event_expiry"), "k": r.get("atm_strike"),
-                     "pm": r.get("straddle"), "fiv": r.get("front_iv"),
-                     "biv": r.get("back_iv"), "rk": r.get("rank"), "st": r.get("status")})
+                    "report_date = :rd, event_expiry = :ee"),
+                    {"s": r["symbol"].upper(), "d": today,
+                     "rd": r.get("result_date"), "ee": r.get("expiry")})
             db.commit()
             return len(scored)
         except Exception:  # noqa: BLE001
@@ -219,11 +216,12 @@ def _report_meta(symbol: str) -> tuple:
 
 
 def compute(symbol: str) -> dict:
-    """Per-name short-straddle metrics for the change spec (cached as tabb:{SYM}):
-    event & back expiry prices + IV breakdown, implied-vs-historical move, the
-    10-session multiples (from snapshots) and the status. Rank is set in scan()."""
+    """IV Crush Check row: the ATM call and put TODAY and 10 trading sessions ago
+    (rate + IV each) for the result expiry. Nothing else -- no ranking, score,
+    status or ratios (cached as tabb:{SYM})."""
     import swr
     import earnings_options_service as opt
+    import unusualwhales_service as uw
 
     symbol = symbol.upper()
     d = swr.peek(f"earn:trade:default:{symbol}") or {}
@@ -233,116 +231,26 @@ def compute(symbol: str) -> dict:
 
     report_date, report_code = _report_meta(symbol)
     reaction = _reaction_date(report_date, report_code)
-    next_session = _next_session(report_date, report_code)
-    prev_report = _last_report_date(symbol)
-    date_changed = bool(prev_report and report_date and str(prev_report)[:10] != str(report_date)[:10])
-    date_status = "CHANGED" if date_changed else ("CONFIRMED" if report_date else "UNCONFIRMED")
 
-    q = opt.short_straddle_quote(symbol, spot, reaction, cfg.SS_ATM_MODE,
-                                 cfg.SS_BACK_GAP_DAYS, cfg.SS_BACK_MAX_DAYS) or {}
-    call = q.get("call") or {}
-    put = q.get("put") or {}
-    front_iv = q.get("front_iv")
-    back_iv = q.get("back_iv")
-    straddle = q.get("straddle")
-    atm_strike = q.get("atm_strike")
-    event_expiry = q.get("event_expiry")
-    event_dte = q.get("event_dte")
-    back_expiry = q.get("back_expiry")
-    wide_spread = bool(q.get("wide_spread"))
-    back_far = bool(q.get("back_far"))
-
-    implied_move = round(straddle / spot * 100, 2) if (straddle and spot) else None
-    front_back = round(front_iv / back_iv, 2) if (front_iv and back_iv) else None
-
-    # Event-only move: strip the normal (back) vol out of the front vol, on a
-    # TRADING-day clock (T = sessions / 252). Reported as the EXPECTED ABSOLUTE
-    # move (0.8 * sigma, the mean |move| of a normal) so it is directly
-    # comparable with the historical average absolute move.
-    event_move = None
-    if front_iv and back_iv and event_expiry:
-        tdays = _trading_days(date.today(), event_expiry)
-        if tdays and tdays > 0:
-            t = tdays / 252.0
-            ev_var = ((front_iv / 100.0) ** 2 - (back_iv / 100.0) ** 2) * t
-            event_move = round(0.8 * (max(ev_var, 0.0) ** 0.5) * 100, 2)
-
-    # Historical move: avg abs reaction-session move over the last N reports.
-    hist_move = None
-    hist_n = 0
+    # The trading day `lb` sessions ago, and the spot that day, from stock candles.
+    date_10d = spot_10d = None
     try:
-        import earnings_trade_service as ets
-        moves = [abs(_f(m.get("move_pct"))) for m in (ets._historical_moves(symbol) or [])
-                 if _f(m.get("move_pct")) is not None]
-        moves = moves[-cfg.SS_HIST_REPORTS:]
-        hist_n = len(moves)
-        if hist_n:
-            hist_move = round(sum(moves) / hist_n, 2)
+        bars = [b for b in uw._rows(uw.candles(symbol, "1d", limit=40))
+                if b.get("date") and _f(b.get("close")) is not None]
+        bars.sort(key=lambda b: b["date"])
+        if len(bars) >= lb + 1:
+            date_10d = str(bars[-(lb + 1)]["date"])[:10]
+            spot_10d = _f(bars[-(lb + 1)]["close"])
     except Exception:  # noqa: BLE001
         pass
-    low_history = hist_n < cfg.SS_HIST_MIN
-    move_ratio = round(implied_move / hist_move, 2) if (implied_move and hist_move) else None
-    # Event ratio: the isolated earnings move vs the stock's usual earnings move.
-    event_ratio = round(event_move / hist_move, 2) if (event_move and hist_move) else None
 
-    # 10-session multiples from stored snapshots (method 10S); else term structure.
-    iv_10s = straddle_10s = iv_mult = prem_mult = None
-    snap = _snapshot_prev(symbol, lb)
-    if snap:
-        straddle_10s = _f(snap.get("straddle"))
-        iv_10s = _f(snap.get("front_iv"))
-        if straddle and straddle_10s:
-            prem_mult = round(straddle / straddle_10s, 2)
-        if front_iv and iv_10s:
-            iv_mult = round(front_iv / iv_10s, 2)
-
-    if prem_mult is not None and iv_mult is not None:
-        method = "10S"
-        inflation = round((prem_mult + iv_mult) / 2, 2)
-    elif front_back is not None:
-        method = "TS"
-        inflation = front_back
-    else:
-        method = None
-        inflation = None
-
-    tags = []
-    if wide_spread:
-        tags.append("WIDE SPREAD")
-    if low_history:
-        tags.append("LOW HISTORY")
-    if back_far:
-        tags.append("BACK FAR")
-    if date_changed:
-        tags.append("DATE CHANGED")
-
-    # Status (section 5 precedence).
-    if (not next_session) or date_status in ("UNCONFIRMED", "CHANGED"):
-        status = "NOT DUE"
-    elif move_ratio is not None and move_ratio < cfg.SS_MOVE_RATIO_FLOOR:
-        status = "NO EDGE"
-    elif inflation is None or inflation < cfg.SS_MIN_INFLATION:
-        status = "NO REAL INFLATION"
-    elif move_ratio is not None and move_ratio >= cfg.SS_MOVE_RATIO_SELL and not wide_spread:
-        status = "SELL STRADDLE"
-    else:
-        status = "WATCH"
-
+    q = opt.iv_crush_quote(symbol, spot, reaction, date_10d, spot_10d) or {}
     return {
         "symbol": symbol, "spot": spot,
-        "report_date": report_date, "report_code": report_code, "date_status": date_status,
-        "event_expiry": event_expiry, "event_dte": event_dte, "back_expiry": back_expiry,
-        "atm_strike": atm_strike,
-        "call": call, "put": put, "straddle": straddle,
-        "iv_call": call.get("iv"), "iv_put": put.get("iv"),
-        "iv_front": front_iv, "iv_back": back_iv, "front_back": front_back,
-        "event_move": event_move, "event_ratio": event_ratio,
-        "iv_10s_ago": iv_10s, "iv_multiple": iv_mult,
-        "straddle_10s_ago": straddle_10s, "prem_multiple": prem_mult,
-        "implied_move": implied_move, "hist_move": hist_move, "hist_n": hist_n,
-        "move_ratio": move_ratio,
-        "inflation": inflation, "method": method,
-        "wide_spread": wide_spread, "tags": tags, "status": status,
+        "result_date": report_date, "result_code": report_code,
+        "expiry": q.get("expiry"), "date_10d": date_10d,
+        "call_10d": q.get("call_10d"), "call_today": q.get("call_today"),
+        "put_10d": q.get("put_10d"), "put_today": q.get("put_today"),
     }
 
 
@@ -352,10 +260,10 @@ def _cached(symbol: str) -> Optional[dict]:
 
 
 def scan(days: int = 5, warm: int = 0) -> dict:
-    """Rank the watchlist names reporting the NEXT session by inflation. Primary
-    (method 10S, when snapshots exist) = avg(premium multiple, IV multiple);
-    fallback (TS) = Front/Back IV. All 10S rows rank above TS rows; ties broken by
-    the higher Move ratio. `days` only bounds the calendar lookahead."""
+    """The IV Crush Check table: watchlist names reporting the NEXT session, each
+    with the ATM call/put today vs 10 sessions ago. If a name's earnings date has
+    moved since the last snapshot it drops out. Sorted by result time, then
+    ticker. No ranking, scores or status."""
     import swr
     import uw_earnings_calendar as cal
 
@@ -367,6 +275,10 @@ def scan(days: int = 5, warm: int = 0) -> dict:
         s = (r.get("symbol") or "").upper()
         if (s and s in wl and s not in seen
                 and _next_session(r.get("date"), r.get("reporting_time"))):
+            # Date re-check: a name whose earnings date has moved drops out.
+            prev = _last_report_date(s)
+            if prev and r.get("date") and str(prev)[:10] != str(r.get("date"))[:10]:
+                continue
             seen.add(s)
             uniq.append(r)
     cached = swr.peek_many([f"tabb:{s}" for s in seen])
@@ -384,7 +296,8 @@ def scan(days: int = 5, warm: int = 0) -> dict:
         else:
             missing.append(s)
             out.append({"symbol": s, "status": "PENDING", "spot": None,
-                        "method": None, "inflation": None, "rank": None, **meta})
+                        "expiry": None, "call_today": None, "put_today": None,
+                        "call_10d": None, "put_10d": None, **meta})
 
     for s in missing[:max(0, warm)]:
         try:
@@ -392,28 +305,16 @@ def scan(days: int = 5, warm: int = 0) -> dict:
         except Exception:  # noqa: BLE001
             pass
 
-    # Rank: 10S rows (highest inflation) above TS rows, ties by higher Move ratio.
-    rankable = [r for r in out if r.get("status") != "PENDING" and r.get("method")
-                and r.get("inflation") is not None]
-
+    # Sort by result time (date + BMO before AMC), then ticker.
     def _key(r):
-        method_order = 0 if r["method"] == "10S" else 1
-        return (method_order, -r["inflation"], -(r.get("move_ratio") or 0))
+        return (str(r.get("date") or ""),
+                0 if (r.get("result_code") == "BMO") else 1,
+                r.get("symbol") or "")
 
-    rankable.sort(key=_key)
-    for i, r in enumerate(rankable, 1):
-        r["rank"] = i
-
-    def _order(r):
-        if r.get("rank"):
-            return (0, r["rank"])
-        return (2, 0) if r.get("status") == "PENDING" else (1, r.get("symbol") or "")
-
-    out.sort(key=_order)
+    out.sort(key=_key)
     try:
         log_scores(out)
     except Exception:  # noqa: BLE001
         pass
-    sellable = sum(1 for r in out if r.get("status") == "SELL STRADDLE")
     return {"status": "OK", "source": SOURCE, "rows": out,
-            "universe": len(seen), "sellable": sellable, "missing": missing[:60]}
+            "universe": len(seen), "missing": missing[:60]}

@@ -1,4 +1,4 @@
-"""Short Straddle change spec: event/back expiry, move ratio, ranking, status."""
+"""IV Crush Check: next-session filter, today-vs-10d option data, date re-check."""
 
 from datetime import date, timedelta
 
@@ -12,14 +12,9 @@ def _next_trading_day(d):
     return nd
 
 
-# --- Test 1 & 2: event expiry selection (reaction session) -------------------
-def test_reaction_date_bmo_is_report_day():
-    assert tb._reaction_date("2026-10-15", "BMO") == "2026-10-15"
-
-
-def test_reaction_date_amc_is_next_trading_day():
-    # AMC Thursday -> reaction = Friday.
-    assert tb._reaction_date("2026-10-15", "AMC") == "2026-10-16"  # Thu -> Fri
+def test_reaction_date_bmo_and_amc():
+    assert tb._reaction_date("2026-10-15", "BMO") == "2026-10-15"       # BMO = report day
+    assert tb._reaction_date("2026-10-15", "AMC") == "2026-10-16"       # AMC Thu -> Fri
 
 
 def test_next_session():
@@ -30,117 +25,86 @@ def test_next_session():
     assert tb._next_session(today.isoformat(), "BMO") is False
 
 
-# --- Helper to drive compute with crafted option data ------------------------
-def _patch(monkeypatch, *, front_iv, back_iv, call_mid, put_mid, spot=100.0,
-           hist=3.0, n_hist=8, report_date=None, code="BMO", wide=False,
-           event_dte=2, prev_report=None, snap=None):
+_QUOTE = {
+    "expiry": "2026-10-16",
+    "call_today": {"strike": 440.0, "rate": 11.88, "iv": 55.6},
+    "put_today": {"strike": 440.0, "rate": 6.62, "iv": 55.6},
+    "call_10d": {"strike": 457.5, "rate": 11.12, "iv": 40.2},
+    "put_10d": {"strike": 457.5, "rate": 10.62, "iv": 38.9},
+}
+
+
+def _patch(monkeypatch, *, quote=_QUOTE, code="BMO"):
     import swr
     import earnings_options_service as o
-    import earnings_trade_service as ets
+    import unusualwhales_service as uw
     today = date.today()
-    # A genuine next-session date: AMC reports today, BMO reports next trading day.
-    if report_date is None:
-        report_date = today.isoformat() if code == "AMC" else _next_trading_day(today).isoformat()
-    monkeypatch.setattr(tb, "_report_meta", lambda s: (report_date, code))
-    monkeypatch.setattr(tb, "_last_report_date", lambda s: prev_report)
-    monkeypatch.setattr(tb, "_snapshot_prev", lambda s, lb: snap)
+    rd = today.isoformat() if code == "AMC" else _next_trading_day(today).isoformat()
+    monkeypatch.setattr(tb, "_report_meta", lambda s: (rd, code))
     monkeypatch.setattr(swr, "peek", lambda k: (
-        {"expected_move": {"current": spot}, "price": spot} if "earn:trade" in k else None))
-    monkeypatch.setattr(o, "short_straddle_quote", lambda *a, **k: {
-        "event_expiry": "2026-12-18", "event_dte": event_dte, "back_expiry": "2027-01-15",
-        "atm_strike": 100.0,
-        "call": {"bid": call_mid - 0.1, "mid": call_mid, "ask": call_mid + 0.1,
-                 "iv": front_iv, "spread_pct": 20 if wide else 3, "delta": 0.5, "oi": 1000, "vol": 100},
-        "put": {"bid": put_mid - 0.1, "mid": put_mid, "ask": put_mid + 0.1,
-                "iv": front_iv, "spread_pct": 3, "delta": -0.5, "oi": 1000, "vol": 100},
-        "straddle": round(call_mid + put_mid, 2), "front_iv": front_iv,
-        "wide_spread": wide, "back_iv": back_iv, "back_far": False})
-    monkeypatch.setattr(ets, "_historical_moves",
-                        lambda s, limit=0: [{"move_pct": hist}] * n_hist)
+        {"expected_move": {"current": 440.0}, "price": 440.0} if "earn:trade" in k else None))
+    bars = [{"date": (today - timedelta(days=40 - i)).isoformat(), "close": 450.0}
+            for i in range(40)]
+    monkeypatch.setattr(uw, "candles", lambda *a, **k: {"data": bars})
+    monkeypatch.setattr(uw, "_rows", lambda payload: payload.get("data", []) if isinstance(payload, dict) else payload)
+    monkeypatch.setattr(o, "iv_crush_quote", lambda *a, **k: quote)
+    return rd
 
 
-# --- Test 3: straddle maths --------------------------------------------------
-def test_straddle_and_implied_move(monkeypatch):
-    _patch(monkeypatch, front_iv=60, back_iv=30, call_mid=3.2, put_mid=3.05, spot=100.0, hist=3.0)
+def test_compute_iv_crush_row(monkeypatch):
+    _patch(monkeypatch)
+    r = tb.compute("TSM")
+    assert r["result_code"] == "BMO" and r["expiry"] == "2026-10-16"
+    assert r["call_today"]["iv"] == 55.6 and r["call_10d"]["iv"] == 40.2
+    assert r["put_today"]["rate"] == 6.62 and r["put_10d"]["strike"] == 457.5
+    assert r["date_10d"] is not None
+
+
+def test_compute_missing_history_is_none(monkeypatch):
+    q = dict(_QUOTE, call_10d=None, put_10d=None)
+    _patch(monkeypatch, quote=q)
     r = tb.compute("AAA")
-    assert r["straddle"] == 6.25            # 3.20 + 3.05
-    assert r["implied_move"] == 6.25        # 6.25 / 100 * 100
-    assert r["front_back"] == 2.0           # 60 / 30
+    assert r["call_10d"] is None and r["put_10d"] is None       # frontend shows "—"
+    assert r["call_today"] is not None
 
 
-# --- Test 4: event-only move clips negative variance -------------------------
-def test_event_only_move_clips_negative(monkeypatch):
-    _patch(monkeypatch, front_iv=30, back_iv=60, call_mid=3.0, put_mid=3.0)  # front < back
-    r = tb.compute("BBB")
-    assert r["event_move"] == 0.0           # negative variance -> 0, no crash
+def test_build_occ():
+    import earnings_options_service as o
+    assert o._build_occ("TSM", "2026-10-16", 445.0, "C") == "TSM261016C00445000"
+    assert o._build_occ("TSM", "2026-10-16", 457.5, "P") == "TSM261016P00457500"
 
 
-def test_event_move_abs_and_ratio(monkeypatch):
-    # Event move is the expected ABSOLUTE move (0.8*sigma); event ratio = /hist.
-    _patch(monkeypatch, front_iv=60, back_iv=30, call_mid=3.2, put_mid=3.05,
-           spot=100.0, hist=4.0)
-    r = tb.compute("EVT")
-    assert r["event_move"] is not None and r["event_move"] > 0
-    assert r["event_ratio"] == round(r["event_move"] / 4.0, 2)
-
-
-def test_low_history_tag_under_8(monkeypatch):
-    _patch(monkeypatch, front_iv=60, back_iv=30, call_mid=3.2, put_mid=3.05,
-           spot=100.0, hist=3.0, n_hist=5)
-    r = tb.compute("LOWH")
-    assert "LOW HISTORY" in r["tags"]
-    assert r["hist_move"] == 3.0 and r["hist_n"] == 5    # value still shown
-
-
-# --- Test 6: NO EDGE when move ratio < 1.0 regardless of inflation -----------
-def test_no_edge_overrides_inflation(monkeypatch):
-    # Inflation high (front/back = 3.0) but implied move < historical -> NO EDGE.
-    _patch(monkeypatch, front_iv=90, back_iv=30, call_mid=1.0, put_mid=1.0, spot=100.0, hist=5.0)
-    r = tb.compute("CCC")
-    assert r["move_ratio"] < 1.0
-    assert r["status"] == "NO EDGE"
-
-
-def test_sell_straddle_happy_path(monkeypatch):
-    _patch(monkeypatch, front_iv=60, back_iv=30, call_mid=3.2, put_mid=3.05, spot=100.0, hist=3.0)
-    r = tb.compute("DDD")
-    assert r["method"] == "TS" and r["inflation"] == 2.0
-    assert r["move_ratio"] >= 1.2 and r["status"] == "SELL STRADDLE"
-
-
-# --- Test 7: changed earnings date -> NOT DUE --------------------------------
-def test_date_change_is_not_due(monkeypatch):
-    today = date.today().isoformat()
-    _patch(monkeypatch, front_iv=60, back_iv=30, call_mid=3.2, put_mid=3.05,
-           report_date=today, prev_report="2026-01-01")   # stored date differs
-    r = tb.compute("EEE")
-    assert r["date_status"] == "CHANGED" and r["status"] == "NOT DUE"
-    assert "DATE CHANGED" in r["tags"]
-
-
-# --- Test 5: ranking -- 10S above TS, ties by move ratio ---------------------
-def test_ranking_10s_above_ts(monkeypatch):
-    rowmeta = {
-        "T10A": {"method": "10S", "inflation": 1.5, "move_ratio": 1.3},
-        "T10B": {"method": "10S", "inflation": 1.5, "move_ratio": 1.6},   # ties inflation, higher MR -> above
-        "TSX":  {"method": "TS", "inflation": 9.9, "move_ratio": 2.0},    # TS always below 10S
-    }
-
-    def fake_cached(sym):
-        m = rowmeta[sym]
-        return {"symbol": sym, "status": "SELL STRADDLE", "spot": 100.0, **m}
-
+def _scan_env(monkeypatch, cal_rows, cached, last_report=lambda s: None):
     import swr
     import uw_earnings_calendar as cal
     import tab_settings as cfg
-    monkeypatch.setattr(cfg, "TAB_B_WATCHLIST", list(rowmeta.keys()))
-    today = date.today()
-    rows = [{"symbol": s, "date": today.isoformat(), "reporting_time": "AMC",
-             "time_label": "After Close"} for s in rowmeta]
-    monkeypatch.setattr(cal, "calendar", lambda **k: {"rows": rows})
-    monkeypatch.setattr(swr, "peek_many", lambda keys: {k: fake_cached(k.split(":")[1]) for k in keys})
+    monkeypatch.setattr(cfg, "TAB_B_WATCHLIST", [r["symbol"] for r in cal_rows])
+    monkeypatch.setattr(cal, "calendar", lambda **k: {"rows": cal_rows})
+    monkeypatch.setattr(swr, "peek_many", lambda keys: {k: cached.get(k.split(":")[1]) for k in keys})
+    monkeypatch.setattr(tb, "_last_report_date", last_report)
     monkeypatch.setattr(tb, "log_scores", lambda rows: 0)
 
+
+def test_scan_sorts_bmo_before_amc_then_ticker(monkeypatch):
+    today = date.today()
+    nd = _next_trading_day(today)
+    cal_rows = [
+        {"symbol": "ZZZ", "date": nd.isoformat(), "reporting_time": "BMO"},
+        {"symbol": "AAA", "date": nd.isoformat(), "reporting_time": "BMO"},
+        {"symbol": "MMM", "date": today.isoformat(), "reporting_time": "AMC"},
+    ]
+    cached = {s: {"symbol": s, "call_today": {"strike": 1, "rate": 1, "iv": 1}} for s in ("ZZZ", "AAA", "MMM")}
+    _scan_env(monkeypatch, cal_rows, cached)
     res = tb.scan()
-    rank = {r["symbol"]: r["rank"] for r in res["rows"]}
-    assert rank["T10B"] == 1 and rank["T10A"] == 2 and rank["TSX"] == 3
+    order = [r["symbol"] for r in res["rows"]]
+    # Today AMC sorts before next-day BMO (earlier date); then BMO AAA before ZZZ.
+    assert order == ["MMM", "AAA", "ZZZ"]
+
+
+def test_scan_drops_name_whose_date_moved(monkeypatch):
+    nd = _next_trading_day(date.today())
+    cal_rows = [{"symbol": "TSM", "date": nd.isoformat(), "reporting_time": "BMO"}]
+    cached = {"TSM": {"symbol": "TSM", "call_today": {"strike": 1, "rate": 1, "iv": 1}}}
+    _scan_env(monkeypatch, cal_rows, cached, last_report=lambda s: "2026-01-01")  # stored differs
+    res = tb.scan()
+    assert [r["symbol"] for r in res["rows"]] == []     # dropped out

@@ -137,6 +137,98 @@ def _atm_straddle(symbol: str, spot: Optional[float],
         return None
 
 
+def _build_occ(symbol: str, expiry: str, strike: float, right: str) -> str:
+    """OCC option symbol, e.g. TSM + 261016 + C + 00445000 for TSM 445 call 16 Oct."""
+    from datetime import datetime
+    yy = datetime.fromisoformat(str(expiry)[:10]).strftime("%y%m%d")
+    ks = f"{int(round(strike * 1000)):08d}"
+    return f"{symbol.upper()}{yy}{right}{ks}"
+
+
+def iv_crush_quote(symbol: str, spot: Optional[float], reaction_date: Optional[str],
+                   date_10d: Optional[str], spot_10d: Optional[float]) -> Optional[dict]:
+    """IV Crush Check option data: the ATM call and put TODAY and 10 trading
+    sessions ago (from the contract-history endpoint), for the result expiry.
+    Rate = NBBO mid; the 10-sessions-ago rate is that day's closing mid (or last
+    price). IV is each contract's implied vol at the same moment."""
+    try:
+        import unusualwhales_service as uw
+        import contract_detail_service as cd
+        from collections import defaultdict
+        if spot is None or not reaction_date:
+            return None
+        rd = str(reaction_date)[:10]
+        rows = uw._rows(uw.option_contracts(symbol, limit=1500))
+        parsed = []
+        for r in rows:
+            p = cd.parse_occ(r.get("option_symbol")) if r.get("option_symbol") else None
+            if p and p.get("expiry") and p.get("strike") and p.get("right"):
+                parsed.append((p, r))
+        if not parsed:
+            return None
+        by_exp: dict = defaultdict(set)
+        for p, _ in parsed:
+            by_exp[p["expiry"]].add(p["right"])
+        valid = sorted(e for e, rt in by_exp.items() if "C" in rt and "P" in rt)
+        expiry = next((e for e in valid if e >= rd), None)
+        if not expiry:
+            return None
+        strikes = sorted({p["strike"] for p, _ in parsed if p["expiry"] == expiry})
+        if not strikes:
+            return None
+
+        def nearest(grid, px):
+            return min(grid, key=lambda k: (abs(k - px), k)) if px is not None else None
+
+        def mid_of(r):
+            b, a = _f(r.get("nbbo_bid")), _f(r.get("nbbo_ask"))
+            if b is not None and a is not None:
+                return (b + a) / 2
+            return _f(r.get("last_price"))
+
+        def iv_pct(v):
+            iv = _f(v)
+            if iv is None:
+                return None
+            return round(iv * 100, 1) if iv <= 5 else round(iv, 1)
+
+        def today_leg(strike, right):
+            row = next((r for p, r in parsed if p["expiry"] == expiry
+                        and p["right"] == right and p["strike"] == strike), None)
+            if not row:
+                return {"strike": strike, "rate": None, "iv": None}
+            m = mid_of(row)
+            return {"strike": strike, "rate": (round(m, 2) if m is not None else None),
+                    "iv": iv_pct(row.get("implied_volatility"))}
+
+        def ago_leg(strike, right):
+            if strike is None or not date_10d:
+                return None
+            occ = _build_occ(symbol, expiry, strike, right)
+            try:
+                hist = uw._rows(uw.get(f"/api/option-contract/{occ}/historic", {"limit": 25}))
+            except Exception:  # noqa: BLE001
+                return None
+            row = next((r for r in hist if str(r.get("date"))[:10] == str(date_10d)[:10]), None)
+            if not row:
+                return None
+            m = mid_of(row)
+            if m is None:
+                m = _f(row.get("avg_price"))
+            return {"strike": strike, "rate": (round(m, 2) if m is not None else None),
+                    "iv": iv_pct(row.get("implied_volatility"))}
+
+        k_today = nearest(strikes, spot)
+        k_ago = nearest(strikes, spot_10d)
+        return {
+            "expiry": expiry,
+            "call_today": today_leg(k_today, "C"), "put_today": today_leg(k_today, "P"),
+            "call_10d": ago_leg(k_ago, "C"), "put_10d": ago_leg(k_ago, "P"),
+        }
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def short_straddle_quote(symbol: str, spot: Optional[float], reaction_date: Optional[str],
                          atm_mode: str = "nearest", back_gap: int = 21,
                          back_max: int = 60) -> Optional[dict]:
