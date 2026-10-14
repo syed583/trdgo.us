@@ -23,6 +23,15 @@ const clock = (tz: string) => {
       { hour: '2-digit', minute: '2-digit', timeZone: tz }).format(new Date());
   } catch { return '—'; }
 };
+// A row's "last updated" wall-clock in New York (HH:MM), from its UTC timestamp.
+const upd = (iso: any) => {
+  if (!iso) return '—';
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York',
+    }).format(new Date(iso));
+  } catch { return '—'; }
+};
 // "$rate / IV%" for one leg at the locked strike, or "—" when missing.
 const leg = (x: any) => {
   if (!x) return '—';
@@ -50,7 +59,8 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
         <h1><Activity size={20} /> IV Crush Check</h1>
         <p>One locked strike — the ATM from 10 trading sessions ago — shown then vs now (rate + IV for
           the call and put). A clean like-for-like so you can see the IV run-up. Every name reporting
-          in the next ~10 trading days. <b>Now New York {clock('America/New_York')} · Dubai {clock('Asia/Dubai')}</b></p>
+          in the next ~10 trading days, <b>next-session reporters (•) first</b>; thin ATMs are filtered
+          out. <b>Now New York {clock('America/New_York')} · Dubai {clock('Asia/Dubai')}</b></p>
       </div>
       <div className="ivc-help">
         <b>How to read this</b> — each cell is <code>strike / rate / IV</code>.
@@ -82,6 +92,7 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                   <th className="ts-num">Call today<br /><span className="ivc-sub">rate / IV</span></th>
                   <th className="ts-num">Put {d10 || '10D ago'}<br /><span className="ivc-sub">rate / IV</span></th>
                   <th className="ts-num">Put today<br /><span className="ivc-sub">rate / IV</span></th>
+                  <th className="ts-num" title="when this row was last fetched (New York)">Updated<br /><span className="ivc-sub">NY</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -89,7 +100,8 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                   const pending = r.status === 'PENDING' || !r.call_now;
                   return (
                     <tr key={r.symbol}>
-                      <td className="ts-sym">{r.symbol}</td>
+                      <td className="ts-sym">{r.symbol}
+                        {r.next_session ? <span className="ivc-ns" title="reports the next session">•</span> : ''}</td>
                       <td className="ts-date">{mdd(r.date || r.result_date)}
                         {r.result_code ? ` ${r.result_code}` : ''}</td>
                       <td className="ts-date">{mdd(r.expiry)}</td>
@@ -98,6 +110,7 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                       <td className="ts-num">{pending ? 'loading…' : leg(r.call_now)}</td>
                       <td className="ts-num">{pending ? '' : leg(r.put_then)}</td>
                       <td className="ts-num">{pending ? '' : leg(r.put_now)}</td>
+                      <td className="ts-num"><span className="ivc-sub">{pending ? '' : upd(r.updated_at)}</span></td>
                     </tr>
                   );
                 })}

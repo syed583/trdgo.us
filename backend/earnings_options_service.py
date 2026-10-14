@@ -220,15 +220,43 @@ def iv_crush_quote(symbol: str, spot: Optional[float], reaction_date: Optional[s
             return {"rate": (round(m, 2) if m is not None else None),
                     "iv": iv_pct(row.get("implied_volatility"))}
 
+        def live_row(strike, right):
+            return next((r for p, r in parsed if p["expiry"] == expiry
+                         and p["right"] == right and p["strike"] == strike), None)
+
+        def spread_pct(r):
+            """(ask - bid) / mid, as a %, for a live chain row."""
+            if not r:
+                return None
+            b, a = _f(r.get("nbbo_bid")), _f(r.get("nbbo_ask"))
+            if b is None or a is None:
+                return None
+            mid = (a + b) / 2
+            if mid <= 0:
+                return None
+            return round((a - b) / mid * 100, 1)
+
         # ONE locked strike: the ATM 10 sessions ago (nearest to the spot that
         # day). Show that same strike then vs now -- a clean like-for-like.
         k_locked = nearest(strikes, spot_10d)
         if k_locked is None:
             k_locked = nearest(strikes, spot)
+
+        # Today's liquidity at the ATM (nearest the current spot), so the filter
+        # reflects what you'd trade right now, not the 10-day-ago strike.
+        k_atm = nearest(strikes, spot) or k_locked
+        cr, pr = live_row(k_atm, "C"), live_row(k_atm, "P")
+        call_oi = _f(cr.get("open_interest")) if cr else None
+        put_oi = _f(pr.get("open_interest")) if pr else None
+        atm_oi = (call_oi or 0) + (put_oi or 0) if (cr or pr) else None
+        sc, sp = spread_pct(cr), spread_pct(pr)
+        atm_spread = max([s for s in (sc, sp) if s is not None], default=None)
         return {
             "expiry": expiry, "strike": k_locked,
             "call_then": then_leg(k_locked, "C"), "call_now": now_leg(k_locked, "C"),
             "put_then": then_leg(k_locked, "P"), "put_now": now_leg(k_locked, "P"),
+            "atm_strike": k_atm, "atm_oi": atm_oi,
+            "atm_call_oi": call_oi, "atm_put_oi": put_oi, "atm_spread_pct": atm_spread,
         }
     except Exception:  # noqa: BLE001
         return None

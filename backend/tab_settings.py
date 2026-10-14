@@ -63,6 +63,14 @@ TAB_B_MIN_IMPL_VS_HIST = 0.90
 SS_LOOKBACK_SESSIONS = 10         # 10-session multiples: today vs this many trading sessions ago
 SS_UNIVERSE_TDAYS = 10            # IV Crush Check universe: every calendar name reporting within
                                   # this many trading sessions (next session + next 10 trading days)
+# IV Crush liquidity filter: drop a name when the event-expiry ATM is too thin to
+# trade -- combined call+put open interest below SS_MIN_ATM_OI, or an ATM bid-ask
+# spread wider than SS_MAX_ATM_SPREAD_PCT of mid.
+SS_MIN_ATM_OI = 1000              # minimum combined ATM call + put open interest (contracts)
+SS_MAX_ATM_SPREAD_PCT = 15.0      # maximum ATM bid-ask spread as a % of mid
+# Next-session reporters are re-fetched once at this New York time so the rows are
+# fresh right before the close (24h clock, America/New_York).
+SS_REFRESH_NY_HHMM = "15:55"
 SS_MIN_INFLATION = 1.15           # inflation_score below this -> NO REAL INFLATION
 SS_MOVE_RATIO_SELL = 1.2          # Move ratio >= this (with inflation) -> SELL STRADDLE
 SS_MOVE_RATIO_FLOOR = 1.0         # Move ratio < this -> NO EDGE (regardless of inflation)
@@ -105,3 +113,4 @@ UA_SCAN_LIMIT = 500               # rows to pull from the market-wide unusual sc
 UA_NORMAL_SESSIONS = 20           # "normal ratio" = avg call/put premium ratio over this many sessions
 UA_CALL_HEAVY = 2.0               # disparity (today ratio / normal) >= this -> CALL HEAVY
 UA_PUT_HEAVY = 0.5                # disparity <= this -> PUT HEAVY
+UA_PARTB_MIN_PREMIUM = 500_000    # skip a stock whose total (call + put) premium today is below this

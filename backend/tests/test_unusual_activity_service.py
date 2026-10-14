@@ -64,6 +64,8 @@ def _series(today_c, today_p, hist):
 
 
 def test_part_b_call_heavy_and_filtering(monkeypatch):
+    import tab_settings as cfg
+    monkeypatch.setattr(cfg, "UA_PARTB_MIN_PREMIUM", 0)   # isolate the disparity logic
     # AAA: today ratio 4.0, normal ~1.0 -> disparity 4x -> CALL HEAVY
     # BBB: today ratio 1.1, normal 1.0 -> 1.1x -> not shown
     # CCC: today ratio 0.2, normal 1.0 -> 0.2x -> PUT HEAVY
@@ -78,6 +80,19 @@ def test_part_b_call_heavy_and_filtering(monkeypatch):
     assert leanings == {"AAA": "CALL HEAVY", "CCC": "PUT HEAVY"}   # BBB dropped
     assert out[0]["symbol"] == "AAA"                                # farthest from 1x first
     assert missing == []
+
+
+def test_part_b_premium_floor(monkeypatch):
+    import tab_settings as cfg
+    monkeypatch.setattr(cfg, "UA_PARTB_MIN_PREMIUM", 500_000)
+    # BIG: call+put = 1.2M (>= floor) and 4x skew -> shown; SMALL: 200 total -> dropped
+    data = {
+        "BIG": _series(1_000_000, 200_000, [(100, 100)] * 20),
+        "SMALL": _series(160, 40, [(100, 100)] * 20),
+    }
+    monkeypatch.setattr(uas, "_ov_series_peek_many", lambda syms: {s: data.get(s) for s in syms})
+    out, _ = uas._part_b(["BIG", "SMALL"])
+    assert [r["symbol"] for r in out] == ["BIG"]      # SMALL filtered by the premium floor
 
 
 def test_part_b_lists_missing(monkeypatch):

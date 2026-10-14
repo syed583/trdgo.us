@@ -102,6 +102,33 @@ def test_scan_sorts_bmo_before_amc_then_ticker(monkeypatch):
     assert order == ["MMM", "AAA", "ZZZ"]
 
 
+def test_liquidity_filter():
+    thin_oi = {"atm_oi": 500, "atm_spread_pct": 5.0}
+    wide = {"atm_oi": 5000, "atm_spread_pct": 22.0}
+    ok = {"atm_oi": 5000, "atm_spread_pct": 8.0}
+    missing = {"atm_oi": None, "atm_spread_pct": None}   # unknown -> not dropped
+    assert tb._liquid_enough(thin_oi) is False
+    assert tb._liquid_enough(wide) is False
+    assert tb._liquid_enough(ok) is True
+    assert tb._liquid_enough(missing) is True
+
+
+def test_scan_drops_thin_names(monkeypatch):
+    today = date.today()
+    nd = _next_trading_day(today)
+    cal_rows = [
+        {"symbol": "OK1", "date": nd.isoformat(), "reporting_time": "BMO"},
+        {"symbol": "THIN", "date": nd.isoformat(), "reporting_time": "BMO"},
+    ]
+    cached = {
+        "OK1": {"symbol": "OK1", "call_now": {"rate": 1, "iv": 1}, "atm_oi": 4000, "atm_spread_pct": 6.0},
+        "THIN": {"symbol": "THIN", "call_now": {"rate": 1, "iv": 1}, "atm_oi": 100, "atm_spread_pct": 6.0},
+    }
+    _scan_env(monkeypatch, cal_rows, cached)
+    res = tb.scan()
+    assert [r["symbol"] for r in res["rows"]] == ["OK1"]   # THIN dropped (OI < 1000)
+
+
 def test_scan_universe_is_next_10_trading_days(monkeypatch):
     # Every upcoming name within the window shows (not just the next session);
     # a name reporting well beyond the window, and a past date, drop out.

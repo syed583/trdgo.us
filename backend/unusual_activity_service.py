@@ -206,6 +206,9 @@ def _disparity_row(sym: str, rows: list[dict]) -> Optional[dict]:
     pp = _f(today.get("put_premium"))
     if not cp or not pp or pp <= 0:
         return None
+    floor = float(getattr(cfg, "UA_PARTB_MIN_PREMIUM", 0) or 0)
+    if floor and (cp + pp) < floor:
+        return None                      # too little premium today -> noisy ratio, skip
     ratio = cp / pp
     hist = []
     for d in rows[1: 1 + n]:

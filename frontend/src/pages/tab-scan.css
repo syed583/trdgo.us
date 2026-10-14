@@ -282,3 +282,5 @@
 .ua-buy { color: var(--up, #16a34a); }
 .ua-sell { color: var(--down, #dc2626); }
 .ua-mixed { color: var(--text-mute); }
+
+.ivc-ns { color: var(--accent, #2563eb); font-weight: 900; margin-left: 4px; }

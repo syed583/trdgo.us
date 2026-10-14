@@ -354,17 +354,26 @@ def tab_b_scan(days: int = 15) -> dict:
     d = max(1, min(int(days or 15), 30))
     res = swr.serve(f"tabb:scan:{d}", lambda: tb.scan(d), 60.0)
     miss = res.get("missing") or []
-    if miss:
+    refetch = res.get("refetch") or []
+    if miss or refetch:
         # On-demand fill of what the user is looking at (sequential, light) --
         # not gated by DISABLE_WARMERS, which only stops the heavy background loops.
         batch = miss[:24]
+        refetch_batch = refetch[:12]
 
         def _warm() -> None:
+            for s in refetch_batch:          # forced 15:55 refresh of next-session names
+                try:
+                    tb._recompute(s)
+                except Exception:  # noqa: BLE001
+                    pass
             for s in batch:
                 try:
                     tb._cached(s)
                 except Exception:  # noqa: BLE001
                     pass
+            # The forced refetch updates each tabb:{SYM}; the 60s scan snapshot
+            # rebuilds on the next poll and picks up the fresh values.
 
         threading.Thread(target=_warm, daemon=True).start()
     return res

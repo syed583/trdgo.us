@@ -13,7 +13,7 @@ as tabb:{SYM}.
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 import tab_settings as cfg
@@ -280,12 +280,60 @@ def compute(symbol: str) -> dict:
         "expiry": q.get("expiry"), "date_10d": date_10d, "strike": q.get("strike"),
         "call_then": q.get("call_then"), "call_now": q.get("call_now"),
         "put_then": q.get("put_then"), "put_now": q.get("put_now"),
+        # Liquidity of the ATM at the event expiry (today's chain), for the filter.
+        "atm_oi": q.get("atm_oi"), "atm_spread_pct": q.get("atm_spread_pct"),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
 def _cached(symbol: str) -> Optional[dict]:
     import swr
     return swr.serve(f"tabb:{symbol.upper()}", lambda: compute(symbol), 21600.0)
+
+
+def _recompute(symbol: str) -> Optional[dict]:
+    """Force a fresh compute now, ignoring the 6h freshness (the 15:55 refetch)."""
+    import swr
+    return swr.serve(f"tabb:{symbol.upper()}", lambda: compute(symbol), 0.0)
+
+
+def _needs_1555_refresh(updated_at) -> bool:
+    """True once NY time passes SS_REFRESH_NY_HHMM and the snapshot predates that
+    moment today -- so next-session rows are re-fetched once before the close."""
+    try:
+        from zoneinfo import ZoneInfo
+        ny = ZoneInfo("America/New_York")
+    except Exception:  # noqa: BLE001
+        return False
+    now = datetime.now(ny)
+    try:
+        hh, mm = str(getattr(cfg, "SS_REFRESH_NY_HHMM", "15:55")).split(":")
+        boundary = now.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
+    except Exception:  # noqa: BLE001
+        return False
+    if now < boundary:
+        return False
+    if not updated_at:
+        return True
+    try:
+        ua = datetime.fromisoformat(str(updated_at).replace("Z", "+00:00")).astimezone(ny)
+    except Exception:  # noqa: BLE001
+        return True
+    return ua < boundary
+
+
+def _liquid_enough(row: dict) -> bool:
+    """False when the event-expiry ATM is too thin to trade: combined call+put OI
+    below SS_MIN_ATM_OI, or an ATM spread wider than SS_MAX_ATM_SPREAD_PCT."""
+    min_oi = float(getattr(cfg, "SS_MIN_ATM_OI", 1000))
+    max_sp = float(getattr(cfg, "SS_MAX_ATM_SPREAD_PCT", 15.0))
+    oi = _f(row.get("atm_oi"))
+    sp = _f(row.get("atm_spread_pct"))
+    if oi is not None and oi < min_oi:
+        return False
+    if sp is not None and sp > max_sp:
+        return False
+    return True
 
 
 def universe_rows(days: int = 15) -> list[dict]:
@@ -321,23 +369,36 @@ def scan(days: int = 15, warm: int = 0) -> dict:
     then ticker. No ranking, scores or status."""
     import swr
 
-    # Soonest reporters first so the rows -- and the warm queue -- fill the
-    # next-session names before the far ones.
+    # Next-session reporters first (then soonest), so both the rows and the warm
+    # queue put the names that report next ahead of everything else.
     uniq = universe_rows(days)
+    uniq.sort(key=lambda r: (
+        0 if _next_session(r.get("date"), r.get("reporting_time")) else 1,
+        str(r.get("date") or ""),
+        0 if (r.get("reporting_time") == "BMO") else 1,
+        (r.get("symbol") or "").upper()))
     seen = {r["symbol"].upper() for r in uniq}
     cached = swr.peek_many([f"tabb:{s}" for s in seen])
 
     out: list[dict] = []
     missing: list[str] = []
+    refetch: list[str] = []
     computed: list[dict] = []
     for r in uniq:
         s = r["symbol"].upper()
+        ns = _next_session(r.get("date"), r.get("reporting_time"))
         meta = {"company": r.get("company"), "date": r.get("date"),
                 "date_label": r.get("date_label"), "result_time": r.get("time_label"),
-                "result_code": r.get("reporting_time")}
+                "result_code": r.get("reporting_time"), "next_session": ns}
         t = cached.get(f"tabb:{s}")
         if t:
             row = {**t, **meta}
+            # Thin ATM at the event expiry -> not tradeable, drop it.
+            if not _liquid_enough(row):
+                continue
+            # Next-session rows get a fresh pull once NY passes 15:55.
+            if ns and _needs_1555_refresh(t.get("updated_at")):
+                refetch.append(s)
             out.append(row)
             computed.append(row)
         else:
@@ -346,6 +407,12 @@ def scan(days: int = 15, warm: int = 0) -> dict:
                         "expiry": None, "strike": None, "call_then": None,
                         "call_now": None, "put_then": None, "put_now": None, **meta})
 
+    # Next-session names fill first; the 15:55 refetch is forced fresh.
+    for s in refetch[:max(0, warm)]:
+        try:
+            _recompute(s)
+        except Exception:  # noqa: BLE001
+            pass
     for s in missing[:max(0, warm)]:
         try:
             _cached(s)
@@ -359,4 +426,5 @@ def scan(days: int = 15, warm: int = 0) -> dict:
     except Exception:  # noqa: BLE001
         pass
     return {"status": "OK", "source": SOURCE, "rows": out,
-            "universe": len(seen), "missing": missing[:120]}
+            "universe": len(seen), "missing": missing[:120],
+            "refetch": refetch}
