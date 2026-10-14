@@ -27,6 +27,7 @@ const EarningsClaudePage = lazy(() => import('./pages/EarningsClaudePage'));
 const ClaudeLastPage = lazy(() => import('./pages/ClaudeLastPage'));
 const ClaudeLastDetail = lazy(() => import('./pages/ClaudeLastDetail'));
 const OptionScannerPage = lazy(() => import('./pages/OptionScannerPage'));
+const LongStraddlePage = lazy(() => import('./pages/LongStraddlePage'));
 const TradgoCallPage = lazy(() => import('./pages/TradgoCallPage'));
 const VolatilityPage = lazy(() => import('./pages/VolatilityPage'));
 const ModelPerformancePage = lazy(() => import('./pages/ModelPerformancePage'));
@@ -348,6 +349,7 @@ function Shell() {
           <Route path="/claude-new-pz" element={<ClaudeLastPage ctx={ctx} base="/claude-new-pz" pz />} />
           <Route path="/claude-new-pz/:symbol" element={<ClaudeLastDetail ctx={ctx} base="/claude-new-pz" pz />} />
           <Route path="/option-scanner" element={<OptionScannerPage ctx={ctx} />} />
+          <Route path="/long-straddle" element={<LongStraddlePage ctx={ctx} />} />
           <Route path="/earnings-equity" element={<EarningsEquityPage ctx={ctx} />} />
           <Route path="/earnings-equity/:symbol" element={<EarningsEquityPage ctx={ctx} />} />
           <Route path="/earnings-options" element={<EarningsOptionsPage ctx={ctx} />} />

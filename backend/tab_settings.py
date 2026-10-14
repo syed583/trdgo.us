@@ -62,6 +62,16 @@ TAB_B_MIN_IMPL_VS_HIST = 0.90
 TAB_B_MAX_LEG_SPREAD_PCT = 10.0   # bid-ask > this % of mid on EITHER leg -> illiquid
 TAB_B_MIN_OI = 200                # ATM open interest below this -> illiquid (configurable)
 
+# --- Long Straddle (IV run-up) — Strategy A of the Earnings Options Module -----
+# Buy the ATM call + ATM put ~15 days before earnings (IV still has room to rise),
+# exit the day BEFORE the result. Entry wants LOW IV rank (room to rise), tight
+# spreads and healthy OI -- the mirror of the short-straddle liquidity gate.
+LS_ENTRY_DAYS = 15            # ideal entry = ~15 calendar days before the result
+LS_ENTRY_TOL = 3             # the entry window is ENTRY_DAYS +/- this (12..18)
+LS_MAX_IV_RANK = 40.0        # above this at entry, the IV run-up edge is mostly gone
+LS_MAX_LEG_SPREAD_PCT = 5.0  # entry checklist: ATM spread under ~5% of mid
+LS_MIN_OI = 200              # healthy open interest floor
+
 # The 67-name straddle watchlist (high-beta, liquid options), per the spec. The
 # scanner ranks ONLY these names (intersected with the upcoming-earnings window),
 # because they are pre-selected for the liquidity a short straddle needs.
