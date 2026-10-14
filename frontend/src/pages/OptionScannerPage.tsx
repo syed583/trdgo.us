@@ -23,13 +23,12 @@ const clock = (tz: string) => {
       { hour: '2-digit', minute: '2-digit', timeZone: tz }).format(new Date());
   } catch { return '—'; }
 };
-// "strike / $rate / IV%" for a leg, or "—" when history is missing.
+// "$rate / IV%" for one leg at the locked strike, or "—" when missing.
 const leg = (x: any) => {
   if (!x) return '—';
-  const k = x.strike != null ? x.strike : '—';
   const r = x.rate != null ? `$${Number(x.rate).toFixed(2)}` : '—';
   const iv = x.iv != null ? `${Number(x.iv).toFixed(1)}%` : '—';
-  return `${k} / ${r} / ${iv}`;
+  return `${r} / ${iv}`;
 };
 
 export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
@@ -39,35 +38,37 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
     return () => window.clearInterval(id);
   }, []);
 
-  const resp = useApi<any>((s) => api2.tabBScan(5, s), [],
+  const resp = useApi<any>((s) => api2.tabBScan(15, s), [],
     { refreshMs: ctx.demo ? undefined : 60_000 });
   const rows: any[] = resp.data?.rows || [];
+  // 10 trading sessions ago is the same date for every US name; show it in the header.
+  const d10 = (() => { const r = rows.find((x) => x.date_10d); return r ? mdd(r.date_10d) : ''; })();
 
   return (
     <div className="page">
       <div className="ts-head">
         <h1><Activity size={20} /> IV Crush Check</h1>
-        <p>Just before the result, what the ATM call and ATM put cost 10 trading sessions ago vs now,
-          with IV for each. Next-session reporters only. <b>Now New York {clock('America/New_York')} ·
-          Dubai {clock('Asia/Dubai')}</b></p>
+        <p>One locked strike — the ATM from 10 trading sessions ago — shown then vs now (rate + IV for
+          the call and put). A clean like-for-like so you can see the IV run-up. Every name reporting
+          in the next ~10 trading days. <b>Now New York {clock('America/New_York')} · Dubai {clock('Asia/Dubai')}</b></p>
       </div>
       <div className="ivc-help">
         <b>How to read this</b> — each cell is <code>strike / rate / IV</code>.
         <ul>
-          <li><b>Strike</b> = the option strike nearest the stock price that day (so the 10-days-ago
-            and today strikes differ when the stock has moved).</li>
-          <li><b>Rate</b> = the option's mid price, (bid + ask) ÷ 2. Today is live; 10 days ago is
-            that day's closing mid from the contract history.</li>
-          <li><b>IV</b> = that contract's implied volatility. Watch it <b>rise</b> into earnings
-            (the run-up) — e.g. TSM 40% → 56%. After the result it <b>crushes</b> back down, and
-            both the call and put lose that inflated premium. “—” means no history for that day.</li>
+          <li><b>Strike (locked)</b> = the ATM strike 10 sessions ago. The SAME strike is used for
+            "then" and "today" — a like-for-like comparison.</li>
+          <li><b>Rate</b> = the option's mid price, (bid + ask) ÷ 2. "Today" is live; the "10 sessions
+            ago" value is that day's closing mid from the contract history.</li>
+          <li><b>IV</b> = that contract's implied volatility. At the locked strike, watch it <b>rise</b>
+            into earnings (the run-up) — e.g. TSM 455 went ~37% → ~63%. After the result it
+            <b>crushes</b> back down. “—” means no history for that day.</li>
         </ul>
       </div>
       <Panel title={<span className="at-col-title">IV Crush Check</span>}>
         {resp.initialLoading && !rows.length ? (
           <p className="at-note"><Loader2 size={12} className="spin" /> Loading…</p>
         ) : !rows.length ? (
-          <p className="at-note">No watchlist names report the next session.</p>
+          <p className="at-note">No names report in the next ~10 trading days.</p>
         ) : (
           <div className="ts-wrap">
             <table className="ts-tbl">
@@ -76,25 +77,27 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                   <th className="ts-sym">Ticker</th>
                   <th>Result</th>
                   <th>Expiry</th>
-                  <th>Call 10D ago<br /><span className="ivc-sub">strike / rate / IV</span></th>
-                  <th>Call today<br /><span className="ivc-sub">strike / rate / IV</span></th>
-                  <th>Put 10D ago<br /><span className="ivc-sub">strike / rate / IV</span></th>
-                  <th>Put today<br /><span className="ivc-sub">strike / rate / IV</span></th>
+                  <th className="ts-num" title="locked strike = ATM 10 sessions ago">Strike</th>
+                  <th className="ts-num">Call {d10 || '10D ago'}<br /><span className="ivc-sub">rate / IV</span></th>
+                  <th className="ts-num">Call today<br /><span className="ivc-sub">rate / IV</span></th>
+                  <th className="ts-num">Put {d10 || '10D ago'}<br /><span className="ivc-sub">rate / IV</span></th>
+                  <th className="ts-num">Put today<br /><span className="ivc-sub">rate / IV</span></th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((r) => {
-                  const pending = r.status === 'PENDING' || !r.call_today;
+                  const pending = r.status === 'PENDING' || !r.call_now;
                   return (
                     <tr key={r.symbol}>
                       <td className="ts-sym">{r.symbol}</td>
                       <td className="ts-date">{mdd(r.date || r.result_date)}
                         {r.result_code ? ` ${r.result_code}` : ''}</td>
                       <td className="ts-date">{mdd(r.expiry)}</td>
-                      <td className="ts-num">{pending ? '' : leg(r.call_10d)}</td>
-                      <td className="ts-num">{pending ? 'loading…' : leg(r.call_today)}</td>
-                      <td className="ts-num">{pending ? '' : leg(r.put_10d)}</td>
-                      <td className="ts-num">{pending ? '' : leg(r.put_today)}</td>
+                      <td className="ts-num"><b>{r.strike ?? '—'}</b></td>
+                      <td className="ts-num">{pending ? '' : leg(r.call_then)}</td>
+                      <td className="ts-num">{pending ? 'loading…' : leg(r.call_now)}</td>
+                      <td className="ts-num">{pending ? '' : leg(r.put_then)}</td>
+                      <td className="ts-num">{pending ? '' : leg(r.put_now)}</td>
                     </tr>
                   );
                 })}

@@ -61,6 +61,8 @@ TAB_B_MIN_IMPL_VS_HIST = 0.90
 # NEXT SESSION qualify, and a few hard exclusions force SKIP.
 # --- Short Straddle Change Spec (14 Oct 2026) -- all thresholds here, not in code
 SS_LOOKBACK_SESSIONS = 10         # 10-session multiples: today vs this many trading sessions ago
+SS_UNIVERSE_TDAYS = 10            # IV Crush Check universe: every calendar name reporting within
+                                  # this many trading sessions (next session + next 10 trading days)
 SS_MIN_INFLATION = 1.15           # inflation_score below this -> NO REAL INFLATION
 SS_MOVE_RATIO_SELL = 1.2          # Move ratio >= this (with inflation) -> SELL STRADDLE
 SS_MOVE_RATIO_FLOOR = 1.0         # Move ratio < this -> NO EDGE (regardless of inflation)
@@ -83,3 +85,23 @@ TAB_B_WATCHLIST: list[str] = [
     "PINS", "ROKU", "DKNG", "ETSY", "CVNA", "RIVN", "LCID", "NIO", "ENPH",
     "FSLR", "BABA", "PDD", "JD", "IONQ", "RKLB", "CELH", "LULU", "CHWY", "W",
 ]
+
+
+# --- Table 2: Unusual Activity & Call/Put Disparity (14 Oct 2026) -----------
+# Its own tab. Universe = IV Crush universe (next session + next 10 trading days,
+# SS_UNIVERSE_TDAYS). All thresholds live here, not in code.
+UA_REFRESH_SEC = 300.0            # refresh cadence (every 5 min during market hours)
+# Part A -- Unusual Activity (one row per contract). A contract qualifies only if
+# it meets ALL three:
+UA_MIN_PREMIUM = 100_000.0        # premium (total $ traded today) at least this
+UA_VOL_AVG_MULT = 3.0             # today's volume at least this x its 20-day average volume
+UA_VOL_OI_MIN = 1.0               # today's volume at least this x open interest
+UA_AVG_SESSIONS = 20              # "20-day average volume" = mean of this many prior sessions
+UA_SIDE_PCT = 0.60                # BUY if >= this share at the ask; SELL if >= this at the bid
+UA_MAX_ROWS = 40                  # show at most this many rows (sorted by premium, largest first)
+UA_SCAN_PREMIUM_FLOOR = 90_000    # market-wide unusual pull floor (just under UA_MIN_PREMIUM)
+UA_SCAN_LIMIT = 500               # rows to pull from the market-wide unusual scan
+# Part B -- Call/Put Disparity (one row per stock).
+UA_NORMAL_SESSIONS = 20           # "normal ratio" = avg call/put premium ratio over this many sessions
+UA_CALL_HEAVY = 2.0               # disparity (today ratio / normal) >= this -> CALL HEAVY
+UA_PUT_HEAVY = 0.5                # disparity <= this -> PUT HEAVY

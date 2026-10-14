@@ -370,6 +370,33 @@ def tab_b_scan(days: int = 15) -> dict:
     return res
 
 
+@router.get("/unusual-activity/scan")
+def unusual_activity_scan() -> dict:
+    """Table 2 -- Unusual Activity (Part A) & Call/Put Disparity (Part B)."""
+    import unusual_activity_service as uas
+    import tab_settings as cfg
+    import threading
+
+    ttl = float(getattr(cfg, "UA_REFRESH_SEC", 300.0))
+    # Never block the request: serve the last cached scan immediately, and do the
+    # (cold-start slow) recompute + item warming off the request thread.
+    res = swr.peek("ua:scan")
+
+    def _bg() -> None:
+        try:
+            fresh = swr.serve("ua:scan", lambda: uas.scan(), ttl)
+            uas.warm((fresh.get("warm_occs") or [])[:30],
+                     (fresh.get("warm_syms") or [])[:24])
+        except Exception:  # noqa: BLE001
+            pass
+
+    threading.Thread(target=_bg, daemon=True).start()
+    if res is None:
+        return {"status": "WARMING", "source": uas.SOURCE, "universe": 0,
+                "part_a": [], "part_b": [], "warm_occs": [], "warm_syms": []}
+    return res
+
+
 @router.get("/earnings/signal-history")
 def earnings_signal_history(n: int = 4, symbol: str = "") -> dict:
     """

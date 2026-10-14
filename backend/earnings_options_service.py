@@ -155,7 +155,7 @@ def iv_crush_quote(symbol: str, spot: Optional[float], reaction_date: Optional[s
         import unusualwhales_service as uw
         import contract_detail_service as cd
         from collections import defaultdict
-        if spot is None or not reaction_date:
+        if not reaction_date:        # spot is optional -- the ATM is found via parity
             return None
         rd = str(reaction_date)[:10]
         rows = uw._rows(uw.option_contracts(symbol, limit=1500))
@@ -192,16 +192,18 @@ def iv_crush_quote(symbol: str, spot: Optional[float], reaction_date: Optional[s
                 return None
             return round(iv * 100, 1) if iv <= 5 else round(iv, 1)
 
-        def today_leg(strike, right):
+        def now_leg(strike, right):
+            """Today's rate + IV for a given strike, from the live chain."""
             row = next((r for p, r in parsed if p["expiry"] == expiry
                         and p["right"] == right and p["strike"] == strike), None)
             if not row:
-                return {"strike": strike, "rate": None, "iv": None}
+                return {"rate": None, "iv": None}
             m = mid_of(row)
-            return {"strike": strike, "rate": (round(m, 2) if m is not None else None),
+            return {"rate": (round(m, 2) if m is not None else None),
                     "iv": iv_pct(row.get("implied_volatility"))}
 
-        def ago_leg(strike, right):
+        def then_leg(strike, right):
+            """That strike's closing rate + IV on the 10-sessions-ago date."""
             if strike is None or not date_10d:
                 return None
             occ = _build_occ(symbol, expiry, strike, right)
@@ -215,33 +217,18 @@ def iv_crush_quote(symbol: str, spot: Optional[float], reaction_date: Optional[s
             m = mid_of(row)
             if m is None:
                 m = _f(row.get("avg_price"))
-            return {"strike": strike, "rate": (round(m, 2) if m is not None else None),
+            return {"rate": (round(m, 2) if m is not None else None),
                     "iv": iv_pct(row.get("implied_volatility"))}
 
-        # Today's ATM: pick the strike from the CHAIN via put-call parity (where
-        # the call and put mids are closest). This is self-consistent with the
-        # option quotes' moment -- unlike a live stock quote, which in pre/post
-        # market can disagree with the chain's last regular-session prices.
-        cmid: dict = {}
-        pmid: dict = {}
-        for p, r in parsed:
-            if p["expiry"] != expiry:
-                continue
-            m = mid_of(r)
-            if m is None:
-                continue
-            (cmid if p["right"] == "C" else pmid)[p["strike"]] = m
-        both = [k for k in cmid if k in pmid]
-        if both:
-            k_today = min(both, key=lambda k: (abs(cmid[k] - pmid[k]),
-                                               abs(k - (spot if spot is not None else k))))
-        else:
-            k_today = nearest(strikes, spot)
-        k_ago = nearest(strikes, spot_10d)
+        # ONE locked strike: the ATM 10 sessions ago (nearest to the spot that
+        # day). Show that same strike then vs now -- a clean like-for-like.
+        k_locked = nearest(strikes, spot_10d)
+        if k_locked is None:
+            k_locked = nearest(strikes, spot)
         return {
-            "expiry": expiry,
-            "call_today": today_leg(k_today, "C"), "put_today": today_leg(k_today, "P"),
-            "call_10d": ago_leg(k_ago, "C"), "put_10d": ago_leg(k_ago, "P"),
+            "expiry": expiry, "strike": k_locked,
+            "call_then": then_leg(k_locked, "C"), "call_now": now_leg(k_locked, "C"),
+            "put_then": then_leg(k_locked, "P"), "put_now": now_leg(k_locked, "P"),
         }
     except Exception:  # noqa: BLE001
         return None

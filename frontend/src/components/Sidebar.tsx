@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom';
 import {
   Activity, Brain, CalendarDays, Crosshair, Flame, Gauge, History, Layers, LineChart, Users,
   LayoutDashboard, ListOrdered, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
-  Scale, ScrollText, Settings, Sparkles, Star, TrendingUp, UserCog, Waves, Waypoints, X,
+  Scale, ScrollText, Settings, Sparkles, Star, TrendingUp, UserCog, Waves, Waypoints, X, Zap,
 } from 'lucide-react';
 import { BrandLockup, BRAND_QUOTE_EARNINGS } from './Brand';
 
@@ -46,6 +46,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/claude-last', label: 'Claude New', icon: <Crosshair size={S} /> },
     { to: '/claude-new-pz', label: 'Claude New +0', icon: <Scale size={S} /> },
     { to: '/option-scanner', label: 'IV Crush Check', icon: <Flame size={S} /> },
+    { to: '/unusual-activity', label: 'Unusual Activity', icon: <Zap size={S} /> },
     { to: '/earnings-signals', label: 'Signal History', icon: <History size={S} /> },
     { to: '/news', label: 'News & Sentiment', icon: <Newspaper size={S} /> },
   ] },

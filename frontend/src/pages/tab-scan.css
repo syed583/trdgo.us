@@ -274,3 +274,11 @@
 .cn-lowconf { display: flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 700;
   color: var(--red); background: rgba(242,70,90,.12); border-radius: 6px; padding: 2px 7px;
   margin-top: 7px; }
+
+/* Unusual Activity (Table 2) — call/put and side pills. */
+.ua-call { color: var(--up, #16a34a); font-weight: 700; }
+.ua-put { color: var(--down, #dc2626); font-weight: 700; }
+.ua-side { font-weight: 700; font-size: 11px; letter-spacing: .02em; }
+.ua-buy { color: var(--up, #16a34a); }
+.ua-sell { color: var(--down, #dc2626); }
+.ua-mixed { color: var(--text-mute); }

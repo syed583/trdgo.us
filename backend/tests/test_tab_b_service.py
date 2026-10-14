@@ -26,11 +26,11 @@ def test_next_session():
 
 
 _QUOTE = {
-    "expiry": "2026-10-16",
-    "call_today": {"strike": 440.0, "rate": 11.88, "iv": 55.6},
-    "put_today": {"strike": 440.0, "rate": 6.62, "iv": 55.6},
-    "call_10d": {"strike": 457.5, "rate": 11.12, "iv": 40.2},
-    "put_10d": {"strike": 457.5, "rate": 10.62, "iv": 38.9},
+    "expiry": "2026-10-16", "strike": 455.0,          # one locked strike
+    "call_then": {"rate": 15.25, "iv": 37.6},
+    "call_now": {"rate": 3.08, "iv": 62.8},
+    "put_then": {"rate": 13.12, "iv": 34.7},
+    "put_now": {"rate": 19.07, "iv": 62.7},
 }
 
 
@@ -55,17 +55,18 @@ def test_compute_iv_crush_row(monkeypatch):
     _patch(monkeypatch)
     r = tb.compute("TSM")
     assert r["result_code"] == "BMO" and r["expiry"] == "2026-10-16"
-    assert r["call_today"]["iv"] == 55.6 and r["call_10d"]["iv"] == 40.2
-    assert r["put_today"]["rate"] == 6.62 and r["put_10d"]["strike"] == 457.5
+    assert r["strike"] == 455.0                                 # one locked strike
+    assert r["call_then"]["iv"] == 37.6 and r["call_now"]["iv"] == 62.8   # same strike, run-up
+    assert r["put_then"]["rate"] == 13.12 and r["put_now"]["rate"] == 19.07
     assert r["date_10d"] is not None
 
 
 def test_compute_missing_history_is_none(monkeypatch):
-    q = dict(_QUOTE, call_10d=None, put_10d=None)
+    q = dict(_QUOTE, call_then=None, put_then=None)
     _patch(monkeypatch, quote=q)
     r = tb.compute("AAA")
-    assert r["call_10d"] is None and r["put_10d"] is None       # frontend shows "—"
-    assert r["call_today"] is not None
+    assert r["call_then"] is None and r["put_then"] is None     # frontend shows "—"
+    assert r["call_now"] is not None
 
 
 def test_build_occ():
@@ -101,10 +102,23 @@ def test_scan_sorts_bmo_before_amc_then_ticker(monkeypatch):
     assert order == ["MMM", "AAA", "ZZZ"]
 
 
-def test_scan_drops_name_whose_date_moved(monkeypatch):
-    nd = _next_trading_day(date.today())
-    cal_rows = [{"symbol": "TSM", "date": nd.isoformat(), "reporting_time": "BMO"}]
-    cached = {"TSM": {"symbol": "TSM", "call_today": {"strike": 1, "rate": 1, "iv": 1}}}
-    _scan_env(monkeypatch, cal_rows, cached, last_report=lambda s: "2026-01-01")  # stored differs
+def test_scan_universe_is_next_10_trading_days(monkeypatch):
+    # Every upcoming name within the window shows (not just the next session);
+    # a name reporting well beyond the window, and a past date, drop out.
+    today = date.today()
+    nd = _next_trading_day(today)
+    far = today + timedelta(days=40)       # ~28 trading days out -> excluded
+    past = today - timedelta(days=3)       # already reported -> excluded
+    cal_rows = [
+        {"symbol": "NOW1", "date": nd.isoformat(), "reporting_time": "BMO"},
+        {"symbol": "SOON", "date": (today + timedelta(days=9)).isoformat(), "reporting_time": "AMC"},
+        {"symbol": "FAR", "date": far.isoformat(), "reporting_time": "BMO"},
+        {"symbol": "OLD", "date": past.isoformat(), "reporting_time": "AMC"},
+    ]
+    cached = {s: {"symbol": s, "call_today": {"strike": 1, "rate": 1, "iv": 1}}
+              for s in ("NOW1", "SOON", "FAR", "OLD")}
+    _scan_env(monkeypatch, cal_rows, cached)
     res = tb.scan()
-    assert [r["symbol"] for r in res["rows"]] == []     # dropped out
+    got = {r["symbol"] for r in res["rows"]}
+    assert "NOW1" in got and "SOON" in got     # both inside the 10-trading-day window
+    assert "FAR" not in got and "OLD" not in got
