@@ -13,7 +13,7 @@ as tabb:{SYM}.
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 import tab_settings as cfg
@@ -42,14 +42,13 @@ def _ensure_log_table() -> bool:
         db = SessionLocal()
         try:
             db.execute(text(
-                "CREATE TABLE IF NOT EXISTS straddle_scan_snapshots ("
+                "CREATE TABLE IF NOT EXISTS straddle_scan_log ("
                 "  symbol        VARCHAR(20) NOT NULL,"
                 "  snapshot_date DATE        NOT NULL,"
-                "  score         INTEGER,"
-                "  action        VARCHAR(12),"
-                "  iv_rank       DOUBLE PRECISION,"
-                "  implied_move  DOUBLE PRECISION,"
-                "  impl_vs_hist  DOUBLE PRECISION,"
+                "  rank          INTEGER,"
+                "  atm_iv        DOUBLE PRECISION,"
+                "  premium_pct   DOUBLE PRECISION,"
+                "  status        VARCHAR(16),"
                 "  PRIMARY KEY (symbol, snapshot_date)"
                 ")"))
             db.commit()
@@ -65,8 +64,8 @@ def _ensure_log_table() -> bool:
 
 
 def log_scores(rows: list[dict]) -> int:
-    """Upsert today's score for each scored name (idempotent per day)."""
-    scored = [r for r in (rows or []) if r.get("score") is not None]
+    """Upsert today's rank/IV/premium for each computed name (idempotent per day)."""
+    scored = [r for r in (rows or []) if r.get("atm_iv") is not None]
     if not scored or not _ensure_log_table():
         return 0
     try:
@@ -77,15 +76,14 @@ def log_scores(rows: list[dict]) -> int:
             today = date.today()
             for r in scored:
                 db.execute(text(
-                    "INSERT INTO straddle_scan_snapshots "
-                    "(symbol, snapshot_date, score, action, iv_rank, implied_move, impl_vs_hist) "
-                    "VALUES (:s, :d, :sc, :a, :iv, :im, :ratio) "
+                    "INSERT INTO straddle_scan_log "
+                    "(symbol, snapshot_date, rank, atm_iv, premium_pct, status) "
+                    "VALUES (:s, :d, :rk, :iv, :pp, :st) "
                     "ON CONFLICT (symbol, snapshot_date) DO UPDATE SET "
-                    "score = :sc, action = :a, iv_rank = :iv, "
-                    "implied_move = :im, impl_vs_hist = :ratio"),
-                    {"s": r["symbol"].upper(), "d": today, "sc": r.get("score"),
-                     "a": r.get("action"), "iv": r.get("iv_rank"),
-                     "im": r.get("implied_move"), "ratio": r.get("impl_vs_hist")})
+                    "rank = :rk, atm_iv = :iv, premium_pct = :pp, status = :st"),
+                    {"s": r["symbol"].upper(), "d": today, "rk": r.get("rank"),
+                     "iv": r.get("atm_iv"), "pp": r.get("premium_pct"),
+                     "st": r.get("status")})
             db.commit()
             return len(scored)
         except Exception:  # noqa: BLE001
@@ -97,35 +95,32 @@ def log_scores(rows: list[dict]) -> int:
         return 0
 
 
-def _band(table, value) -> int:
-    if value is None:
-        return 0
-    for thr, pts in table:
-        if value >= thr:
-            return pts
-    return 0
-
-
-def _liquidity_pts(spread_pct: Optional[float], oi: Optional[float] = None) -> int:
-    """Spread as a % of the straddle premium, combined with open interest.
-    Full points need a tight spread AND OI >= the floor (per the spec); without
-    the OI floor the tight-spread tier is capped at the mid band."""
-    if spread_pct is None:
-        return 0
-    L = cfg.TAB_B_LIQUIDITY
-    full = cfg.TAB_B_WEIGHTS["liquidity"]
-    oi_ok = oi is not None and oi >= L["full_oi"]
-    if spread_pct <= L["full_spread"]:
-        return full if oi_ok else 10     # tight spread but thin OI -> mid tier
-    if spread_pct <= L["mid_spread"]:
-        return 10
-    if spread_pct <= L["low_spread"]:
-        return 5
-    return 0
+def _next_session(report_date, reporting_time) -> bool:
+    """True if the result is due the NEXT US session: today after close (AMC) or
+    the next trading day before open (BMO). This is the only window a short
+    straddle qualifies in -- never hold one over an unknown later session."""
+    if not report_date:
+        return False
+    try:
+        rd = datetime.fromisoformat(str(report_date)[:10]).date()
+    except Exception:  # noqa: BLE001
+        return False
+    today = date.today()
+    nd = today + timedelta(days=1)
+    while nd.weekday() >= 5:            # skip Sat/Sun to the next trading day
+        nd += timedelta(days=1)
+    rt = (reporting_time or "").upper()
+    if rd == today and rt == "AMC":
+        return True
+    if rd == nd and rt in ("BMO", ""):  # next-day before open (unknown time -> allow)
+        return True
+    return False
 
 
 def compute(symbol: str) -> dict:
-    """The per-symbol scan row (cached as tabb:{SYM})."""
+    """Per-symbol metrics for the short-straddle scanner (cached as tabb:{SYM}).
+    No score -- just absolute ATM IV, straddle premium, liquidity and exclusions;
+    the relative rank is assigned across the qualifying set in scan()."""
     import swr
     import uw_volatility_service as volsvc
     import earnings_options_service as opt
@@ -133,86 +128,55 @@ def compute(symbol: str) -> dict:
     symbol = symbol.upper()
     d = swr.peek(f"earn:trade:default:{symbol}") or {}
     em = d.get("expected_move") or {}
-    implied = _f(em.get("percent"))
     spot = _f(em.get("current")) or _f(d.get("price"))
 
-    hm = d.get("historical_moves") or []
-    hvals = [abs(_f(m.get("move_pct"))) for m in hm if _f(m.get("move_pct")) is not None]
-    avg_hist = round(sum(hvals) / len(hvals), 2) if hvals else None
-    ratio = round(implied / avg_hist, 2) if (implied and avg_hist) else None
-
-    iv_rank = None
+    # Absolute ATM implied volatility, as a %.
+    atm_iv = None
     try:
         v = volsvc.get_volatility(symbol)
-        iv_rank = _f((v.get("stats") or {}).get("iv_rank"))
-        if iv_rank is not None and iv_rank <= 1.5:   # some symbols report 0..1
-            iv_rank = round(iv_rank * 100, 1)
+        iv = _f((v.get("stats") or {}).get("iv"))
+        if iv is not None:
+            atm_iv = round(iv * 100, 1) if iv <= 5 else round(iv, 1)
     except Exception:  # noqa: BLE001
-        iv_rank = None
+        atm_iv = None
 
-    spread_pct = None
-    premium = None
-    oi = None
+    strike = expiry = premium = prem_pct = leg_spread = oi = None
     try:
         st = opt._atm_straddle(symbol, spot) or {}
-        sp = st.get("spread_pct")
-        spread_pct = round(sp * 100, 2) if sp is not None else None
         premium = st.get("premium")
+        strike = st.get("call_strike")
+        expiry = st.get("expiry")
         oi = st.get("oi")
+        leg_spread = st.get("leg_spread_pct")
+        prem_pct = round(premium / spot * 100, 2) if (premium and spot) else None
     except Exception:  # noqa: BLE001
-        spread_pct = None
+        pass
 
-    iv_pts = _band(cfg.TAB_B_BANDS["iv_rank"], iv_rank)
-    im_pts = _band(cfg.TAB_B_BANDS["implied_move"], implied)
-    r_pts = _band(cfg.TAB_B_BANDS["impl_vs_hist"], ratio)
-    liq_pts = _liquidity_pts(spread_pct, oi)
-    score = iv_pts + im_pts + r_pts + liq_pts
+    # Ex-dividend before expiry -> early-assignment risk on the short call.
+    ex_div = None
+    try:
+        import dividends_service as divsvc
+        nx = (divsvc.get_dividends(symbol) or {}).get("next_ex_date")
+        if nx and expiry and str(nx)[:10] <= str(expiry)[:10]:
+            ex_div = str(nx)[:10]
+    except Exception:  # noqa: BLE001
+        ex_div = None
 
-    # Hard exclusions -- skip regardless of score, but show the reason. Per the
-    # spec, a filter with no data at all excludes the name (never scored as 0).
-    date_ok = bool((d.get("earnings") or {}).get("date"))
     excl = None
-    if iv_rank is None:
-        excl = "No IV-rank data"
-    elif implied is None:
-        excl = "No implied-move data"
-    elif ratio is None:
-        excl = "No historical-move data"
-    elif spread_pct is None:
-        excl = "No option-chain / liquidity data"
-    elif ratio < cfg.TAB_B_MIN_IMPL_VS_HIST:
-        excl = "Implied move below the stock's usual earnings move"
-    elif liq_pts == 0:
-        excl = "Illiquid — straddle spread too wide"
-    elif not date_ok:
-        excl = "Earnings date not confirmed"
+    if premium is None or leg_spread is None or atm_iv is None:
+        excl = "No option-chain / IV data"
+    elif leg_spread > cfg.TAB_B_MAX_LEG_SPREAD_PCT:
+        excl = f"Illiquid — leg spread {leg_spread:.0f}% (> {cfg.TAB_B_MAX_LEG_SPREAD_PCT:.0f}%)"
+    elif oi is not None and oi < cfg.TAB_B_MIN_OI:
+        excl = "Illiquid — very low open interest"
+    elif ex_div:
+        excl = f"Ex-dividend {ex_div} before expiry"
 
-    cut = cfg.TAB_B_CUTOFFS
-    if excl:
-        action = "SKIP"
-    elif score >= cut["sell"]:
-        action = "SELL"
-    elif score >= cut["watch"]:
-        action = "WATCH"
-    else:
-        action = "SKIP"
-
-    # Direction tilt (where to centre the short strikes), from the equity call.
-    dec = (d.get("overall_decision") or (d.get("equity") or {}).get("decision") or "").upper()
-    tilt = "bullish" if "BUY" in dec else "bearish" if "SELL" in dec else "neutral"
-
-    return {
-        "symbol": symbol, "iv_rank": iv_rank, "implied_move": implied,
-        "impl_vs_hist": ratio, "avg_hist_move": avg_hist, "spread_pct": spread_pct,
-        "premium": premium, "spot": spot, "oi": oi, "score": score,
-        "action": action, "tilt": tilt, "exclusion": excl,
-        "filters": [
-            {"name": "iv_rank", "label": "IV Rank", "points": iv_pts, "max": cfg.TAB_B_WEIGHTS["iv_rank"], "value": iv_rank},
-            {"name": "implied_move", "label": "Implied Move %", "points": im_pts, "max": cfg.TAB_B_WEIGHTS["implied_move"], "value": implied},
-            {"name": "impl_vs_hist", "label": "Implied ÷ Hist", "points": r_pts, "max": cfg.TAB_B_WEIGHTS["impl_vs_hist"], "value": ratio},
-            {"name": "liquidity", "label": "Liquidity (spread % · OI)", "points": liq_pts, "max": cfg.TAB_B_WEIGHTS["liquidity"], "value": spread_pct, "oi": oi},
-        ],
-    }
+    return {"symbol": symbol, "spot": spot, "atm_iv": atm_iv,
+            "premium": premium, "premium_pct": prem_pct,
+            "leg_spread_pct": leg_spread, "oi": oi,
+            "atm_strike": strike, "expiry": expiry,
+            "ex_div": ex_div, "exclusion": excl}
 
 
 def _cached(symbol: str) -> Optional[dict]:
@@ -220,54 +184,41 @@ def _cached(symbol: str) -> Optional[dict]:
     return swr.serve(f"tabb:{symbol.upper()}", lambda: compute(symbol), 21600.0)
 
 
-def scan(days: int = 15, warm: int = 0) -> dict:
-    """Rank the upcoming-earnings universe. Reads cached tabb:{SYM}; `warm` > 0
-    computes that many missing ones inline (the endpoint warms in background)."""
+def scan(days: int = 5, warm: int = 0) -> dict:
+    """Rank the watchlist names reporting the NEXT session by how inflated their
+    options are right now -- the average of the ATM-IV rank and the premium-%
+    rank (1 = most inflated). `days` only bounds the calendar lookahead."""
     import swr
     import uw_earnings_calendar as cal
 
-    rows = (cal.calendar(days=days) or {}).get("rows") or []
-    # Only the 67-name straddle watchlist, intersected with the window (spec
-    # step 1). These names are pre-selected for the liquidity a short straddle
-    # needs, so the scan isn't swamped by illiquid small-caps.
+    rows = (cal.calendar(days=max(days, 3)) or {}).get("rows") or []
     wl = set(cfg.TAB_B_WATCHLIST)
     seen: set[str] = set()
     uniq: list[dict] = []
     for r in rows:
         s = (r.get("symbol") or "").upper()
-        if s and s in wl and s not in seen:
+        if (s and s in wl and s not in seen
+                and _next_session(r.get("date"), r.get("reporting_time"))):
             seen.add(s)
             uniq.append(r)
     cached = swr.peek_many([f"tabb:{s}" for s in seen])
 
-    def _days_to(r: dict):
-        d = r.get("date")
-        if not d:
-            return None
-        try:
-            return (datetime.fromisoformat(str(d)[:10]).date() - date.today()).days
-        except Exception:  # noqa: BLE001
-            return None
-
     out: list[dict] = []
     missing: list[str] = []
-    scored = 0
     for r in uniq:
         s = r["symbol"].upper()
-        t = cached.get(f"tabb:{s}")
         meta = {"company": r.get("company"), "date": r.get("date"),
-                "date_label": r.get("date_label"), "time_label": r.get("short_label"),
-                "days_to": _days_to(r)}
+                "date_label": r.get("date_label"), "result_time": r.get("time_label"),
+                "result_code": r.get("reporting_time")}
+        t = cached.get(f"tabb:{s}")
         if t:
             out.append({**t, **meta})
-            scored += 1
         else:
-            # Every upcoming name shows; the scan fills in as it warms.
             missing.append(s)
-            out.append({"symbol": s, "score": None, "action": "PENDING",
-                        "tilt": None, "iv_rank": None, "implied_move": None,
-                        "impl_vs_hist": None, "spread_pct": None, "exclusion": None,
-                        **meta})
+            out.append({"symbol": s, "status": "PENDING", "atm_iv": None,
+                        "premium": None, "premium_pct": None, "leg_spread_pct": None,
+                        "oi": None, "atm_strike": None, "expiry": None, "spot": None,
+                        "ex_div": None, "exclusion": None, "rank": None, **meta})
 
     for s in missing[:max(0, warm)]:
         try:
@@ -275,12 +226,34 @@ def scan(days: int = 15, warm: int = 0) -> dict:
         except Exception:  # noqa: BLE001
             pass
 
-    out.sort(key=lambda x: (x["score"] if x["score"] is not None else -1), reverse=True)
-    # Log today's scores (idempotent per day) so results can be compared with the
-    # actual move later -- best-effort, never blocks the scan.
+    # Rank the qualifying names (computed, not excluded) by absolute ATM IV and
+    # by premium %, then by the average of the two ranks. Most inflated first.
+    live = [r for r in out if r.get("status") != "PENDING" and not r.get("exclusion")
+            and r.get("atm_iv") is not None and r.get("premium_pct") is not None]
+    for i, r in enumerate(sorted(live, key=lambda x: -x["atm_iv"]), 1):
+        r["rank_iv"] = i
+    for i, r in enumerate(sorted(live, key=lambda x: -x["premium_pct"]), 1):
+        r["rank_prem"] = i
+    for r in live:
+        r["combined"] = (r["rank_iv"] + r["rank_prem"]) / 2.0
+        r["status"] = "SELL STRADDLE"
+    live.sort(key=lambda x: x["combined"])
+    for i, r in enumerate(live, 1):
+        r["rank"] = i
+    for r in out:
+        if r.get("exclusion") and r.get("status") != "PENDING":
+            r["status"] = "SKIP"
+            r["rank"] = None
+
+    def _order(r):
+        if r.get("rank"):
+            return (0, r["rank"])
+        return (2, 0) if r.get("status") == "PENDING" else (1, r.get("symbol") or "")
+
+    out.sort(key=_order)
     try:
         log_scores(out)
     except Exception:  # noqa: BLE001
         pass
     return {"status": "OK", "source": SOURCE, "rows": out,
-            "universe": len(seen), "scored": scored, "missing": missing[:60]}
+            "universe": len(seen), "scored": len(live), "missing": missing[:60]}

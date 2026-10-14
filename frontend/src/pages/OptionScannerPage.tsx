@@ -6,25 +6,21 @@ import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import './tab-scan.css';
 
-// Tab B -- Short Straddle Scanner. Ranks names by inflated premium / IV.
-// Action SELL >= 70 / WATCH 50-69 / SKIP, plus a bullish/bearish/neutral tilt.
+// Short Straddle Scanner (IV-crush). Ranks the 67-name watchlist names reporting
+// the NEXT session by how inflated their options are RIGHT NOW: the average of
+// the ATM-IV rank and the straddle-premium-% rank (1 = most inflated). No IV
+// history, no implied-vs-historical filter. Status is SELL STRADDLE / SKIP.
 
-const actClass = (a: string) => (a === 'SELL' ? 'pos' : a === 'WATCH' ? 'neu' : 'skip');
-const actLabel = (a: string) => (a === 'SELL' ? 'SELL STRADDLE' : a);
-const tiltClass = (t: string) => (t === 'bullish' ? 'pos' : t === 'bearish' ? 'neg' : 'neu');
-const tiltHelp = (t: string) =>
-  t === 'bullish' ? 'crowd leans bullish → sell the put nearer the money, the call further out'
-    : t === 'bearish' ? 'crowd leans bearish → sell the call nearer the money, the put further out'
-      : 'balanced → sell a plain ATM straddle, equal on both sides';
+const stClass = (s: string) =>
+  s === 'SELL STRADDLE' ? 'pos' : s === 'PENDING' ? 'neu' : 'skip';
 const n1 = (v: any) => (v == null ? '—' : Number(v).toFixed(1));
 const n2 = (v: any) => (v == null ? '—' : Number(v).toFixed(2));
 const nInt = (v: any) => (v == null ? '—' : Number(v).toLocaleString());
+const money = (v: any) => (v == null ? '—' : `$${Number(v).toFixed(2)}`);
 
 export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
-  const [days, setDays] = useState(15);
-  const [maxDays, setMaxDays] = useState<number | ''>('');
-  const [sortKey, setSortKey] = useState<string>('score');
-  const [asc, setAsc] = useState(false);
+  const [sortKey, setSortKey] = useState<string>('rank');
+  const [asc, setAsc] = useState(true);
   const [open, setOpen] = useState<string | null>(null);
   const [full, setFull] = useState(false);
 
@@ -35,23 +31,19 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [full]);
 
-  const resp = useApi<any>((s) => api2.tabBScan(days, s), [days],
+  const resp = useApi<any>((s) => api2.tabBScan(5, s), [],
     { refreshMs: ctx.demo ? undefined : 60_000 });
   const rows: any[] = resp.data?.rows || [];
 
   const view = useMemo(() => {
-    let xs = rows.slice();
-    if (maxDays !== '') xs = xs.filter((r) => r.days_to != null && r.days_to <= maxDays);
+    const xs = rows.slice();
     const val = (r: any) => {
       switch (sortKey) {
         case 'symbol': return r.symbol;
-        case 'days_to': return r.days_to ?? 9999;
-        case 'iv_rank': return r.iv_rank ?? -1;
-        case 'implied_move': return r.implied_move ?? -1;
-        case 'impl_vs_hist': return r.impl_vs_hist ?? -1;
-        case 'spread_pct': return r.spread_pct ?? 9999;
-        case 'oi': return r.oi ?? -1;
-        default: return r.score ?? -1;
+        case 'atm_iv': return r.atm_iv ?? -1;
+        case 'premium_pct': return r.premium_pct ?? -1;
+        case 'leg_spread_pct': return r.leg_spread_pct ?? 9999;
+        default: return r.rank ?? 9999;   // ranked first, unranked last
       }
     };
     xs.sort((a, b) => {
@@ -60,11 +52,11 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
       return asc ? c : -c;
     });
     return xs;
-  }, [rows, maxDays, sortKey, asc]);
+  }, [rows, sortKey, asc]);
 
   const toggleSort = (k: string) => {
     if (sortKey === k) setAsc((v) => !v);
-    else { setSortKey(k); setAsc(k === 'symbol' || k === 'days_to' || k === 'spread_pct'); }
+    else { setSortKey(k); setAsc(k === 'symbol' || k === 'rank' || k === 'leg_spread_pct'); }
   };
   const Th = ({ k, children, cls }: any) => (
     <th className={`ts-sort ${cls || ''} ${sortKey === k ? 'on' : ''}`} onClick={() => toggleSort(k)}>
@@ -72,30 +64,23 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
     </th>
   );
 
+  const sellable = rows.filter((r) => r.status === 'SELL STRADDLE').length;
+
   return (
     <div className="page">
       <div className="ts-head">
-        <h1><Flame size={20} /> Option Scanner · Call &amp; Premium</h1>
-        <p>Short-straddle scanner: ranks the 67-name watchlist (reporting in the window) by how
-          inflated their option premium / IV is (bigger IV crush = better sell). SELL ≥ 70 ·
-          WATCH 50–69 · SKIP. Tilt says where to centre the short strikes. It does not predict
-          direction.</p>
+        <h1><Flame size={20} /> Option Scanner · Short Straddle</h1>
+        <p>Sell the ATM call + ATM put the session before earnings and profit from the IV crush
+          after the result. This ranks the 67-name watchlist names reporting the <b>next session</b> by
+          how inflated their options are right now — the average of the <b>ATM IV</b> rank and the
+          <b> straddle-premium %</b> rank (1 = most inflated). It does not predict direction.</p>
       </div>
       <div className={`ts-fswrap${full ? ' on' : ''}`}>
       <Panel
-        title={<span className="at-col-title">Straddle scan</span>}
+        title={<span className="at-col-title">Next-session straddles</span>}
         right={(
           <span className="ts-controls">
-            <label>Window
-              <select value={days} onChange={(e) => setDays(+e.target.value)}>
-                <option value={7}>7d</option><option value={15}>15d</option><option value={21}>21d</option>
-              </select>
-            </label>
-            <label>≤ days
-              <input type="number" min={0} placeholder="all" value={maxDays}
-                onChange={(e) => setMaxDays(e.target.value === '' ? '' : +e.target.value)} />
-            </label>
-            <span className="at-chip">{view.length}</span>
+            <span className="at-chip">{sellable} sellable</span>
             <button className="ts-fsbtn" onClick={() => setFull((v) => !v)}
               title={full ? 'Exit full screen (Esc)' : 'Full screen'}
               aria-label={full ? 'Exit full screen' : 'Full screen'}>
@@ -105,76 +90,84 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
         )}
       >
         {resp.initialLoading && !rows.length ? (
-          <p className="at-note"><Loader2 size={12} className="spin" /> Scanning straddles…</p>
+          <p className="at-note"><Loader2 size={12} className="spin" /> Scanning next-session straddles…</p>
         ) : !rows.length ? (
-          <p className="at-note">No scanned names yet. Each name's IV / premium fills in as the
-            scanner warms it.{resp.data?.missing?.length ? ` (${resp.data.missing.length} warming)` : ''}</p>
+          <p className="at-note">No watchlist names report the next session. This tab fills the
+            evening before a watchlist name's earnings (reports due after today's close or before the
+            next open).</p>
         ) : (
           <div className="ts-wrap">
             <table className="ts-tbl">
               <thead>
                 <tr>
+                  <Th k="rank" cls="ts-num">Rank</Th>
                   <Th k="symbol" cls="ts-sym">Ticker</Th>
-                  <th>Earnings</th>
-                  <Th k="days_to">Days</Th>
-                  <Th k="iv_rank" cls="ts-num">IV Rank</Th>
-                  <Th k="implied_move" cls="ts-num">Impl %</Th>
-                  <Th k="impl_vs_hist" cls="ts-num">Impl÷Hist</Th>
-                  <Th k="spread_pct" cls="ts-num">Spread %</Th>
-                  <Th k="oi" cls="ts-num">OI</Th>
-                  <th className="ts-num">Premium $</th>
-                  <Th k="score" cls="ts-num">Score</Th>
-                  <th>Action</th>
-                  <th>Tilt</th>
-                  <th>Exclusion</th>
+                  <th className="ts-num">Price</th>
+                  <th>Result</th>
+                  <th className="ts-num">Strike / Expiry</th>
+                  <Th k="atm_iv" cls="ts-num">ATM IV %</Th>
+                  <Th k="premium_pct" cls="ts-num">Premium ($ · %)</Th>
+                  <Th k="leg_spread_pct" cls="ts-num">Spread %</Th>
+                  <th className="ts-num">OI</th>
+                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {view.map((r) => {
-                  const pending = r.score == null;
+                  const pending = r.status === 'PENDING';
                   const isOpen = open === r.symbol && !pending;
                   return (
                   <Fragment key={r.symbol}>
                   <tr className={isOpen ? 'ts-open' : ''}
                     onClick={() => !pending && setOpen(isOpen ? null : r.symbol)}>
+                    <td className="ts-num ts-score pos">{r.rank ?? '—'}</td>
                     <td className="ts-sym">{r.symbol}</td>
-                    <td className="ts-date">{r.date_label || r.date || '—'}</td>
-                    <td className="ts-num">{r.days_to ?? '—'}</td>
-                    <td className="ts-num">{n1(r.iv_rank)}</td>
-                    <td className="ts-num">{n1(r.implied_move)}</td>
-                    <td className="ts-num">{n2(r.impl_vs_hist)}</td>
-                    <td className="ts-num">{n1(r.spread_pct)}</td>
+                    <td className="ts-num">{money(r.spot)}</td>
+                    <td className="ts-date">{(r.date_label || r.date || '—')}
+                      {r.result_code ? ` · ${r.result_code}` : ''}</td>
+                    <td className="ts-num">{r.atm_strike != null ? r.atm_strike : '—'}
+                      {r.expiry ? ` · ${String(r.expiry).slice(5)}` : ''}</td>
+                    <td className="ts-num">{n1(r.atm_iv)}</td>
+                    <td className="ts-num">{money(r.premium)}{r.premium_pct != null ? ` · ${n1(r.premium_pct)}%` : ''}</td>
+                    <td className="ts-num">{n1(r.leg_spread_pct)}</td>
                     <td className="ts-num">{nInt(r.oi)}</td>
-                    <td className="ts-num">{r.premium != null ? `$${Number(r.premium).toFixed(2)}` : '—'}</td>
-                    <td className={`ts-score ${actClass(r.action)}`}>{pending ? '—' : r.score}</td>
-                    <td><span className={`ts-badge ${actClass(r.action)}`}>{pending ? 'warming' : actLabel(r.action)}</span></td>
-                    <td>{r.tilt ? <span className={tiltClass(r.tilt)}>{r.tilt}</span> : '—'}</td>
-                    <td className="ts-date ts-excl">{r.exclusion || '—'}</td>
+                    <td><span className={`ts-badge ${stClass(r.status)}`}>{pending ? 'warming' : r.status}</span>
+                      {r.exclusion ? <span className="ts-excl"> {r.exclusion}</span> : null}</td>
                   </tr>
                   {isOpen && (
                     <tr className="ts-detailrow">
-                      <td colSpan={13}>
+                      <td colSpan={10}>
                         <div className="ts-detail">
                           <div className="ts-detail-h">
-                            {r.symbol} — sell the ATM call + ATM put (short straddle), profit from the
-                            IV crush after the report.
-                            {r.exclusion ? ` · Excluded: ${r.exclusion}` : ` · ${tiltHelp(r.tilt)}`}
+                            {r.symbol} — sell the ATM call + ATM put (short straddle) the session
+                            before the result; buy both back after the IV crush.
+                            {r.exclusion ? ` · Excluded: ${r.exclusion}` : ''}
                           </div>
                           <div className="ts-detail-grid">
-                            {(r.filters || []).map((f: any) => (
-                              <div key={f.name} className="ts-detail-item">
-                                <span className="ts-detail-lbl">{f.label}</span>
-                                <span className="ts-detail-pts"><b>{Number(f.points).toFixed(0)}</b>
-                                  {' '}/ {f.max} pts
-                                  <em> · raw {f.name === 'impl_vs_hist' ? n2(f.value) : n1(f.value)}
-                                    {f.name === 'liquidity' && f.oi != null ? ` · OI ${nInt(f.oi)}` : ''}</em>
-                                </span>
-                              </div>
-                            ))}
+                            <div className="ts-detail-item">
+                              <span className="ts-detail-lbl">ATM IV rank</span>
+                              <span className="ts-detail-pts"><b>#{r.rank_iv ?? '—'}</b>
+                                <em> · {n1(r.atm_iv)}% implied vol</em></span>
+                            </div>
+                            <div className="ts-detail-item">
+                              <span className="ts-detail-lbl">Premium % rank</span>
+                              <span className="ts-detail-pts"><b>#{r.rank_prem ?? '—'}</b>
+                                <em> · {n1(r.premium_pct)}% of price ({money(r.premium)})</em></span>
+                            </div>
+                            <div className="ts-detail-item">
+                              <span className="ts-detail-lbl">Combined rank</span>
+                              <span className="ts-detail-pts"><b>#{r.rank ?? '—'}</b>
+                                <em> · avg of the two ranks</em></span>
+                            </div>
+                            <div className="ts-detail-item">
+                              <span className="ts-detail-lbl">Liquidity</span>
+                              <span className="ts-detail-pts">leg spread <b>{n1(r.leg_spread_pct)}%</b>
+                                <em> · OI {nInt(r.oi)}</em></span>
+                            </div>
                           </div>
-                          <div className="ts-detail-sub">Score {r.score}/100 = sum of the four filters.
-                            {' '}Premium ${r.premium != null ? Number(r.premium).toFixed(2) : '—'} collected
-                            per straddle.</div>
+                          <div className="ts-detail-sub">Strike {r.atm_strike ?? '—'} · expiry {r.expiry || '—'}
+                            {r.ex_div ? ` · ex-div ${r.ex_div}` : ''} · ⚠ short straddle = unlimited risk on a
+                            big gap; size small.</div>
                         </div>
                       </td>
                     </tr>
@@ -187,14 +180,13 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
           </div>
         )}
         <div className="cn-legend" style={{ margin: '10px 2px 0', flexWrap: 'wrap', gap: 14 }}>
-          <span><b>SELL STRADDLE</b> = sell both the ATM call and the ATM put (score ≥ 70)</span>
-          <span><b>WATCH</b> 50–69 · <b>SKIP</b> &lt; 50</span>
-          <span><b>Tilt</b> = where to place the strikes (not which option): bullish / bearish / neutral</span>
-          <span><b>Exclusion</b> = force-skip reason (illiquid, implied &lt; historical, unconfirmed date)</span>
+          <span><b>SELL STRADDLE</b> = sell both the ATM call and the ATM put (short straddle)</span>
+          <span><b>Rank</b> = avg of the ATM-IV rank and the premium-% rank; #1 = most inflated</span>
+          <span><b>SKIP</b> = excluded (illiquid, ex-dividend before expiry, or date unconfirmed)</span>
         </div>
-        <div className="ts-foot"><ArrowUpDown size={11} /> Click a column to sort, or a row to see its
-          breakdown. IV Rank 40 · Implied Move % 25 · Implied÷Historical 20 · Liquidity 15 = 100.
-          Full Liquidity needs a tight spread AND OI ≥ 1,000.</div>
+        <div className="ts-foot"><ArrowUpDown size={11} /> Click a column to sort, or a row for its
+          breakdown. Only watchlist names reporting the next session appear. Entry is best 1–3 days
+          out (IV keeps rising until the day before); the crush arrives after the result.</div>
       </Panel>
       </div>
     </div>

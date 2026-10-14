@@ -54,6 +54,14 @@ TAB_B_LIQUIDITY = {"full_spread": 3.0, "full_oi": 1000,
 # Hard exclusions (skip regardless of score).
 TAB_B_MIN_IMPL_VS_HIST = 0.90
 
+# --- Short Straddle Scanner v2 (Earnings Options Module spec, Oct 2026) --------
+# New, simpler ranking: no IV-history and no implied-vs-historical filter. Rank
+# qualifying names by absolute ATM IV and by straddle premium % of price, then
+# take the average of the two ranks (1 = most inflated). Only names reporting the
+# NEXT SESSION qualify, and a few hard exclusions force SKIP.
+TAB_B_MAX_LEG_SPREAD_PCT = 10.0   # bid-ask > this % of mid on EITHER leg -> illiquid
+TAB_B_MIN_OI = 200                # ATM open interest below this -> illiquid (configurable)
+
 # The 67-name straddle watchlist (high-beta, liquid options), per the spec. The
 # scanner ranks ONLY these names (intersected with the upcoming-earnings window),
 # because they are pre-selected for the liquidity a short straddle needs.

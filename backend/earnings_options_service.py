@@ -110,6 +110,11 @@ def _atm_straddle(symbol: str, spot: Optional[float],
         vega = (_f(call[1].get("vega")) or 0) + (_f(put[1].get("vega")) or 0)
         gamma = (_f(call[1].get("gamma")) or 0) + (_f(put[1].get("gamma")) or 0)
         spread = ((c_spr or 0) + (p_spr or 0)) if (c_spr is not None or p_spr is not None) else None
+        # Per-leg spread as a % of that leg's mid -- the binding (wider) leg, for
+        # the short-straddle liquidity gate ("spread > 10% on EITHER leg").
+        c_lsp = (c_spr / c_mid * 100) if (c_spr is not None and c_mid) else None
+        p_lsp = (p_spr / p_mid * 100) if (p_spr is not None and p_mid) else None
+        leg_spread_pct = max([x for x in (c_lsp, p_lsp) if x is not None], default=None)
 
         return {
             "expiry": target,
@@ -118,6 +123,7 @@ def _atm_straddle(symbol: str, spot: Optional[float],
             "theta": theta, "vega": vega, "gamma": gamma,
             "spread": spread, "oi": (int(oi) if oi is not None else None),
             "spread_pct": (spread / premium) if (spread is not None and premium) else None,
+            "leg_spread_pct": (round(leg_spread_pct, 2) if leg_spread_pct is not None else None),
         }
     except Exception:  # noqa: BLE001
         return None
