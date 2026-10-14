@@ -57,8 +57,8 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
     const val = (r: any) => {
       switch (sortKey) {
         case 'symbol': return r.symbol;
-        case 'atm_iv': return r.atm_iv ?? -1;
-        case 'premium_pct': return r.premium_pct ?? -1;
+        case 'iv_ratio': return r.iv_ratio ?? -1;
+        case 'premium_ratio': return r.premium_ratio ?? -1;
         case 'leg_spread_pct': return r.leg_spread_pct ?? 9999;
         default: return r.rank ?? 9999;   // ranked first, unranked last
       }
@@ -86,11 +86,11 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
   return (
     <div className="page">
       <div className="ts-head">
-        <h1><Flame size={20} /> Option Scanner · Short Straddle</h1>
+        <h1><Flame size={20} /> Short Straddle Scanner · IV Crush</h1>
         <p>Sell the ATM call + ATM put the session before earnings and profit from the IV crush
-          after the result. This ranks the 67-name watchlist names reporting the <b>next session</b> by
-          how inflated their options are right now — the average of the <b>ATM IV</b> rank and the
-          <b> straddle-premium %</b> rank (1 = most inflated). It does not predict direction.</p>
+          after the result. Ranks the 67-name watchlist names reporting the <b>next session</b> by how
+          much their premium and IV have <b>inflated vs 10 trading sessions ago</b> — the average of the
+          premium-ratio and IV-ratio ranks (#1 = most inflated). It does not predict direction.</p>
       </div>
       <div className={`ts-fswrap${full ? ' on' : ''}`}>
       <Panel
@@ -122,11 +122,9 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                   <th className="ts-num">Price</th>
                   <th>Result</th>
                   <th className="ts-num">Strike / Expiry</th>
-                  <Th k="atm_iv" cls="ts-num">ATM IV %</Th>
-                  <th className="ts-num">15d IV</th>
-                  <Th k="premium_pct" cls="ts-num">Premium ($ · %)</Th>
+                  <Th k="premium_ratio" cls="ts-num">Premium (now · 10d · ×)</Th>
+                  <Th k="iv_ratio" cls="ts-num">IV (now · 10d · ×)</Th>
                   <Th k="leg_spread_pct" cls="ts-num">Spread %</Th>
-                  <th className="ts-num">OI</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -145,24 +143,22 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                       {r.result_code ? ` · ${r.result_code}` : ''}</td>
                     <td className="ts-num">{r.atm_strike != null ? r.atm_strike : '—'}
                       {r.expiry ? ` · ${String(r.expiry).slice(5)}` : ''}</td>
-                    <td className="ts-num">{n1(r.atm_iv)}</td>
-                    <td className="ts-num ts-ivchg" title={r.iv_15d_ago != null
-                      ? `IV ${n1(r.iv_15d_ago)}% 15d ago → ${n1(r.atm_iv)}% now` : ''}>
-                      {r.iv_change != null ? (
-                        <span className={r.iv_change >= 0 ? 'pos' : 'neg'}>
-                          {r.iv_change >= 0 ? '▲' : '▼'} {Math.abs(r.iv_change).toFixed(1)}
-                        </span>
-                      ) : '—'}
-                    </td>
-                    <td className="ts-num">{money(r.premium)}{r.premium_pct != null ? ` · ${n1(r.premium_pct)}%` : ''}</td>
+                    <td className="ts-num">{money(r.premium)}
+                      {r.premium_prev != null ? ` · ${money(r.premium_prev)}` : ' · —'}
+                      {r.premium_ratio != null
+                        ? <b className={r.premium_ratio >= 1 ? 'pos' : 'neg'}> ×{n2(r.premium_ratio)}</b>
+                        : <span className="ts-muted"> (building)</span>}</td>
+                    <td className="ts-num">{n1(r.atm_iv)}
+                      {r.iv_prev != null ? ` · ${n1(r.iv_prev)}` : ' · —'}
+                      {r.iv_ratio != null
+                        ? <b className={r.iv_ratio >= 1 ? 'pos' : 'neg'}> ×{n2(r.iv_ratio)}</b> : ''}</td>
                     <td className="ts-num">{n1(r.leg_spread_pct)}</td>
-                    <td className="ts-num">{nInt(r.oi)}</td>
                     <td><span className={`ts-badge ${stClass(r.status)}`}>{pending ? 'warming' : r.status}</span>
                       {r.exclusion ? <span className="ts-excl"> {r.exclusion}</span> : null}</td>
                   </tr>
                   {isOpen && (
                     <tr className="ts-detailrow">
-                      <td colSpan={11}>
+                      <td colSpan={9}>
                         <div className="ts-detail">
                           <div className="ts-detail-h">
                             {r.symbol} — sell the ATM call + ATM put (short straddle) the session
@@ -171,19 +167,22 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                           </div>
                           <div className="ts-detail-grid">
                             <div className="ts-detail-item">
-                              <span className="ts-detail-lbl">ATM IV rank</span>
-                              <span className="ts-detail-pts"><b>#{r.rank_iv ?? '—'}</b>
-                                <em> · {n1(r.atm_iv)}% implied vol</em></span>
+                              <span className="ts-detail-lbl">IV inflation</span>
+                              <span className="ts-detail-pts"><b>×{n2(r.iv_ratio)}</b> (rank #{r.rank_iv ?? '—'})
+                                <em> · {n1(r.atm_iv)}% now vs {n1(r.iv_prev)}% {r.lookback ?? 10}d ago</em></span>
                             </div>
                             <div className="ts-detail-item">
-                              <span className="ts-detail-lbl">Premium % rank</span>
-                              <span className="ts-detail-pts"><b>#{r.rank_prem ?? '—'}</b>
-                                <em> · {n1(r.premium_pct)}% of price ({money(r.premium)})</em></span>
+                              <span className="ts-detail-lbl">Premium inflation</span>
+                              <span className="ts-detail-pts">
+                                {r.premium_ratio != null
+                                  ? <><b>×{n2(r.premium_ratio)}</b> (rank #{r.rank_prem ?? '—'})</>
+                                  : <b className="ts-muted">building</b>}
+                                <em> · {money(r.premium)} now vs {r.premium_prev != null ? money(r.premium_prev) : '—'}</em></span>
                             </div>
                             <div className="ts-detail-item">
                               <span className="ts-detail-lbl">Combined rank</span>
                               <span className="ts-detail-pts"><b>#{r.rank ?? '—'}</b>
-                                <em> · avg of the two ranks</em></span>
+                                <em> · avg of the two inflation ranks</em></span>
                             </div>
                             <div className="ts-detail-item">
                               <span className="ts-detail-lbl">Liquidity</span>
@@ -191,17 +190,16 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                                 <em> · OI {nInt(r.oi)}</em></span>
                             </div>
                             <div className="ts-detail-item">
-                              <span className="ts-detail-lbl">Last 15 days IV</span>
+                              <span className="ts-detail-lbl">IV trend (10 sessions)</span>
                               <span className="ts-detail-pts" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <Spark data={r.iv_spark} up={(r.iv_change ?? 0) >= 0} />
-                                <em>{r.iv_15d_ago != null ? `${n1(r.iv_15d_ago)}% → ${n1(r.atm_iv)}%` : 'no history'}
-                                  {r.iv_change != null ? ` (${r.iv_change >= 0 ? '+' : ''}${n1(r.iv_change)})` : ''}</em>
+                                <Spark data={r.iv_spark} up={(r.iv_ratio ?? 1) >= 1} />
+                                <em>{r.iv_prev != null ? `${n1(r.iv_prev)}% → ${n1(r.atm_iv)}%` : 'no history'}</em>
                               </span>
                             </div>
                           </div>
                           <div className="ts-detail-sub">Strike {r.atm_strike ?? '—'} · expiry {r.expiry || '—'}
                             {r.ex_div ? ` · ex-div ${r.ex_div}` : ''} · ⚠ short straddle = unlimited risk on a
-                            big gap; size small.</div>
+                            big gap; size small. Premium inflation fills in once ~10 daily snapshots exist.</div>
                         </div>
                       </td>
                     </tr>
@@ -215,12 +213,12 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
         )}
         <div className="cn-legend" style={{ margin: '10px 2px 0', flexWrap: 'wrap', gap: 14 }}>
           <span><b>SELL STRADDLE</b> = sell both the ATM call and the ATM put (short straddle)</span>
-          <span><b>Rank</b> = avg of the ATM-IV rank and the premium-% rank; #1 = most inflated</span>
-          <span><b>SKIP</b> = excluded (illiquid, ex-dividend before expiry, or date unconfirmed)</span>
+          <span><b>Rank</b> = avg of the premium-inflation and IV-inflation ranks vs 10 sessions ago; #1 = most inflated</span>
+          <span><b>SKIP</b> = no real inflation, illiquid, ex-dividend before expiry, or date unconfirmed</span>
         </div>
         <div className="ts-foot"><ArrowUpDown size={11} /> Click a column to sort, or a row for its
-          breakdown. Only watchlist names reporting the next session appear. Entry is best 1–3 days
-          out (IV keeps rising until the day before); the crush arrives after the result.</div>
+          breakdown. Only watchlist names reporting the next session appear. The IV ratio is live; the
+          premium ratio fills in once ~10 daily option snapshots have been recorded.</div>
       </Panel>
       </div>
     </div>

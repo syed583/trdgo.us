@@ -370,29 +370,6 @@ def tab_b_scan(days: int = 15) -> dict:
     return res
 
 
-@router.get("/long-straddle/scan")
-def long_straddle_scan(days: int = 21) -> dict:
-    """Strategy A -- long-straddle (IV run-up) planner across the watchlist."""
-    import long_straddle_service as ls
-    import threading
-
-    d = max(1, min(int(days or 21), 35))
-    res = swr.serve(f"lstr:scan:{d}", lambda: ls.scan(d), 60.0)
-    miss = res.get("missing") or []
-    if miss:
-        batch = miss[:24]
-
-        def _warm() -> None:
-            for s in batch:
-                try:
-                    ls._cached(s)
-                except Exception:  # noqa: BLE001
-                    pass
-
-        threading.Thread(target=_warm, daemon=True).start()
-    return res
-
-
 @router.get("/earnings/signal-history")
 def earnings_signal_history(n: int = 4, symbol: str = "") -> dict:
     """

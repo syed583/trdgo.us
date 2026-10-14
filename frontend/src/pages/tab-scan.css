@@ -10,6 +10,8 @@
   border-radius: 6px; background: var(--bg-1); color: var(--text); }
 .ts-controls input { width: 56px; }
 
+.ts-muted { color: var(--text-mute); font-weight: 400; font-size: 10.5px; }
+
 /* Full-screen toggle for the scan table. */
 .ts-fsbtn { display: inline-flex; align-items: center; justify-content: center; width: 26px;
   height: 24px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-1);

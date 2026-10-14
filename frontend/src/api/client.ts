@@ -706,8 +706,6 @@ export const api2 = {
       + (profile && profile !== 'default' ? `?profile=${profile}` : ''), s),
   tabBScan: (days = 15, s?: AbortSignal) =>
     request<any>(`/api/tab-b/scan?days=${days}`, s),
-  longStraddleScan: (days = 21, s?: AbortSignal) =>
-    request<any>(`/api/long-straddle/scan?days=${days}`, s),
   claudeLastScan: (days = 15, s?: AbortSignal) =>
     request<any>(`/api/claude-last/scan?days=${days}`, s),
   claudeLastDetail: (symbol: string, s?: AbortSignal) =>

@@ -1,4 +1,4 @@
-"""Short Straddle Scanner v2: next-session filter, exclusions, IV+premium rank."""
+"""Short Straddle Scanner: next-session filter, exclusions, 10-session inflation."""
 
 from datetime import date, timedelta
 
@@ -15,68 +15,75 @@ def _next_trading_day(d):
 def test_next_session():
     today = date.today()
     nd = _next_trading_day(today)
-    assert tb._next_session(today.isoformat(), "AMC") is True       # tonight after close
-    assert tb._next_session(nd.isoformat(), "BMO") is True           # next day before open
-    assert tb._next_session(today.isoformat(), "BMO") is False       # already out / not next session
+    assert tb._next_session(today.isoformat(), "AMC") is True
+    assert tb._next_session(nd.isoformat(), "BMO") is True
+    assert tb._next_session(today.isoformat(), "BMO") is False
     assert tb._next_session((today + timedelta(days=9)).isoformat(), "AMC") is False
     assert tb._next_session(None, "AMC") is False
 
 
-def _patch(monkeypatch, *, iv, premium=8.0, spot=100.0, leg_spread=2.0,
-           oi=2000, ex_date=None, expiry="2026-12-19"):
+def _patch(monkeypatch, *, iv_now, iv_prev, premium=8.0, spot=100.0,
+           leg_spread=2.0, oi=2000, ex_date=None, expiry="2026-12-19"):
     import swr
     import uw_volatility_service as v
     import earnings_options_service as o
     import dividends_service as dv
+    # 11-point IV series so ser[-(lb+1)] == iv_prev (lb defaults to 10).
+    series = [{"iv": iv_prev}] + [{"iv": iv_now}] * 10
     monkeypatch.setattr(swr, "peek", lambda k: (
         {"expected_move": {"current": spot}, "price": spot} if "earn:trade" in k else None))
-    monkeypatch.setattr(v, "get_volatility", lambda s: {"stats": {"iv": iv}})
+    monkeypatch.setattr(v, "get_volatility",
+                        lambda s: {"stats": {"iv": iv_now}, "iv_rv_series": series})
     monkeypatch.setattr(o, "_atm_straddle", lambda s, spot=None: {
         "premium": premium, "call_strike": 100.0, "expiry": expiry,
         "oi": oi, "leg_spread_pct": leg_spread})
     monkeypatch.setattr(dv, "get_dividends", lambda s: {"next_ex_date": ex_date})
+    monkeypatch.setattr(tb, "_snapshot_prev", lambda s, lb: None)   # no stored history yet
 
 
-def test_compute_basic(monkeypatch):
-    _patch(monkeypatch, iv=0.55, premium=8.0, spot=100.0)
+def test_iv_inflation_ratio(monkeypatch):
+    _patch(monkeypatch, iv_now=60.0, iv_prev=40.0)
     r = tb.compute("AAA")
-    assert r["atm_iv"] == 55.0            # 0.55 normalised to %
-    assert r["premium"] == 8.0 and r["premium_pct"] == 8.0
+    assert r["atm_iv"] == 60.0 and r["iv_prev"] == 40.0
+    assert r["iv_ratio"] == 1.5           # 60 / 40
+    assert r["premium_ratio"] is None     # no stored snapshot yet
     assert r["exclusion"] is None
 
 
-def test_exclude_wide_leg_spread(monkeypatch):
-    _patch(monkeypatch, iv=0.6, leg_spread=14.0)
+def test_exclude_no_inflation(monkeypatch):
+    # IV barely changed and no premium history -> "no real inflation".
+    _patch(monkeypatch, iv_now=41.0, iv_prev=40.0)
     r = tb.compute("BBB")
+    assert r["exclusion"] and "No real inflation" in r["exclusion"]
+
+
+def test_exclude_wide_leg_spread(monkeypatch):
+    _patch(monkeypatch, iv_now=60.0, iv_prev=40.0, leg_spread=14.0)
+    r = tb.compute("CCC")
     assert r["exclusion"] and "Illiquid" in r["exclusion"]
 
 
 def test_exclude_low_oi(monkeypatch):
-    _patch(monkeypatch, iv=0.6, oi=50)
-    r = tb.compute("CCC")
+    _patch(monkeypatch, iv_now=60.0, iv_prev=40.0, oi=50)
+    r = tb.compute("DDD")
     assert r["exclusion"] and "open interest" in r["exclusion"]
 
 
-def test_exclude_ex_div_before_expiry(monkeypatch):
-    _patch(monkeypatch, iv=0.6, ex_date="2026-11-01", expiry="2026-12-19")
-    r = tb.compute("DDD")
+def test_exclude_ex_div(monkeypatch):
+    _patch(monkeypatch, iv_now=60.0, iv_prev=40.0, ex_date="2026-11-01", expiry="2026-12-19")
+    r = tb.compute("EEE")
     assert r["exclusion"] and "Ex-dividend" in r["exclusion"]
 
 
-def test_ranking_is_avg_of_iv_and_premium(monkeypatch):
-    # Craft three names so IV order and premium order differ; combined = avg.
-    data = {
-        "HI_IV":   {"atm_iv": 90.0, "premium_pct": 5.0},   # iv#1 prem#3 -> avg 2.0
-        "HI_PREM": {"atm_iv": 70.0, "premium_pct": 9.0},   # iv#3 prem#1 -> avg 2.0
-        "MID":     {"atm_iv": 80.0, "premium_pct": 7.0},   # iv#2 prem#2 -> avg 2.0
-    }
+def test_ranking_by_iv_inflation(monkeypatch):
+    data = {"BIG": 2.0, "MID": 1.5, "SMALL": 1.2}   # iv_ratio per name
 
     def fake_cached(sym):
-        d = data[sym]
-        return {"symbol": sym, "spot": 100.0, "atm_iv": d["atm_iv"], "premium": 7.0,
-                "premium_pct": d["premium_pct"], "leg_spread_pct": 2.0, "oi": 2000,
-                "atm_strike": 100.0, "expiry": "2026-12-19", "ex_div": None,
-                "exclusion": None}
+        return {"symbol": sym, "spot": 100.0, "atm_iv": 60.0, "iv_prev": round(60 / data[sym], 1),
+                "iv_ratio": data[sym], "iv_spark": [], "premium": 8.0, "premium_prev": None,
+                "premium_ratio": None, "premium_prev_src": None, "premium_pct": 8.0,
+                "leg_spread_pct": 2.0, "oi": 2000, "atm_strike": 100.0, "expiry": "2026-12-19",
+                "ex_div": None, "lookback": 10, "exclusion": None}
 
     import swr
     import uw_earnings_calendar as cal
@@ -90,8 +97,6 @@ def test_ranking_is_avg_of_iv_and_premium(monkeypatch):
     monkeypatch.setattr(tb, "log_scores", lambda rows: 0)
 
     res = tb.scan()
-    ranked = {r["symbol"]: r for r in res["rows"]}
-    assert all(ranked[s]["status"] == "SELL STRADDLE" for s in data)
-    # All three tie on combined avg (2.0); every name gets a rank 1..3, none skipped.
-    assert sorted(r["rank"] for r in res["rows"]) == [1, 2, 3]
-    assert ranked["HI_IV"]["rank_iv"] == 1 and ranked["HI_PREM"]["rank_prem"] == 1
+    ranked = {r["symbol"]: r["rank"] for r in res["rows"]}
+    assert ranked["BIG"] == 1 and ranked["MID"] == 2 and ranked["SMALL"] == 3
+    assert all(r["status"] == "SELL STRADDLE" for r in res["rows"])
