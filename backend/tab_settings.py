@@ -114,3 +114,22 @@ UA_NORMAL_SESSIONS = 20           # "normal ratio" = avg call/put premium ratio 
 UA_CALL_HEAVY = 2.0               # disparity (today ratio / normal) >= this -> CALL HEAVY
 UA_PUT_HEAVY = 0.5                # disparity <= this -> PUT HEAVY
 UA_PARTB_MIN_PREMIUM = 500_000    # skip a stock whose total (call + put) premium today is below this
+
+
+# --- Pre-Earnings Direction (v2 build spec, 13 Oct 2026) --------------------
+# All-positive 0..weight scale: points = weight * (0.5 + 0.5 * bias); neutral or
+# missing data = half the weight (never 0). Nine parameters, sum = 100. Signal
+# BUY >= 65 / NEUTRAL / SELL <= 35. Exactly as the spec sketch.
+PED_WEIGHTS: dict[str, int] = {
+    "options": 16,        # disparity/skew + flow/OI + unusual activity
+    "price_action": 14,   # the stock's own trend and its divergence from market/sector
+    "insider": 12,        # open-market insider buying / selling (exclude 10b5-1)
+    "peers": 10,          # peers that already reported, or peer sentiment
+    "eps_rev": 10,        # direction + size of EPS revisions
+    "hist_reaction": 10,  # how the stock moved after past results
+    "rev_rev": 8,         # revenue revision direction (overlaps EPS -> lower)
+    "prior_guidance": 6,  # tracking vs the guidance given last quarter
+    "dark_pool": 4,       # block prints, confirmation only
+}
+PED_OPTIONS_SPLIT: dict[str, int] = {"disparity_skew": 7, "flow_oi": 6, "unusual": 3}  # sum 16
+PED_CUTOFFS: dict[str, int] = {"buy": 65, "sell": 35}

@@ -710,6 +710,8 @@ export const api2 = {
     request<any>('/api/unusual-activity/scan', s),
   claudeLastScan: (days = 15, s?: AbortSignal) =>
     request<any>(`/api/claude-last/scan?days=${days}`, s),
+  preEarningsDirectionScan: (days = 15, s?: AbortSignal) =>
+    request<any>(`/api/pre-earnings-direction/scan?days=${days}`, s),
   claudeLastDetail: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/claude-last/${encodeURIComponent(symbol)}`, s),
   earningsEquity: (symbol: string, profile?: string, s?: AbortSignal) =>

@@ -299,6 +299,31 @@ def claude_last_scan(days: int = 15) -> dict:
     return res
 
 
+@router.get("/pre-earnings-direction/scan")
+def pre_earnings_direction_scan(days: int = 15) -> dict:
+    """Pre-Earnings Direction (v2) -- all-positive 0-100 direction score, ranked.
+    Lists every upcoming name; unscored ones warm in the background and fill in."""
+    import pre_earnings_direction_service as ped
+    import threading
+    import os
+
+    d = max(1, min(int(days or 15), 30))
+    res = swr.serve(f"ped:scan:{d}", lambda: ped.scan(d), 90.0)
+    miss = res.get("missing") or []
+    if miss and not (os.getenv("DISABLE_WARMERS") or "").strip():
+        batch = miss[:12]
+
+        def _warm() -> None:
+            try:
+                import signal_history_service as sh
+                sh.warm_earnings(batch)
+            except Exception:  # noqa: BLE001
+                pass
+
+        threading.Thread(target=_warm, daemon=True).start()
+    return res
+
+
 @router.get("/claude-last/{symbol}")
 def claude_last_detail(symbol: str) -> dict:
     """Claude Last single-stock detail: v3 score, signal, confidence + breakdown."""

@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import {
-  Activity, Brain, CalendarDays, Crosshair, Flame, Gauge, History, Layers, LineChart, Users,
+  Activity, Brain, CalendarDays, Compass, Crosshair, Flame, Gauge, History, Layers, LineChart, Users,
   LayoutDashboard, ListOrdered, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
   Scale, ScrollText, Settings, Sparkles, Star, TrendingUp, UserCog, Waves, Waypoints, X, Zap,
 } from 'lucide-react';
@@ -47,6 +47,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/claude-new-pz', label: 'Claude New +0', icon: <Scale size={S} /> },
     { to: '/option-scanner', label: 'IV Crush Check', icon: <Flame size={S} /> },
     { to: '/unusual-activity', label: 'Unusual Activity', icon: <Zap size={S} /> },
+    { to: '/pre-earnings-direction', label: 'Pre-Earnings Direction', icon: <Compass size={S} /> },
     { to: '/earnings-signals', label: 'Signal History', icon: <History size={S} /> },
     { to: '/news', label: 'News & Sentiment', icon: <Newspaper size={S} /> },
   ] },

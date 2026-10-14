@@ -284,3 +284,27 @@
 .ua-mixed { color: var(--text-mute); }
 
 .ivc-ns { color: var(--accent, #2563eb); font-weight: 900; margin-left: 4px; }
+
+/* Pre-Earnings Direction (v2) */
+.ped-filter { margin-left: 10px; color: var(--text-mute); }
+.ped-filter input { width: 48px; margin-left: 4px; padding: 2px 6px; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--panel); color: var(--text); font-size: 12px; }
+.ped-row { cursor: pointer; }
+.ped-row:hover { background: var(--panel-2); }
+.ped-open { background: var(--panel-2); }
+.ped-caret { margin-right: 4px; transition: transform .12s; vertical-align: middle; opacity: .6; }
+.ped-caret.rot { transform: rotate(90deg); }
+.ped-sig { font-weight: 800; font-size: 11px; padding: 1px 7px; border-radius: 999px; }
+.ped-buy { color: #052e13; background: #86efac; }
+.ped-sell { color: #3b0708; background: #fca5a5; }
+.ped-neu { color: var(--text-mute); background: var(--panel-2); }
+.ped-pend { color: var(--text-mute); }
+.ped-up { color: var(--up, #16a34a); }
+.ped-dn { color: var(--down, #dc2626); }
+.ped-mute { color: var(--text-mute); }
+.ped-detail-row > td { background: var(--panel-2); padding: 10px 14px; }
+.ped-detail { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.ped-pcard { border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; background: var(--panel); }
+.ped-pcard-h { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; gap: 8px; }
+.ped-pcard-b { font-size: 10px; color: var(--text-mute); margin-top: 2px; }
+.ped-sub { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 6px; font-size: 10px; }
