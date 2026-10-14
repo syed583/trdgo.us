@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { Loader2, Flame, ArrowUpDown } from 'lucide-react';
 import type { PageContext } from '../App';
 import { Panel } from '../components/common';
@@ -10,15 +10,22 @@ import './tab-scan.css';
 // Action SELL >= 70 / WATCH 50-69 / SKIP, plus a bullish/bearish/neutral tilt.
 
 const actClass = (a: string) => (a === 'SELL' ? 'pos' : a === 'WATCH' ? 'neu' : 'skip');
+const actLabel = (a: string) => (a === 'SELL' ? 'SELL STRADDLE' : a);
 const tiltClass = (t: string) => (t === 'bullish' ? 'pos' : t === 'bearish' ? 'neg' : 'neu');
+const tiltHelp = (t: string) =>
+  t === 'bullish' ? 'crowd leans bullish → sell the put nearer the money, the call further out'
+    : t === 'bearish' ? 'crowd leans bearish → sell the call nearer the money, the put further out'
+      : 'balanced → sell a plain ATM straddle, equal on both sides';
 const n1 = (v: any) => (v == null ? '—' : Number(v).toFixed(1));
 const n2 = (v: any) => (v == null ? '—' : Number(v).toFixed(2));
+const nInt = (v: any) => (v == null ? '—' : Number(v).toLocaleString());
 
 export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
   const [days, setDays] = useState(15);
   const [maxDays, setMaxDays] = useState<number | ''>('');
   const [sortKey, setSortKey] = useState<string>('score');
   const [asc, setAsc] = useState(false);
+  const [open, setOpen] = useState<string | null>(null);
 
   const resp = useApi<any>((s) => api2.tabBScan(days, s), [days],
     { refreshMs: ctx.demo ? undefined : 60_000 });
@@ -35,6 +42,7 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
         case 'implied_move': return r.implied_move ?? -1;
         case 'impl_vs_hist': return r.impl_vs_hist ?? -1;
         case 'spread_pct': return r.spread_pct ?? 9999;
+        case 'oi': return r.oi ?? -1;
         default: return r.score ?? -1;
       }
     };
@@ -99,6 +107,7 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                   <Th k="implied_move" cls="ts-num">Impl %</Th>
                   <Th k="impl_vs_hist" cls="ts-num">Impl÷Hist</Th>
                   <Th k="spread_pct" cls="ts-num">Spread %</Th>
+                  <Th k="oi" cls="ts-num">OI</Th>
                   <th className="ts-num">Premium $</th>
                   <Th k="score" cls="ts-num">Score</Th>
                   <th>Action</th>
@@ -109,8 +118,11 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
               <tbody>
                 {view.map((r) => {
                   const pending = r.score == null;
+                  const isOpen = open === r.symbol && !pending;
                   return (
-                  <tr key={r.symbol}>
+                  <Fragment key={r.symbol}>
+                  <tr className={isOpen ? 'ts-open' : ''}
+                    onClick={() => !pending && setOpen(isOpen ? null : r.symbol)}>
                     <td className="ts-sym">{r.symbol}</td>
                     <td className="ts-date">{r.date_label || r.date || '—'}</td>
                     <td className="ts-num">{r.days_to ?? '—'}</td>
@@ -118,22 +130,57 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                     <td className="ts-num">{n1(r.implied_move)}</td>
                     <td className="ts-num">{n2(r.impl_vs_hist)}</td>
                     <td className="ts-num">{n1(r.spread_pct)}</td>
+                    <td className="ts-num">{nInt(r.oi)}</td>
                     <td className="ts-num">{r.premium != null ? `$${Number(r.premium).toFixed(2)}` : '—'}</td>
                     <td className={`ts-score ${actClass(r.action)}`}>{pending ? '—' : r.score}</td>
-                    <td><span className={`ts-badge ${actClass(r.action)}`}>{pending ? 'warming' : r.action}</span></td>
+                    <td><span className={`ts-badge ${actClass(r.action)}`}>{pending ? 'warming' : actLabel(r.action)}</span></td>
                     <td>{r.tilt ? <span className={tiltClass(r.tilt)}>{r.tilt}</span> : '—'}</td>
                     <td className="ts-date ts-excl">{r.exclusion || '—'}</td>
                   </tr>
+                  {isOpen && (
+                    <tr className="ts-detailrow">
+                      <td colSpan={13}>
+                        <div className="ts-detail">
+                          <div className="ts-detail-h">
+                            {r.symbol} — sell the ATM call + ATM put (short straddle), profit from the
+                            IV crush after the report.
+                            {r.exclusion ? ` · Excluded: ${r.exclusion}` : ` · ${tiltHelp(r.tilt)}`}
+                          </div>
+                          <div className="ts-detail-grid">
+                            {(r.filters || []).map((f: any) => (
+                              <div key={f.name} className="ts-detail-item">
+                                <span className="ts-detail-lbl">{f.label}</span>
+                                <span className="ts-detail-pts"><b>{Number(f.points).toFixed(0)}</b>
+                                  {' '}/ {f.max} pts
+                                  <em> · raw {f.name === 'impl_vs_hist' ? n2(f.value) : n1(f.value)}
+                                    {f.name === 'liquidity' && f.oi != null ? ` · OI ${nInt(f.oi)}` : ''}</em>
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="ts-detail-sub">Score {r.score}/100 = sum of the four filters.
+                            {' '}Premium ${r.premium != null ? Number(r.premium).toFixed(2) : '—'} collected
+                            per straddle.</div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                   );
                 })}
               </tbody>
             </table>
           </div>
         )}
-        <div className="ts-foot"><ArrowUpDown size={11} /> Click a column to sort. IV Rank 40 · Implied
-          Move % 25 · Implied÷Historical 20 · Liquidity 15 = 100. Hard exclusions (ratio &lt; 0.90,
-          illiquid, unconfirmed date) force SKIP. OI isn't in the straddle feed, so Liquidity uses
-          spread only.</div>
+        <div className="cn-legend" style={{ margin: '10px 2px 0', flexWrap: 'wrap', gap: 14 }}>
+          <span><b>SELL STRADDLE</b> = sell both the ATM call and the ATM put (score ≥ 70)</span>
+          <span><b>WATCH</b> 50–69 · <b>SKIP</b> &lt; 50</span>
+          <span><b>Tilt</b> = where to place the strikes (not which option): bullish / bearish / neutral</span>
+          <span><b>Exclusion</b> = force-skip reason (illiquid, implied &lt; historical, unconfirmed date)</span>
+        </div>
+        <div className="ts-foot"><ArrowUpDown size={11} /> Click a column to sort, or a row to see its
+          breakdown. IV Rank 40 · Implied Move % 25 · Implied÷Historical 20 · Liquidity 15 = 100.
+          Full Liquidity needs a tight spread AND OI ≥ 1,000.</div>
       </Panel>
     </div>
   );

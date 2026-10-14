@@ -16,14 +16,18 @@ def test_bands():
 
 
 def test_liquidity():
-    assert tb._liquidity_pts(2) == 15
-    assert tb._liquidity_pts(5) == 10
-    assert tb._liquidity_pts(9) == 5
-    assert tb._liquidity_pts(12) == 0
-    assert tb._liquidity_pts(None) == 0
+    # Full points now need a tight spread AND OI >= the floor; thin OI caps at mid.
+    assert tb._liquidity_pts(2, 2000) == 15
+    assert tb._liquidity_pts(2, 100) == 10        # tight spread, thin OI
+    assert tb._liquidity_pts(2) == 10             # tight spread, OI unknown
+    assert tb._liquidity_pts(5, 2000) == 10
+    assert tb._liquidity_pts(9, 2000) == 5
+    assert tb._liquidity_pts(12, 2000) == 0
+    assert tb._liquidity_pts(None, 2000) == 0
 
 
-def _patch(monkeypatch, *, implied, hist, iv, spread, date="2026-10-20", dec="BUY"):
+def _patch(monkeypatch, *, implied, hist, iv, spread, oi=2000,
+           date="2026-10-20", dec="BUY"):
     import swr
     import uw_volatility_service as v
     import earnings_options_service as o
@@ -33,14 +37,23 @@ def _patch(monkeypatch, *, implied, hist, iv, spread, date="2026-10-20", dec="BU
          "earnings": {"date": date}, "overall_decision": dec}
         if "earn:trade" in k else None))
     monkeypatch.setattr(v, "get_volatility", lambda s: {"stats": {"iv_rank": iv}})
-    monkeypatch.setattr(o, "_atm_straddle", lambda s, spot: {"spread_pct": spread / 100.0})
+    monkeypatch.setattr(o, "_atm_straddle",
+                        lambda s, spot: {"spread_pct": spread / 100.0, "oi": oi})
 
 
 def test_sell_candidate(monkeypatch):
-    _patch(monkeypatch, implied=9.0, hist=5.0, iv=85.0, spread=2.0)
+    _patch(monkeypatch, implied=9.0, hist=5.0, iv=85.0, spread=2.0, oi=2000)
     r = tb.compute("AAA")
     assert r["score"] == 100 and r["action"] == "SELL" and r["tilt"] == "bullish"
     assert r["exclusion"] is None
+    assert r["oi"] == 2000
+
+
+def test_thin_oi_caps_liquidity(monkeypatch):
+    # Tight spread but OI below the floor -> liquidity 10 not 15 -> score 95.
+    _patch(monkeypatch, implied=9.0, hist=5.0, iv=85.0, spread=2.0, oi=50)
+    r = tb.compute("DDD")
+    assert r["score"] == 95 and r["action"] == "SELL"
 
 
 def test_hard_exclusion_low_ratio(monkeypatch):

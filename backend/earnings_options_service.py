@@ -101,6 +101,11 @@ def _atm_straddle(symbol: str, spot: Optional[float],
         c_mid, c_spr = mid(call[1])
         p_mid, p_spr = mid(put[1])
         premium = (c_mid or 0) + (p_mid or 0)
+        # Open interest at the ATM strike -- total across both legs, so a single
+        # thin leg (common on a post-earnings weekly before it builds up) doesn't
+        # misrepresent the straddle's liquidity.
+        c_oi, p_oi = _f(call[1].get("open_interest")), _f(put[1].get("open_interest"))
+        oi = None if (c_oi is None and p_oi is None) else (c_oi or 0) + (p_oi or 0)
         theta = (_f(call[1].get("theta")) or 0) + (_f(put[1].get("theta")) or 0)
         vega = (_f(call[1].get("vega")) or 0) + (_f(put[1].get("vega")) or 0)
         gamma = (_f(call[1].get("gamma")) or 0) + (_f(put[1].get("gamma")) or 0)
@@ -111,7 +116,7 @@ def _atm_straddle(symbol: str, spot: Optional[float],
             "call_strike": call[0]["strike"], "put_strike": put[0]["strike"],
             "premium": round(premium, 2) if premium else None,
             "theta": theta, "vega": vega, "gamma": gamma,
-            "spread": spread,
+            "spread": spread, "oi": (int(oi) if oi is not None else None),
             "spread_pct": (spread / premium) if (spread is not None and premium) else None,
         }
     except Exception:  # noqa: BLE001

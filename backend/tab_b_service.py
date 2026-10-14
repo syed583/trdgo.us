@@ -20,12 +20,81 @@ import tab_settings as cfg
 
 SOURCE = "Tab B — Straddle Scanner"
 
+_log_ready = False
+
 
 def _f(v):
     try:
         return None if v in (None, "") else float(v)
     except (TypeError, ValueError):
         return None
+
+
+def _ensure_log_table() -> bool:
+    """One-time create of the daily straddle-score log (spec: log every day's
+    scores so results can be compared with the actual move later)."""
+    global _log_ready
+    if _log_ready:
+        return True
+    try:
+        from sqlalchemy import text
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            db.execute(text(
+                "CREATE TABLE IF NOT EXISTS straddle_scan_snapshots ("
+                "  symbol        VARCHAR(20) NOT NULL,"
+                "  snapshot_date DATE        NOT NULL,"
+                "  score         INTEGER,"
+                "  action        VARCHAR(12),"
+                "  iv_rank       DOUBLE PRECISION,"
+                "  implied_move  DOUBLE PRECISION,"
+                "  impl_vs_hist  DOUBLE PRECISION,"
+                "  PRIMARY KEY (symbol, snapshot_date)"
+                ")"))
+            db.commit()
+            _log_ready = True
+            return True
+        except Exception:  # noqa: BLE001
+            db.rollback()
+            return False
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def log_scores(rows: list[dict]) -> int:
+    """Upsert today's score for each scored name (idempotent per day)."""
+    scored = [r for r in (rows or []) if r.get("score") is not None]
+    if not scored or not _ensure_log_table():
+        return 0
+    try:
+        from sqlalchemy import text
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            today = date.today()
+            for r in scored:
+                db.execute(text(
+                    "INSERT INTO straddle_scan_snapshots "
+                    "(symbol, snapshot_date, score, action, iv_rank, implied_move, impl_vs_hist) "
+                    "VALUES (:s, :d, :sc, :a, :iv, :im, :ratio) "
+                    "ON CONFLICT (symbol, snapshot_date) DO UPDATE SET "
+                    "score = :sc, action = :a, iv_rank = :iv, "
+                    "implied_move = :im, impl_vs_hist = :ratio"),
+                    {"s": r["symbol"].upper(), "d": today, "sc": r.get("score"),
+                     "a": r.get("action"), "iv": r.get("iv_rank"),
+                     "im": r.get("implied_move"), "ratio": r.get("impl_vs_hist")})
+            db.commit()
+            return len(scored)
+        except Exception:  # noqa: BLE001
+            db.rollback()
+            return 0
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001
+        return 0
 
 
 def _band(table, value) -> int:
@@ -37,15 +106,17 @@ def _band(table, value) -> int:
     return 0
 
 
-def _liquidity_pts(spread_pct: Optional[float]) -> int:
-    """Spread as a % of the straddle premium. (OI isn't exposed by the straddle
-    builder, so this uses spread only; a spread over the low band scores 0.)"""
+def _liquidity_pts(spread_pct: Optional[float], oi: Optional[float] = None) -> int:
+    """Spread as a % of the straddle premium, combined with open interest.
+    Full points need a tight spread AND OI >= the floor (per the spec); without
+    the OI floor the tight-spread tier is capped at the mid band."""
     if spread_pct is None:
         return 0
     L = cfg.TAB_B_LIQUIDITY
     full = cfg.TAB_B_WEIGHTS["liquidity"]
+    oi_ok = oi is not None and oi >= L["full_oi"]
     if spread_pct <= L["full_spread"]:
-        return full
+        return full if oi_ok else 10     # tight spread but thin OI -> mid tier
     if spread_pct <= L["mid_spread"]:
         return 10
     if spread_pct <= L["low_spread"]:
@@ -81,24 +152,35 @@ def compute(symbol: str) -> dict:
 
     spread_pct = None
     premium = None
+    oi = None
     try:
         st = opt._atm_straddle(symbol, spot) or {}
         sp = st.get("spread_pct")
         spread_pct = round(sp * 100, 2) if sp is not None else None
         premium = st.get("premium")
+        oi = st.get("oi")
     except Exception:  # noqa: BLE001
         spread_pct = None
 
     iv_pts = _band(cfg.TAB_B_BANDS["iv_rank"], iv_rank)
     im_pts = _band(cfg.TAB_B_BANDS["implied_move"], implied)
     r_pts = _band(cfg.TAB_B_BANDS["impl_vs_hist"], ratio)
-    liq_pts = _liquidity_pts(spread_pct)
+    liq_pts = _liquidity_pts(spread_pct, oi)
     score = iv_pts + im_pts + r_pts + liq_pts
 
-    # Hard exclusions -- skip regardless of score, but show the reason.
+    # Hard exclusions -- skip regardless of score, but show the reason. Per the
+    # spec, a filter with no data at all excludes the name (never scored as 0).
     date_ok = bool((d.get("earnings") or {}).get("date"))
     excl = None
-    if ratio is not None and ratio < cfg.TAB_B_MIN_IMPL_VS_HIST:
+    if iv_rank is None:
+        excl = "No IV-rank data"
+    elif implied is None:
+        excl = "No implied-move data"
+    elif ratio is None:
+        excl = "No historical-move data"
+    elif spread_pct is None:
+        excl = "No option-chain / liquidity data"
+    elif ratio < cfg.TAB_B_MIN_IMPL_VS_HIST:
         excl = "Implied move below the stock's usual earnings move"
     elif liq_pts == 0:
         excl = "Illiquid — straddle spread too wide"
@@ -122,13 +204,13 @@ def compute(symbol: str) -> dict:
     return {
         "symbol": symbol, "iv_rank": iv_rank, "implied_move": implied,
         "impl_vs_hist": ratio, "avg_hist_move": avg_hist, "spread_pct": spread_pct,
-        "premium": premium, "spot": spot, "oi": None, "score": score,
+        "premium": premium, "spot": spot, "oi": oi, "score": score,
         "action": action, "tilt": tilt, "exclusion": excl,
         "filters": [
             {"name": "iv_rank", "label": "IV Rank", "points": iv_pts, "max": cfg.TAB_B_WEIGHTS["iv_rank"], "value": iv_rank},
             {"name": "implied_move", "label": "Implied Move %", "points": im_pts, "max": cfg.TAB_B_WEIGHTS["implied_move"], "value": implied},
             {"name": "impl_vs_hist", "label": "Implied ÷ Hist", "points": r_pts, "max": cfg.TAB_B_WEIGHTS["impl_vs_hist"], "value": ratio},
-            {"name": "liquidity", "label": "Liquidity", "points": liq_pts, "max": cfg.TAB_B_WEIGHTS["liquidity"], "value": spread_pct},
+            {"name": "liquidity", "label": "Liquidity (spread % · OI)", "points": liq_pts, "max": cfg.TAB_B_WEIGHTS["liquidity"], "value": spread_pct, "oi": oi},
         ],
     }
 
@@ -194,5 +276,11 @@ def scan(days: int = 15, warm: int = 0) -> dict:
             pass
 
     out.sort(key=lambda x: (x["score"] if x["score"] is not None else -1), reverse=True)
+    # Log today's scores (idempotent per day) so results can be compared with the
+    # actual move later -- best-effort, never blocks the scan.
+    try:
+        log_scores(out)
+    except Exception:  # noqa: BLE001
+        pass
     return {"status": "OK", "source": SOURCE, "rows": out,
             "universe": len(seen), "scored": scored, "missing": missing[:60]}
