@@ -1,5 +1,5 @@
-import { Fragment, useMemo, useState } from 'react';
-import { Loader2, Flame, ArrowUpDown } from 'lucide-react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Loader2, Flame, ArrowUpDown, Maximize2, Minimize2 } from 'lucide-react';
 import type { PageContext } from '../App';
 import { Panel } from '../components/common';
 import { api2 } from '../api/client';
@@ -26,6 +26,14 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
   const [sortKey, setSortKey] = useState<string>('score');
   const [asc, setAsc] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
+  const [full, setFull] = useState(false);
+
+  useEffect(() => {
+    if (!full) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setFull(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [full]);
 
   const resp = useApi<any>((s) => api2.tabBScan(days, s), [days],
     { refreshMs: ctx.demo ? undefined : 60_000 });
@@ -73,6 +81,7 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
           WATCH 50–69 · SKIP. Tilt says where to centre the short strikes. It does not predict
           direction.</p>
       </div>
+      <div className={`ts-fswrap${full ? ' on' : ''}`}>
       <Panel
         title={<span className="at-col-title">Straddle scan</span>}
         right={(
@@ -87,6 +96,11 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                 onChange={(e) => setMaxDays(e.target.value === '' ? '' : +e.target.value)} />
             </label>
             <span className="at-chip">{view.length}</span>
+            <button className="ts-fsbtn" onClick={() => setFull((v) => !v)}
+              title={full ? 'Exit full screen (Esc)' : 'Full screen'}
+              aria-label={full ? 'Exit full screen' : 'Full screen'}>
+              {full ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+            </button>
           </span>
         )}
       >
@@ -182,6 +196,7 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
           breakdown. IV Rank 40 · Implied Move % 25 · Implied÷Historical 20 · Liquidity 15 = 100.
           Full Liquidity needs a tight spread AND OI ≥ 1,000.</div>
       </Panel>
+      </div>
     </div>
   );
 }
