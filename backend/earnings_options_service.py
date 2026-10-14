@@ -218,7 +218,25 @@ def iv_crush_quote(symbol: str, spot: Optional[float], reaction_date: Optional[s
             return {"strike": strike, "rate": (round(m, 2) if m is not None else None),
                     "iv": iv_pct(row.get("implied_volatility"))}
 
-        k_today = nearest(strikes, spot)
+        # Today's ATM: pick the strike from the CHAIN via put-call parity (where
+        # the call and put mids are closest). This is self-consistent with the
+        # option quotes' moment -- unlike a live stock quote, which in pre/post
+        # market can disagree with the chain's last regular-session prices.
+        cmid: dict = {}
+        pmid: dict = {}
+        for p, r in parsed:
+            if p["expiry"] != expiry:
+                continue
+            m = mid_of(r)
+            if m is None:
+                continue
+            (cmid if p["right"] == "C" else pmid)[p["strike"]] = m
+        both = [k for k in cmid if k in pmid]
+        if both:
+            k_today = min(both, key=lambda k: (abs(cmid[k] - pmid[k]),
+                                               abs(k - (spot if spot is not None else k))))
+        else:
+            k_today = nearest(strikes, spot)
         k_ago = nearest(strikes, spot_10d)
         return {
             "expiry": expiry,
