@@ -137,6 +137,113 @@ def _atm_straddle(symbol: str, spot: Optional[float],
         return None
 
 
+def short_straddle_quote(symbol: str, spot: Optional[float], reaction_date: Optional[str],
+                         atm_mode: str = "nearest", back_gap: int = 21,
+                         back_max: int = 60) -> Optional[dict]:
+    """Full short-straddle quote for the change spec: the EVENT expiry (first on/
+    after the earnings reaction session) ATM call+put bid/mid/ask/IV, and the
+    BACK expiry (>= back_gap days later, ex-event reference) ATM IV. Returns every
+    leg detail so the tab can show prices and IV components separately."""
+    try:
+        import unusualwhales_service as uw
+        import contract_detail_service as cd
+        from collections import defaultdict
+        from datetime import date, datetime
+        if spot is None or not reaction_date:
+            return None
+        rd = str(reaction_date)[:10]
+        rows = uw._rows(uw.option_contracts(symbol, limit=1500))
+        parsed = []
+        for r in rows:
+            occ = r.get("option_symbol")
+            p = cd.parse_occ(occ) if occ else None
+            if p and p.get("expiry") and p.get("strike") and p.get("right"):
+                parsed.append((p, r))
+        if not parsed:
+            return None
+
+        by_exp: dict = defaultdict(set)
+        for p, _ in parsed:
+            by_exp[p["expiry"]].add(p["right"])
+        valid = sorted(e for e, rt in by_exp.items() if "C" in rt and "P" in rt)
+        event_exp = next((e for e in valid if e >= rd), None)
+        if not event_exp:
+            return None
+
+        def _dt(x):
+            return datetime.fromisoformat(x).date()
+        ev_d = _dt(event_exp)
+        back_cands = [e for e in valid if (_dt(e) - ev_d).days >= back_gap]
+        back_far = False
+        if back_cands:
+            within = [e for e in back_cands if (_dt(e) - ev_d).days <= back_max]
+            back_exp = within[0] if within else back_cands[-1]
+            back_far = not within
+        else:
+            later = [e for e in valid if _dt(e) > ev_d]
+            back_exp = later[-1] if later else None
+            back_far = True
+
+        def atm_leg(exp, right):
+            cands = [(p, r) for p, r in parsed if p["expiry"] == exp and p["right"] == right]
+            if not cands:
+                return None
+            if atm_mode == "delta50":
+                def dk(pr):
+                    dv = _f(pr[1].get("delta"))
+                    return abs(abs(dv) - 0.5) if dv is not None else 9.0
+                return min(cands, key=dk)
+            return min(cands, key=lambda pr: (abs(pr[0]["strike"] - spot), pr[0]["strike"]))
+
+        call = atm_leg(event_exp, "C")
+        put = atm_leg(event_exp, "P")
+        if not call or not put:
+            return None
+        atm_strike = call[0]["strike"]
+        same_put = next((pr for pr in parsed if pr[0]["expiry"] == event_exp
+                         and pr[0]["right"] == "P" and pr[0]["strike"] == atm_strike), None)
+        if same_put:
+            put = same_put
+
+        def quote(r):
+            b, a = _f(r.get("nbbo_bid")), _f(r.get("nbbo_ask"))
+            mid = (b + a) / 2 if (b is not None and a is not None) else _f(r.get("last_price"))
+            spr = ((a - b) / mid * 100) if (b is not None and a is not None and mid) else None
+            iv = _f(r.get("implied_volatility"))
+            iv = (round(iv * 100, 1) if (iv is not None and iv <= 5) else (round(iv, 1) if iv is not None else None))
+            return {"bid": b, "ask": a, "mid": (round(mid, 2) if mid is not None else None),
+                    "iv": iv, "spread_pct": (round(spr, 1) if spr is not None else None),
+                    "delta": _f(r.get("delta")), "oi": _f(r.get("open_interest")),
+                    "vol": _f(r.get("volume"))}
+
+        cq, pq = quote(call[1]), quote(put[1])
+        straddle = (cq["mid"] + pq["mid"]) if (cq["mid"] is not None and pq["mid"] is not None) else None
+        ivs = [x for x in (cq["iv"], pq["iv"]) if x is not None]
+        front_iv = round(sum(ivs) / len(ivs), 1) if ivs else None
+        wide = ((cq["spread_pct"] or 0) > 15.0) or ((pq["spread_pct"] or 0) > 15.0)
+
+        back_iv = None
+        if back_exp:
+            bivs = []
+            for leg in (atm_leg(back_exp, "C"), atm_leg(back_exp, "P")):
+                if leg:
+                    iv = _f(leg[1].get("implied_volatility"))
+                    if iv is not None:
+                        bivs.append(iv * 100 if iv <= 5 else iv)
+            if bivs:
+                back_iv = round(sum(bivs) / len(bivs), 1)
+
+        return {
+            "event_expiry": event_exp, "event_dte": (ev_d - date.today()).days,
+            "atm_strike": atm_strike, "call": cq, "put": pq,
+            "straddle": (round(straddle, 2) if straddle is not None else None),
+            "front_iv": front_iv, "wide_spread": wide,
+            "back_expiry": back_exp, "back_iv": back_iv, "back_far": back_far,
+        }
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _vix_regime_bias() -> Optional[float]:
     """Market Regime / VIX: elevated VIX = bigger moves = favours a straddle.
     The indices feed rarely carries a spot VIX, so fall back to VIXY (the VIX

@@ -1,46 +1,48 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
-import { Loader2, Flame, ArrowUpDown, Maximize2, Minimize2 } from 'lucide-react';
+import { Fragment, useEffect, useState } from 'react';
+import { Loader2, Flame, Maximize2, Minimize2 } from 'lucide-react';
 import type { PageContext } from '../App';
 import { Panel } from '../components/common';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import './tab-scan.css';
 
-// Short Straddle Scanner (IV-crush). Ranks the 67-name watchlist names reporting
-// the NEXT session by how inflated their options are RIGHT NOW: the average of
-// the ATM-IV rank and the straddle-premium-% rank (1 = most inflated). No IV
-// history, no implied-vs-historical filter. Status is SELL STRADDLE / SKIP.
+// Short Straddle Scanner (change spec, 14 Oct 2026): event + back expiry prices,
+// full IV breakdown, implied-vs-historical move, 10-session inflation multiples.
+// Primary rank = avg(premium multiple, IV multiple); fallback = Front/Back (TS).
 
 const stClass = (s: string) =>
-  s === 'SELL STRADDLE' ? 'pos' : s === 'PENDING' ? 'neu' : 'skip';
+  s === 'SELL STRADDLE' ? 'pos' : s === 'WATCH' ? 'neu'
+    : s === 'NO EDGE' ? 'neg' : 'skip';
+const mrClass = (v: number | null) =>
+  v == null ? '' : v >= 1.2 ? 'pos' : v >= 1.0 ? 'neu' : 'neg';
 const n1 = (v: any) => (v == null ? '—' : Number(v).toFixed(1));
 const n2 = (v: any) => (v == null ? '—' : Number(v).toFixed(2));
-const nInt = (v: any) => (v == null ? '—' : Number(v).toLocaleString());
+const pct = (v: any) => (v == null ? '—' : `${Number(v).toFixed(1)}%`);
 const money = (v: any) => (v == null ? '—' : `$${Number(v).toFixed(2)}`);
-
-// A tiny inline IV sparkline: the last ~15 days of IV. Rising into earnings is
-// green (more IV left to crush); falling is red.
-function Spark({ data, up }: { data: number[]; up: boolean }) {
-  if (!data || data.length < 2) return <span className="ts-muted">—</span>;
-  const w = 68, h = 18, lo = Math.min(...data), hi = Math.max(...data);
-  const rng = hi - lo || 1;
-  const pts = data.map((v, i) =>
-    `${(i / (data.length - 1)) * w},${h - ((v - lo) / rng) * h}`).join(' ');
-  const col = up ? 'var(--green)' : 'var(--red)';
-  return (
-    <svg width={w} height={h} style={{ display: 'block' }} aria-hidden="true">
-      <polyline points={pts} fill="none" stroke={col} strokeWidth={1.5}
-        strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
-  );
-}
+const mult = (v: any) => (v == null ? '—' : `×${Number(v).toFixed(2)}`);
+const mdd = (iso: any) => { // "2026-10-16" -> "16 Oct"
+  if (!iso) return '—';
+  try {
+    return new Date(String(iso).slice(0, 10) + 'T12:00:00')
+      .toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+  } catch { return String(iso); }
+};
+const clock = (tz: string) => {
+  try {
+    return new Intl.DateTimeFormat(undefined,
+      { hour: '2-digit', minute: '2-digit', timeZone: tz }).format(new Date());
+  } catch { return '—'; }
+};
 
 export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
-  const [sortKey, setSortKey] = useState<string>('rank');
-  const [asc, setAsc] = useState(true);
   const [open, setOpen] = useState<string | null>(null);
   const [full, setFull] = useState(false);
+  const [, setTick] = useState(0);
 
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((t) => t + 1), 30_000); // refresh clocks
+    return () => window.clearInterval(id);
+  }, []);
   useEffect(() => {
     if (!full) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setFull(false); };
@@ -51,46 +53,18 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
   const resp = useApi<any>((s) => api2.tabBScan(5, s), [],
     { refreshMs: ctx.demo ? undefined : 60_000 });
   const rows: any[] = resp.data?.rows || [];
+  const sellable = resp.data?.sellable ?? rows.filter((r) => r.status === 'SELL STRADDLE').length;
 
-  const view = useMemo(() => {
-    const xs = rows.slice();
-    const val = (r: any) => {
-      switch (sortKey) {
-        case 'symbol': return r.symbol;
-        case 'iv_ratio': return r.iv_ratio ?? -1;
-        case 'premium_ratio': return r.premium_ratio ?? -1;
-        case 'leg_spread_pct': return r.leg_spread_pct ?? 9999;
-        default: return r.rank ?? 9999;   // ranked first, unranked last
-      }
-    };
-    xs.sort((a, b) => {
-      const va = val(a), vb = val(b);
-      const c = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
-      return asc ? c : -c;
-    });
-    return xs;
-  }, [rows, sortKey, asc]);
-
-  const toggleSort = (k: string) => {
-    if (sortKey === k) setAsc((v) => !v);
-    else { setSortKey(k); setAsc(k === 'symbol' || k === 'rank' || k === 'leg_spread_pct'); }
-  };
-  const Th = ({ k, children, cls }: any) => (
-    <th className={`ts-sort ${cls || ''} ${sortKey === k ? 'on' : ''}`} onClick={() => toggleSort(k)}>
-      {children}{sortKey === k ? (asc ? ' ▲' : ' ▼') : ''}
-    </th>
-  );
-
-  const sellable = rows.filter((r) => r.status === 'SELL STRADDLE').length;
+  const earn = (r: any) => `${mdd(r.date || r.report_date)}${r.result_code ? ' ' + r.result_code : ''}`;
 
   return (
     <div className="page">
       <div className="ts-head">
         <h1><Flame size={20} /> Short Straddle Scanner · IV Crush</h1>
-        <p>Sell the ATM call + ATM put the session before earnings and profit from the IV crush
-          after the result. Ranks the 67-name watchlist names reporting the <b>next session</b> by how
-          much their premium and IV have <b>inflated vs 10 trading sessions ago</b> — the average of the
-          premium-ratio and IV-ratio ranks (#1 = most inflated). It does not predict direction.</p>
+        <p>Sell the ATM call + ATM put the session before earnings; profit from the IV crush after
+          the result. Ranked by inflation vs 10 sessions ago (premium & IV multiples); until snapshots
+          build it uses the Front ÷ Back IV term structure. A trade needs implied move &gt; the stock's
+          usual earnings move. <b>Now NY {clock('America/New_York')} · Dubai {clock('Asia/Dubai')}</b></p>
       </div>
       <div className={`ts-fswrap${full ? ' on' : ''}`}>
       <Panel
@@ -99,8 +73,7 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
           <span className="ts-controls">
             <span className="at-chip">{sellable} sellable</span>
             <button className="ts-fsbtn" onClick={() => setFull((v) => !v)}
-              title={full ? 'Exit full screen (Esc)' : 'Full screen'}
-              aria-label={full ? 'Exit full screen' : 'Full screen'}>
+              title={full ? 'Exit full screen (Esc)' : 'Full screen'}>
               {full ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
             </button>
           </span>
@@ -109,97 +82,110 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
         {resp.initialLoading && !rows.length ? (
           <p className="at-note"><Loader2 size={12} className="spin" /> Scanning next-session straddles…</p>
         ) : !rows.length ? (
-          <p className="at-note">No watchlist names report the next session. This tab fills the
-            evening before a watchlist name's earnings (reports due after today's close or before the
-            next open).</p>
+          <p className="at-note">No watchlist names report the next session. This tab fills the evening
+            before a watchlist name's earnings.</p>
         ) : (
           <div className="ts-wrap">
-            <table className="ts-tbl">
+            <table className="ts-tbl ss-tbl">
               <thead>
+                <tr className="ss-grp">
+                  <th colSpan={5} className="ss-g-id">Identity</th>
+                  <th colSpan={4} className="ss-g-px">Prices</th>
+                  <th colSpan={6} className="ss-g-iv">IV breakdown</th>
+                  <th colSpan={4} className="ss-g-10s">10-session</th>
+                  <th colSpan={3} className="ss-g-mv">Move</th>
+                  <th colSpan={3} className="ss-g-dec">Decision</th>
+                </tr>
                 <tr>
-                  <Th k="rank" cls="ts-num">Rank</Th>
-                  <Th k="symbol" cls="ts-sym">Ticker</Th>
-                  <th className="ts-num">Price</th>
-                  <th>Result</th>
-                  <th className="ts-num">Strike / Expiry</th>
-                  <Th k="premium_ratio" cls="ts-num">Premium (now · 10d · ×)</Th>
-                  <Th k="iv_ratio" cls="ts-num">IV (front · 30d · ×)</Th>
-                  <Th k="leg_spread_pct" cls="ts-num">Spread %</Th>
+                  <th className="ts-num ss-freeze1">Rank</th>
+                  <th className="ts-sym ss-freeze2">Ticker</th>
+                  <th>Earnings</th>
+                  <th className="ts-num">Spot</th>
+                  <th className="ts-num">Event / DTE</th>
+                  <th className="ts-num">Strike</th>
+                  <th className="ts-num" title="bid / mid / ask">Call b/m/a</th>
+                  <th className="ts-num" title="bid / mid / ask">Put b/m/a</th>
+                  <th className="ts-num">Straddle</th>
+                  <th className="ts-num">Call IV</th>
+                  <th className="ts-num">Put IV</th>
+                  <th className="ts-num">Front IV</th>
+                  <th className="ts-num">Back IV</th>
+                  <th className="ts-num" title="Front IV / Back IV">Front/Back</th>
+                  <th className="ts-num" title="isolated earnings move">Event move</th>
+                  <th className="ts-num">IV 10s</th>
+                  <th className="ts-num">IV ×</th>
+                  <th className="ts-num">Strad 10s</th>
+                  <th className="ts-num">Prem ×</th>
+                  <th className="ts-num" title="straddle / spot">Impl move</th>
+                  <th className="ts-num" title="avg last-8 reaction move">Hist (n)</th>
+                  <th className="ts-num" title="implied / historical">Move ratio</th>
+                  <th>Method</th>
                   <th>Status</th>
+                  <th>Tags</th>
                 </tr>
               </thead>
               <tbody>
-                {view.map((r) => {
+                {rows.map((r) => {
                   const pending = r.status === 'PENDING';
                   const isOpen = open === r.symbol && !pending;
+                  const c = r.call || {}; const p = r.put || {};
                   return (
                   <Fragment key={r.symbol}>
                   <tr className={isOpen ? 'ts-open' : ''}
                     onClick={() => !pending && setOpen(isOpen ? null : r.symbol)}>
-                    <td className="ts-num ts-score pos">{r.rank ?? '—'}</td>
-                    <td className="ts-sym">{r.symbol}</td>
+                    <td className="ts-num ss-freeze1 ts-score pos">{r.rank ?? '—'}</td>
+                    <td className="ts-sym ss-freeze2">{r.symbol}</td>
+                    <td className="ts-date">{earn(r)}
+                      {r.date_status && r.date_status !== 'CONFIRMED'
+                        ? <span className="ts-excl"> {r.date_status}</span> : ''}</td>
                     <td className="ts-num">{money(r.spot)}</td>
-                    <td className="ts-date">{(r.date_label || r.date || '—')}
-                      {r.result_code ? ` · ${r.result_code}` : ''}</td>
-                    <td className="ts-num">{r.atm_strike != null ? r.atm_strike : '—'}
-                      {r.expiry ? ` · ${String(r.expiry).slice(5)}` : ''}</td>
-                    <td className="ts-num">{money(r.premium)}
-                      {r.premium_prev != null ? ` · ${money(r.premium_prev)}` : ' · —'}
-                      {r.premium_ratio != null
-                        ? <b className={r.premium_ratio >= 1 ? 'pos' : 'neg'}> ×{n2(r.premium_ratio)}</b>
-                        : <span className="ts-muted"> (building)</span>}</td>
-                    <td className="ts-num">{n1(r.atm_iv)}
-                      {r.iv_base != null ? ` · ${n1(r.iv_base)}` : ' · —'}
-                      {r.iv_ratio != null
-                        ? <b className={r.iv_ratio >= 1 ? 'pos' : 'neg'}> ×{n2(r.iv_ratio)}</b> : ''}</td>
-                    <td className="ts-num">{n1(r.leg_spread_pct)}</td>
-                    <td><span className={`ts-badge ${stClass(r.status)}`}>{pending ? 'warming' : r.status}</span>
-                      {r.exclusion ? <span className="ts-excl"> {r.exclusion}</span> : null}</td>
+                    <td className="ts-num">{mdd(r.event_expiry)}{r.event_dte != null ? ` (${r.event_dte}d)` : ''}</td>
+                    <td className="ts-num">{r.atm_strike ?? '—'}</td>
+                    <td className="ts-num">{pending ? 'warming' : `${n2(c.bid)}/${n2(c.mid)}/${n2(c.ask)}`}</td>
+                    <td className="ts-num">{pending ? '' : `${n2(p.bid)}/${n2(p.mid)}/${n2(p.ask)}`}</td>
+                    <td className="ts-num">{money(r.straddle)}</td>
+                    <td className="ts-num">{pct(r.iv_call)}</td>
+                    <td className="ts-num">{pct(r.iv_put)}</td>
+                    <td className="ts-num"><b>{pct(r.iv_front)}</b></td>
+                    <td className="ts-num">{pct(r.iv_back)}{r.back_expiry ? ` (${mdd(r.back_expiry)})` : ''}</td>
+                    <td className="ts-num">{mult(r.front_back)}</td>
+                    <td className="ts-num">{pct(r.event_move)}</td>
+                    <td className="ts-num">{r.iv_10s_ago != null ? pct(r.iv_10s_ago) : <span className="ts-muted">—</span>}</td>
+                    <td className="ts-num">{r.iv_multiple != null ? mult(r.iv_multiple) : <span className="ts-muted">—</span>}</td>
+                    <td className="ts-num">{r.straddle_10s_ago != null ? money(r.straddle_10s_ago) : <span className="ts-muted">—</span>}</td>
+                    <td className="ts-num">{r.prem_multiple != null ? mult(r.prem_multiple) : <span className="ts-muted">—</span>}</td>
+                    <td className="ts-num"><b>{pct(r.implied_move)}</b></td>
+                    <td className="ts-num">{pct(r.hist_move)}{r.hist_n != null ? ` (${r.hist_n})` : ''}</td>
+                    <td className={`ts-num ${mrClass(r.move_ratio)}`}><b>{mult(r.move_ratio)}</b></td>
+                    <td><span className="ts-muted">{r.method || '—'}</span></td>
+                    <td><span className={`ts-badge ${stClass(r.status)}`}>{pending ? 'warming' : r.status}</span></td>
+                    <td className="ts-excl">{(r.tags || []).join(', ')}</td>
                   </tr>
                   {isOpen && (
                     <tr className="ts-detailrow">
-                      <td colSpan={9}>
+                      <td colSpan={25}>
                         <div className="ts-detail">
                           <div className="ts-detail-h">
-                            {r.symbol} — sell the ATM call + ATM put (short straddle) the session
-                            before the result; buy both back after the IV crush.
-                            {r.exclusion ? ` · Excluded: ${r.exclusion}` : ''}
+                            {r.symbol} — sell the ${r.atm_strike} straddle, {mdd(r.event_expiry)} expiry:
+                            {' '}sell 1 call + 1 put, collect {money(r.straddle)}. Buy back after the IV crush.
+                            {r.inflation != null ? ` · inflation ${mult(r.inflation)} (${r.method})` : ''}
+                            {r.move_ratio != null ? ` · move ratio ${mult(r.move_ratio)}` : ''}
                           </div>
                           <div className="ts-detail-grid">
-                            <div className="ts-detail-item">
-                              <span className="ts-detail-lbl">IV inflation (front ÷ 30d)</span>
-                              <span className="ts-detail-pts"><b>×{n2(r.iv_ratio)}</b> (rank #{r.rank_iv ?? '—'})
-                                <em> · front-month {n1(r.atm_iv)}% vs 30-day {n1(r.iv_base)}%</em></span>
-                            </div>
-                            <div className="ts-detail-item">
-                              <span className="ts-detail-lbl">Premium inflation</span>
-                              <span className="ts-detail-pts">
-                                {r.premium_ratio != null
-                                  ? <><b>×{n2(r.premium_ratio)}</b> (rank #{r.rank_prem ?? '—'})</>
-                                  : <b className="ts-muted">building</b>}
-                                <em> · {money(r.premium)} now vs {r.premium_prev != null ? money(r.premium_prev) : '—'}</em></span>
-                            </div>
-                            <div className="ts-detail-item">
-                              <span className="ts-detail-lbl">Combined rank</span>
-                              <span className="ts-detail-pts"><b>#{r.rank ?? '—'}</b>
-                                <em> · avg of the two inflation ranks</em></span>
-                            </div>
-                            <div className="ts-detail-item">
-                              <span className="ts-detail-lbl">Liquidity</span>
-                              <span className="ts-detail-pts">leg spread <b>{n1(r.leg_spread_pct)}%</b>
-                                <em> · OI {nInt(r.oi)}</em></span>
-                            </div>
-                            <div className="ts-detail-item">
-                              <span className="ts-detail-lbl">IV trend (10 sessions)</span>
-                              <span className="ts-detail-pts" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <Spark data={r.iv_spark} up={(r.iv_ratio ?? 1) >= 1} />
-                                <em>{r.iv_prev != null ? `${n1(r.iv_prev)}% → ${n1(r.atm_iv)}%` : 'no history'}</em>
-                              </span>
-                            </div>
+                            <div className="ts-detail-item"><span className="ts-detail-lbl">Call (event)</span>
+                              <span className="ts-detail-pts">bid <b>{n2(c.bid)}</b> / mid <b>{n2(c.mid)}</b> / ask <b>{n2(c.ask)}</b>
+                                <em> · IV {pct(c.iv)} · Δ {n2(c.delta)} · OI {c.oi ?? '—'} · vol {c.vol ?? '—'}</em></span></div>
+                            <div className="ts-detail-item"><span className="ts-detail-lbl">Put (event)</span>
+                              <span className="ts-detail-pts">bid <b>{n2(p.bid)}</b> / mid <b>{n2(p.mid)}</b> / ask <b>{n2(p.ask)}</b>
+                                <em> · IV {pct(p.iv)} · Δ {n2(p.delta)} · OI {p.oi ?? '—'} · vol {p.vol ?? '—'}</em></span></div>
+                            <div className="ts-detail-item"><span className="ts-detail-lbl">IV term structure</span>
+                              <span className="ts-detail-pts">front <b>{pct(r.iv_front)}</b> / back <b>{pct(r.iv_back)}</b> = {mult(r.front_back)}
+                                <em> · back expiry {mdd(r.back_expiry)} · event-only move {pct(r.event_move)}</em></span></div>
+                            <div className="ts-detail-item"><span className="ts-detail-lbl">Move edge</span>
+                              <span className="ts-detail-pts">implied <b>{pct(r.implied_move)}</b> vs hist <b>{pct(r.hist_move)}</b> ({r.hist_n}) = <b className={mrClass(r.move_ratio)}>{mult(r.move_ratio)}</b></span></div>
                           </div>
-                          <div className="ts-detail-sub">Strike {r.atm_strike ?? '—'} · expiry {r.expiry || '—'}
-                            {r.ex_div ? ` · ex-div ${r.ex_div}` : ''} · ⚠ short straddle = unlimited risk on a
-                            big gap; size small. Premium inflation fills in once ~10 daily snapshots exist.</div>
+                          <div className="ts-detail-sub">Earnings {earn(r)} · {r.date_status} · event expiry {mdd(r.event_expiry)}
+                            {(r.tags || []).length ? ` · ${(r.tags).join(', ')}` : ''} · ⚠ short straddle = unlimited risk on a big gap; size small.</div>
                         </div>
                       </td>
                     </tr>
@@ -212,13 +198,10 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
           </div>
         )}
         <div className="cn-legend" style={{ margin: '10px 2px 0', flexWrap: 'wrap', gap: 14 }}>
-          <span><b>SELL STRADDLE</b> = sell both the ATM call and the ATM put (short straddle)</span>
-          <span><b>Rank</b> = avg of the premium-inflation and IV-inflation ranks vs 10 sessions ago; #1 = most inflated</span>
-          <span><b>SKIP</b> = no real inflation, illiquid, ex-dividend before expiry, or date unconfirmed</span>
+          <span><b>SELL STRADDLE</b> inflation ≥ 1.15 · move ratio ≥ 1.2 · confirmed · no wide spread</span>
+          <span><b>WATCH</b> inflated but move ratio 1.0–1.2 · <b>NO EDGE</b> move ratio &lt; 1.0 · <b>NO REAL INFLATION</b> &lt; 1.15 · <b>NOT DUE</b> not next session / date changed</span>
+          <span><b>Method</b> 10S = 10-session multiples · TS = Front ÷ Back fallback</span>
         </div>
-        <div className="ts-foot"><ArrowUpDown size={11} /> Click a column to sort, or a row for its
-          breakdown. Only watchlist names reporting the next session appear. The IV ratio is live; the
-          premium ratio fills in once ~10 daily option snapshots have been recorded.</div>
       </Panel>
       </div>
     </div>

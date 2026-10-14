@@ -43,14 +43,17 @@ def _ensure_log_table() -> bool:
         db = SessionLocal()
         try:
             db.execute(text(
-                "CREATE TABLE IF NOT EXISTS straddle_daily_snapshot ("
+                "CREATE TABLE IF NOT EXISTS straddle_snap_v2 ("
                 "  symbol        VARCHAR(20) NOT NULL,"
                 "  snapshot_date DATE        NOT NULL,"
+                "  report_date   DATE,"
+                "  event_expiry  DATE,"
                 "  atm_strike    DOUBLE PRECISION,"
-                "  atm_iv        DOUBLE PRECISION,"
-                "  premium       DOUBLE PRECISION,"
+                "  straddle      DOUBLE PRECISION,"
+                "  front_iv      DOUBLE PRECISION,"
+                "  back_iv       DOUBLE PRECISION,"
                 "  rank          INTEGER,"
-                "  status        VARCHAR(16),"
+                "  status        VARCHAR(20),"
                 "  PRIMARY KEY (symbol, snapshot_date)"
                 ")"))
             db.commit()
@@ -66,8 +69,8 @@ def _ensure_log_table() -> bool:
 
 
 def _snapshot_prev(symbol: str, lb: int) -> Optional[dict]:
-    """The stored snapshot closest to ~`lb` trading sessions ago (approx lb*7/5
-    calendar days), if one exists. Returns {strike, atm_iv, premium} or None."""
+    """Stored snapshot closest to ~`lb` trading sessions ago (~lb*7/5 calendar
+    days). Returns {straddle, front_iv, event_expiry, atm_strike} or None."""
     if not _ensure_log_table():
         return None
     try:
@@ -77,12 +80,13 @@ def _snapshot_prev(symbol: str, lb: int) -> Optional[dict]:
         db = SessionLocal()
         try:
             row = db.execute(text(
-                "SELECT atm_strike, atm_iv, premium FROM straddle_daily_snapshot "
-                "WHERE symbol = :s AND snapshot_date <= :d AND premium IS NOT NULL "
+                "SELECT straddle, front_iv, event_expiry, atm_strike FROM straddle_snap_v2 "
+                "WHERE symbol = :s AND snapshot_date <= :d AND straddle IS NOT NULL "
                 "ORDER BY snapshot_date DESC LIMIT 1"),
                 {"s": symbol.upper(), "d": target}).fetchone()
             if row:
-                return {"strike": _f(row[0]), "atm_iv": _f(row[1]), "premium": _f(row[2])}
+                return {"straddle": _f(row[0]), "front_iv": _f(row[1]),
+                        "event_expiry": row[2], "atm_strike": _f(row[3])}
             return None
         finally:
             db.close()
@@ -90,9 +94,30 @@ def _snapshot_prev(symbol: str, lb: int) -> Optional[dict]:
         return None
 
 
+def _last_report_date(symbol: str) -> Optional[str]:
+    """The report date stored on the most recent snapshot, to detect a changed
+    earnings date (spec: flip to NOT DUE / tag DATE CHANGED when it moves)."""
+    if not _ensure_log_table():
+        return None
+    try:
+        from sqlalchemy import text
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            row = db.execute(text(
+                "SELECT report_date FROM straddle_snap_v2 WHERE symbol = :s "
+                "AND report_date IS NOT NULL ORDER BY snapshot_date DESC LIMIT 1"),
+                {"s": symbol.upper()}).fetchone()
+            return str(row[0]) if (row and row[0]) else None
+        finally:
+            db.close()
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def log_scores(rows: list[dict]) -> int:
-    """Upsert today's ATM snapshot (strike/IV/premium + rank/status) per name."""
-    scored = [r for r in (rows or []) if r.get("atm_iv") is not None]
+    """Upsert today's event-expiry snapshot per name (feeds the 10-session multiples)."""
+    scored = [r for r in (rows or []) if r.get("straddle") is not None]
     if not scored or not _ensure_log_table():
         return 0
     try:
@@ -103,14 +128,17 @@ def log_scores(rows: list[dict]) -> int:
             today = date.today()
             for r in scored:
                 db.execute(text(
-                    "INSERT INTO straddle_daily_snapshot "
-                    "(symbol, snapshot_date, atm_strike, atm_iv, premium, rank, status) "
-                    "VALUES (:s, :d, :k, :iv, :pm, :rk, :st) "
+                    "INSERT INTO straddle_snap_v2 "
+                    "(symbol, snapshot_date, report_date, event_expiry, atm_strike, "
+                    " straddle, front_iv, back_iv, rank, status) "
+                    "VALUES (:s, :d, :rd, :ee, :k, :pm, :fiv, :biv, :rk, :st) "
                     "ON CONFLICT (symbol, snapshot_date) DO UPDATE SET "
-                    "atm_strike = :k, atm_iv = :iv, premium = :pm, rank = :rk, status = :st"),
-                    {"s": r["symbol"].upper(), "d": today, "k": r.get("atm_strike"),
-                     "iv": r.get("atm_iv"), "pm": r.get("premium"),
-                     "rk": r.get("rank"), "st": r.get("status")})
+                    "report_date = :rd, event_expiry = :ee, atm_strike = :k, "
+                    "straddle = :pm, front_iv = :fiv, back_iv = :biv, rank = :rk, status = :st"),
+                    {"s": r["symbol"].upper(), "d": today, "rd": r.get("report_date"),
+                     "ee": r.get("event_expiry"), "k": r.get("atm_strike"),
+                     "pm": r.get("straddle"), "fiv": r.get("front_iv"),
+                     "biv": r.get("back_iv"), "rk": r.get("rank"), "st": r.get("status")})
             db.commit()
             return len(scored)
         except Exception:  # noqa: BLE001
@@ -144,98 +172,154 @@ def _next_session(report_date, reporting_time) -> bool:
     return False
 
 
+def _reaction_date(report_date, code) -> Optional[str]:
+    """The earnings reaction session: BMO -> report day; AMC -> next trading day."""
+    if not report_date:
+        return None
+    try:
+        rd = datetime.fromisoformat(str(report_date)[:10]).date()
+    except Exception:  # noqa: BLE001
+        return None
+    if (code or "").upper() == "AMC":
+        nd = rd + timedelta(days=1)
+        while nd.weekday() >= 5:
+            nd += timedelta(days=1)
+        return nd.isoformat()
+    return rd.isoformat()
+
+
+def _report_meta(symbol: str) -> tuple:
+    """(report_date, code BMO/AMC) from the earnings calendar preview."""
+    try:
+        import uw_earnings_calendar as uwcal
+        pv = uwcal.preview(symbol) or {}
+        rt = (pv.get("next_report_time") or "").lower()
+        code = ("BMO" if ("before" in rt or "bmo" in rt or "pre" in rt)
+                else "AMC" if ("after" in rt or "amc" in rt or "post" in rt) else "")
+        return pv.get("next_report"), code
+    except Exception:  # noqa: BLE001
+        return None, ""
+
+
 def compute(symbol: str) -> dict:
-    """Per-symbol metrics for the short-straddle scanner (cached as tabb:{SYM}).
-    No score -- just absolute ATM IV, straddle premium, liquidity and exclusions;
-    the relative rank is assigned across the qualifying set in scan()."""
+    """Per-name short-straddle metrics for the change spec (cached as tabb:{SYM}):
+    event & back expiry prices + IV breakdown, implied-vs-historical move, the
+    10-session multiples (from snapshots) and the status. Rank is set in scan()."""
     import swr
-    import uw_volatility_service as volsvc
     import earnings_options_service as opt
 
     symbol = symbol.upper()
     d = swr.peek(f"earn:trade:default:{symbol}") or {}
     em = d.get("expected_move") or {}
     spot = _f(em.get("current")) or _f(d.get("price"))
+    lb = cfg.SS_LOOKBACK_SESSIONS
 
-    lb = cfg.TAB_B_LOOKBACK_SESSIONS
-    # 30-day IV is the baseline; the front-month ATM IV (which carries the
-    # earnings spike) comes from the straddle below. The inflation measure is the
-    # term-structure premium front-month-IV / 30-day-IV -- it works today, with
-    # no 10-day history, which a 30-day IV series alone cannot capture.
-    iv_base = None
-    iv_spark: list = []
-    try:
-        v = volsvc.get_volatility(symbol)
-        base = _f((v.get("stats") or {}).get("iv"))
-        if base is not None:
-            iv_base = round(base * 100, 1) if base <= 5 else round(base, 1)
-        ser = [s for s in (v.get("iv_rv_series") or []) if _f(s.get("iv")) is not None]
-        iv_spark = [round(_f(s["iv"]), 1) for s in ser[-(lb + 1):]]
-    except Exception:  # noqa: BLE001
-        iv_base = None
+    report_date, report_code = _report_meta(symbol)
+    reaction = _reaction_date(report_date, report_code)
+    next_session = _next_session(report_date, report_code)
+    prev_report = _last_report_date(symbol)
+    date_changed = bool(prev_report and report_date and str(prev_report)[:10] != str(report_date)[:10])
+    date_status = "CHANGED" if date_changed else ("CONFIRMED" if report_date else "UNCONFIRMED")
 
-    strike = expiry = premium = prem_pct = leg_spread = oi = atm_iv = None
+    q = opt.short_straddle_quote(symbol, spot, reaction, cfg.SS_ATM_MODE,
+                                 cfg.SS_BACK_GAP_DAYS, cfg.SS_BACK_MAX_DAYS) or {}
+    call = q.get("call") or {}
+    put = q.get("put") or {}
+    front_iv = q.get("front_iv")
+    back_iv = q.get("back_iv")
+    straddle = q.get("straddle")
+    atm_strike = q.get("atm_strike")
+    event_expiry = q.get("event_expiry")
+    event_dte = q.get("event_dte")
+    back_expiry = q.get("back_expiry")
+    wide_spread = bool(q.get("wide_spread"))
+    back_far = bool(q.get("back_far"))
+
+    implied_move = round(straddle / spot * 100, 2) if (straddle and spot) else None
+    front_back = round(front_iv / back_iv, 2) if (front_iv and back_iv) else None
+
+    # Event-only move: strip the normal (back) vol out of the front vol.
+    event_move = None
+    if front_iv and back_iv and event_dte and event_dte > 0:
+        t = event_dte / 365.0
+        ev_var = ((front_iv / 100.0) ** 2 - (back_iv / 100.0) ** 2) * t
+        event_move = round((max(ev_var, 0.0) ** 0.5) * 100, 2)
+
+    # Historical move: avg abs reaction-session move over the last N reports.
+    hist_move = None
+    hist_n = 0
     try:
-        st = opt._atm_straddle(symbol, spot) or {}
-        premium = st.get("premium")
-        strike = st.get("call_strike")
-        expiry = st.get("expiry")
-        oi = st.get("oi")
-        leg_spread = st.get("leg_spread_pct")
-        atm_iv = st.get("atm_iv")                      # front-month ATM IV (earnings-loaded)
-        prem_pct = round(premium / spot * 100, 2) if (premium and spot) else None
+        import earnings_trade_service as ets
+        moves = [abs(_f(m.get("move_pct"))) for m in (ets._historical_moves(symbol) or [])
+                 if _f(m.get("move_pct")) is not None]
+        moves = moves[-cfg.SS_HIST_REPORTS:]
+        hist_n = len(moves)
+        if hist_n:
+            hist_move = round(sum(moves) / hist_n, 2)
     except Exception:  # noqa: BLE001
         pass
+    low_history = hist_n < cfg.SS_HIST_MIN
+    move_ratio = round(implied_move / hist_move, 2) if (implied_move and hist_move) else None
 
-    # IV inflation = front-month ATM IV over the 30-day baseline (the earnings
-    # term-structure premium). > 1 means the front month is pumped for the event.
-    iv_ratio = round(atm_iv / iv_base, 2) if (atm_iv and iv_base) else None
-
-    # Premium `lb` sessions ago for the CURRENT ATM strike, from a stored daily
-    # snapshot (the spec's requirement). A straddle's value also decays with time
-    # to expiry, so a Black-Scholes reconstruction at the old date would be
-    # dominated by theta, not by earnings inflation -- hence actual stored
-    # snapshots only. The premium ratio joins the ranking once snapshots exist.
-    premium_prev = premium_ratio = None
-    premium_prev_src = None
+    # 10-session multiples from stored snapshots (method 10S); else term structure.
+    iv_10s = straddle_10s = iv_mult = prem_mult = None
     snap = _snapshot_prev(symbol, lb)
-    if snap and snap.get("premium"):
-        premium_prev = round(_f(snap["premium"]), 2)
-        premium_prev_src = "stored"
-        if premium and premium_prev:
-            premium_ratio = round(premium / premium_prev, 2)
+    if snap:
+        straddle_10s = _f(snap.get("straddle"))
+        iv_10s = _f(snap.get("front_iv"))
+        if straddle and straddle_10s:
+            prem_mult = round(straddle / straddle_10s, 2)
+        if front_iv and iv_10s:
+            iv_mult = round(front_iv / iv_10s, 2)
 
-    # Ex-dividend before expiry -> early-assignment risk on the short call.
-    ex_div = None
-    try:
-        import dividends_service as divsvc
-        nx = (divsvc.get_dividends(symbol) or {}).get("next_ex_date")
-        if nx and expiry and str(nx)[:10] <= str(expiry)[:10]:
-            ex_div = str(nx)[:10]
-    except Exception:  # noqa: BLE001
-        ex_div = None
+    if prem_mult is not None and iv_mult is not None:
+        method = "10S"
+        inflation = round((prem_mult + iv_mult) / 2, 2)
+    elif front_back is not None:
+        method = "TS"
+        inflation = front_back
+    else:
+        method = None
+        inflation = None
 
-    excl = None
-    thr = cfg.TAB_B_MIN_INFLATION
-    if premium is None or leg_spread is None or atm_iv is None:
-        excl = "No option-chain / IV data"
-    elif leg_spread > cfg.TAB_B_MAX_LEG_SPREAD_PCT:
-        excl = f"Illiquid — leg spread {leg_spread:.0f}% (> {cfg.TAB_B_MAX_LEG_SPREAD_PCT:.0f}%)"
-    elif oi is not None and oi < cfg.TAB_B_MIN_OI:
-        excl = "Illiquid — very low open interest"
-    elif ex_div:
-        excl = f"Ex-dividend {ex_div} before expiry"
-    elif (iv_ratio is not None and iv_ratio < thr
-          and (premium_ratio is None or premium_ratio < thr)):
-        excl = "No real inflation (front IV ~ baseline)"
+    tags = []
+    if wide_spread:
+        tags.append("WIDE SPREAD")
+    if low_history:
+        tags.append("LOW HISTORY")
+    if back_far:
+        tags.append("BACK FAR")
+    if date_changed:
+        tags.append("DATE CHANGED")
 
-    return {"symbol": symbol, "spot": spot,
-            "atm_iv": atm_iv, "iv_base": iv_base, "iv_ratio": iv_ratio, "iv_spark": iv_spark,
-            "premium": premium, "premium_prev": premium_prev,
-            "premium_ratio": premium_ratio, "premium_prev_src": premium_prev_src,
-            "premium_pct": prem_pct, "leg_spread_pct": leg_spread, "oi": oi,
-            "atm_strike": strike, "expiry": expiry, "ex_div": ex_div,
-            "lookback": lb, "exclusion": excl}
+    # Status (section 5 precedence).
+    if (not next_session) or date_status in ("UNCONFIRMED", "CHANGED"):
+        status = "NOT DUE"
+    elif move_ratio is not None and move_ratio < cfg.SS_MOVE_RATIO_FLOOR:
+        status = "NO EDGE"
+    elif inflation is None or inflation < cfg.SS_MIN_INFLATION:
+        status = "NO REAL INFLATION"
+    elif move_ratio is not None and move_ratio >= cfg.SS_MOVE_RATIO_SELL and not wide_spread:
+        status = "SELL STRADDLE"
+    else:
+        status = "WATCH"
+
+    return {
+        "symbol": symbol, "spot": spot,
+        "report_date": report_date, "report_code": report_code, "date_status": date_status,
+        "event_expiry": event_expiry, "event_dte": event_dte, "back_expiry": back_expiry,
+        "atm_strike": atm_strike,
+        "call": call, "put": put, "straddle": straddle,
+        "iv_call": call.get("iv"), "iv_put": put.get("iv"),
+        "iv_front": front_iv, "iv_back": back_iv, "front_back": front_back,
+        "event_move": event_move,
+        "iv_10s_ago": iv_10s, "iv_multiple": iv_mult,
+        "straddle_10s_ago": straddle_10s, "prem_multiple": prem_mult,
+        "implied_move": implied_move, "hist_move": hist_move, "hist_n": hist_n,
+        "move_ratio": move_ratio,
+        "inflation": inflation, "method": method,
+        "wide_spread": wide_spread, "tags": tags, "status": status,
+    }
 
 
 def _cached(symbol: str) -> Optional[dict]:
@@ -244,9 +328,10 @@ def _cached(symbol: str) -> Optional[dict]:
 
 
 def scan(days: int = 5, warm: int = 0) -> dict:
-    """Rank the watchlist names reporting the NEXT session by how inflated their
-    options are right now -- the average of the ATM-IV rank and the premium-%
-    rank (1 = most inflated). `days` only bounds the calendar lookahead."""
+    """Rank the watchlist names reporting the NEXT session by inflation. Primary
+    (method 10S, when snapshots exist) = avg(premium multiple, IV multiple);
+    fallback (TS) = Front/Back IV. All 10S rows rank above TS rows; ties broken by
+    the higher Move ratio. `days` only bounds the calendar lookahead."""
     import swr
     import uw_earnings_calendar as cal
 
@@ -274,13 +359,8 @@ def scan(days: int = 5, warm: int = 0) -> dict:
             out.append({**t, **meta})
         else:
             missing.append(s)
-            out.append({"symbol": s, "status": "PENDING", "atm_iv": None,
-                        "iv_base": None, "iv_ratio": None, "iv_spark": [],
-                        "premium": None, "premium_prev": None, "premium_ratio": None,
-                        "premium_prev_src": None, "premium_pct": None,
-                        "leg_spread_pct": None, "oi": None, "atm_strike": None,
-                        "expiry": None, "spot": None, "ex_div": None, "lookback": None,
-                        "exclusion": None, "rank": None, **meta})
+            out.append({"symbol": s, "status": "PENDING", "spot": None,
+                        "method": None, "inflation": None, "rank": None, **meta})
 
     for s in missing[:max(0, warm)]:
         try:
@@ -288,26 +368,17 @@ def scan(days: int = 5, warm: int = 0) -> dict:
         except Exception:  # noqa: BLE001
             pass
 
-    # Rank the qualifying names by INFLATION vs `lb` sessions ago: the IV ratio
-    # and the premium ratio, then the average of the two ranks. Most inflated top.
-    live = [r for r in out if r.get("status") != "PENDING" and not r.get("exclusion")
-            and r.get("iv_ratio") is not None]
-    for i, r in enumerate(sorted(live, key=lambda x: -x["iv_ratio"]), 1):
-        r["rank_iv"] = i
-    with_prem = [r for r in live if r.get("premium_ratio") is not None]
-    for i, r in enumerate(sorted(with_prem, key=lambda x: -x["premium_ratio"]), 1):
-        r["rank_prem"] = i
-    for r in live:
-        parts = [r["rank_iv"]] + ([r["rank_prem"]] if r.get("rank_prem") is not None else [])
-        r["combined"] = sum(parts) / len(parts)
-        r["status"] = "SELL STRADDLE"
-    live.sort(key=lambda x: x["combined"])
-    for i, r in enumerate(live, 1):
+    # Rank: 10S rows (highest inflation) above TS rows, ties by higher Move ratio.
+    rankable = [r for r in out if r.get("status") != "PENDING" and r.get("method")
+                and r.get("inflation") is not None]
+
+    def _key(r):
+        method_order = 0 if r["method"] == "10S" else 1
+        return (method_order, -r["inflation"], -(r.get("move_ratio") or 0))
+
+    rankable.sort(key=_key)
+    for i, r in enumerate(rankable, 1):
         r["rank"] = i
-    for r in out:
-        if r.get("exclusion") and r.get("status") != "PENDING":
-            r["status"] = "SKIP"
-            r["rank"] = None
 
     def _order(r):
         if r.get("rank"):
@@ -319,5 +390,6 @@ def scan(days: int = 5, warm: int = 0) -> dict:
         log_scores(out)
     except Exception:  # noqa: BLE001
         pass
+    sellable = sum(1 for r in out if r.get("status") == "SELL STRADDLE")
     return {"status": "OK", "source": SOURCE, "rows": out,
-            "universe": len(seen), "scored": len(live), "missing": missing[:60]}
+            "universe": len(seen), "sellable": sellable, "missing": missing[:60]}

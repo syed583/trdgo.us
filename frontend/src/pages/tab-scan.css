@@ -12,6 +12,21 @@
 
 .ts-muted { color: var(--text-mute); font-weight: 400; font-size: 10.5px; }
 
+/* Short Straddle grouped table: group header row, frozen Rank + Ticker. */
+.ss-tbl { min-width: 1900px; }
+.ss-tbl .ss-grp th { text-align: center; font-size: 9.5px; letter-spacing: .05em;
+  text-transform: uppercase; border-bottom: 2px solid var(--border);
+  background: var(--panel-2); position: sticky; top: 0; z-index: 3; }
+.ss-tbl thead tr:nth-child(2) th { position: sticky; top: 22px; z-index: 3; }
+.ss-g-id { color: var(--text); } .ss-g-px { color: var(--blue); }
+.ss-g-iv { color: var(--amber); } .ss-g-10s { color: var(--green); }
+.ss-g-mv { color: var(--text); } .ss-g-dec { color: var(--text-mute); }
+.ss-tbl .ss-freeze1 { position: sticky; left: 0; z-index: 4; background: var(--bg-1); }
+.ss-tbl .ss-freeze2 { position: sticky; left: 46px; z-index: 4; background: var(--bg-1); }
+.ss-tbl thead .ss-freeze1, .ss-tbl thead .ss-freeze2 { z-index: 5; background: var(--panel-2); }
+.ss-tbl tbody tr:hover .ss-freeze1, .ss-tbl tbody tr:hover .ss-freeze2 { background: rgba(127,127,127,.10); }
+.ss-tbl tbody tr.ts-open .ss-freeze1, .ss-tbl tbody tr.ts-open .ss-freeze2 { background: rgba(58,99,240,.14); }
+
 /* Full-screen toggle for the scan table. */
 .ts-fsbtn { display: inline-flex; align-items: center; justify-content: center; width: 26px;
   height: 24px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-1);

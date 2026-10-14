@@ -59,14 +59,17 @@ TAB_B_MIN_IMPL_VS_HIST = 0.90
 # qualifying names by absolute ATM IV and by straddle premium % of price, then
 # take the average of the two ranks (1 = most inflated). Only names reporting the
 # NEXT SESSION qualify, and a few hard exclusions force SKIP.
-TAB_B_MAX_LEG_SPREAD_PCT = 10.0   # bid-ask > this % of mid on EITHER leg -> illiquid
-TAB_B_MIN_OI = 200                # ATM open interest below this -> illiquid (configurable)
-
-# The 10-session inflation check: rank by how much premium and IV have inflated
-# vs ~10 TRADING sessions ago. A name whose ratios are both near 1x has no
-# earnings inflation and is skipped.
-TAB_B_LOOKBACK_SESSIONS = 10      # premium ratio: today vs this many trading sessions ago (from snapshots)
-TAB_B_MIN_INFLATION = 1.08        # front-month IV / 30-day IV below this -> "no real inflation" -> SKIP
+# --- Short Straddle Change Spec (14 Oct 2026) -- all thresholds here, not in code
+SS_LOOKBACK_SESSIONS = 10         # 10-session multiples: today vs this many trading sessions ago
+SS_MIN_INFLATION = 1.15           # inflation_score below this -> NO REAL INFLATION
+SS_MOVE_RATIO_SELL = 1.2          # Move ratio >= this (with inflation) -> SELL STRADDLE
+SS_MOVE_RATIO_FLOOR = 1.0         # Move ratio < this -> NO EDGE (regardless of inflation)
+SS_WIDE_SPREAD_PCT = 15.0         # bid-ask > this % of mid on a leg -> WIDE SPREAD tag (blocks SELL)
+SS_BACK_GAP_DAYS = 21             # back expiry must be >= this many days after the event expiry
+SS_BACK_MAX_DAYS = 60             # if no back expiry within this, use the furthest + tag BACK FAR
+SS_HIST_REPORTS = 8               # historical move = avg of the last N reaction-session moves
+SS_HIST_MIN = 4                   # fewer than this -> tag LOW HISTORY
+SS_ATM_MODE = "nearest"           # "nearest" | "delta50"
 
 # The 67-name straddle watchlist (high-beta, liquid options), per the spec. The
 # scanner ranks ONLY these names (intersected with the upcoming-earnings window),
