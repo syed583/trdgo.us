@@ -18,6 +18,23 @@ const n2 = (v: any) => (v == null ? '—' : Number(v).toFixed(2));
 const nInt = (v: any) => (v == null ? '—' : Number(v).toLocaleString());
 const money = (v: any) => (v == null ? '—' : `$${Number(v).toFixed(2)}`);
 
+// A tiny inline IV sparkline: the last ~15 days of IV. Rising into earnings is
+// green (more IV left to crush); falling is red.
+function Spark({ data, up }: { data: number[]; up: boolean }) {
+  if (!data || data.length < 2) return <span className="ts-muted">—</span>;
+  const w = 68, h = 18, lo = Math.min(...data), hi = Math.max(...data);
+  const rng = hi - lo || 1;
+  const pts = data.map((v, i) =>
+    `${(i / (data.length - 1)) * w},${h - ((v - lo) / rng) * h}`).join(' ');
+  const col = up ? 'var(--green)' : 'var(--red)';
+  return (
+    <svg width={w} height={h} style={{ display: 'block' }} aria-hidden="true">
+      <polyline points={pts} fill="none" stroke={col} strokeWidth={1.5}
+        strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
   const [sortKey, setSortKey] = useState<string>('rank');
   const [asc, setAsc] = useState(true);
@@ -106,6 +123,7 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                   <th>Result</th>
                   <th className="ts-num">Strike / Expiry</th>
                   <Th k="atm_iv" cls="ts-num">ATM IV %</Th>
+                  <th className="ts-num">15d IV</th>
                   <Th k="premium_pct" cls="ts-num">Premium ($ · %)</Th>
                   <Th k="leg_spread_pct" cls="ts-num">Spread %</Th>
                   <th className="ts-num">OI</th>
@@ -128,6 +146,14 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                     <td className="ts-num">{r.atm_strike != null ? r.atm_strike : '—'}
                       {r.expiry ? ` · ${String(r.expiry).slice(5)}` : ''}</td>
                     <td className="ts-num">{n1(r.atm_iv)}</td>
+                    <td className="ts-num ts-ivchg" title={r.iv_15d_ago != null
+                      ? `IV ${n1(r.iv_15d_ago)}% 15d ago → ${n1(r.atm_iv)}% now` : ''}>
+                      {r.iv_change != null ? (
+                        <span className={r.iv_change >= 0 ? 'pos' : 'neg'}>
+                          {r.iv_change >= 0 ? '▲' : '▼'} {Math.abs(r.iv_change).toFixed(1)}
+                        </span>
+                      ) : '—'}
+                    </td>
                     <td className="ts-num">{money(r.premium)}{r.premium_pct != null ? ` · ${n1(r.premium_pct)}%` : ''}</td>
                     <td className="ts-num">{n1(r.leg_spread_pct)}</td>
                     <td className="ts-num">{nInt(r.oi)}</td>
@@ -136,7 +162,7 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                   </tr>
                   {isOpen && (
                     <tr className="ts-detailrow">
-                      <td colSpan={10}>
+                      <td colSpan={11}>
                         <div className="ts-detail">
                           <div className="ts-detail-h">
                             {r.symbol} — sell the ATM call + ATM put (short straddle) the session
@@ -163,6 +189,14 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                               <span className="ts-detail-lbl">Liquidity</span>
                               <span className="ts-detail-pts">leg spread <b>{n1(r.leg_spread_pct)}%</b>
                                 <em> · OI {nInt(r.oi)}</em></span>
+                            </div>
+                            <div className="ts-detail-item">
+                              <span className="ts-detail-lbl">Last 15 days IV</span>
+                              <span className="ts-detail-pts" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <Spark data={r.iv_spark} up={(r.iv_change ?? 0) >= 0} />
+                                <em>{r.iv_15d_ago != null ? `${n1(r.iv_15d_ago)}% → ${n1(r.atm_iv)}%` : 'no history'}
+                                  {r.iv_change != null ? ` (${r.iv_change >= 0 ? '+' : ''}${n1(r.iv_change)})` : ''}</em>
+                              </span>
                             </div>
                           </div>
                           <div className="ts-detail-sub">Strike {r.atm_strike ?? '—'} · expiry {r.expiry || '—'}

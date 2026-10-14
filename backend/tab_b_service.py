@@ -132,11 +132,22 @@ def compute(symbol: str) -> dict:
 
     # Absolute ATM implied volatility, as a %.
     atm_iv = None
+    iv_15d_ago = iv_change = None
+    iv_spark: list = []
     try:
         v = volsvc.get_volatility(symbol)
         iv = _f((v.get("stats") or {}).get("iv"))
         if iv is not None:
             atm_iv = round(iv * 100, 1) if iv <= 5 else round(iv, 1)
+        # Last ~15 trading days of IV, so you can see whether it has been rising
+        # into earnings (a rising run-up = more IV left to crush after the result).
+        ser = [s for s in (v.get("iv_rv_series") or []) if _f(s.get("iv")) is not None]
+        tail = ser[-16:]
+        iv_spark = [round(_f(s["iv"]), 1) for s in tail]
+        if len(tail) >= 2:
+            iv_15d_ago = round(_f(tail[0]["iv"]), 1)
+            if atm_iv is not None and iv_15d_ago is not None:
+                iv_change = round(atm_iv - iv_15d_ago, 1)
     except Exception:  # noqa: BLE001
         atm_iv = None
 
@@ -173,6 +184,7 @@ def compute(symbol: str) -> dict:
         excl = f"Ex-dividend {ex_div} before expiry"
 
     return {"symbol": symbol, "spot": spot, "atm_iv": atm_iv,
+            "iv_15d_ago": iv_15d_ago, "iv_change": iv_change, "iv_spark": iv_spark,
             "premium": premium, "premium_pct": prem_pct,
             "leg_spread_pct": leg_spread, "oi": oi,
             "atm_strike": strike, "expiry": expiry,
@@ -216,6 +228,7 @@ def scan(days: int = 5, warm: int = 0) -> dict:
         else:
             missing.append(s)
             out.append({"symbol": s, "status": "PENDING", "atm_iv": None,
+                        "iv_15d_ago": None, "iv_change": None, "iv_spark": [],
                         "premium": None, "premium_pct": None, "leg_spread_pct": None,
                         "oi": None, "atm_strike": None, "expiry": None, "spot": None,
                         "ex_div": None, "exclusion": None, "rank": None, **meta})
