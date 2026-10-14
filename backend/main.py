@@ -1511,12 +1511,14 @@ async def auth_login(request: Request):
         except Exception:  # noqa: BLE001
             pass
 
-        # MFA: a phone account signing in from a browser that has not passed the
-        # OTP before must enter a WhatsApp code. A trusted-device cookie (set
-        # after a prior successful OTP) skips the code for 30 days. The admin
-        # (shared ACCESS_PASSWORD, no phone) is exempt.
-        if not auth.trust_valid(request.cookies.get(auth.TRUST_COOKIE),
-                                user["username"]):
+        # MFA on login is OFF by default: a returning user signs in with phone +
+        # password only (OTP is for sign-up). Set LOGIN_MFA=1 in the env to bring
+        # back the new-device WhatsApp code (trusted-device cookie skips it 30d).
+        import os as _os
+        _login_mfa = (_os.getenv("LOGIN_MFA") or "").strip().lower() in (
+            "1", "true", "yes", "on")
+        if _login_mfa and not auth.trust_valid(
+                request.cookies.get(auth.TRUST_COOKIE), user["username"]):
             import otp_service
             sent = otp_service.request_code(user["username"])  # username == phone
             detail = (sent.get("detail") if sent.get("status") != "SENT"
