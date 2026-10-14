@@ -158,26 +158,23 @@ def compute(symbol: str) -> dict:
     spot = _f(em.get("current")) or _f(d.get("price"))
 
     lb = cfg.TAB_B_LOOKBACK_SESSIONS
-    atm_iv = iv_prev = iv_ratio = None
+    # 30-day IV is the baseline; the front-month ATM IV (which carries the
+    # earnings spike) comes from the straddle below. The inflation measure is the
+    # term-structure premium front-month-IV / 30-day-IV -- it works today, with
+    # no 10-day history, which a 30-day IV series alone cannot capture.
+    iv_base = None
     iv_spark: list = []
     try:
         v = volsvc.get_volatility(symbol)
-        iv = _f((v.get("stats") or {}).get("iv"))
-        if iv is not None:
-            atm_iv = round(iv * 100, 1) if iv <= 5 else round(iv, 1)
-        # Daily IV series: today vs `lb` TRADING sessions ago (theta-neutral, so a
-        # fair inflation measure without historical option-price snapshots).
+        base = _f((v.get("stats") or {}).get("iv"))
+        if base is not None:
+            iv_base = round(base * 100, 1) if base <= 5 else round(base, 1)
         ser = [s for s in (v.get("iv_rv_series") or []) if _f(s.get("iv")) is not None]
         iv_spark = [round(_f(s["iv"]), 1) for s in ser[-(lb + 1):]]
-        if len(ser) > lb:
-            pv = _f(ser[-(lb + 1)].get("iv"))
-            iv_prev = round(pv * 100, 1) if (pv is not None and pv <= 5) else (round(pv, 1) if pv else None)
-        if atm_iv and iv_prev:
-            iv_ratio = round(atm_iv / iv_prev, 2)
     except Exception:  # noqa: BLE001
-        atm_iv = None
+        iv_base = None
 
-    strike = expiry = premium = prem_pct = leg_spread = oi = None
+    strike = expiry = premium = prem_pct = leg_spread = oi = atm_iv = None
     try:
         st = opt._atm_straddle(symbol, spot) or {}
         premium = st.get("premium")
@@ -185,9 +182,14 @@ def compute(symbol: str) -> dict:
         expiry = st.get("expiry")
         oi = st.get("oi")
         leg_spread = st.get("leg_spread_pct")
+        atm_iv = st.get("atm_iv")                      # front-month ATM IV (earnings-loaded)
         prem_pct = round(premium / spot * 100, 2) if (premium and spot) else None
     except Exception:  # noqa: BLE001
         pass
+
+    # IV inflation = front-month ATM IV over the 30-day baseline (the earnings
+    # term-structure premium). > 1 means the front month is pumped for the event.
+    iv_ratio = round(atm_iv / iv_base, 2) if (atm_iv and iv_base) else None
 
     # Premium `lb` sessions ago for the CURRENT ATM strike, from a stored daily
     # snapshot (the spec's requirement). A straddle's value also decays with time
@@ -225,10 +227,10 @@ def compute(symbol: str) -> dict:
         excl = f"Ex-dividend {ex_div} before expiry"
     elif (iv_ratio is not None and iv_ratio < thr
           and (premium_ratio is None or premium_ratio < thr)):
-        excl = f"No real inflation vs {lb} sessions ago"
+        excl = "No real inflation (front IV ~ baseline)"
 
     return {"symbol": symbol, "spot": spot,
-            "atm_iv": atm_iv, "iv_prev": iv_prev, "iv_ratio": iv_ratio, "iv_spark": iv_spark,
+            "atm_iv": atm_iv, "iv_base": iv_base, "iv_ratio": iv_ratio, "iv_spark": iv_spark,
             "premium": premium, "premium_prev": premium_prev,
             "premium_ratio": premium_ratio, "premium_prev_src": premium_prev_src,
             "premium_pct": prem_pct, "leg_spread_pct": leg_spread, "oi": oi,
@@ -273,7 +275,7 @@ def scan(days: int = 5, warm: int = 0) -> dict:
         else:
             missing.append(s)
             out.append({"symbol": s, "status": "PENDING", "atm_iv": None,
-                        "iv_prev": None, "iv_ratio": None, "iv_spark": [],
+                        "iv_base": None, "iv_ratio": None, "iv_spark": [],
                         "premium": None, "premium_prev": None, "premium_ratio": None,
                         "premium_prev_src": None, "premium_pct": None,
                         "leg_spread_pct": None, "oi": None, "atm_strike": None,

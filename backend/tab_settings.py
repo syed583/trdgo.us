@@ -65,8 +65,8 @@ TAB_B_MIN_OI = 200                # ATM open interest below this -> illiquid (co
 # The 10-session inflation check: rank by how much premium and IV have inflated
 # vs ~10 TRADING sessions ago. A name whose ratios are both near 1x has no
 # earnings inflation and is skipped.
-TAB_B_LOOKBACK_SESSIONS = 10      # compare today vs this many trading sessions ago
-TAB_B_MIN_INFLATION = 1.05        # ratios below this (~5% up) -> "no real inflation" -> SKIP
+TAB_B_LOOKBACK_SESSIONS = 10      # premium ratio: today vs this many trading sessions ago (from snapshots)
+TAB_B_MIN_INFLATION = 1.08        # front-month IV / 30-day IV below this -> "no real inflation" -> SKIP
 
 # The 67-name straddle watchlist (high-beta, liquid options), per the spec. The
 # scanner ranks ONLY these names (intersected with the upcoming-earnings window),

@@ -123,7 +123,7 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                   <th>Result</th>
                   <th className="ts-num">Strike / Expiry</th>
                   <Th k="premium_ratio" cls="ts-num">Premium (now · 10d · ×)</Th>
-                  <Th k="iv_ratio" cls="ts-num">IV (now · 10d · ×)</Th>
+                  <Th k="iv_ratio" cls="ts-num">IV (front · 30d · ×)</Th>
                   <Th k="leg_spread_pct" cls="ts-num">Spread %</Th>
                   <th>Status</th>
                 </tr>
@@ -149,7 +149,7 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                         ? <b className={r.premium_ratio >= 1 ? 'pos' : 'neg'}> ×{n2(r.premium_ratio)}</b>
                         : <span className="ts-muted"> (building)</span>}</td>
                     <td className="ts-num">{n1(r.atm_iv)}
-                      {r.iv_prev != null ? ` · ${n1(r.iv_prev)}` : ' · —'}
+                      {r.iv_base != null ? ` · ${n1(r.iv_base)}` : ' · —'}
                       {r.iv_ratio != null
                         ? <b className={r.iv_ratio >= 1 ? 'pos' : 'neg'}> ×{n2(r.iv_ratio)}</b> : ''}</td>
                     <td className="ts-num">{n1(r.leg_spread_pct)}</td>
@@ -167,9 +167,9 @@ export default function OptionScannerPage({ ctx }: { ctx: PageContext }) {
                           </div>
                           <div className="ts-detail-grid">
                             <div className="ts-detail-item">
-                              <span className="ts-detail-lbl">IV inflation</span>
+                              <span className="ts-detail-lbl">IV inflation (front ÷ 30d)</span>
                               <span className="ts-detail-pts"><b>×{n2(r.iv_ratio)}</b> (rank #{r.rank_iv ?? '—'})
-                                <em> · {n1(r.atm_iv)}% now vs {n1(r.iv_prev)}% {r.lookback ?? 10}d ago</em></span>
+                                <em> · front-month {n1(r.atm_iv)}% vs 30-day {n1(r.iv_base)}%</em></span>
                             </div>
                             <div className="ts-detail-item">
                               <span className="ts-detail-lbl">Premium inflation</span>

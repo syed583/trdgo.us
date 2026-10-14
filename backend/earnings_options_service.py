@@ -115,12 +115,20 @@ def _atm_straddle(symbol: str, spot: Optional[float],
         c_lsp = (c_spr / c_mid * 100) if (c_spr is not None and c_mid) else None
         p_lsp = (p_spr / p_mid * 100) if (p_spr is not None and p_mid) else None
         leg_spread_pct = max([x for x in (c_lsp, p_lsp) if x is not None], default=None)
+        # Front-month ATM implied vol (avg of the two legs), as a %. This is the
+        # IV that actually spikes into earnings -- unlike a 30-day IV reading.
+        c_iv, p_iv = _f(call[1].get("implied_volatility")), _f(put[1].get("implied_volatility"))
+        ivs = [x for x in (c_iv, p_iv) if x is not None]
+        atm_iv = (sum(ivs) / len(ivs)) if ivs else None
+        if atm_iv is not None:
+            atm_iv = round(atm_iv * 100, 1) if atm_iv <= 5 else round(atm_iv, 1)
 
         return {
             "expiry": target,
             "call_strike": call[0]["strike"], "put_strike": put[0]["strike"],
             "premium": round(premium, 2) if premium else None,
             "theta": theta, "vega": vega, "gamma": gamma,
+            "atm_iv": atm_iv,
             "spread": spread, "oi": (int(oi) if oi is not None else None),
             "spread_pct": (spread / premium) if (spread is not None and premium) else None,
             "leg_spread_pct": (round(leg_spread_pct, 2) if leg_spread_pct is not None else None),
