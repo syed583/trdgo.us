@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader2, Scale, AlertTriangle } from 'lucide-react';
 import type { PageContext } from '../App';
 import { ScoreGauge } from '../components/common';
+import { CorporateAlerts } from '../components/EarningsShared';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import './tab-scan.css';
@@ -168,6 +169,10 @@ export default function ClaudeLastDetail({ ctx, base = '/claude-last', pz = fals
             <div className="cnd-total">Total (sum of rows) = <b style={{ color: sigColor(score) }}>{score}</b> / 100</div>
           </div>
           )}
+
+          {/* SEC EDGAR filings (8-K/425), insider Form-4, 13F changes and
+              classified news -- the same panel as the earnings detail. */}
+          <CorporateAlerts symbol={sym} demo={ctx.demo} />
         </>
       )}
     </div>
