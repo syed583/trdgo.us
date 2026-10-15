@@ -160,6 +160,26 @@ def _hist_reaction_bias(moves: Optional[list]) -> Optional[float]:
     return _clamp((ups - downs) / n)
 
 
+def _realized_vs_implied_bias(moves: Optional[list], options_lean: Optional[float]) -> Optional[float]:
+    """Spec #10: does the options market's directional lean have a track record?
+
+    We have the realized next-day move of the last ~8 reports (API historical
+    moves) but not the per-event straddle skew, so we validate TODAY'S options
+    lean against that realized-move history: if the lean's direction actually
+    happened >=6 of the last 8 earnings, trust the lean; otherwise neutral.
+    No current lean, or too few events -> no data (neutral)."""
+    if options_lean is None or abs(options_lean) < 0.10:
+        return None
+    dirs = [1 if v > 0 else -1 for v in
+            (_f(m.get("move_pct")) for m in (moves or []))
+            if v is not None and abs(v) > 0.2]
+    if len(dirs) < 4:          # spec wants 8; the API cache gives ~4 -> use >=4
+        return None
+    lean = 1 if options_lean > 0 else -1
+    agree = sum(1 for d in dirs if d == lean) / len(dirs)
+    return _clamp(options_lean) if agree >= 0.75 else 0.0   # >=75% (6/8) -> trust lean
+
+
 def _implied_move_eval(trade: dict, side: int, spark: Optional[list]) -> dict:
     """Implied Move ratio, the param-14 bias, and the trade GATE (spec §3).
 
@@ -229,9 +249,13 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
         "ema_trend": sig.get("ema_trend"),
         "peers": biases.get("peer_readthrough"),
         "disparity": sig.get("disparity", biases.get("disparity")),
-        # #10 realized-vs-implied needs per-event straddle-lean history we do not
-        # persist -> no data -> neutral (spec: missing is always neutral).
-        "realized_vs_implied": None,
+        # #10 realized-vs-implied: validate today's options lean against the
+        # realized-move history (see _realized_vs_implied_bias). options_lean =
+        # average of the available options signals (flow + unusual + disparity).
+        "realized_vs_implied": _realized_vs_implied_bias(
+            trade.get("historical_moves"),
+            _avg([flow_bias, sig.get("unusual_activity", biases.get("unusual_options")),
+                  sig.get("disparity", biases.get("disparity"))])),
         "insider": insider_b,
         "short_interest": _short_interest_bias(eq.get("short_interest"), pa_bias),
     }
