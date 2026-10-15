@@ -119,7 +119,9 @@ export default function ClaudeLastPage({ ctx, base = '/claude-last', pz = false 
             <div className="ue-grid">
               {items.map((r) => {
                 const pending = r.score == null;
-                const t = sigTier(r.signal);
+                // Colour by the SCORE band (raw signal) so a gated name still shows
+                // its BUY/SELL colour; the NO-TRADE banner below flags the gate.
+                const t = sigTier(r.raw_signal || r.signal);
                 return (
                   <div key={r.symbol} className="ue-cardwrap">
                     <button className={`ue-row sig-${t}`}
@@ -155,8 +157,8 @@ export default function ClaudeLastPage({ ctx, base = '/claude-last', pz = false 
                         <>
                           <div className="cn-status-top">
                             <span className="cn-status-h">
-                              {r.signal === 'BUY' ? 'BUY — long into earnings'
-                                : r.signal === 'SELL' ? 'SELL — short into earnings'
+                              {(r.raw_signal || r.signal) === 'BUY' ? 'BUY — long into earnings'
+                                : (r.raw_signal || r.signal) === 'SELL' ? 'SELL — short into earnings'
                                   : 'NEUTRAL — check the Straddle Scanner'}
                             </span>
                             <span className="cn-status-score">Score {r.score}/100</span>
