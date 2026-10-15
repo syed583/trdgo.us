@@ -292,8 +292,8 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
 
     score = round(sum(p["points"] for p in params), 1)
     cut = cfg.V3_CUTOFFS
-    # Spec §4 bands are strict: BUY > 70, SELL < 50, else NEUTRAL.
-    raw_signal = "BUY" if score > cut["buy"] else "SELL" if score < cut["sell"] else "NEUTRAL"
+    # Bands: BUY >= 55, SELL <= 45, else NEUTRAL (inclusive at the cutoffs).
+    raw_signal = "BUY" if score >= cut["buy"] else "SELL" if score <= cut["sell"] else "NEUTRAL"
     # Implied-Move gate (spec §3c / §5e): a NO-TRADE gate blocks the signal.
     signal = "NEUTRAL" if (raw_signal != "NEUTRAL" and im.get("gate") == "no_trade") else raw_signal
 

@@ -13,16 +13,16 @@ import './earnings-trade-screen.css';   // ets-* layout (same as Claude +-)
 // Claude +- (Earnings Trade) detail: a scored gauge, a confidence card, the
 // News & Risk Alerts panel, sub-tabs and an Add-to-Watchlist button.
 
-// v2 spec §4 bands: BUY > 70, NEUTRAL 50-70, SELL < 50.
+// Bands: BUY >= 55, NEUTRAL 45-55, SELL <= 45.
 const COLOR = (s: number | null) =>
-  s == null ? 'var(--text-mute)' : s > 70 ? 'var(--green)' : s < 50 ? 'var(--red)' : 'var(--amber)';
+  s == null ? 'var(--text-mute)' : s >= 55 ? 'var(--green)' : s <= 45 ? 'var(--red)' : 'var(--amber)';
 const CALL = (s: number | null) =>
-  s == null ? '--' : s > 70 ? 'BUY' : s < 50 ? 'SELL' : 'NEUTRAL';
+  s == null ? '--' : s >= 55 ? 'BUY' : s <= 45 ? 'SELL' : 'NEUTRAL';
 const TONE = (s: number | null) =>
-  s == null ? 'flat' : s > 70 ? 'buy' : s < 50 ? 'sell' : 'flat';
+  s == null ? 'flat' : s >= 55 ? 'buy' : s <= 45 ? 'sell' : 'flat';
 const SETUP = (s: number | null) =>
-  s == null ? '--' : s > 80 ? 'Strong Setup' : s > 70 ? 'Good Setup'
-    : s < 35 ? 'Weak Setup' : s < 50 ? 'Soft Setup' : 'Neutral';
+  s == null ? '--' : s >= 65 ? 'Strong Setup' : s >= 55 ? 'Good Setup'
+    : s <= 35 ? 'Weak Setup' : s <= 45 ? 'Soft Setup' : 'Neutral';
 const num = (v: any, d = 2) => (v == null ? '--' : Number(v).toFixed(d));
 
 export default function ClaudeLastDetail({ ctx, base = '/claude-last', pz = false }:
@@ -166,7 +166,7 @@ export default function ClaudeLastDetail({ ctx, base = '/claude-last', pz = fals
                   </div>
                   <div className="ets-note">v2 — 14 parameters, 100 pts. 5-step scale:
                     strong bull = full Max · neutral / no data = half · strong bear = 0.
-                    BUY &gt; 70 · NEUTRAL 50–70 · SELL &lt; 50, subject to the Implied-Move gate.</div>
+                    BUY ≥ 55 · NEUTRAL 45–55 · SELL ≤ 45, subject to the Implied-Move gate.</div>
                 </div>
               )}
             </div>

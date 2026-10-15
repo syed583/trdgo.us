@@ -85,7 +85,7 @@ export default function ClaudeLastPage({ ctx, base = '/claude-last', pz = false 
         <h1><Target size={20} /> {pz ? 'Claude New +0' : 'Claude New'} · Direction v2 · 14-param</h1>
         <p>Two-sided, SELL-capable pre-earnings direction (14 parameters, 100 pts, +
           Implied-Move gate). Each box is a stock reporting soon, coloured by its signal.
-          BUY &gt; 70 · SELL &lt; 50. Click a card for
+          BUY ≥ 55 · SELL ≤ 45. Click a card for
           {pz ? ' the +/0/− form (bullish, neutral and bearish parameters).'
               : ' its full breakdown and confidence meter.'}</p>
       </div>
@@ -102,7 +102,7 @@ export default function ClaudeLastPage({ ctx, base = '/claude-last', pz = false 
             onChange={(e) => setQuery(e.target.value)} />
         </span>
         <span className="cn-legend">
-          <i className="buy" /> Buy &gt; 70 <i className="neu" /> Neutral <i className="sell" /> Sell &lt; 50
+          <i className="buy" /> Buy ≥ 55 <i className="neu" /> Neutral <i className="sell" /> Sell ≤ 45
         </span>
         <span className="at-chip">{total}</span>
       </div>

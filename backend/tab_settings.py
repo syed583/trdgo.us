@@ -48,8 +48,8 @@ V3_IM_GATE: dict[str, float] = {"half_above": 1.1, "no_trade_above": 1.5}
 # Short-interest thresholds: "high" short, and "rising" between readings.
 V3_SHORT_INT: dict[str, float] = {"high_pct_float": 0.15, "high_days_to_cover": 5.0,
                                   "rising_pct": 0.20}
-# Spec Section 4 bands: BUY > 70, NEUTRAL 50-70, SELL < 50 (strict).
-V3_CUTOFFS: dict[str, float] = {"buy": 70.0, "sell": 50.0}
+# Owner override of the spec §4 bands: BUY >= 55, NEUTRAL 45-55, SELL <= 45.
+V3_CUTOFFS: dict[str, float] = {"buy": 55.0, "sell": 45.0}
 # Below either threshold -> LOW CONFIDENCE, do not trade.
 V3_CONFIDENCE: dict[str, float] = {"min_coverage": 0.50, "min_agreement": 0.55}
 
