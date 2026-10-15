@@ -443,6 +443,39 @@ def intraday_board() -> dict:
     return res
 
 
+@router.get("/smart-money/scan")
+def smart_money_scan() -> dict:
+    """Smart Money scanner (behind SMART_MONEY_TAB=on). Non-blocking: serves the
+    last scan and runs the next (heavy) scan in the background."""
+    import smart_money_model as sm
+    import threading
+    if not sm.enabled():
+        return {"status": "DISABLED"}
+    res = swr.peek("sm:scan")
+
+    def _bg() -> None:
+        try:
+            swr.serve("sm:scan", lambda: sm.scan(), 120.0)
+        except Exception:  # noqa: BLE001
+            pass
+
+    threading.Thread(target=_bg, daemon=True).start()
+    if res is None:
+        return {"status": "WARMING", "model": sm.MODEL, "rows": [], "counts": {}, "universe": 0}
+    return res
+
+
+@router.get("/smart-money/{symbol}")
+def smart_money_detail(symbol: str) -> dict:
+    """Smart Money single-stock detail: all 6 sections + the points breakdown."""
+    import smart_money_model as sm
+    if not sm.enabled():
+        return {"status": "DISABLED"}
+    s = symbol.upper()
+    res = swr.serve(f"sm:detail:{s}", lambda: sm.score_one(s, detail=True), 60.0)
+    return {"status": "OK", **res}
+
+
 @router.get("/intraday/log")
 def intraday_log(date: str = "") -> dict:
     if not _intraday_v2_on():
