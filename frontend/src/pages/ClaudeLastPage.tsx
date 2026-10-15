@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, Target, Search, ChevronRight, AlertTriangle } from 'lucide-react';
 import type { PageContext } from '../App';
+import { CorporateAlerts } from '../components/EarningsShared';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import '../components/earnings-trade.css';
@@ -174,12 +175,33 @@ export default function ClaudeLastPage({ ctx, base = '/claude-last', pz = false 
                         </>
                       )}
                     </div>
+                    {!pending && <NewsDropdown symbol={r.symbol} demo={ctx.demo} />}
                   </div>
                 );
               })}
             </div>
           </div>
         ))
+      )}
+    </div>
+  );
+}
+
+// Per-card News & Alerts dropdown. Lazy: the alerts (one request per symbol) are
+// only fetched when the card is expanded, so the list stays light.
+function NewsDropdown({ symbol, demo }: { symbol: string; demo?: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="cn-news">
+      <button className="cn-news-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <AlertTriangle size={12} /> News &amp; Alerts
+        <ChevronRight size={12} className="cn-news-chev"
+          style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
+      </button>
+      {open && (
+        <div className="cn-news-body">
+          <CorporateAlerts symbol={symbol} demo={demo} />
+        </div>
       )}
     </div>
   );

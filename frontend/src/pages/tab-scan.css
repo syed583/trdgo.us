@@ -308,3 +308,11 @@
 .ped-pcard-h { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; gap: 8px; }
 .ped-pcard-b { font-size: 10px; color: var(--text-mute); margin-top: 2px; }
 .ped-sub { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 6px; font-size: 10px; }
+
+/* Claude New card: lazy News & Alerts dropdown. */
+.cn-news { border-top: 1px solid var(--border); }
+.cn-news-toggle { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: 0;
+  padding: 7px 12px; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-mute); }
+.cn-news-toggle:hover { color: var(--text); background: var(--panel-2); }
+.cn-news-chev { margin-left: auto; }
+.cn-news-body { padding: 0 10px 10px; }
