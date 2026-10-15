@@ -23,6 +23,8 @@ const money = (v: any) => {
 const sh = (v: any) => (v == null ? '—' : `${Number(v) > 0 ? '+' : ''}${Number(v).toLocaleString()}`);
 const biasClass = (b: string) =>
   b === 'BULLISH' ? 'sm-bull' : b === 'BEARISH' ? 'sm-bear' : b === 'INSUFFICIENT' ? 'sm-insuf' : 'sm-mixed';
+const callClass = (c: string) =>
+  c === 'BUY' ? 'sm-bull' : c === 'SELL' ? 'sm-bear' : c === 'INSUFFICIENT' ? 'sm-insuf' : 'sm-mixed';
 const et = (iso: any) => {
   if (!iso) return '—';
   try {
@@ -61,8 +63,8 @@ function SmartMoneyScanner({ ctx }: { ctx: PageContext }) {
       <div className="ts-head">
         <h1><Landmark size={20} /> Smart Money</h1>
         <p>Where insiders, big options flow and institutions are really positioning. Signed 0–100 score
-          (50 = neutral). Read-only research — no trade signals, no order placement. Options are live;
-          Form 4 is delayed; 13F is quarterly.</p>
+          (50 = neutral). <b>Call: BUY ≥ 55 · SELL ≤ 45 · NEUTRAL</b> (from this page's score only).
+          Read-only research. Options are live; Form 4 is delayed; 13F is quarterly.</p>
       </div>
 
       <div className="sm-cards">
@@ -89,7 +91,7 @@ function SmartMoneyScanner({ ctx }: { ctx: PageContext }) {
               <thead><tr>
                 <th>Symbol</th><th className="n">Price</th><th className="n">Insider 30d</th>
                 <th className="n">Unusual (net)</th><th className="n">Call prem %</th>
-                <th className="n">Fund net sh</th><th className="n">Score</th><th>Bias</th><th className="n">Cov</th>
+                <th className="n">Fund net sh</th><th className="n">Score</th><th>Call</th><th>Bias</th><th className="n">Cov</th>
               </tr></thead>
               <tbody>
                 {shown.map((r) => (
@@ -101,6 +103,7 @@ function SmartMoneyScanner({ ctx }: { ctx: PageContext }) {
                     <td className="n">{r.call_share != null ? `${Math.round(r.call_share * 100)}%` : '—'}</td>
                     <td className={`n ${(r.fund_net_shares || 0) > 0 ? 'pos' : (r.fund_net_shares || 0) < 0 ? 'neg' : ''}`}>{r.fund_net_shares != null ? sh(r.fund_net_shares) : '—'}</td>
                     <td className="n"><b>{r.score ?? '—'}</b></td>
+                    <td><span className={`sm-bias ${callClass(r.call)}`}>{r.call === 'INSUFFICIENT' ? '—' : r.call}</span></td>
                     <td><span className={`sm-bias ${biasClass(r.bias)}`}>{r.bias === 'INSUFFICIENT' ? 'Insufficient' : r.bias}</span></td>
                     <td className="n">{r.coverage_pct}%</td>
                   </tr>
@@ -138,10 +141,11 @@ function SmartMoneyDetail({ symbol, ctx }: { symbol: string; ctx: PageContext })
       <div className="ts-head sm-detail-head">
         <button className="sm-back" onClick={() => nav('/smart-money')}><ChevronLeft size={14} /> Scanner</button>
         <h1><Landmark size={20} /> {symbol}</h1>
-        {d && !resp.initialLoading && d.status !== 'DISABLED' && (
+        {d && !resp.initialLoading && d.status !== 'DISABLED' && (<>
+          {!d.insufficient && <span className={`sm-bias ${callClass(d.call)}`}>{d.call} · {d.score}</span>}
           <span className={`sm-bias ${biasClass(d.bias)}`}>
-            {d.insufficient ? 'Insufficient data' : `${d.bias} · ${d.score}`}</span>
-        )}
+            {d.insufficient ? 'Insufficient data' : d.bias}</span>
+        </>)}
         {d?.asof && <span className="sm-asof">as of {et(d.asof)} ET</span>}
       </div>
 

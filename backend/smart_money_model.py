@@ -44,7 +44,8 @@ GROUPS = {
     "funds": ("fund_flow", "fund_positions"),         # max 25
 }
 COVERAGE_MIN = 60
-BUY_CUT, SELL_CUT = 65, 35
+BUY_CUT, SELL_CUT = 65, 35          # bias (with group agreement)
+CALL_BUY, CALL_SELL = 55, 45        # simple score-based call: BUY >= 55 / SELL <= 45
 
 # Cache TTLs (seconds) per the spec: options 60s, insider/news 15m, 13F 24h.
 TTL_OPTIONS = 60.0
@@ -597,6 +598,11 @@ def score_one(symbol: str, *, detail: bool = False) -> dict:
     covered = sum(p["max"] for p in ordered if p["has_data"])
     insufficient = covered < COVERAGE_MIN
     bias = None if insufficient else _bias(score, params)
+    # Simple score-based call on THIS page's score only: BUY >= 55 / SELL <= 45.
+    call = ("INSUFFICIENT" if insufficient
+            else "BUY" if score >= CALL_BUY
+            else "SELL" if score <= CALL_SELL
+            else "NEUTRAL")
 
     import unusualwhales_service as uw
     price = None
@@ -609,6 +615,7 @@ def score_one(symbol: str, *, detail: bool = False) -> dict:
         "score": None if insufficient else score, "net": net,
         "coverage_pct": round(covered / 100 * 100, 1), "covered": covered,
         "bias": "INSUFFICIENT" if insufficient else bias,
+        "call": call,
         "insufficient": insufficient, "price": price,
         # scanner summary cells
         "insider_net_30d": params["insider_trades"]["extra"].get("exec_buy_usd_30d"),
