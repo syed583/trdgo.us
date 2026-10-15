@@ -643,26 +643,47 @@ def universe() -> list:
         return []
 
 
+def _score_cached(symbol: str) -> dict:
+    """Full scanner row for one symbol, cached ~2 min (same score as the detail
+    view, which reads the same sub-caches)."""
+    import swr
+    return swr.serve(f"sm:one:{symbol.upper()}", lambda: score_one(symbol.upper(), detail=False), 120.0)
+
+
 def scan() -> dict:
-    """Score every universe name (scanner rows + summary counts). Cached per the
-    scan key; each row reuses score_one so the scanner and detail match."""
-    rows = []
-    for sym in universe():
-        try:
-            rows.append(score_one(sym, detail=False))
-        except Exception:  # noqa: BLE001
-            continue
+    """Light aggregator: return whatever names are already scored (per-symbol
+    cache) and list the rest to warm. Scoring the full universe at once is far
+    too slow (6 provider calls x ~40 names), so the scanner fills PROGRESSIVELY
+    -- the endpoint warms a batch each poll and rows appear as they're ready."""
+    import swr
+    syms = universe()
+    cached = swr.peek_many([f"sm:one:{s}" for s in syms])
+    rows, missing = [], []
+    for s in syms:
+        r = cached.get(f"sm:one:{s}")
+        if r:
+            rows.append(r)
+        else:
+            missing.append(s)
     rows.sort(key=lambda r: (r["score"] if r.get("score") is not None else -1), reverse=True)
     counts = {"bullish": 0, "bearish": 0, "mixed": 0, "insufficient": 0}
     for r in rows:
-        b = r.get("bias")
         if r.get("insufficient"):
             counts["insufficient"] += 1
-        elif b == "BULLISH":
+        elif r.get("bias") == "BULLISH":
             counts["bullish"] += 1
-        elif b == "BEARISH":
+        elif r.get("bias") == "BEARISH":
             counts["bearish"] += 1
         else:
             counts["mixed"] += 1
-    return {"status": "OK", "model": MODEL, "asof": now_et_iso(),
-            "counts": counts, "universe": len(rows), "rows": rows}
+    return {"status": "OK", "model": MODEL, "asof": now_et_iso(), "counts": counts,
+            "universe": len(syms), "scored": len(rows), "rows": rows, "missing": missing[:60]}
+
+
+def warm(syms: list) -> None:
+    """Score a batch of names into their per-symbol caches (off the request thread)."""
+    for s in syms:
+        try:
+            _score_cached(s)
+        except Exception:  # noqa: BLE001
+            pass

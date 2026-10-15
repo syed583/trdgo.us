@@ -42,7 +42,7 @@ export default function SmartMoneyPage({ ctx }: { ctx: PageContext }) {
 function SmartMoneyScanner({ ctx }: { ctx: PageContext }) {
   const nav = useNavigate();
   const [filter, setFilter] = useState<'ALL' | 'BULLISH' | 'BEARISH' | 'MIXED'>('ALL');
-  const resp = useApi<any>((s) => api2.smartMoneyScan(s), [], { refreshMs: ctx.demo ? undefined : 30_000 });
+  const resp = useApi<any>((s) => api2.smartMoneyScan(s), [], { refreshMs: ctx.demo ? undefined : 10_000 });
   const d = resp.data;
   if (d && d.status === 'DISABLED') {
     return <div className="page"><Panel title="Smart Money"><p className="at-note">
@@ -50,7 +50,10 @@ function SmartMoneyScanner({ ctx }: { ctx: PageContext }) {
   }
   const rows: any[] = d?.rows || [];
   const counts = d?.counts || {};
-  const warming = d?.status === 'WARMING' || (resp.initialLoading && !rows.length);
+  const scored = d?.scored ?? rows.length;
+  const total = d?.universe ?? 0;
+  const stillScanning = total > 0 && scored < total;
+  const warming = (resp.initialLoading && !rows.length) || (!rows.length && stillScanning);
   const shown = useMemo(() => filter === 'ALL' ? rows
     : rows.filter((r) => (r.bias === filter) || (filter === 'MIXED' && r.bias === 'MIXED')), [rows, filter]);
 
@@ -82,11 +85,13 @@ function SmartMoneyScanner({ ctx }: { ctx: PageContext }) {
 
       <Panel title={<span className="at-col-title">Smart Money scanner</span>}>
         {warming ? (
-          <p className="at-note"><Loader2 size={12} className="spin" /> Scanning insiders, options flow and 13F…</p>
+          <p className="at-note"><Loader2 size={12} className="spin" /> Scanning insiders, options flow and 13F…
+            {total ? ` (${scored}/${total})` : ''}</p>
         ) : !shown.length ? (
-          <p className="at-note">No names match.</p>
+          <p className="at-note">No names match this filter.{stillScanning ? ` Still scoring (${scored}/${total})…` : ''}</p>
         ) : (
           <div className="sm-wrap">
+            {stillScanning && <p className="at-note"><Loader2 size={12} className="spin" /> Scoring {scored} of {total}…</p>}
             <table className="sm-tbl">
               <thead><tr>
                 <th>Symbol</th><th className="n">Price</th><th className="n">Insider 30d</th>

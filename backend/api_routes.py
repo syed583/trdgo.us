@@ -451,17 +451,15 @@ def smart_money_scan() -> dict:
     import threading
     if not sm.enabled():
         return {"status": "DISABLED"}
-    res = swr.peek("sm:scan")
+    res = sm.scan()                                   # light: reads per-symbol caches
+    missing = res.get("missing") or []
+    if missing:
+        batch = missing[:6]                           # warm a few names per poll
 
-    def _bg() -> None:
-        try:
-            swr.serve("sm:scan", lambda: sm.scan(), 120.0)
-        except Exception:  # noqa: BLE001
-            pass
+        def _warm() -> None:
+            sm.warm(batch)
 
-    threading.Thread(target=_bg, daemon=True).start()
-    if res is None:
-        return {"status": "WARMING", "model": sm.MODEL, "rows": [], "counts": {}, "universe": 0}
+        threading.Thread(target=_warm, daemon=True).start()
     return res
 
 
