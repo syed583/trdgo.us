@@ -43,10 +43,15 @@ export default function PreEarningsDirectionPage({ ctx }: { ctx: PageContext }) 
   const [maxDays, setMaxDays] = useState(15);
   const [open, setOpen] = useState<string | null>(null);
 
+  // The scan does a large cold DB read on the first request after a restart, so
+  // the endpoint can first answer with a LOADING/empty payload. Poll every 8s so
+  // it fills quickly, and show "Loading" (not "No names report") until ready.
   const resp = useApi<any>((s) => api2.preEarningsDirectionScan(15, s), [],
-    { refreshMs: ctx.demo ? undefined : 60_000 });
+    { refreshMs: ctx.demo ? undefined : 8_000 });
   const allRows: any[] = resp.data?.rows || [];
   const scored = resp.data?.scored || 0;
+  const notReady = !resp.data || !Array.isArray(resp.data.rows)
+    || resp.data.status === 'LOADING' || resp.data.status === 'DATA_UNAVAILABLE';
 
   const rows = useMemo(
     () => allRows.filter((r) => r.days_to == null || r.days_to <= maxDays),
@@ -76,8 +81,8 @@ export default function PreEarningsDirectionPage({ ctx }: { ctx: PageContext }) 
       </div>
 
       <Panel title={<span className="at-col-title">Pre-Earnings Direction — ranked by score</span>}>
-        {resp.initialLoading && !allRows.length ? (
-          <p className="at-note"><Loader2 size={12} className="spin" /> Loading…</p>
+        {(resp.initialLoading || notReady) && !allRows.length ? (
+          <p className="at-note"><Loader2 size={12} className="spin" /> Loading… (scoring upcoming earnings)</p>
         ) : !rows.length ? (
           <p className="at-note">No names report within {maxDays} days.</p>
         ) : (
