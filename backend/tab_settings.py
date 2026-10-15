@@ -19,13 +19,16 @@ from __future__ import annotations
 # Scored on the spec's 5-step scale (strong bull=100% / mild bull=75% / neutral or
 # no-data=50% / mild bear=25% / strong bear=0). #14 Implied Move is new and also
 # drives the Implied-Move GATE (size/no-trade). Order = the spec's table.
+# Owner override: the Implied-Move PARAMETER was removed from scoring (the IM
+# gate below still runs). The remaining 13 directional params are rescaled from
+# the spec's 96 up to 100 (proportional rounding, ranking preserved).
 V3_WEIGHTS: dict[str, int] = {
-    "eps_rev_dir": 12,             # 1  analyst EPS revision direction (30/90d)
-    "options_flow": 10,            # 2  net bullish vs bearish premium, last 5 sessions
-    "unusual_skew": 8,             # 3  unusual call/put prints + 25-delta skew
-    "prior_guidance": 8,           # 4  last 4 quarters: beat + raised guide
+    "eps_rev_dir": 13,             # 1  analyst EPS revision direction (30/90d)
+    "options_flow": 11,            # 2  net bullish vs bearish premium, last 5 sessions
+    "unusual_skew": 9,             # 3  unusual call/put prints + 25-delta skew
+    "prior_guidance": 9,           # 4  last 4 quarters: beat + raised guide
     "hist_price_reaction": 8,      # 5  direction of next-day move, last 8 reports
-    "price_action": 8,            # 6  daily structure (HH/HL vs LH/LL, 20-day hi/lo)
+    "price_action": 8,             # 6  daily structure (HH/HL vs LH/LL, 20-day hi/lo)
     "ema_trend": 7,                # 7  20/50/200 EMA stack
     "peers": 7,                    # 8  same-sector peers already reported
     "disparity": 6,                # 9  call/put volume ratio vs its 20-day average
@@ -33,8 +36,7 @@ V3_WEIGHTS: dict[str, int] = {
     "insider": 6,                  # 11 open-market insider buys/sells (not 10b5-1)
     "short_interest": 5,           # 12 short %float + days-to-cover, read with price
     "dark_pool": 5,                # 13 block prints vs VWAP, confirmation only
-    "implied_move": 4,             # 14 IM ratio (implied move vs historical avg move)
-}
+}                                  # sum = 100 (implied_move dropped from scoring)
 # Implied-Move parameter (#14) points by IM ratio = implied move % / hist avg move %
 # (spec 3b). Expressed as a long-side bias fed to the 5-step scale.
 V3_IM_POINTS = [  # (ratio_below, bias)  -- first match wins; last is the >=1.5 case

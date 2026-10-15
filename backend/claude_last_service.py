@@ -24,7 +24,7 @@ from typing import Optional
 
 import tab_settings as cfg
 
-SOURCE = "Claude Last — Direction v2 (14-param, 100pt)"
+SOURCE = "Claude Last — Direction v2 (13-param, 100pt)"
 
 # Spec table order (Pre_Earnings_Model_v2.pdf §2).
 _LABEL = {
@@ -41,9 +41,9 @@ _LABEL = {
     "insider": "Insider Activity",
     "short_interest": "Short Interest",
     "dark_pool": "Dark Pool (confirmation)",
-    "implied_move": "Implied Move (expectation)",
 }
-# The spec's §2 param order, for a stable UI breakdown.
+# Param order for a stable UI breakdown. Implied Move is no longer a scoring
+# parameter (removed by owner); it still drives the gate via _implied_move_eval.
 _ORDER = list(_LABEL.keys())
 
 
@@ -262,7 +262,7 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
 
     params: list[dict] = []
     for name in _ORDER:
-        if name in ("dark_pool", "implied_move"):
+        if name == "dark_pool":
             continue
         qb = _quant(raw.get(name))
         params.append({"name": name, "label": _LABEL[name], "max": W[name],
@@ -279,18 +279,12 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
                    "points": round(dp_pts, 2), "bias": (dp_bias if agrees else None),
                    "confirmed": agrees})
 
-    # #14 Implied Move: provisional side (13 params + neutral IM) picks the gate
-    # direction, then the IM param + gate are applied (spec §3b/§3c).
-    base_pts = sum(p["points"] for p in params)
-    prov = base_pts + W["implied_move"] * 0.5
-    side = 1 if prov > 50 else -1
-    im = _implied_move_eval(trade, side, trade.get("spark"))
-    im_qb = _quant(im.get("bias"))
-    params.append({"name": "implied_move", "label": _LABEL["implied_move"],
-                   "max": W["implied_move"], "points": round(_pts(W["implied_move"], im_qb), 2),
-                   "bias": im_qb, "ratio": im.get("ratio")})
-
+    # Implied Move is no longer a scoring parameter: the 13 params already sum to
+    # 100, so the score is their total. The IM gate still runs (size / NO-TRADE)
+    # using the score's direction.
     score = round(sum(p["points"] for p in params), 1)
+    side = 1 if score >= 50 else -1
+    im = _implied_move_eval(trade, side, trade.get("spark"))
     cut = cfg.V3_CUTOFFS
     # Bands: BUY >= 55, SELL <= 45, else NEUTRAL (inclusive at the cutoffs).
     raw_signal = "BUY" if score >= cut["buy"] else "SELL" if score <= cut["sell"] else "NEUTRAL"

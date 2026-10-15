@@ -27,7 +27,6 @@ const PARAMS: { key: string; label: string }[] = [
   { key: 'insider', label: 'Insider' },
   { key: 'short_interest', label: 'Short' },
   { key: 'dark_pool', label: 'Dark' },
-  { key: 'implied_move', label: 'IM' },
 ];
 
 const sigTier = (sig: string) =>
@@ -82,8 +81,8 @@ export default function ClaudeLastPage({ ctx, base = '/claude-last', pz = false 
   return (
     <div className="page">
       <div className="ts-head">
-        <h1><Target size={20} /> {pz ? 'Claude New +0' : 'Claude New'} · Direction v2 · 14-param</h1>
-        <p>Two-sided, SELL-capable pre-earnings direction (14 parameters, 100 pts, +
+        <h1><Target size={20} /> {pz ? 'Claude New +0' : 'Claude New'} · Direction v2 · 13-param</h1>
+        <p>Two-sided, SELL-capable pre-earnings direction (13 parameters, 100 pts, +
           Implied-Move gate). Each box is a stock reporting soon, coloured by its signal.
           BUY ≥ 55 · SELL ≤ 45. Click a card for
           {pz ? ' the +/0/− form (bullish, neutral and bearish parameters).'

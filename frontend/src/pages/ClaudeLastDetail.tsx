@@ -164,7 +164,7 @@ export default function ClaudeLastDetail({ ctx, base = '/claude-last', pz = fals
                     ))}
                     {!params.length && <div className="ets-why-d">No parameter detail available.</div>}
                   </div>
-                  <div className="ets-note">v2 — 14 parameters, 100 pts. 5-step scale:
+                  <div className="ets-note">v2 — 13 parameters, 100 pts. 5-step scale:
                     strong bull = full Max · neutral / no data = half · strong bear = 0.
                     BUY ≥ 55 · NEUTRAL 45–55 · SELL ≤ 45, subject to the Implied-Move gate.</div>
                 </div>
