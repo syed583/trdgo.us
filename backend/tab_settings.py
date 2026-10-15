@@ -15,25 +15,41 @@ from __future__ import annotations
 # v3.1: skew/disparity split out from options flow, and insider split from short
 # interest (inside view vs outside view -- they can disagree, so combining would
 # cancel the signal). Revenue estimates stay dropped. Sum = 100.
+# v2 spec (Pre_Earnings_Model_v2.pdf, Oct 2026): 14 parameters, Max sums to 100.
+# Scored on the spec's 5-step scale (strong bull=100% / mild bull=75% / neutral or
+# no-data=50% / mild bear=25% / strong bear=0). #14 Implied Move is new and also
+# drives the Implied-Move GATE (size/no-trade). Order = the spec's table.
 V3_WEIGHTS: dict[str, int] = {
-    "price_action": 20,            # EMA trend + 15d drift + relative strength vs SPY/sector
-    "options_flow_unusual": 13,    # net directional flow + OI build + unusual prints
-    "skew_disparity": 9,           # ATM call/put disparity + put-call skew trend (own param)
-    "eps_rev_dir": 12,             # DIRECTION of EPS revisions (raised vs cut)
-    "hist_price_reaction": 12,     # actual share-price move over the last ~8 reports
-    "insider": 10,                 # company insiders' open-market buys/sells (inside view)
-    "peers": 9,                    # peers that already reported, up or down
-    "short_interest": 6,           # funds' short positioning, read with price (outside view)
-    "prior_guidance": 5,           # consensus vs last quarter's guidance midpoint
-    "dark_pool": 4,                # block prints, confirmation only
+    "eps_rev_dir": 12,             # 1  analyst EPS revision direction (30/90d)
+    "options_flow": 10,            # 2  net bullish vs bearish premium, last 5 sessions
+    "unusual_skew": 8,             # 3  unusual call/put prints + 25-delta skew
+    "prior_guidance": 8,           # 4  last 4 quarters: beat + raised guide
+    "hist_price_reaction": 8,      # 5  direction of next-day move, last 8 reports
+    "price_action": 8,            # 6  daily structure (HH/HL vs LH/LL, 20-day hi/lo)
+    "ema_trend": 7,                # 7  20/50/200 EMA stack
+    "peers": 7,                    # 8  same-sector peers already reported
+    "disparity": 6,                # 9  call/put volume ratio vs its 20-day average
+    "realized_vs_implied": 6,      # 10 did the pre-result straddle lean match the move
+    "insider": 6,                  # 11 open-market insider buys/sells (not 10b5-1)
+    "short_interest": 5,           # 12 short %float + days-to-cover, read with price
+    "dark_pool": 5,                # 13 block prints vs VWAP, confirmation only
+    "implied_move": 4,             # 14 IM ratio (implied move vs historical avg move)
 }
-V3_PRICE_SPLIT: dict[str, int] = {"ema_trend": 7, "drift_15d": 7, "rel_strength": 6}
-V3_FLOW_SPLIT: dict[str, int] = {"flow_oi": 8, "unusual": 5}
-V3_SKEW_SPLIT: dict[str, int] = {"atm_disparity": 5, "skew_trend": 4}
+# Implied-Move parameter (#14) points by IM ratio = implied move % / hist avg move %
+# (spec 3b). Expressed as a long-side bias fed to the 5-step scale.
+V3_IM_POINTS = [  # (ratio_below, bias)  -- first match wins; last is the >=1.5 case
+    (0.9, 1.0),    # market under-expects the move  -> 4/4
+    (1.1, 0.5),    # 0.9-1.1                         -> 3/4
+    (1.3, 0.0),    # 1.1-1.3                         -> 2/4
+    (1.5, -0.5),   # 1.3-1.5                         -> 1/4
+]                  # > 1.5 (or priced-in)            -> 0/4  (bias -1.0)
+# Implied-Move GATE (spec 3c): ratio decides size / no-trade regardless of score.
+V3_IM_GATE: dict[str, float] = {"half_above": 1.1, "no_trade_above": 1.5}
 # Short-interest thresholds: "high" short, and "rising" between readings.
 V3_SHORT_INT: dict[str, float] = {"high_pct_float": 0.15, "high_days_to_cover": 5.0,
                                   "rising_pct": 0.20}
-V3_CUTOFFS: dict[str, float] = {"buy": 55.0, "sell": 45.0}   # set 50/50 to test
+# Spec Section 4 bands: BUY > 70, NEUTRAL 50-70, SELL < 50 (strict).
+V3_CUTOFFS: dict[str, float] = {"buy": 70.0, "sell": 50.0}
 # Below either threshold -> LOW CONFIDENCE, do not trade.
 V3_CONFIDENCE: dict[str, float] = {"min_coverage": 0.50, "min_agreement": 0.55}
 

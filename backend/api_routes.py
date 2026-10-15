@@ -283,7 +283,8 @@ def claude_last_scan(days: int = 15) -> dict:
     import os
 
     d = max(1, min(int(days or 15), 30))
-    res = swr.serve(f"v3:scan:{d}", lambda: v3.scan(d), 90.0)
+    # v2 (14-param) schema -- new cache key so stale v3.1 rows are never served.
+    res = swr.serve(f"v3:scan:v2:{d}", lambda: v3.scan(d), 90.0)
     miss = res.get("missing") or []
     if miss and not (os.getenv("DISABLE_WARMERS") or "").strip():
         batch = miss[:12]
@@ -366,7 +367,7 @@ def claude_last_detail(symbol: str) -> dict:
             row = {}
         return {"status": "OK", **v3.score_one(sym, eq, trade, row)}
 
-    return swr.serve(f"v3:one:{sym}", build, market.session_ttl(120, 1800))
+    return swr.serve(f"v3:one:v2:{sym}", build, market.session_ttl(120, 1800))
 
 
 @router.get("/tab-b/scan")

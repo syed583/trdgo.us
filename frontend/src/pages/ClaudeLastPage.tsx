@@ -12,17 +12,22 @@ import './tab-scan.css';
 // list: cards grouped by earnings date, coloured by signal (BUY green / SELL red
 // / NEUTRAL yellow), two-sided and SELL-capable, with a confidence flag.
 
+// v2 spec: 14 parameters (Pre_Earnings_Model_v2.pdf §2), in table order.
 const PARAMS: { key: string; label: string }[] = [
-  { key: 'price_action', label: 'Price' },
-  { key: 'options_flow_unusual', label: 'Flow' },
-  { key: 'skew_disparity', label: 'Skew' },
   { key: 'eps_rev_dir', label: 'EPS' },
-  { key: 'hist_price_reaction', label: 'Hist' },
-  { key: 'insider', label: 'Insider' },
-  { key: 'peers', label: 'Peers' },
-  { key: 'short_interest', label: 'Short' },
+  { key: 'options_flow', label: 'Flow' },
+  { key: 'unusual_skew', label: 'Unusual' },
   { key: 'prior_guidance', label: 'Guid' },
+  { key: 'hist_price_reaction', label: 'Hist' },
+  { key: 'price_action', label: 'Price' },
+  { key: 'ema_trend', label: 'EMA' },
+  { key: 'peers', label: 'Peers' },
+  { key: 'disparity', label: 'Disp' },
+  { key: 'realized_vs_implied', label: 'R/I' },
+  { key: 'insider', label: 'Insider' },
+  { key: 'short_interest', label: 'Short' },
   { key: 'dark_pool', label: 'Dark' },
+  { key: 'implied_move', label: 'IM' },
 ];
 
 const sigTier = (sig: string) =>
@@ -77,9 +82,10 @@ export default function ClaudeLastPage({ ctx, base = '/claude-last', pz = false 
   return (
     <div className="page">
       <div className="ts-head">
-        <h1><Target size={20} /> {pz ? 'Claude New +0' : 'Claude New'} · Direction v3.1</h1>
-        <p>Two-sided, SELL-capable pre-earnings direction. Each box is a stock reporting soon,
-          coloured by its signal. BUY ≥ 55 · SELL ≤ 45. Click a card for
+        <h1><Target size={20} /> {pz ? 'Claude New +0' : 'Claude New'} · Direction v2 · 14-param</h1>
+        <p>Two-sided, SELL-capable pre-earnings direction (14 parameters, 100 pts, +
+          Implied-Move gate). Each box is a stock reporting soon, coloured by its signal.
+          BUY &gt; 70 · SELL &lt; 50. Click a card for
           {pz ? ' the +/0/− form (bullish, neutral and bearish parameters).'
               : ' its full breakdown and confidence meter.'}</p>
       </div>
@@ -96,7 +102,7 @@ export default function ClaudeLastPage({ ctx, base = '/claude-last', pz = false 
             onChange={(e) => setQuery(e.target.value)} />
         </span>
         <span className="cn-legend">
-          <i className="buy" /> Buy ≥ 55 <i className="neu" /> Neutral <i className="sell" /> Sell ≤ 45
+          <i className="buy" /> Buy &gt; 70 <i className="neu" /> Neutral <i className="sell" /> Sell &lt; 50
         </span>
         <span className="at-chip">{total}</span>
       </div>

@@ -366,3 +366,13 @@
 /* 2-up card row (Claude New detail: Direction Signal + Confidence). */
 .ets-row-2 { grid-template-columns: 1fr 1fr; }
 @media (max-width: 1050px) { .ets-row-2 { grid-template-columns: 1fr; } }
+
+/* Claude New detail -- Implied-Move gate (v2 spec §3) under Expected Move. */
+.ets-im-gate { margin-top: 12px; border-top: 1px dashed var(--border, #e5e7eb); padding-top: 10px; }
+.ets-im-row { display: flex; justify-content: space-between; font-size: 12.5px; margin: 3px 0; }
+.ets-im-row b { font-variant-numeric: tabular-nums; }
+.ets-im-gate-tag { margin-top: 8px; font-size: 12px; font-weight: 700; text-align: center;
+  border-radius: 7px; padding: 6px 8px; letter-spacing: .02em; }
+.ets-im-gate.pos .ets-im-gate-tag { color: #166534; background: #dcfce7; }
+.ets-im-gate.warn .ets-im-gate-tag { color: #92400e; background: #fef3c7; }
+.ets-im-gate.neg .ets-im-gate-tag { color: #991b1b; background: #fee2e2; }

@@ -24,27 +24,54 @@ from typing import Optional
 
 import tab_settings as cfg
 
-SOURCE = "Claude Last — Direction v3.1"
+SOURCE = "Claude Last — Direction v2 (14-param, 100pt)"
 
+# Spec table order (Pre_Earnings_Model_v2.pdf §2).
 _LABEL = {
-    "price_action": "Price Action + EMA + Rel. Strength",
-    "options_flow_unusual": "Options Flow + Unusual",
-    "skew_disparity": "Put-Call Skew + Disparity",
-    "eps_rev_dir": "EPS Revision Direction",
+    "eps_rev_dir": "EPS Revisions & Direction",
+    "options_flow": "Options Flow (premium)",
+    "unusual_skew": "Unusual Call/Put Skew",
+    "prior_guidance": "Prior Guidance / Beat History",
     "hist_price_reaction": "Historical Price Reaction",
-    "insider": "Insider Activity",
+    "price_action": "Price Action (structure)",
+    "ema_trend": "EMA Trend (20/50/200)",
     "peers": "Peer Read-through",
+    "disparity": "Options Disparity (C/P ratio)",
+    "realized_vs_implied": "Realized vs Implied History",
+    "insider": "Insider Activity",
     "short_interest": "Short Interest",
-    "prior_guidance": "Prior Guidance Delivery",
     "dark_pool": "Dark Pool (confirmation)",
+    "implied_move": "Implied Move (expectation)",
 }
+# The spec's §2 param order, for a stable UI breakdown.
+_ORDER = list(_LABEL.keys())
 
 
 def _clamp(b: float) -> float:
     return max(-1.0, min(1.0, b))
 
 
+def _quant(bias: Optional[float]) -> Optional[float]:
+    """Snap a raw directional bias (-1..1) onto the spec's 5-step scale:
+    strong bull +1 / mild bull +0.5 / neutral 0 / mild bear -0.5 / strong bear -1.
+    Missing data stays None (scored as neutral, never zero)."""
+    if bias is None:
+        return None
+    b = _clamp(bias)
+    if b >= 0.5:
+        return 1.0
+    if b >= 0.15:
+        return 0.5
+    if b > -0.15:
+        return 0.0
+    if b > -0.5:
+        return -0.5
+    return -1.0
+
+
 def _pts(weight: float, bias: Optional[float]) -> float:
+    """5-step points: neutral/missing = 50% of Max, strong bull = 100%, strong
+    bear = 0 (spec §1). `bias` is expected pre-quantised by _quant."""
     if bias is None:
         return weight * 0.5
     return weight * (0.5 + 0.5 * _clamp(bias))
@@ -133,99 +160,118 @@ def _hist_reaction_bias(moves: Optional[list]) -> Optional[float]:
     return _clamp((ups - downs) / n)
 
 
+def _implied_move_eval(trade: dict, side: int, spark: Optional[list]) -> dict:
+    """Implied Move ratio, the param-14 bias, and the trade GATE (spec §3).
+
+    IM Ratio = implied move % (pre-result ATM straddle, already computed by the
+    trade engine) / average absolute next-day move of the last ~8 reports.
+    Returns ratio, a long-side bias for the 5-step scale, the size gate, and the
+    priced-in flag (moved > 1x implied move in the signal's direction in 10d)."""
+    em = (trade or {}).get("expected_move") or {}
+    im_pct = _f(em.get("percent"))
+    mags = [abs(x) for x in (_f(m.get("move_pct")) for m in (trade or {}).get("historical_moves") or [])
+            if x is not None]
+    hist_avg = (sum(mags) / len(mags)) if mags else None
+    if im_pct is None or not hist_avg:
+        return {"im_pct": im_pct, "hist_avg_move": round(hist_avg, 2) if hist_avg else None,
+                "ratio": None, "bias": None, "gate": "unknown", "priced_in": False,
+                "size_factor": 1.0}
+    ratio = im_pct / hist_avg
+    bias = -1.0
+    for below, b in cfg.V3_IM_POINTS:
+        if ratio < below:
+            bias = b
+            break
+    # Priced-in: already moved more than 1x the implied move the signal's way (10d).
+    priced = False
+    closes = [c for c in (_f(c) for c in (spark or [])) if c is not None]
+    if len(closes) >= 11 and side:
+        move10 = (closes[-1] - closes[-11]) / closes[-11] * 100.0
+        priced = (side > 0 and move10 > im_pct) or (side < 0 and move10 < -im_pct)
+    g = cfg.V3_IM_GATE
+    gate = "normal" if ratio < g["half_above"] else "half" if ratio <= g["no_trade_above"] else "no_trade"
+    if priced:
+        gate = "no_trade"
+        bias = -1.0        # expectation fully priced in -> 0 pts for a long
+    size_factor = 1.0 if gate == "normal" else 0.5 if gate == "half" else 0.0
+    return {"im_pct": round(im_pct, 2), "hist_avg_move": round(hist_avg, 2),
+            "ratio": round(ratio, 2), "bias": bias, "gate": gate,
+            "priced_in": priced, "size_factor": size_factor}
+
+
 def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
               row: Optional[dict] = None) -> dict:
     biases = {p.get("name"): p.get("bias") for p in (eq.get("params") or [])}
-    sig = eq.get("signals") or {}        # raw directional biases (pure insider etc.)
+    sig = eq.get("signals") or {}        # numeric directional biases (-1..1)
     trade = trade or {}
     row = row or {}
     W = cfg.V3_WEIGHTS
-    PS = cfg.V3_PRICE_SPLIT
-    FS = cfg.V3_FLOW_SPLIT
-    SS = cfg.V3_SKEW_SPLIT
-    params: list[dict] = []
 
-    # 1) Price Action (20) = EMA trend 7 + 15d drift 7 + relative strength 6.
-    pa = biases.get("price_action")
-    rs = _rel_strength_bias(trade.get("spark"))
-    pa_sub = [
-        ("ema_trend", PS["ema_trend"], pa),
-        ("drift_15d", PS["drift_15d"], pa),
-        ("rel_strength", PS["rel_strength"], rs),
-    ]
-    pa_pts = sum(_pts(w, b) for _, w, b in pa_sub)
-    pa_bias = _avg([pa, pa, rs])
-    params.append({"name": "price_action", "label": _LABEL["price_action"],
-                   "points": round(pa_pts, 2), "max": W["price_action"],
-                   "bias": (round(pa_bias, 3) if pa_bias is not None else None),
-                   "sub": [{"name": n, "max": w, "points": round(_pts(w, b), 2),
-                            "bias": (round(b, 3) if b is not None else None)}
-                           for n, w, b in pa_sub]})
-
-    # 2) Options Flow + Unusual (13) = flow/OI 8 + unusual 5.
-    flow_sub = [
-        ("flow_oi", FS["flow_oi"], biases.get("options_positioning")),
-        ("unusual", FS["unusual"], biases.get("unusual_options")),
-    ]
-    flow_pts = sum(_pts(w, b) for _, w, b in flow_sub)
-    flow_bias = _avg([b for _, _, b in flow_sub])
-    params.append({"name": "options_flow_unusual", "label": _LABEL["options_flow_unusual"],
-                   "points": round(flow_pts, 2), "max": W["options_flow_unusual"],
-                   "bias": (round(flow_bias, 3) if flow_bias is not None else None),
-                   "sub": [{"name": n, "max": w, "points": round(_pts(w, b), 2),
-                            "bias": (round(b, 3) if b is not None else None)}
-                           for n, w, b in flow_sub]})
-
-    # 3) Put-Call Skew + Disparity (9) -- its own parameter so the earliest
-    #    bearish options signal is not diluted by the rest of the tape.
-    skew_b = biases.get("disparity")
-    skew_sub = [
-        ("atm_disparity", SS["atm_disparity"], skew_b),
-        ("skew_trend", SS["skew_trend"], skew_b),
-    ]
-    skew_pts = sum(_pts(w, b) for _, w, b in skew_sub)
-    params.append({"name": "skew_disparity", "label": _LABEL["skew_disparity"],
-                   "points": round(skew_pts, 2), "max": W["skew_disparity"],
-                   "bias": (round(skew_b, 3) if skew_b is not None else None),
-                   "sub": [{"name": n, "max": w, "points": round(_pts(w, b), 2),
-                            "bias": (round(b, 3) if b is not None else None)}
-                           for n, w, b in skew_sub]})
-
-    # 4)-? single-bias parameters. Insider is now PURE open-market insider
-    #    (raw signal), separate from short interest.
-    hist_bias = _hist_reaction_bias(trade.get("historical_moves"))
+    pa_bias = sig.get("price_action")
+    if pa_bias is None:
+        pa_bias = biases.get("price_action")
+    flow_bias = sig.get("options_flow")
+    if flow_bias is None:
+        flow_bias = biases.get("options_positioning")
     insider_b = sig.get("insider_activity")
     if insider_b is None:
         insider_b = biases.get("short_insider")   # fallback for un-refreshed caches
-    short_b = _short_interest_bias(eq.get("short_interest"), pa_bias)
-    singles = [
-        ("eps_rev_dir", biases.get("eps_estimates")),
-        ("hist_price_reaction", hist_bias),
-        ("insider", insider_b),
-        ("peers", biases.get("peer_readthrough")),
-        ("short_interest", short_b),
-        ("prior_guidance", biases.get("guidance")),
-    ]
-    for name, b in singles:
-        params.append({"name": name, "label": _LABEL[name],
-                       "points": round(_pts(W[name], b), 2), "max": W[name],
-                       "bias": (round(b, 3) if b is not None else None)})
 
-    # Dark pool (4): confirmation only -- moves off neutral only when it agrees
-    # with price action OR options flow.
-    dp_bias = biases.get("dark_pool")
-    agrees = dp_bias is not None and (
+    # The 13 directional parameters (everything except Implied Move), each read
+    # from the best available source and snapped to the spec's 5-step scale.
+    raw: dict[str, Optional[float]] = {
+        "eps_rev_dir": biases.get("eps_estimates"),
+        "options_flow": flow_bias,
+        "unusual_skew": sig.get("unusual_activity", biases.get("unusual_options")),
+        "prior_guidance": biases.get("guidance"),
+        "hist_price_reaction": _hist_reaction_bias(trade.get("historical_moves")),
+        "price_action": pa_bias,
+        "ema_trend": sig.get("ema_trend"),
+        "peers": biases.get("peer_readthrough"),
+        "disparity": sig.get("disparity", biases.get("disparity")),
+        # #10 realized-vs-implied needs per-event straddle-lean history we do not
+        # persist -> no data -> neutral (spec: missing is always neutral).
+        "realized_vs_implied": None,
+        "insider": insider_b,
+        "short_interest": _short_interest_bias(eq.get("short_interest"), pa_bias),
+    }
+
+    params: list[dict] = []
+    for name in _ORDER:
+        if name in ("dark_pool", "implied_move"):
+            continue
+        qb = _quant(raw.get(name))
+        params.append({"name": name, "label": _LABEL[name], "max": W[name],
+                       "points": round(_pts(W[name], qb), 2), "bias": qb})
+
+    # #13 Dark pool: confirmation only -- off neutral only when it agrees with
+    # price action OR options flow (spec: accumulation/distribution vs VWAP).
+    dp_bias = _quant(biases.get("dark_pool"))
+    agrees = dp_bias is not None and dp_bias != 0 and (
         (pa_bias is not None and pa_bias * dp_bias > 0)
         or (flow_bias is not None and flow_bias * dp_bias > 0))
     dp_pts = _pts(W["dark_pool"], dp_bias) if agrees else W["dark_pool"] * 0.5
-    params.append({"name": "dark_pool", "label": _LABEL["dark_pool"],
-                   "points": round(dp_pts, 2), "max": W["dark_pool"],
-                   "bias": (round(dp_bias, 3) if dp_bias is not None else None),
+    params.append({"name": "dark_pool", "label": _LABEL["dark_pool"], "max": W["dark_pool"],
+                   "points": round(dp_pts, 2), "bias": (dp_bias if agrees else None),
                    "confirmed": agrees})
+
+    # #14 Implied Move: provisional side (13 params + neutral IM) picks the gate
+    # direction, then the IM param + gate are applied (spec §3b/§3c).
+    base_pts = sum(p["points"] for p in params)
+    prov = base_pts + W["implied_move"] * 0.5
+    side = 1 if prov > 50 else -1
+    im = _implied_move_eval(trade, side, trade.get("spark"))
+    im_qb = _quant(im.get("bias"))
+    params.append({"name": "implied_move", "label": _LABEL["implied_move"],
+                   "max": W["implied_move"], "points": round(_pts(W["implied_move"], im_qb), 2),
+                   "bias": im_qb, "ratio": im.get("ratio")})
 
     score = round(sum(p["points"] for p in params), 1)
     cut = cfg.V3_CUTOFFS
-    signal = "BUY" if score >= cut["buy"] else "SELL" if score <= cut["sell"] else "NEUTRAL"
+    # Spec §4 bands are strict: BUY > 70, SELL < 50, else NEUTRAL.
+    raw_signal = "BUY" if score > cut["buy"] else "SELL" if score < cut["sell"] else "NEUTRAL"
+    # Implied-Move gate (spec §3c / §5e): a NO-TRADE gate blocks the signal.
+    signal = "NEUTRAL" if (raw_signal != "NEUTRAL" and im.get("gate") == "no_trade") else raw_signal
 
     # Confidence meter: coverage = weight with real data / 100; agreement =
     # covered weight leaning the signal's side / covered weight.
@@ -261,9 +307,13 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
             "report_timing": row.get("time_label") or row.get("timing_label"),
             "prior_close": row.get("prior_close"), "market_cap": row.get("market_cap"),
             "sector": row.get("sector"),
-            "score": score, "signal": signal, "params": params,
+            "score": score, "signal": signal, "raw_signal": raw_signal, "params": params,
             "coverage": round(coverage * 100, 1), "agreement": round(agreement * 100, 1),
-            "low_confidence": low_conf}
+            "low_confidence": low_conf,
+            # Implied-Move gate (spec §3): size/no-trade overlay on top of the score.
+            "im_ratio": im.get("ratio"), "im_pct": im.get("im_pct"),
+            "hist_avg_move": im.get("hist_avg_move"), "im_gate": im.get("gate"),
+            "priced_in": im.get("priced_in"), "size_factor": im.get("size_factor")}
 
 
 def scan(days: int = 15) -> dict:
