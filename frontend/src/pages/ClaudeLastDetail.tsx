@@ -110,8 +110,8 @@ export default function ClaudeLastDetail({ ctx, base = '/claude-last', pz = fals
             <Link className="ets-subtab" to={`/news/${sym}${ctx.search}`}>News &amp; Sentiment</Link>
           </div>
 
-          {/* Row: direction signal / confidence / news & risk alerts */}
-          <div className="ets-row ets-row-3">
+          {/* Row: direction signal / confidence (alerts moved full-width below) */}
+          <div className="ets-row ets-row-2">
             {/* Direction Signal */}
             <div className="ets-card">
               <div className="ets-card-h">
@@ -183,10 +183,10 @@ export default function ClaudeLastDetail({ ctx, base = '/claude-last', pz = fals
                 )}
               </div>
             </div>
-
-            {/* News & Risk Alerts (self-boxed panel) */}
-            <CorporateAlerts symbol={sym} demo={ctx.demo} />
           </div>
+
+          {/* Corporate News & Risk Alerts -- full width, below the cards. */}
+          <CorporateAlerts symbol={sym} demo={ctx.demo} />
         </>
       )}
     </div>
