@@ -83,24 +83,28 @@ export function ParamList({ params, pos = 'BUY', neg = 'SELL' }:
 
 const SEV_TONE: Record<string, string> = { RED: 'red', AMBER: 'amber', GREY: 'grey' };
 
-export function CorporateAlerts({ symbol, demo }: { symbol: string; demo?: boolean }) {
+export function CorporateAlerts({ symbol, demo, alertsOnly = false }:
+  { symbol: string; demo?: boolean; alertsOnly?: boolean }) {
   const [open, setOpen] = useState(true);
   const a = useApi<any>(
     (s) => (demo ? Promise.resolve(null) : api2.earningsAlerts(symbol, s)),
     [symbol, demo],
     { refreshMs: demo ? undefined : 120_000 },
   );
-  const alerts = a.data?.alerts || [];
+  const all = a.data?.alerts || [];
   const counts = a.data?.counts || { RED: 0, AMBER: 0, GREY: 0 };
+  // alertsOnly: show only the real risk alerts (red/amber); the grey general
+  // news (dividends, routine filings) stays in the full detail view.
+  const alerts = alertsOnly ? all.filter((x: any) => x.severity === 'RED' || x.severity === 'AMBER') : all;
 
   return (
     <div className="es-alerts">
       <button className="es-alerts-head" onClick={() => setOpen((v) => !v)}>
         <AlertTriangle size={15} />
-        <b>Corporate News &amp; Risk Alerts</b>
+        <b>{alertsOnly ? 'Risk Alerts' : 'Corporate News & Risk Alerts'}</b>
         <span className="es-sev red">{counts.RED} red</span>
         <span className="es-sev amber">{counts.AMBER} amber</span>
-        <span className="es-sev grey">{counts.GREY} grey</span>
+        {!alertsOnly && <span className="es-sev grey">{counts.GREY} grey</span>}
         <span className="es-alerts-toggle">{open ? 'Hide' : 'Show'}</span>
       </button>
       {open && (
@@ -114,7 +118,9 @@ export function CorporateAlerts({ symbol, demo }: { symbol: string; demo?: boole
           ) : a.initialLoading ? (
             <div className="es-empty">Loading alerts…</div>
           ) : !alerts.length ? (
-            <div className="es-empty">No notable corporate events or risk headlines.</div>
+            <div className="es-empty">{alertsOnly
+              ? 'No risk alerts (red/amber). See the stock detail for all corporate news.'
+              : 'No notable corporate events or risk headlines.'}</div>
           ) : (
             alerts.map((al: any, i: number) => (
               <div key={i} className={`es-alert ${SEV_TONE[al.severity] || 'grey'}`}>

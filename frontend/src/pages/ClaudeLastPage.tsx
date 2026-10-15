@@ -194,13 +194,13 @@ function NewsDropdown({ symbol, demo }: { symbol: string; demo?: boolean }) {
   return (
     <div className="cn-news">
       <button className="cn-news-toggle" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-        <AlertTriangle size={12} /> News &amp; Alerts
+        <AlertTriangle size={12} /> Risk Alerts
         <ChevronRight size={12} className="cn-news-chev"
           style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
       </button>
       {open && (
         <div className="cn-news-body">
-          <CorporateAlerts symbol={symbol} demo={demo} />
+          <CorporateAlerts symbol={symbol} demo={demo} alertsOnly />
         </div>
       )}
     </div>
