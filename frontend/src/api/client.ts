@@ -714,10 +714,6 @@ export const api2 = {
     request<any>('/api/intraday/board', s),
   intradayLog: (date = '', s?: AbortSignal) =>
     request<any>(`/api/intraday/log${date ? `?date=${date}` : ''}`, s),
-  smartMoneyScan: (s?: AbortSignal) =>
-    request<any>('/api/smart-money/scan', s),
-  smartMoneyDetail: (symbol: string, s?: AbortSignal) =>
-    request<any>(`/api/smart-money/${encodeURIComponent(symbol)}`, s),
   claudeLastScan: (days = 15, s?: AbortSignal) =>
     request<any>(`/api/claude-last/scan?days=${days}`, s),
   preEarningsDirectionScan: (days = 15, s?: AbortSignal) =>
