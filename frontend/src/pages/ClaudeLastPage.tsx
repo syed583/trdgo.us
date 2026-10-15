@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, Target, Search, ChevronRight, AlertTriangle } from 'lucide-react';
 import type { PageContext } from '../App';
-import { CorporateAlerts } from '../components/EarningsShared';
+import { RiskAlertsCard } from '../components/EarningsShared';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import '../components/earnings-trade.css';
@@ -200,7 +200,7 @@ function NewsDropdown({ symbol, demo }: { symbol: string; demo?: boolean }) {
       </button>
       {open && (
         <div className="cn-news-body">
-          <CorporateAlerts symbol={symbol} demo={demo} alertsOnly />
+          <RiskAlertsCard symbol={symbol} demo={demo} />
         </div>
       )}
     </div>

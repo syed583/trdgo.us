@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Loader2, Target, CalendarDays, ChevronRight, Plus, AlertTriangle, TrendingUp } from 'lucide-react';
 import type { PageContext } from '../App';
 import { ScoreGauge } from '../components/common';
+import { RiskAlertsCard } from '../components/EarningsShared';
 import { api, api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import './tab-scan.css';
@@ -37,10 +38,7 @@ export default function ClaudeLastDetail({ ctx, base = '/claude-last', pz = fals
   // Expected move + high-impact alerts, same sources as the Claude +- detail.
   const trade = useApi<any>((s) => (ctx.demo ? Promise.resolve(null) : api2.earningsTrade(sym, 'default', s)), [sym],
     { refreshMs: ctx.demo ? undefined : 120_000 });
-  const alerts = useApi<any>((s) => (ctx.demo ? Promise.resolve(null) : api2.earningsAlerts(sym, s)), [sym],
-    { refreshMs: ctx.demo ? undefined : 120_000 });
   const em = trade.data?.expected_move || {};
-  const hiAlerts = (alerts.data?.alerts || []).filter((a: any) => a.severity !== 'GREY');
   const d = resp.data;
   const ok = d?.status === 'OK';
   const score: number | null = ok ? d.score : null;
@@ -186,29 +184,8 @@ export default function ClaudeLastDetail({ ctx, base = '/claude-last', pz = fals
               <div className="ets-em-cur">Current ${em.current != null ? num(em.current, 2) : '--'}</div>
             </div>
 
-            {/* News & Risk Alerts (compact, high-impact only) */}
-            <div className={`ets-card ets-alerts-card ${hiAlerts.length ? 'has-alerts' : ''}`}>
-              <div className="ets-card-h">
-                <span><AlertTriangle size={15} /> News &amp; Risk Alerts</span>
-                {alerts.data?.counts && (
-                  <span className="ets-badge alert-count">
-                    {(alerts.data.counts.RED || 0) + (alerts.data.counts.AMBER || 0)} alerts</span>
-                )}
-              </div>
-              <div className="ets-alerts">
-                {hiAlerts.map((a: any, i: number) => (
-                  <div key={i} className="ets-alert">
-                    <span className={`ets-alert-tag ${a.severity === 'RED' ? 'red' : 'amber'}`}>
-                      {a.severity === 'RED' ? 'High' : 'Medium'}</span>
-                    <div>
-                      <div className="ets-alert-t">{a.title}</div>
-                      <div className="ets-alert-d">{a.date || a.source || ''}</div>
-                    </div>
-                  </div>
-                ))}
-                {!hiAlerts.length && <div className="ets-empty-sm">No high-impact alerts.</div>}
-              </div>
-            </div>
+            {/* News & Risk Alerts (same compact card used on the list) */}
+            <RiskAlertsCard symbol={sym} demo={ctx.demo} />
           </div>
 
           {/* Confidence -- below the cards (like Claude +-'s Confidence/Exit row). */}

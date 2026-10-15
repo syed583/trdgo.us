@@ -5,6 +5,39 @@ import { useApi } from '../hooks/useApi';
 import { ScoreGauge } from './common';
 import { safeHref } from '../lib/format';
 import './earnings-trade.css';
+import '../pages/earnings-trade-screen.css';   // ets-alerts-card styling
+
+// Compact "News & Risk Alerts" card -- the exact card from the earnings / Claude
+// New detail (high-impact red/amber only, "N alerts" badge). Used on the detail
+// pages AND the Claude New list dropdown so they show the same thing.
+export function RiskAlertsCard({ symbol, demo }: { symbol: string; demo?: boolean }) {
+  const a = useApi<any>((s) => (demo ? Promise.resolve(null) : api2.earningsAlerts(symbol, s)),
+    [symbol, demo], { refreshMs: demo ? undefined : 120_000 });
+  const hi = (a.data?.alerts || []).filter((x: any) => x.severity !== 'GREY');
+  const n = (a.data?.counts?.RED || 0) + (a.data?.counts?.AMBER || 0);
+  return (
+    <div className={`ets-card ets-alerts-card ${n > 0 ? 'has-alerts' : ''}`}>
+      <div className="ets-card-h">
+        <span><AlertTriangle size={15} /> News &amp; Risk Alerts</span>
+        {a.data?.counts && <span className="ets-badge alert-count">{n} alerts</span>}
+      </div>
+      <div className="ets-alerts">
+        {a.initialLoading ? <div className="ets-empty-sm">Loading…</div>
+          : hi.map((x: any, i: number) => (
+            <div key={i} className="ets-alert">
+              <span className={`ets-alert-tag ${x.severity === 'RED' ? 'red' : 'amber'}`}>
+                {x.severity === 'RED' ? 'High' : 'Medium'}</span>
+              <div>
+                <div className="ets-alert-t">{x.title}</div>
+                <div className="ets-alert-d">{x.date || x.source || ''}</div>
+              </div>
+            </div>
+          ))}
+        {!a.initialLoading && !hi.length && <div className="ets-empty-sm">No high-impact alerts.</div>}
+      </div>
+    </div>
+  );
+}
 
 const DECISION_TONE: Record<string, string> = {
   BUY: 'buy', 'STRONG BUY': 'buy', SELL: 'sell', 'STRONG SELL': 'sell',
