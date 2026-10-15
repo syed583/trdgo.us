@@ -510,6 +510,7 @@ def _compose(rows: list[dict], now: datetime, spy_status: str = "ok") -> dict:
     return {
         "status": "OK", "model": im.MODEL, "asof": now.isoformat(),
         "session": _session(now), "window_open": _NEW_START <= now.time() <= _NEW_END,
+        "phase": ind.market_phase(now),
         "counts": {"buy": len(buyers), "sell": len(sellers),
                    "no_edge": len(no_edge), "withheld": len(withheld)},
         "health": {"bars_ok": bars_ok, "total": total, "spy_status": spy_status,

@@ -78,8 +78,27 @@ def session_bars(bars: list[dict], day=None) -> list[dict]:
     rth = [b for b in norm if _is_rth(b["dt"])]
     if not rth:
         return []
-    sess = day or rth[-1]["dt"].date()
+    # TODAY's ET session only -- never the last session present. Before the open
+    # there are no RTH bars for today, so this is empty (the model then withholds
+    # rather than scoring yesterday's session as if it were live).
+    sess = day or now_et().date()
     return [b for b in rth if b["dt"].date() == sess]
+
+
+def market_phase(now: Optional[datetime] = None) -> str:
+    """'pre' (before 09:30 ET), 'rth' (09:30-16:00), 'post' (16:00-20:00),
+    or 'closed' (weekend / overnight). Holidays are not detected here."""
+    now = now or now_et()
+    if now.weekday() >= 5:
+        return "closed"
+    t = now.time()
+    if t < _OPEN:
+        return "pre"
+    if t < _CLOSE:
+        return "rth"
+    if t < time(20, 0):
+        return "post"
+    return "closed"
 
 
 def _ema(vals: list[float], span: int) -> Optional[float]:

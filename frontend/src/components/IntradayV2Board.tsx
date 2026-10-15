@@ -80,6 +80,17 @@ export default function IntradayV2Board() {
 
   return (
     <div className="im2-board">
+      {/* Phase banner: the model scores the LIVE regular-hours session only. */}
+      {d?.phase && d.phase !== 'rth' && (
+        <div className="im2-phase">
+          {d.phase === 'pre'
+            ? 'Pre-market — the intraday model scores the live session; it starts at 9:30 ET. Names show WITHHELD until the open.'
+            : d.phase === 'post'
+              ? 'After-hours — showing today’s completed session. New signals resume at the next open.'
+              : 'Market closed — the intraday model runs during regular hours (9:30–16:00 ET).'}
+        </div>
+      )}
+
       {/* Daily summary */}
       <div className="im2-summary">
         <b>Today</b>

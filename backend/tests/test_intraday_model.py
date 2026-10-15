@@ -1,9 +1,36 @@
 """Intraday Model v2 -- correctness fixes: ET session dates, wall scoring,
 freshness-by-date, liquidity excluding today's partial bar."""
 
-from datetime import date
+from datetime import date, datetime
 
 import intraday_model as im
+import intraday_indicators as ind
+
+
+def test_market_phase_by_time():
+    ny = ind._ET
+    at = lambda h, m: datetime(2026, 10, 15, h, m, tzinfo=ny)   # Thu (weekday)
+    assert ind.market_phase(at(6, 0)) == "pre"
+    assert ind.market_phase(at(11, 0)) == "rth"
+    assert ind.market_phase(at(17, 0)) == "post"
+    assert ind.market_phase(at(21, 0)) == "closed"
+    assert ind.market_phase(datetime(2026, 10, 17, 11, 0, tzinfo=ny)) == "closed"  # Sat
+
+
+def test_session_bars_uses_today_not_last_present(monkeypatch):
+    ny = ind._ET
+    # Bars contain Wednesday's full RTH session but no Thursday RTH yet.
+    wed = [{"t": f"2026-10-14T{h:02d}:30:00-04:00", "open": 1, "high": 1, "low": 1,
+            "close": 1, "volume": 10} for h in range(10, 15)]
+    # Pre-market Thursday -> today's (Thu) RTH session is empty, NOT Wednesday's.
+    monkeypatch.setattr(ind, "now_et", lambda: datetime(2026, 10, 15, 6, 0, tzinfo=ny))
+    assert ind.session_bars(wed) == []
+    # Once Thursday's session is underway, only Thursday's bars are the session.
+    thu = wed + [{"t": "2026-10-15T10:00:00-04:00", "open": 2, "high": 2, "low": 2,
+                  "close": 2, "volume": 20}]
+    monkeypatch.setattr(ind, "now_et", lambda: datetime(2026, 10, 15, 10, 5, tzinfo=ny))
+    sess = ind.session_bars(thu)
+    assert len(sess) == 1 and sess[0]["c"] == 2
 
 
 # --- Fix 1: ET session date, not the Dubai server day ----------------------
