@@ -635,10 +635,28 @@ def score_one(symbol: str, *, detail: bool = False) -> dict:
 # --------------------------------------------------------------------------- #
 #  scanner over the universe
 # --------------------------------------------------------------------------- #
+UNIVERSE_DAYS = 10        # earnings-calendar window (calendar days)
+UNIVERSE_CAP = 60         # cap the soonest reporters (the scan is 6 calls/name)
+
+
 def universe() -> list:
+    """Upcoming-earnings names from the earnings calendar (soonest first), NOT a
+    generic stock list -- Smart Money lives in Earnings & news. Capped so the
+    heavy per-name scan stays feasible; the scanner fills progressively."""
     try:
-        import ai_trade_service as ats
-        return [s.upper() for s in getattr(ats, "UNIVERSE", [])]
+        import uw_earnings_calendar as cal
+        from datetime import date
+        rows = (cal.calendar(days=UNIVERSE_DAYS) or {}).get("rows") or []
+        today = date.today().isoformat()
+        seen, uniq = set(), []
+        for r in rows:
+            s = (r.get("symbol") or "").upper()
+            d = str(r.get("date") or "")[:10]
+            if s and s not in seen and d >= today:       # upcoming only
+                seen.add(s)
+                uniq.append((s, d))
+        uniq.sort(key=lambda x: x[1])                    # soonest earnings first
+        return [s for s, _ in uniq[:UNIVERSE_CAP]]
     except Exception:  # noqa: BLE001
         return []
 
