@@ -1,32 +1,40 @@
-import { useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Loader2, Scale, AlertTriangle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { Loader2, Target, CalendarDays, ChevronRight, Plus, AlertTriangle } from 'lucide-react';
 import type { PageContext } from '../App';
 import { ScoreGauge } from '../components/common';
 import { CorporateAlerts } from '../components/EarningsShared';
-import { api2 } from '../api/client';
+import { api, api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import './tab-scan.css';
+import './earnings-trade-screen.css';   // ets-* layout (same as Claude +-)
 
-// Claude Last (Direction v3) single-stock detail -- score gauge + confidence
-// meter + the 8-parameter breakdown, in the same spirit as the Earnings Trade
-// detail page.
+// Claude New (Direction v3) single-stock detail -- same card layout as the
+// Claude +- (Earnings Trade) detail: a scored gauge, a confidence card, the
+// News & Risk Alerts panel, sub-tabs and an Add-to-Watchlist button.
 
-const sigColor = (s: number | null) =>
+const COLOR = (s: number | null) =>
   s == null ? 'var(--text-mute)' : s >= 55 ? 'var(--green)' : s <= 45 ? 'var(--red)' : 'var(--amber)';
-const sigLabel = (s: number | null) =>
+const CALL = (s: number | null) =>
   s == null ? '--' : s >= 55 ? 'BUY' : s <= 45 ? 'SELL' : 'NEUTRAL';
-const sigTier = (s: number | null) =>
-  s == null ? 'neu' : s >= 55 ? 'buy' : s <= 45 ? 'sell' : 'neu';
+const TONE = (s: number | null) =>
+  s == null ? 'flat' : s >= 55 ? 'buy' : s <= 45 ? 'sell' : 'flat';
+const SETUP = (s: number | null) =>
+  s == null ? '--' : s >= 65 ? 'Strong Setup' : s >= 55 ? 'Good Setup'
+    : s <= 35 ? 'Weak Setup' : s <= 45 ? 'Soft Setup' : 'Neutral';
+const num = (v: any, d = 2) => (v == null ? '--' : Number(v).toFixed(d));
 
 export default function ClaudeLastDetail({ ctx, base = '/claude-last', pz = false }:
   { ctx: PageContext; base?: string; pz?: boolean }) {
   const { symbol } = useParams();
   const navigate = useNavigate();
+  const [whyOpen, setWhyOpen] = useState(true);
   const sym = (symbol || ctx.symbol || '').toUpperCase();
 
   const resp = useApi<any>((s) => api2.claudeLastDetail(sym, s), [sym],
     { refreshMs: ctx.demo ? undefined : 120_000 });
+  const quote = useApi<any>((s) => (ctx.demo ? Promise.resolve(null) : api.quote(sym, s)), [sym],
+    { refreshMs: ctx.demo ? undefined : 60_000 });
   const d = resp.data;
   const ok = d?.status === 'OK';
   const score: number | null = ok ? d.score : null;
@@ -38,141 +46,147 @@ export default function ClaudeLastDetail({ ctx, base = '/claude-last', pz = fals
     return () => window.clearTimeout(id);
   }, [ctx.demo, ok, resp.loading, resp.refresh]);
 
-  const leanOf = (p: any) => p.points > p.max / 2 + 0.3 ? 'pos'
-    : p.points < p.max / 2 - 0.3 ? 'neg' : 'neu';
+  const q = quote.data || {};
+  const chg = q.change_percent ?? q.changePercent;
+  const title = pz ? 'Claude New +0' : 'Claude New';
+
+  const leanOf = (p: any) => (p.bias == null ? 'none'
+    : p.bias > 0.15 ? 'buy' : p.bias < -0.15 ? 'sell' : 'flat');
 
   return (
-    <div className="page">
-      <div className="cnd-top">
-        <button className="cnd-back" onClick={() => navigate(base)}>
-          <ArrowLeft size={15} /> {pz ? 'Claude New +0' : 'Claude New'}
-        </button>
+    <div className="page ets">
+      <div className="ets-back-row">
+        <Link to={`${base}${ctx.search}`} className="ets-back">
+          <ChevronRight size={14} style={{ transform: 'rotate(180deg)' }} /> {title}
+        </Link>
       </div>
 
       {(resp.initialLoading && !d) || (!ok && d?.status === 'NO_DATA') ? (
-        <div className="es-empty"><Loader2 size={18} className="spin" /> Warming {sym}'s
-          direction score — this fills in automatically…</div>
+        <div className="ets-empty ets-loading"><Loader2 className="ets-spin" size={18} />
+          Warming {sym}'s direction score — this fills in automatically…</div>
       ) : !ok ? (
-        <div className="es-empty">No direction score for {sym} — it isn't reporting in the window.</div>
+        <div className="ets-empty">No direction score for {sym} — it isn't reporting in the window.</div>
       ) : (
         <>
-          <div className="cnd-head">
-            <div className="cnd-gauge">
-              <ScoreGauge value={score ?? 0} color={sigColor(score)} size={120} />
-              <div className="cnd-gauge-num" style={{ color: sigColor(score) }}>
-                {score}<span>/100</span>
+          {/* Header */}
+          <div className="ets-header">
+            <div className="ets-id">
+              <div className="ets-logo">{sym.slice(0, 2)}</div>
+              <div>
+                <div className="ets-name-row">
+                  <span className="ets-name">{d.company || sym}</span>
+                  <span className="ets-ticker">{sym}</span>
+                </div>
+                <div className="ets-meta">US · {d.sector || '—'}</div>
               </div>
             </div>
-            <div className="cnd-head-mid">
-              <div className="cnd-sym">{sym} <span className="cnd-co">{d.company || ''}</span></div>
-              <div className={`cnd-signal ${sigTier(score)}`}>{sigLabel(score)}</div>
-              <div className="cnd-meta">
-                {d.date_label || d.date || ''}{d.time_label ? ` · ${d.time_label}` : ''}
-                {d.days_to != null ? ` · in ${d.days_to}d` : ''}
-                {d.sector ? ` · ${d.sector}` : ''}
+            <div className="ets-price">
+              <div className="ets-price-v">{q.price != null ? `$${num(q.price)}` : '--'}</div>
+              {chg != null && (
+                <div className={`ets-price-c ${chg >= 0 ? 'pos' : 'neg'}`}>
+                  {chg >= 0 ? '+' : ''}{num(chg)}%</div>
+              )}
+            </div>
+            <div className="ets-earn">
+              <div className="ets-earn-l">Earnings Date</div>
+              <div className="ets-earn-v"><CalendarDays size={13} /> {d.date_label || d.date || '—'}</div>
+              <div className="ets-earn-t">{d.report_timing || d.time_label || ''}</div>
+            </div>
+            {d.days_to != null && (
+              <div className="ets-days"><div className="ets-days-n">{d.days_to}</div>
+                <div className="ets-days-l">Days</div></div>
+            )}
+            <div className="ets-actions">
+              <button className="btn-primary" onClick={() => api2.watchlistAdd(sym).catch(() => {})}>
+                <Plus size={15} /> Add to Watchlist
+              </button>
+            </div>
+          </div>
+
+          {/* Sub-tabs */}
+          <div className="ets-subtabs">
+            <button type="button" className="ets-subtab active">Direction</button>
+            <Link className="ets-subtab" to={`/earnings-equity/${sym}${ctx.search}`}>Stock detail</Link>
+            <Link className="ets-subtab" to={`/news/${sym}${ctx.search}`}>News &amp; Sentiment</Link>
+          </div>
+
+          {/* Row: direction signal / confidence / news & risk alerts */}
+          <div className="ets-row ets-row-3">
+            {/* Direction Signal */}
+            <div className="ets-card">
+              <div className="ets-card-h">
+                <span><Target size={15} /> Direction Signal</span>
+                <span className={`ets-badge ${TONE(score)}`}>{CALL(score)}</span>
               </div>
-              {(d.coverage != null) && (
-                <div className={`cnd-conf ${d.low_confidence ? 'low' : 'ok'}`}>
-                  {d.low_confidence && <AlertTriangle size={12} />}
-                  {d.low_confidence ? 'LOW CONFIDENCE — do not trade' : 'Confidence OK'}
-                  <span className="cnd-conf-nums">coverage {d.coverage}% · agreement {d.agreement}%</span>
+              <div className="ets-gauges ets-gauges-one">
+                <div className="ets-gauge-wrap">
+                  <div className="ets-gauge-title">Direction</div>
+                  <div className="ets-gauge">
+                    <ScoreGauge value={score ?? 0} color={COLOR(score)} size={118} />
+                    <div className="ets-gauge-num">
+                      <span style={{ color: COLOR(score) }}>{score == null ? '--' : Math.round(score)}</span>
+                      <span className="ets-gauge-max">/100</span>
+                    </div>
+                  </div>
+                  <div className="ets-setup" style={{ color: COLOR(score) }}>{SETUP(score)}</div>
+                </div>
+              </div>
+              <button className="ets-why-toggle" onClick={() => setWhyOpen((v) => !v)} aria-expanded={whyOpen}>
+                {whyOpen ? 'Hide' : 'Why these scores?'}
+                <ChevronRight size={13} style={{ transform: whyOpen ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
+              </button>
+              {whyOpen && (
+                <div className="ets-why">
+                  <div className="ets-why-side">
+                    <div className="ets-why-h">Direction
+                      <span className="ets-why-score">{score != null ? `${score}/100 · ${CALL(score)}` : '--'}</span>
+                    </div>
+                    {params.map((p: any, i: number) => (
+                      <div key={i} className="ets-why-row">
+                        <span className={`ets-why-dot ${leanOf(p)}`} />
+                        <div>
+                          <div className="ets-why-t">
+                            <b>{p.label}</b>
+                            <em>{p.bias == null ? 'no data' : `${p.points?.toFixed(1)} / ${p.max}`}</em>
+                          </div>
+                          {p.sub && (
+                            <div className="ets-why-d">
+                              {p.sub.map((s: any) => `${s.name} ${s.points?.toFixed(1)}/${s.max}`).join(' · ')}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {!params.length && <div className="ets-why-d">No parameter detail available.</div>}
+                  </div>
+                  <div className="ets-note">All-positive v3 score: points = weight × (0.5 + 0.5 × bias);
+                    missing data scores half. BUY ≥ 55 · NEUTRAL · SELL ≤ 45.</div>
                 </div>
               )}
-              <div className="cnd-formula">Two-sided v3: every parameter can score below 50.
-                Points = weight × (0.5 + 0.5 × bias). BUY ≥ 55 · NEUTRAL · SELL ≤ 45.</div>
             </div>
-          </div>
 
-          {pz && (() => {
-            // Signed contribution of each parameter = bias x weight = 2*(points - weight/2).
-            // Summed, these give the net; score = 50 + (net / 100 available) x 50.
-            const rows = params.map((p) => ({ ...p, c: 2 * ((p.points ?? p.max / 2) - p.max / 2) }));
-            const ups = rows.filter((p) => p.c > 0.05).sort((a, b) => b.c - a.c);
-            const downs = rows.filter((p) => p.c < -0.05).sort((a, b) => a.c - b.c);
-            const neutral = rows.filter((p) => Math.abs(p.c) <= 0.05);
-            const sumUp = ups.reduce((n, p) => n + p.c, 0);
-            const sumDn = downs.reduce((n, p) => n + p.c, 0);   // negative
-            const net = sumUp + sumDn;
-            const present = 100;    // v3.1 weights always sum to 100 (missing data = half weight)
-            const sgn = (v: number) => (v >= 0 ? '+' : '') + v.toFixed(1);
-            return (
-              <div className="ets-card cnd-card">
-                <div className="ets-card-h"><span><Scale size={15} />
-                  Score breakdown (+ / 0 / −)</span></div>
-                <div className="cnd-pm cnd-pm3">
-                  <div className="cnd-pm-col up">
-                    <div className="cnd-pm-h">Pushing UP (+)</div>
-                    {ups.length ? ups.map((p) => (
-                      <div key={p.name} className="cnd-pm-row">
-                        <span className="cnd-pm-lbl">{p.label}</span>
-                        <span className="cnd-pm-val up">+{p.c.toFixed(1)}</span>
-                      </div>
-                    )) : <div className="cnd-pm-none">Nothing bullish</div>}
-                    <div className="cnd-pm-sub">+{sumUp.toFixed(1)}</div>
-                  </div>
-                  <div className="cnd-pm-col zero">
-                    <div className="cnd-pm-h">Neutral (0)</div>
-                    {neutral.length ? neutral.map((p) => (
-                      <div key={p.name} className="cnd-pm-row">
-                        <span className="cnd-pm-lbl">{p.label}</span>
-                        <span className="cnd-pm-val zero">{p.bias == null ? 'no data' : '0.0'}</span>
-                      </div>
-                    )) : <div className="cnd-pm-none">None neutral</div>}
-                    <div className="cnd-pm-sub">{neutral.length}</div>
-                  </div>
-                  <div className="cnd-pm-col down">
-                    <div className="cnd-pm-h">Pulling DOWN (−)</div>
-                    {downs.length ? downs.map((p) => (
-                      <div key={p.name} className="cnd-pm-row">
-                        <span className="cnd-pm-lbl">{p.label}</span>
-                        <span className="cnd-pm-val down">{p.c.toFixed(1)}</span>
-                      </div>
-                    )) : <div className="cnd-pm-none">Nothing bearish</div>}
-                    <div className="cnd-pm-sub">{sumDn.toFixed(1)}</div>
-                  </div>
+            {/* Confidence */}
+            <div className="ets-card">
+              <div className="ets-card-h"><span>Confidence</span>
+                {d.low_confidence && <span className="ets-badge flat">LOW</span>}</div>
+              <div className="ets-conf">
+                <div className="ets-conf-row">
+                  <span>Coverage</span><b>{d.coverage != null ? `${d.coverage}%` : '--'}</b>
                 </div>
-                <div className="cnd-net">
-                  <div className="cnd-net-h">Net</div>
-                  <div className="cnd-net-big" style={{ color: sigColor(score) }}>{sgn(net)} pts</div>
-                  <div className="cnd-net-calc">= +{sumUp.toFixed(1)} − {Math.abs(sumDn).toFixed(1)}
-                    {' · '}{neutral.length} neutral</div>
-                  <div className="cnd-net-formula">Score = 50 + ({sgn(net)} ÷ {present} available) × 50
-                    = <b style={{ color: sigColor(score) }}>{score}</b> / 100</div>
+                <div className="ets-conf-bar"><i style={{ width: `${d.coverage || 0}%` }} /></div>
+                <div className="ets-conf-row">
+                  <span>Agreement</span><b>{d.agreement != null ? `${d.agreement}%` : '--'}</b>
                 </div>
+                <div className="ets-conf-bar"><i style={{ width: `${d.agreement || 0}%` }} /></div>
+                {d.low_confidence && (
+                  <div className="ets-conf-note"><AlertTriangle size={13} /> Thin or conflicted signals — do not trade on this alone.</div>
+                )}
               </div>
-            );
-          })()}
-
-          {!pz && (
-          <div className="ets-card cnd-card">
-            <div className="ets-card-h"><span><Scale size={15} /> Parameter breakdown</span></div>
-            <div className="cnd-params">
-              {params.map((p) => {
-                const pct = Math.max(0, Math.min(100, (p.points / p.max) * 100));
-                const lean = leanOf(p);
-                return (
-                  <div key={p.name} className={`cnd-prow ${lean}`}>
-                    <span className="cnd-plbl">{p.label}</span>
-                    <span className="cnd-pbar"><i style={{ width: `${pct}%` }} /></span>
-                    <span className="cnd-ppts"><b>{p.points?.toFixed(1)}</b> / {p.max}</span>
-                    <span className="cnd-praw">{p.bias != null
-                      ? `${p.bias > 0 ? '+' : ''}${p.bias}` : 'no data'}</span>
-                    {p.sub && (
-                      <span className="cnd-psub">
-                        {p.sub.map((s: any) => `${s.name} ${s.points?.toFixed(1)}/${s.max}`).join(' · ')}
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
             </div>
-            <div className="cnd-total">Total (sum of rows) = <b style={{ color: sigColor(score) }}>{score}</b> / 100</div>
-          </div>
-          )}
 
-          {/* SEC EDGAR filings (8-K/425), insider Form-4, 13F changes and
-              classified news -- the same panel as the earnings detail. */}
-          <CorporateAlerts symbol={sym} demo={ctx.demo} />
+            {/* News & Risk Alerts (self-boxed panel) */}
+            <CorporateAlerts symbol={sym} demo={ctx.demo} />
+          </div>
         </>
       )}
     </div>

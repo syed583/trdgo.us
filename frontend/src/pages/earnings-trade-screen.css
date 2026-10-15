@@ -353,3 +353,12 @@
 .ets-legend .dot.green { background:#16a34a; }
 .ets-legend .dot.yellow { background:#d97706; }
 .ets-legend .dot.red { background:#dc2626; }
+
+/* Claude New detail -- Confidence card (matches the ets-card look). */
+.ets-conf { padding: 4px 2px; }
+.ets-conf-row { display: flex; justify-content: space-between; font-size: 13px; margin: 8px 0 4px; }
+.ets-conf-row b { font-variant-numeric: tabular-nums; }
+.ets-conf-bar { height: 7px; border-radius: 4px; background: var(--panel-2); overflow: hidden; }
+.ets-conf-bar i { display: block; height: 100%; background: var(--accent, #2563eb); border-radius: 4px; }
+.ets-conf-note { display: flex; gap: 6px; align-items: flex-start; margin-top: 12px; font-size: 12px;
+  color: #92400e; background: #fef3c7; border-radius: 7px; padding: 7px 10px; }
