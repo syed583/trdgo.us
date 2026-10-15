@@ -316,3 +316,9 @@
 .cn-news-toggle:hover { color: var(--text); background: var(--panel-2); }
 .cn-news-chev { margin-left: auto; }
 .cn-news-body { padding: 0 10px 10px; }
+
+/* Claude New list card -- Implied-Move gate note (why a score is gated). */
+.cn-gate { display:flex; align-items:center; gap:5px; font-size:11px; font-weight:600;
+  margin:4px 0 2px; padding:3px 7px; border-radius:6px; }
+.cn-gate.no { color:#991b1b; background:#fee2e2; }
+.cn-gate.half { color:#92400e; background:#fef3c7; }
