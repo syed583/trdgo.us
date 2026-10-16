@@ -71,6 +71,24 @@ GROK_WEIGHTS: dict[str, int] = {
     "dark_pool_insiders": 5,     # Low
 }                                # sum = 100
 
+# --- Meta: Pre-Earnings Direction (owner's 11-factor / 100-pt model) ----------
+# Adds Implied-vs-Historical move, IV Rank and Gamma/OI concentration to the
+# direction factors. All read from the warmed equity signals + trade cache, so
+# the list scan stays fast. Same 5-step scale and BUY>=55 / SELL<=45 bands.
+META_WEIGHTS: dict[str, int] = {
+    "eps_revisions": 13,
+    "implied_vs_hist": 13,       # NEW -- implied move vs historical avg move
+    "options_flow": 11,
+    "iv_rank": 11,               # NEW -- IV level signal (engine implied_volatility)
+    "unusual_skew": 9,
+    "prior_guidance": 9,
+    "revenue_revisions": 9,      # NEW -- revenue estimate revisions / whisper
+    "hist_reaction": 8,
+    "gamma_oi": 8,               # NEW -- gamma / OI concentration (oi_positioning)
+    "peers": 7,
+    "short_interest": 2,
+}                                # sum = 100
+
 # --- Tab B: Short Straddle Scanner (banded, 100 pts) ------------------------
 TAB_B_WEIGHTS: dict[str, int] = {
     "iv_rank": 40, "implied_move": 25, "impl_vs_hist": 20, "liquidity": 15,

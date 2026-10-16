@@ -57,6 +57,31 @@ const CLAUDE_NEW_MODEL = (pz: boolean): DirModelCfg => ({
   scan: (d, s) => api2.claudeLastScan(d, s),
 });
 
+// Meta -- owner's 11-factor / 100-pt model.
+const META_PARAMS: { key: string; label: string }[] = [
+  { key: 'eps_revisions', label: 'EPS' },
+  { key: 'implied_vs_hist', label: 'IM/Hist' },
+  { key: 'options_flow', label: 'Flow' },
+  { key: 'iv_rank', label: 'IV Rank' },
+  { key: 'unusual_skew', label: 'Unusual' },
+  { key: 'prior_guidance', label: 'Guid' },
+  { key: 'revenue_revisions', label: 'Rev' },
+  { key: 'hist_reaction', label: 'Hist' },
+  { key: 'gamma_oi', label: 'Gamma/OI' },
+  { key: 'peers', label: 'Peers' },
+  { key: 'short_interest', label: 'Short' },
+];
+
+export const META_MODEL: DirModelCfg = {
+  base: '/meta',
+  title: 'Meta · Pre-Earnings Direction · 11 factors',
+  subtitle: 'Direction from 11 factors incl. implied-vs-historical move, IV rank and gamma/OI '
+    + 'concentration, plus EPS/revenue revisions, flow, skew, guidance, history, peers and short '
+    + 'interest. 100 pts. Each box is a stock reporting soon, coloured by its signal.',
+  params: META_PARAMS,
+  scan: (d, s) => api2.metaScan(d, s),
+};
+
 export const GROK_MODEL: DirModelCfg = {
   base: '/grok',
   title: 'Grok · Pre-Earnings Direction · 9 factors',

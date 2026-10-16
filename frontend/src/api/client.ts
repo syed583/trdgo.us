@@ -726,6 +726,10 @@ export const api2 = {
     request<any>(`/api/grok/scan?days=${days}`, s),
   grokDetail: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/grok/${encodeURIComponent(symbol)}`, s),
+  metaScan: (days = 15, s?: AbortSignal) =>
+    request<any>(`/api/meta/scan?days=${days}`, s),
+  metaDetail: (symbol: string, s?: AbortSignal) =>
+    request<any>(`/api/meta/${encodeURIComponent(symbol)}`, s),
   earningsEquity: (symbol: string, profile?: string, s?: AbortSignal) =>
     request<any>(`/api/earnings/equity/${encodeURIComponent(symbol)}`
       + (profile && profile !== 'default' ? `?profile=${profile}` : ''), s),

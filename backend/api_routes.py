@@ -448,6 +448,68 @@ def grok_detail(symbol: str) -> dict:
     return swr.serve(f"grok:one:{sym}", build, market.session_ttl(120, 1800))
 
 
+@router.get("/meta/scan")
+def meta_scan(days: int = 15) -> dict:
+    """Meta -- Pre-Earnings Direction (11-factor / 100-pt), ranked. Non-blocking."""
+    import meta_service as mt
+    import threading
+
+    d = max(1, min(int(days or 15), 30))
+    key = f"meta:scan:{d}"
+    res = swr.peek(key)
+
+    def _compute() -> None:
+        try:
+            swr.serve(key, lambda: mt.scan(d), 90.0)
+        except Exception:  # noqa: BLE001
+            pass
+
+    threading.Thread(target=_compute, daemon=True).start()
+    if res is None:
+        return {"status": "WARMING", "source": mt.SOURCE, "rows": [],
+                "universe": 0, "scored": 0, "missing": []}
+    return res
+
+
+@router.get("/meta/{symbol}")
+def meta_detail(symbol: str) -> dict:
+    """Meta single-stock detail: 11-factor score, signal, confidence + breakdown."""
+    import meta_service as mt
+    import earnings_equity_service as eq_svc
+
+    sym = symbol.upper()
+    eq = swr.serve(f"earn:equity:{sym}", lambda: eq_svc.get_analysis(sym), 21600.0)
+    if not eq or not eq.get("params"):
+        return {"status": "NO_DATA", "symbol": sym}
+    if "signals" not in eq:
+        fresh = eq_svc.get_analysis(sym)
+        if fresh and fresh.get("params"):
+            eq = fresh
+            swr._values[f"earn:equity:{sym}"] = (__import__("time").time(), fresh)
+
+    def build() -> dict:
+        trade = None
+        try:
+            import earnings_trade_service as ets
+            trade = swr.serve(f"earn:trade:default:{sym}",
+                              lambda: ets.get_summary(sym, "default"),
+                              market.session_ttl(120, 1800))
+        except Exception:  # noqa: BLE001
+            trade = None
+        row = {}
+        try:
+            import uw_earnings_calendar as uwcal
+            pv = uwcal.preview(sym) or {}
+            row = {"company": pv.get("name"), "date": pv.get("next_report"),
+                   "short_label": pv.get("next_report_time"),
+                   "sector": pv.get("sector"), "prior_close": pv.get("prior_close")}
+        except Exception:  # noqa: BLE001
+            row = {}
+        return {"status": "OK", **mt.score_one(sym, eq, trade, row)}
+
+    return swr.serve(f"meta:one:{sym}", build, market.session_ttl(120, 1800))
+
+
 @router.get("/tab-b/scan")
 def tab_b_scan(days: int = 15) -> dict:
     """Tab B -- short-straddle scanner, ranked by inflated-premium score."""
