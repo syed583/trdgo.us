@@ -448,6 +448,29 @@ def grok_detail(symbol: str) -> dict:
     return swr.serve(f"grok:one:{sym}", build, market.session_ttl(120, 1800))
 
 
+@router.get("/all-models/scan")
+def all_models_scan(days: int = 15) -> dict:
+    """All-in-One matrix: every model's call per upcoming name. Non-blocking."""
+    import all_models_service as am
+    import threading
+
+    d = max(1, min(int(days or 15), 30))
+    key = f"allmodels:scan:{d}"
+    res = swr.peek(key)
+
+    def _compute() -> None:
+        try:
+            swr.serve(key, lambda: am.scan(d), 90.0)
+        except Exception:  # noqa: BLE001
+            pass
+
+    threading.Thread(target=_compute, daemon=True).start()
+    if res is None:
+        return {"status": "WARMING", "source": am.SOURCE, "models": am.MODELS,
+                "rows": [], "universe": 0, "scored": 0}
+    return res
+
+
 @router.get("/claude-pro/scan")
 def claude_pro_scan(days: int = 15) -> dict:
     """Claude Pro -- refined 6-block direction model, ranked. Non-blocking."""

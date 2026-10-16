@@ -746,6 +746,8 @@ export const api2 = {
     request<any>(`/api/claude-pro/scan?days=${days}`, s),
   claudeProDetail: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/claude-pro/${encodeURIComponent(symbol)}`, s),
+  allModelsScan: (days = 15, s?: AbortSignal) =>
+    request<any>(`/api/all-models/scan?days=${days}`, s),
   earningsEquity: (symbol: string, profile?: string, s?: AbortSignal) =>
     request<any>(`/api/earnings/equity/${encodeURIComponent(symbol)}`
       + (profile && profile !== 'default' ? `?profile=${profile}` : ''), s),
