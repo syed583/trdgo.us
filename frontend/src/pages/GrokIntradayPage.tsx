@@ -1,118 +1,104 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, Zap, TrendingUp, TrendingDown, ChevronRight } from 'lucide-react';
+import { Loader2, Zap, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import '../components/intraday-v2.css';
-import './tab-scan.css';
 
-// Grok Intraday -- a LIVE board over the liquid universe (like Trdgo Stock),
-// scored with the Grok 10-signal short-term model. Top Buyers / Top Sellers,
-// each expandable to the 10-signal breakdown.
+// Grok Intraday -- a LIVE board over the liquid universe, same UI as Trdgo Stock
+// (Intraday Model v2 board) but scored with the Grok 10-signal short-term model.
 
-const PARAMS: { key: string; label: string }[] = [
-  { key: 'options_flow', label: 'Flow' },
-  { key: 'unusual_activity', label: 'Unusual' },
-  { key: 'volume_pcr', label: 'Vol/PCR' },
-  { key: 'trend_price', label: 'Trend' },
-  { key: 'key_levels', label: 'Levels' },
-  { key: 'oi_change_expiry', label: 'OI Chg' },
-  { key: 'volatility_em', label: 'Vol/EM' },
-  { key: 'rsi_momentum', label: 'RSI' },
-  { key: 'disparity', label: 'C/P' },
-  { key: 'event_radar', label: 'Event' },
-];
+const money = (v: any) => (v == null ? '—' : `$${Number(v).toFixed(2)}`);
+const callClass = (c: string) => (c === 'BUY' ? 'im2-buy' : c === 'SELL' ? 'im2-sell' : 'im2-noedge');
 
-const tier = (sig: string) => (sig === 'BUY' ? 'buy' : sig === 'SELL' ? 'sell' : 'neutral');
-const leanOf = (d: any) => (d.points > d.max / 2 + 0.3 ? 'pos'
-  : d.points < d.max / 2 - 0.3 ? 'neg' : 'neu');
-
-function Row({ r }: { r: any }) {
-  const [open, setOpen] = useState(false);
+function SignalTable({ rows, side }: { rows: any[]; side: 'BUY' | 'SELL' }) {
   const nav = useNavigate();
+  if (!rows.length) {
+    return <p className="im2-note">No {side === 'BUY' ? 'buy' : 'sell'} signals right now.</p>;
+  }
   return (
-    <div className="ue-cardwrap">
-      <button className={`ue-row sig-${tier(r.signal)}`} onClick={() => setOpen((v) => !v)}>
-        <div className="ue-row-l">
-          <span className="ue-sym">{r.symbol}</span>
-          <span className="ue-co">{r.company || ''}</span>
-        </div>
-        <div className="ue-row-r">
-          <span className={`cn-status-score ${tier(r.signal)}`}>{r.signal} · {r.score}</span>
-          <ChevronRight size={15} className="ue-chev"
-            style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }} />
-        </div>
-      </button>
-      {open && (
-        <div className={`ue-risk cn-status ${tier(r.signal)}`}>
-          <div className="cn-params">
-            {PARAMS.map((p) => {
-              const d = (r.params || []).find((x: any) => x.name === p.key);
-              if (!d) return null;
-              return (
-                <span key={p.key} className={`cn-chip ${leanOf(d)}`}
-                  title={`${p.label}: ${d.points?.toFixed(1)} of ${d.max}`}>
-                  {p.label} <b>{d.points?.toFixed(1)}</b>
-                </span>
-              );
-            })}
-          </div>
-          <button className="cn-news-toggle" style={{ marginTop: 6 }}
-            onClick={() => nav(`/grok-intraday/${r.symbol}`)}>Open full detail</button>
-        </div>
-      )}
+    <div className="im2-wrap">
+      <table className="im2-tbl">
+        <thead>
+          <tr>
+            <th>Symbol</th><th>Call</th><th className="n">Score</th><th className="n">Entry</th>
+            <th className="n">Now</th><th className="n">TP</th><th className="n">SL</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.symbol} className="im2-rowlink" onClick={() => nav(`/grok-intraday/${r.symbol}`)}>
+              <td className="sym">{r.symbol}</td>
+              <td><span className={`im2-call ${callClass(r.signal)}`}>{r.signal}</span></td>
+              <td className="n">{r.score ?? '—'}</td>
+              <td className="n">{money(r.entry)}</td>
+              <td className="n">{money(r.now)}</td>
+              <td className="n">{money(r.tp)}</td>
+              <td className="n">{money(r.sl)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
 
 export default function GrokIntradayPage({ ctx }: { ctx: PageContext }) {
   void ctx;
+  const [tab, setTab] = useState<'board'>('board');
+  void tab; void setTab;
   const b = useApi<any>((s) => api2.grokIntradayBoard(s), [], { refreshMs: 60_000 });
   const d = b.data;
-  const warming = !d || d.status === 'WARMING';
-  const buyers = d?.buyers || [];
-  const sellers = d?.sellers || [];
-  const c = d?.counts || {};
+  const counts = d?.counts || {};
+  const warming = d?.status === 'WARMING' || (b.initialLoading && !d);
+  const neutral = d?.neutral || [];
+
+  const Stat = ({ icon, label, n, cls }: any) => (
+    <div className={`im2-stat ${cls}`}>{icon}<div><div className="im2-stat-n">{n ?? '—'}</div>
+      <div className="im2-stat-l">{label}</div></div></div>
+  );
 
   return (
     <div className="page">
-      <div className="ts-head">
-        <h1><Zap size={20} /> Grok Intraday · Live Board</h1>
-        <p>Short-term direction over the liquid universe (same names as Trdgo Stock), scored by the
-          Grok 10-signal model: options flow, unusual activity, volume/PCR, trend, key levels, OI
-          change, volatility, RSI, C/P and event radar. BUY ≥ 55 · SELL ≤ 45. Click a name for its
-          signal breakdown.</p>
+      <div className="at-head">
+        <div>
+          <h1><Zap size={20} /> Grok Intraday</h1>
+          <p className="at-basis at-basis-sm"><b>Live Board · Grok 10-signal model</b></p>
+        </div>
       </div>
 
-      {warming ? (
-        <div className="im2-board"><p className="im2-note">
-          <Loader2 size={15} className="spin" /> Scoring the universe…</p></div>
-      ) : (
-        <div className="im2-board">
-          <div className="im2-stats">
-            <div className="im2-stat buy"><TrendingUp size={16} /><div>
-              <div className="im2-stat-n">{c.buy ?? 0}</div><div className="im2-stat-l">BUY</div></div></div>
-            <div className="im2-stat sell"><TrendingDown size={16} /><div>
-              <div className="im2-stat-n">{c.sell ?? 0}</div><div className="im2-stat-l">SELL</div></div></div>
-            <div className="im2-stat"><div>
-              <div className="im2-stat-n">{c.neutral ?? 0}</div><div className="im2-stat-l">NEUTRAL</div></div></div>
-            <div className="im2-health"><span className="ok">Scored {d.scored}/{d.universe}</span></div>
-          </div>
-
-          <h3 className="im2-h">Top Buyers</h3>
-          <div className="ue-grid">
-            {buyers.length ? buyers.map((r: any) => <Row key={r.symbol} r={r} />)
-              : <p className="im2-note">No buy signals right now.</p>}
-          </div>
-          <h3 className="im2-h">Top Sellers</h3>
-          <div className="ue-grid">
-            {sellers.length ? sellers.map((r: any) => <Row key={r.symbol} r={r} />)
-              : <p className="im2-note">No sell signals right now.</p>}
-          </div>
-          <p className="im2-foot">Live short-term lean from options flow + technicals. Not advice.</p>
+      <div className="im2-board">
+        <div className="im2-health">
+          <span>Scored <b>{d?.scored ?? '—'}/{d?.universe ?? '—'}</b> this scan</span>
+          <span className="ok">Liquid universe · same names as Trdgo Stock</span>
         </div>
-      )}
+
+        <div className="im2-stats">
+          <Stat icon={<TrendingUp size={16} />} label="BUY-rated" n={counts.buy} cls="buy" />
+          <Stat icon={<TrendingDown size={16} />} label="SELL-rated" n={counts.sell} cls="sell" />
+          <Stat icon={<Minus size={16} />} label="NEUTRAL" n={counts.neutral} cls="noedge" />
+        </div>
+
+        {warming ? (
+          <p className="im2-note"><Loader2 size={12} className="spin" /> Scoring the universe…</p>
+        ) : (
+          <>
+            <h3 className="im2-h">Top Buyers</h3>
+            <SignalTable rows={d?.buyers || []} side="BUY" />
+            <h3 className="im2-h">Top Sellers</h3>
+            <SignalTable rows={d?.sellers || []} side="SELL" />
+            <h3 className="im2-h">NEUTRAL</h3>
+            <div className="im2-chips">
+              {neutral.length ? neutral.map((r: any) =>
+                <span key={r.symbol} className="im2-chip">{r.symbol} <em>{r.score}</em></span>)
+                : <span className="im2-note">—</span>}
+            </div>
+            <p className="im2-foot">Short-term lean from options flow + technicals (10-signal Grok model).
+              Entry = price, TP/SL from daily ATR (2:1). Read-only — not advice.</p>
+          </>
+        )}
+      </div>
     </div>
   );
 }

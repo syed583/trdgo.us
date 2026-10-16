@@ -109,6 +109,41 @@ def _eq_cached(symbol: str) -> Optional[dict]:
     return swr.serve(f"earn:equity:{symbol}", lambda: eq_svc.get_analysis(symbol), 21600.0)
 
 
+def _price_atr(symbol: str):
+    """(price, atr14_daily) for entry/stop/target, lightly cached."""
+    import swr
+    import unusualwhales_service as uw
+    import intraday_indicators as ind
+
+    def _px():
+        q = uw.get_quote(symbol) or {}
+        return cl._f(q.get("price")) or cl._f(q.get("close"))
+
+    def _atr():
+        return ind.atr14_daily(uw.get_daily_bars(symbol, "3 M") or [])
+
+    price = swr.serve(f"grokintra:px:{symbol}", _px, 120.0)
+    atr = swr.serve(f"grokintra:atr:{symbol}", _atr, 6 * 3600.0)
+    return price, atr
+
+
+def _levels(r: dict) -> None:
+    """Attach entry / now / tp / sl to a row (entry = price; +-0.5 ATR stop,
+    +-1.0 ATR target, 2:1), matching the Trdgo Stock board columns."""
+    try:
+        price, atr = _price_atr(r["symbol"])
+    except Exception:  # noqa: BLE001
+        price = atr = None
+    if price is None:
+        return
+    r["entry"] = round(price, 2)
+    r["now"] = round(price, 2)
+    if atr and r["signal"] in ("BUY", "SELL"):
+        sgn = 1 if r["signal"] == "BUY" else -1
+        r["sl"] = round(price - sgn * 0.5 * atr, 2)
+        r["tp"] = round(price + sgn * 1.0 * atr, 2)
+
+
 def board() -> dict:
     """Live board over the liquid universe (same ~38 names as Trdgo Stock), scored
     with the Grok 10-signal model. Top Buyers / Top Sellers / Neutral by score.
@@ -121,7 +156,9 @@ def board() -> dict:
         try:
             eq = _eq_cached(s)
             if eq and eq.get("params"):
-                return score_one(s, eq, None, {"symbol": s})
+                r = score_one(s, eq, None, {"symbol": s})
+                _levels(r)
+                return r
         except Exception:  # noqa: BLE001
             return None
         return None
