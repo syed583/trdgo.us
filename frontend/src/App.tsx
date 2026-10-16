@@ -30,7 +30,7 @@ import { GROK_MODEL, META_MODEL, CHATGPT_MODEL, KIMI_MODEL, GEMINI_MODEL, CLAUDE
 const CLAUDE_PRO_DETAIL = { base: '/claude-pro', title: 'Claude Pro', detail: (s: string, sig?: AbortSignal) => api2.claudeProDetail(s, sig) };
 const AllModelsPage = lazy(() => import('./pages/AllModelsPage'));
 const GrokIntradayPage = lazy(() => import('./pages/GrokIntradayPage'));
-import { META_INTRADAY_CFG, CLAUDE_PRO_INTRADAY_CFG, KIMI_INTRADAY_CFG } from './pages/GrokIntradayPage';
+import { META_INTRADAY_CFG, CLAUDE_PRO_INTRADAY_CFG, KIMI_INTRADAY_CFG, GEMINI_INTRADAY_CFG } from './pages/GrokIntradayPage';
 const META_INTRADAY_DETAIL = { base: '/meta-intraday', title: 'Meta Intraday', detail: (s: string, sig?: AbortSignal) => api2.metaIntradayDetail(s, sig) };
 const GROK_INTRADAY_DETAIL = { base: '/grok-intraday', title: 'Grok Intraday', detail: (s: string, sig?: AbortSignal) => api2.grokIntradayDetail(s, sig) };
 const GEMINI_DETAIL = { base: '/gemini', title: 'Gemini', detail: (s: string, sig?: AbortSignal) => api2.geminiDetail(s, sig) };
@@ -107,7 +107,7 @@ const OPTIONS_ROUTES = [
 
 /** Sections that carry a symbol in the URL. */
 const SYMBOL_SECTIONS =
-  /^\/(earnings|earnings-trade|earnings-claude|claude-last|claude-new-pz|grok|meta|chatgpt|kimi|gemini|claude-pro|grok-intraday|meta-intraday|claude-pro-intraday|kimi-intraday|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)(\/|$)/;
+  /^\/(earnings|earnings-trade|earnings-claude|claude-last|claude-new-pz|grok|meta|chatgpt|kimi|gemini|claude-pro|grok-intraday|meta-intraday|claude-pro-intraday|kimi-intraday|gemini-intraday|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)(\/|$)/;
 
 /**
  * The same sections, capturing the ticker itself.
@@ -119,7 +119,7 @@ const SYMBOL_SECTIONS =
  * ticker card changed the address bar while every panel kept showing NVDA.
  */
 const SYMBOL_IN_PATH =
-  /^\/(?:earnings|earnings-trade|earnings-claude|claude-last|claude-new-pz|grok|meta|chatgpt|kimi|gemini|claude-pro|grok-intraday|meta-intraday|claude-pro-intraday|kimi-intraday|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)\/([A-Za-z0-9.\-]+)/;
+  /^\/(?:earnings|earnings-trade|earnings-claude|claude-last|claude-new-pz|grok|meta|chatgpt|kimi|gemini|claude-pro|grok-intraday|meta-intraday|claude-pro-intraday|kimi-intraday|gemini-intraday|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)\/([A-Za-z0-9.\-]+)/;
 
 export interface PageContext {
   symbol: string;
@@ -382,6 +382,8 @@ function Shell() {
           <Route path="/claude-pro-intraday/:symbol" element={<ClaudeLastDetail ctx={ctx} model={{ base: '/claude-pro-intraday', title: 'Claude Pro Intraday', detail: (s: string, sig?: AbortSignal) => api2.claudeProIntradayDetail(s, sig) }} />} />
           <Route path="/kimi-intraday" element={<GrokIntradayPage ctx={ctx} cfg={KIMI_INTRADAY_CFG} />} />
           <Route path="/kimi-intraday/:symbol" element={<ClaudeLastDetail ctx={ctx} model={{ base: '/kimi-intraday', title: 'Kimi Intraday', detail: (s: string, sig?: AbortSignal) => api2.kimiIntradayDetail(s, sig) }} />} />
+          <Route path="/gemini-intraday" element={<GrokIntradayPage ctx={ctx} cfg={GEMINI_INTRADAY_CFG} />} />
+          <Route path="/gemini-intraday/:symbol" element={<ClaudeLastDetail ctx={ctx} model={{ base: '/gemini-intraday', title: 'Gemini Intraday', detail: (s: string, sig?: AbortSignal) => api2.geminiIntradayDetail(s, sig) }} />} />
           <Route path="/option-scanner" element={<OptionScannerPage ctx={ctx} />} />
           <Route path="/unusual-activity" element={<UnusualActivityPage ctx={ctx} />} />
           <Route path="/pre-earnings-direction" element={<PreEarningsDirectionPage ctx={ctx} />} />

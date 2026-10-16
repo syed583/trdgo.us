@@ -471,6 +471,47 @@ def grok_intraday_scan(days: int = 15) -> dict:
     return res
 
 
+@router.get("/gemini-intraday/board")
+def gemini_intraday_board() -> dict:
+    """Gemini Intraday LIVE board -- 80/20 execution model, equity signals."""
+    import gemini_intraday_service as gin
+    import threading
+    res = swr.peek("geminiintra:board")
+
+    def _bg() -> None:
+        try:
+            swr.serve("geminiintra:board", lambda: gin.board(), 120.0)
+        except Exception:  # noqa: BLE001
+            pass
+
+    threading.Thread(target=_bg, daemon=True).start()
+    if res is None:
+        return {"status": "WARMING", "source": gin.SOURCE, "buyers": [], "sellers": [],
+                "neutral": [], "counts": {}}
+    return res
+
+
+@router.get("/gemini-intraday/{symbol}")
+def gemini_intraday_detail(symbol: str) -> dict:
+    """Gemini Intraday single-stock: 80/20 score + breakdown + move size."""
+    import gemini_intraday_service as gin
+    import earnings_equity_service as eq_svc
+    sym = symbol.upper()
+    eq = swr.serve(f"earn:equity:{sym}", lambda: eq_svc.get_analysis(sym), 1800.0)
+    if not eq or not eq.get("params"):
+        return {"status": "NO_DATA", "symbol": sym}
+    trade = None
+    try:
+        import earnings_trade_service as ets
+        trade = swr.serve(f"earn:trade:default:{sym}",
+                          lambda: ets.get_summary(sym, "default"), market.session_ttl(120, 1800))
+    except Exception:  # noqa: BLE001
+        trade = None
+    return swr.serve(f"geminiintra:one:{sym}",
+                     lambda: {"status": "OK", **gin.score_one(sym, eq, trade, {})},
+                     market.session_ttl(60, 900))
+
+
 @router.get("/kimi-intraday/board")
 def kimi_intraday_board() -> dict:
     """Kimi Intraday LIVE board -- live engine, framework 6-category weighting."""

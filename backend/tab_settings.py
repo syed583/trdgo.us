@@ -178,6 +178,23 @@ META_INTRADAY_WEIGHTS: dict[str, int] = {
     "daily_oi_change": 8,     # where new money is going today
 }                             # sum = 100
 
+# --- Gemini Intraday: 80/20 market/company execution model (rescaled to 100) --
+# From the demo scorecard (directional weights summed to 91; IV/EM is sizing-only
+# and excluded). Rescaled x100/91 to 100. Equity-engine signals.
+GEMINI_INTRADAY_WEIGHTS: dict[str, int] = {
+    "options_flow": 13,       # market pillar
+    "unusual_activity": 12,
+    "disparity": 9,
+    "volume_pcr": 8,
+    "key_levels": 7,
+    "oi_change": 8,           # daily OI + expiry + OI positioning
+    "ema_trend": 11,
+    "rsi_price": 10,          # RSI + price action
+    "insider_ownership": 10,  # company pillar
+    "earnings_catalyst": 10,  # earnings / mergers / funding
+    "dividends_event": 2,     # dividends + event radar
+}                             # sum = 100
+
 # --- Meta: Pre-Earnings Direction (owner's 11-factor / 100-pt model) ----------
 # Adds Implied-vs-Historical move, IV Rank and Gamma/OI concentration to the
 # direction factors. All read from the warmed equity signals + trade cache, so

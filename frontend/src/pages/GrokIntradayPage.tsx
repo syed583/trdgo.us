@@ -64,6 +64,10 @@ export const KIMI_INTRADAY_CFG: IntradayCfg = {
   title: 'Kimi Intraday', subtitle: 'Live Board · real 5-min engine · 6-category framework',
   base: '/kimi-intraday', board: (s) => api2.kimiIntradayBoard(s),
 };
+export const GEMINI_INTRADAY_CFG: IntradayCfg = {
+  title: 'Gemini Intraday', subtitle: 'Live Board · 80/20 execution & flow model',
+  base: '/gemini-intraday', board: (s) => api2.geminiIntradayBoard(s),
+};
 
 export default function GrokIntradayPage({ ctx, cfg = GROK_CFG }:
   { ctx: PageContext; cfg?: IntradayCfg }) {

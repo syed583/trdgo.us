@@ -38,6 +38,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/meta-intraday', label: 'Meta Intraday', icon: <Layers size={S} /> },
     { to: '/claude-pro-intraday', label: 'Claude Pro Intraday', icon: <Star size={S} /> },
     { to: '/kimi-intraday', label: 'Kimi Intraday', icon: <Compass size={S} /> },
+    { to: '/gemini-intraday', label: 'Gemini Intraday', icon: <Waypoints size={S} /> },
     { to: '/tradgo-call', label: 'Tradgo Call', icon: <Gauge size={S} /> },
     { to: '/trade-plan', label: 'Trade Plan', icon: <Crosshair size={S} /> },
     { to: '/signal-history', label: 'Signal History', icon: <History size={S} /> },
