@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, Target, Search, ChevronRight, AlertTriangle } from 'lucide-react';
 import type { PageContext } from '../App';
@@ -57,6 +57,14 @@ export default function ClaudeLastPage({ ctx, base = '/claude-last', pz = false 
   const resp = useApi<any>((s) => api2.claudeLastScan(days, s), [days],
     { refreshMs: ctx.demo ? undefined : 120_000 });
   const rows: any[] = resp.data?.rows || [];
+  // The scan warms in the background (a cold scan takes a while); while it has no
+  // rows yet, re-poll every few seconds so the board fills in on its own.
+  const warming = !ctx.demo && (resp.data?.status === 'WARMING' || (!!resp.data && !rows.length));
+  useEffect(() => {
+    if (!warming || resp.loading) return undefined;
+    const id = window.setTimeout(() => resp.refresh(), 6000);
+    return () => window.clearTimeout(id);
+  }, [warming, resp.loading, resp.refresh]);
 
   const groups = useMemo(() => {
     const q = query.trim().toUpperCase();
@@ -106,7 +114,7 @@ export default function ClaudeLastPage({ ctx, base = '/claude-last', pz = false 
         <span className="at-chip">{total}</span>
       </div>
 
-      {resp.initialLoading && !rows.length ? (
+      {(resp.initialLoading || warming) && !rows.length ? (
         <div className="es-empty"><Loader2 size={18} className="spin" /> Scoring upcoming reports…</div>
       ) : !total ? (
         <div className="es-empty">{query ? `No matches for “${query}”.`

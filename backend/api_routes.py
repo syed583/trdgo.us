@@ -283,8 +283,23 @@ def claude_last_scan(days: int = 15) -> dict:
     import os
 
     d = max(1, min(int(days or 15), 30))
-    # v2 (14-param) schema -- new cache key so stale v3.1 rows are never served.
-    res = swr.serve(f"v3:scan:v2:{d}", lambda: v3.scan(d), 90.0)
+    key = f"v3:scan:v2:{d}"
+    # Non-blocking: a cold scan (earnings calendar + ~1500 cache reads) can take
+    # minutes, so never compute it inside the request -- serve the last result and
+    # recompute in the background. First load returns WARMING; the page polls.
+    res = swr.peek(key)
+
+    def _compute() -> None:
+        try:
+            swr.serve(key, lambda: v3.scan(d), 90.0)
+        except Exception:  # noqa: BLE001
+            pass
+
+    threading.Thread(target=_compute, daemon=True).start()
+    if res is None:
+        return {"status": "WARMING", "source": v3.SOURCE, "rows": [],
+                "universe": 0, "scored": 0, "missing": []}
+
     miss = res.get("missing") or []
     if miss and not (os.getenv("DISABLE_WARMERS") or "").strip():
         batch = miss[:12]
