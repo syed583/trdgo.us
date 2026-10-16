@@ -60,6 +60,10 @@ export const CLAUDE_PRO_INTRADAY_CFG: IntradayCfg = {
   title: 'Claude Pro Intraday', subtitle: 'Live Board · real 5-min engine · 7-block model',
   base: '/claude-pro-intraday', board: (s) => api2.claudeProIntradayBoard(s),
 };
+export const KIMI_INTRADAY_CFG: IntradayCfg = {
+  title: 'Kimi Intraday', subtitle: 'Live Board · real 5-min engine · 6-category framework',
+  base: '/kimi-intraday', board: (s) => api2.kimiIntradayBoard(s),
+};
 
 export default function GrokIntradayPage({ ctx, cfg = GROK_CFG }:
   { ctx: PageContext; cfg?: IntradayCfg }) {

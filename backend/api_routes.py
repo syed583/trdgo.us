@@ -471,6 +471,37 @@ def grok_intraday_scan(days: int = 15) -> dict:
     return res
 
 
+@router.get("/kimi-intraday/board")
+def kimi_intraday_board() -> dict:
+    """Kimi Intraday LIVE board -- live engine, framework 6-category weighting."""
+    import kimi_intraday_service as kin
+    import threading
+    res = swr.peek("kimiintra:board")
+
+    def _bg() -> None:
+        try:
+            swr.serve("kimiintra:board", lambda: kin.board(), 60.0)
+        except Exception:  # noqa: BLE001
+            pass
+
+    threading.Thread(target=_bg, daemon=True).start()
+    if res is None:
+        return {"status": "WARMING", "source": kin.SOURCE, "buyers": [], "sellers": [],
+                "neutral": [], "counts": {}}
+    return res
+
+
+@router.get("/kimi-intraday/{symbol}")
+def kimi_intraday_detail(symbol: str) -> dict:
+    """Kimi Intraday single-stock: live 6-category score + sub-factors + move size."""
+    import kimi_intraday_service as kin
+    sym = symbol.upper()
+    r = kin.score_one(sym, fetch=True)
+    if not r:
+        return {"status": "NO_DATA", "symbol": sym}
+    return {"status": "OK", **r}
+
+
 @router.get("/claude-pro-intraday/board")
 def claude_pro_intraday_board() -> dict:
     """Claude Pro Intraday LIVE board -- real intraday engine (5-min bars), the

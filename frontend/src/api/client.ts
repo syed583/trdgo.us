@@ -754,6 +754,10 @@ export const api2 = {
     request<any>('/api/grok-intraday/board', s),
   metaIntradayBoard: (s?: AbortSignal) =>
     request<any>('/api/meta-intraday/board', s),
+  kimiIntradayBoard: (s?: AbortSignal) =>
+    request<any>('/api/kimi-intraday/board', s),
+  kimiIntradayDetail: (symbol: string, s?: AbortSignal) =>
+    request<any>(`/api/kimi-intraday/${encodeURIComponent(symbol)}`, s),
   claudeProIntradayBoard: (s?: AbortSignal) =>
     request<any>('/api/claude-pro-intraday/board', s),
   claudeProIntradayDetail: (symbol: string, s?: AbortSignal) =>
