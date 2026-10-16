@@ -471,6 +471,27 @@ def grok_intraday_scan(days: int = 15) -> dict:
     return res
 
 
+@router.get("/grok-intraday/board")
+def grok_intraday_board() -> dict:
+    """Grok Intraday LIVE board over the liquid universe (like Trdgo Stock), scored
+    with the Grok 10-signal model. Non-blocking: serves the last board, warms next."""
+    import intraday_grok_service as ig
+    import threading
+    res = swr.peek("grokintra:board")
+
+    def _bg() -> None:
+        try:
+            swr.serve("grokintra:board", lambda: ig.board(), 120.0)
+        except Exception:  # noqa: BLE001
+            pass
+
+    threading.Thread(target=_bg, daemon=True).start()
+    if res is None:
+        return {"status": "WARMING", "source": ig.SOURCE, "buyers": [], "sellers": [],
+                "neutral": [], "counts": {}}
+    return res
+
+
 @router.get("/grok-intraday/{symbol}")
 def grok_intraday_detail(symbol: str) -> dict:
     """Grok Intraday single-stock detail: 10-signal short-term score + breakdown."""

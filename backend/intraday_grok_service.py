@@ -97,6 +97,54 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
             "low_confidence": low_conf}
 
 
+def _eq_cached(symbol: str) -> Optional[dict]:
+    """Equity signals for the board. Reuse the shared earn:equity cache (already
+    warmed for the big liquid names) so the board is fast; compute+cache only for
+    a name that has none yet."""
+    import swr
+    v = swr.peek(f"earn:equity:{symbol}")
+    if v and v.get("params") and "signals" in v:
+        return v
+    import earnings_equity_service as eq_svc
+    return swr.serve(f"earn:equity:{symbol}", lambda: eq_svc.get_analysis(symbol), 21600.0)
+
+
+def board() -> dict:
+    """Live board over the liquid universe (same ~38 names as Trdgo Stock), scored
+    with the Grok 10-signal model. Top Buyers / Top Sellers / Neutral by score.
+    Scored in parallel; per-name signals cached 10 min."""
+    import ai_trade_service as ats
+    from concurrent.futures import ThreadPoolExecutor
+    syms = [s.upper() for s in getattr(ats, "UNIVERSE", [])]
+
+    def _one(s: str):
+        try:
+            eq = _eq_cached(s)
+            if eq and eq.get("params"):
+                return score_one(s, eq, None, {"symbol": s})
+        except Exception:  # noqa: BLE001
+            return None
+        return None
+
+    rows: list[dict] = []
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        for r in ex.map(_one, syms):
+            if r:
+                rows.append(r)
+    buyers = sorted([r for r in rows if r["signal"] == "BUY"], key=lambda r: r["score"], reverse=True)
+    sellers = sorted([r for r in rows if r["signal"] == "SELL"], key=lambda r: r["score"])
+    neutral = [r for r in rows if r["signal"] == "NEUTRAL"]
+    try:
+        import intraday_indicators as ind
+        phase = ind.market_phase()
+    except Exception:  # noqa: BLE001
+        phase = None
+    return {"status": "OK", "source": SOURCE, "phase": phase,
+            "buyers": buyers, "sellers": sellers, "neutral": neutral,
+            "counts": {"buy": len(buyers), "sell": len(sellers), "neutral": len(neutral)},
+            "universe": len(syms), "scored": len(rows)}
+
+
 def scan(days: int = 15) -> dict:
     """Score every name reporting in the next ~`days`, ranked by score."""
     import swr

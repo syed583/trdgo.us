@@ -29,7 +29,7 @@ const ClaudeLastDetail = lazy(() => import('./pages/ClaudeLastDetail'));
 import { GROK_MODEL, META_MODEL, CHATGPT_MODEL, KIMI_MODEL, GEMINI_MODEL, CLAUDE_PRO_MODEL } from './pages/ClaudeLastPage';
 const CLAUDE_PRO_DETAIL = { base: '/claude-pro', title: 'Claude Pro', detail: (s: string, sig?: AbortSignal) => api2.claudeProDetail(s, sig) };
 const AllModelsPage = lazy(() => import('./pages/AllModelsPage'));
-import { GROK_INTRADAY_MODEL } from './pages/ClaudeLastPage';
+const GrokIntradayPage = lazy(() => import('./pages/GrokIntradayPage'));
 const GROK_INTRADAY_DETAIL = { base: '/grok-intraday', title: 'Grok Intraday', detail: (s: string, sig?: AbortSignal) => api2.grokIntradayDetail(s, sig) };
 const GEMINI_DETAIL = { base: '/gemini', title: 'Gemini', detail: (s: string, sig?: AbortSignal) => api2.geminiDetail(s, sig) };
 const KIMI_DETAIL = { base: '/kimi', title: 'Kimi', detail: (s: string, sig?: AbortSignal) => api2.kimiDetail(s, sig) };
@@ -372,7 +372,7 @@ function Shell() {
           <Route path="/claude-pro" element={<ClaudeLastPage ctx={ctx} model={CLAUDE_PRO_MODEL} />} />
           <Route path="/claude-pro/:symbol" element={<ClaudeLastDetail ctx={ctx} model={CLAUDE_PRO_DETAIL} />} />
           <Route path="/all-models" element={<AllModelsPage ctx={ctx} />} />
-          <Route path="/grok-intraday" element={<ClaudeLastPage ctx={ctx} model={GROK_INTRADAY_MODEL} />} />
+          <Route path="/grok-intraday" element={<GrokIntradayPage ctx={ctx} />} />
           <Route path="/grok-intraday/:symbol" element={<ClaudeLastDetail ctx={ctx} model={GROK_INTRADAY_DETAIL} />} />
           <Route path="/option-scanner" element={<OptionScannerPage ctx={ctx} />} />
           <Route path="/unusual-activity" element={<UnusualActivityPage ctx={ctx} />} />
