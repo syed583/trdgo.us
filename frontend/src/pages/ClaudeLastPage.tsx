@@ -82,6 +82,37 @@ export const META_MODEL: DirModelCfg = {
   scan: (d, s) => api2.metaScan(d, s),
 };
 
+// ChatGPT -- US Pre-Earnings Direction V1 (16 features).
+const CHATGPT_PARAMS: { key: string; label: string }[] = [
+  { key: 'eps_revisions', label: 'EPS' },
+  { key: 'revenue_revisions', label: 'Rev' },
+  { key: 'forward_guidance', label: 'Guid' },
+  { key: 'prior_history', label: 'History' },
+  { key: 'net_premium_flow', label: 'Flow' },
+  { key: 'unusual_options', label: 'Unusual' },
+  { key: 'skew_disparity', label: 'Skew' },
+  { key: 'hist_reactions', label: 'Hist Rx' },
+  { key: 'price_action_rs', label: 'Price/RS' },
+  { key: 'peer_readthrough', label: 'Peers' },
+  { key: 'analyst_dispersion', label: 'Dispersion' },
+  { key: 'short_interest', label: 'Short' },
+  { key: 'institutional', label: 'Instit' },
+  { key: 'insider', label: 'Insider' },
+  { key: 'implied_vs_realized', label: 'IV/RV' },
+  { key: 'ema_trend', label: 'EMA' },
+];
+
+export const CHATGPT_MODEL: DirModelCfg = {
+  base: '/chatgpt',
+  title: 'ChatGPT · US Pre-Earnings Direction V1 · 16 features',
+  subtitle: 'Directional prediction (BULLISH / NEUTRAL / BEARISH) from 16 normalised features: '
+    + 'EPS & revenue revisions, guidance, prior history, premium flow, unusual options, skew, '
+    + 'historical reactions, price/RS, peers, dispersion, short interest, institutional, insider, '
+    + 'implied-vs-realized and EMA trend. 100 pts. Each box is a stock reporting soon.',
+  params: CHATGPT_PARAMS,
+  scan: (d, s) => api2.chatgptScan(d, s),
+};
+
 export const GROK_MODEL: DirModelCfg = {
   base: '/grok',
   title: 'Grok · Pre-Earnings Direction · 9 factors',

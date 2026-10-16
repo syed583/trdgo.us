@@ -47,6 +47,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/claude-new-pz', label: 'Claude New +0', icon: <Scale size={S} /> },
     { to: '/grok', label: 'Grok', icon: <Sparkles size={S} /> },
     { to: '/meta', label: 'Meta', icon: <Layers size={S} /> },
+    { to: '/chatgpt', label: 'ChatGPT', icon: <Brain size={S} /> },
     { to: '/option-scanner', label: 'IV Crush Check', icon: <Flame size={S} /> },
     { to: '/unusual-activity', label: 'Unusual Activity', icon: <Zap size={S} /> },
     { to: '/pre-earnings-direction', label: 'Pre-Earnings Direction', icon: <Compass size={S} /> },

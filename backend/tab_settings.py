@@ -71,6 +71,30 @@ GROK_WEIGHTS: dict[str, int] = {
     "dark_pool_insiders": 5,     # Low
 }                                # sum = 100
 
+# --- ChatGPT: US Pre-Earnings Direction Model V1 (16 features / 100 pts) -------
+# TRDGO.ai spec. Directional score 0-100 from 16 normalised (-1..+1) features;
+# BULLISH / NEUTRAL / BEARISH by configurable thresholds. Reads the warmed equity
+# signals + trade cache (analyst dispersion is detail-only via Finnhub).
+CHATGPT_WEIGHTS: dict[str, int] = {
+    "eps_revisions": 12,
+    "revenue_revisions": 9,
+    "forward_guidance": 10,
+    "prior_history": 6,
+    "net_premium_flow": 9,
+    "unusual_options": 7,
+    "skew_disparity": 5,
+    "hist_reactions": 8,
+    "price_action_rs": 8,
+    "peer_readthrough": 6,
+    "analyst_dispersion": 5,
+    "short_interest": 4,
+    "institutional": 3,
+    "insider": 2,
+    "implied_vs_realized": 4,
+    "ema_trend": 2,
+}                                # sum = 100
+CHATGPT_THRESHOLDS: dict[str, float] = {"bullish": 55.0, "bearish": 45.0}
+
 # --- Meta: Pre-Earnings Direction (owner's 11-factor / 100-pt model) ----------
 # Adds Implied-vs-Historical move, IV Rank and Gamma/OI concentration to the
 # direction factors. All read from the warmed equity signals + trade cache, so
