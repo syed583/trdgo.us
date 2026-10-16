@@ -738,6 +738,10 @@ export const api2 = {
     request<any>(`/api/kimi/scan?days=${days}`, s),
   kimiDetail: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/kimi/${encodeURIComponent(symbol)}`, s),
+  geminiScan: (days = 15, s?: AbortSignal) =>
+    request<any>(`/api/gemini/scan?days=${days}`, s),
+  geminiDetail: (symbol: string, s?: AbortSignal) =>
+    request<any>(`/api/gemini/${encodeURIComponent(symbol)}`, s),
   earningsEquity: (symbol: string, profile?: string, s?: AbortSignal) =>
     request<any>(`/api/earnings/equity/${encodeURIComponent(symbol)}`
       + (profile && profile !== 'default' ? `?profile=${profile}` : ''), s),

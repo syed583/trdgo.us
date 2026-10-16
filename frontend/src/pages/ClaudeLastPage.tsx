@@ -142,6 +142,26 @@ export const KIMI_MODEL: DirModelCfg = {
   scan: (d, s) => api2.kimiScan(d, s),
 };
 
+// Gemini -- 90-Day Earnings Model, 6 weighted categories.
+const GEMINI_PARAMS: { key: string; label: string }[] = [
+  { key: 'fundamental_momentum', label: 'Fundamentals' },
+  { key: 'derivatives_flow', label: 'Derivatives' },
+  { key: 'volatility_edge', label: 'Vol Edge' },
+  { key: 'technical_structure', label: 'Technical' },
+  { key: 'institutional', label: 'Institutional' },
+  { key: 'peer_readthrough', label: 'Peers' },
+];
+
+export const GEMINI_MODEL: DirModelCfg = {
+  base: '/gemini',
+  title: 'Gemini · 90-Day Earnings Model · 6 categories',
+  subtitle: 'Category scoring matrix: Fundamental Momentum 25, Derivatives & Flow 20, Volatility '
+    + 'Edge 15, Technical Structure 15, Institutional Footprint 15, Cross-Asset Read-through 10. '
+    + 'Each category averages its sub-components. 100 pts. Each box is a stock reporting soon.',
+  params: GEMINI_PARAMS,
+  scan: (d, s) => api2.geminiScan(d, s),
+};
+
 export const GROK_MODEL: DirModelCfg = {
   base: '/grok',
   title: 'Grok · Pre-Earnings Direction · 9 factors',

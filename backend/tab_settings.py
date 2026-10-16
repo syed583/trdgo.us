@@ -117,6 +117,18 @@ KIMI_WEIGHTS: dict[str, float] = {
     "dark_pool": 3.4,         # dark pool (3)
 }                             # sum = 100.0
 
+# --- Gemini: 90-Day US Earnings Model (6 weighted categories) -----------------
+# Category-level weighting from the spec; each category is the average of its
+# sub-components (normalised -1..+1), then weighted. Sum = 100.
+GEMINI_WEIGHTS: dict[str, int] = {
+    "fundamental_momentum": 25,   # EPS revisions + prior guidance/beat history
+    "derivatives_flow": 20,       # unusual flow + skew & sentiment disparity
+    "volatility_edge": 15,        # implied move vs historical realized move
+    "technical_structure": 15,    # EMA 20/50/200 + price-action structure
+    "institutional": 15,          # dark-pool blocks + heavy-volume node clustering
+    "peer_readthrough": 10,       # sector peer performance (early reporters)
+}                                 # sum = 100
+
 # --- Meta: Pre-Earnings Direction (owner's 11-factor / 100-pt model) ----------
 # Adds Implied-vs-Historical move, IV Rank and Gamma/OI concentration to the
 # direction factors. All read from the warmed equity signals + trade cache, so
