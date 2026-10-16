@@ -754,6 +754,12 @@ export const api2 = {
     request<any>('/api/grok-intraday/board', s),
   metaIntradayBoard: (s?: AbortSignal) =>
     request<any>('/api/meta-intraday/board', s),
+  chatgptIntradayBoard: (s?: AbortSignal) =>
+    request<any>('/api/chatgpt-intraday/board', s),
+  allIntradayModelsScan: (s?: AbortSignal) =>
+    request<any>('/api/all-intraday-models/scan', s),
+  chatgptIntradayDetail: (symbol: string, s?: AbortSignal) =>
+    request<any>(`/api/chatgpt-intraday/${encodeURIComponent(symbol)}`, s),
   geminiIntradayBoard: (s?: AbortSignal) =>
     request<any>('/api/gemini-intraday/board', s),
   geminiIntradayDetail: (symbol: string, s?: AbortSignal) =>

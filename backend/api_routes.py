@@ -471,6 +471,57 @@ def grok_intraday_scan(days: int = 15) -> dict:
     return res
 
 
+@router.get("/all-intraday-models/scan")
+def all_intraday_models_scan() -> dict:
+    """All intraday models' call per universe name, one matrix. Non-blocking."""
+    import all_intraday_models_service as aim
+    import threading
+    res = swr.peek("allintra:scan")
+
+    def _bg() -> None:
+        try:
+            swr.serve("allintra:scan", lambda: aim.scan(), 45.0)
+        except Exception:  # noqa: BLE001
+            pass
+
+    threading.Thread(target=_bg, daemon=True).start()
+    if res is None:
+        return {"status": "WARMING", "source": aim.SOURCE, "models": aim.MODELS,
+                "rows": [], "universe": 0, "scored": 0}
+    return res
+
+
+@router.get("/chatgpt-intraday/board")
+def chatgpt_intraday_board() -> dict:
+    """ChatGPT Intraday LIVE board -- the TRDGO 18-parameter model."""
+    import chatgpt_intraday_service as cgi
+    import threading
+    res = swr.peek("cgptintra:board")
+
+    def _bg() -> None:
+        try:
+            swr.serve("cgptintra:board", lambda: cgi.board(), 60.0)
+        except Exception:  # noqa: BLE001
+            pass
+
+    threading.Thread(target=_bg, daemon=True).start()
+    if res is None:
+        return {"status": "WARMING", "source": cgi.SOURCE, "buyers": [], "sellers": [],
+                "neutral": [], "counts": {}}
+    return res
+
+
+@router.get("/chatgpt-intraday/{symbol}")
+def chatgpt_intraday_detail(symbol: str) -> dict:
+    """ChatGPT Intraday single-stock: 18-param score + breakdown + move size."""
+    import chatgpt_intraday_service as cgi
+    sym = symbol.upper()
+    r = cgi.score_one(sym, fetch=True)
+    if not r:
+        return {"status": "NO_DATA", "symbol": sym}
+    return {"status": "OK", **r}
+
+
 @router.get("/gemini-intraday/board")
 def gemini_intraday_board() -> dict:
     """Gemini Intraday LIVE board -- 80/20 execution model, equity signals."""

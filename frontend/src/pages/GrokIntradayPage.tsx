@@ -68,6 +68,10 @@ export const GEMINI_INTRADAY_CFG: IntradayCfg = {
   title: 'Gemini Intraday', subtitle: 'Live Board · 80/20 execution & flow model',
   base: '/gemini-intraday', board: (s) => api2.geminiIntradayBoard(s),
 };
+export const CHATGPT_INTRADAY_CFG: IntradayCfg = {
+  title: 'ChatGPT Intraday', subtitle: 'Live Board · TRDGO 18-parameter model',
+  base: '/chatgpt-intraday', board: (s) => api2.chatgptIntradayBoard(s),
+};
 
 export default function GrokIntradayPage({ ctx, cfg = GROK_CFG }:
   { ctx: PageContext; cfg?: IntradayCfg }) {
