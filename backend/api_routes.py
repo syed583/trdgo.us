@@ -471,6 +471,38 @@ def grok_intraday_scan(days: int = 15) -> dict:
     return res
 
 
+@router.get("/claude-pro-intraday/board")
+def claude_pro_intraday_board() -> dict:
+    """Claude Pro Intraday LIVE board -- real intraday engine (5-min bars), the
+    7-block critique weighting. Non-blocking."""
+    import claude_pro_intraday_service as cpi
+    import threading
+    res = swr.peek("cprointra:board")
+
+    def _bg() -> None:
+        try:
+            swr.serve("cprointra:board", lambda: cpi.board(), 60.0)
+        except Exception:  # noqa: BLE001
+            pass
+
+    threading.Thread(target=_bg, daemon=True).start()
+    if res is None:
+        return {"status": "WARMING", "source": cpi.SOURCE, "buyers": [], "sellers": [],
+                "neutral": [], "counts": {}}
+    return res
+
+
+@router.get("/claude-pro-intraday/{symbol}")
+def claude_pro_intraday_detail(symbol: str) -> dict:
+    """Claude Pro Intraday single-stock: live 7-block score + breakdown + move size."""
+    import claude_pro_intraday_service as cpi
+    sym = symbol.upper()
+    r = cpi.score_one(sym, fetch=True)
+    if not r:
+        return {"status": "NO_DATA", "symbol": sym}
+    return {"status": "OK", **r}
+
+
 @router.get("/meta-intraday/board")
 def meta_intraday_board() -> dict:
     """Meta Intraday LIVE board over the liquid universe, scored with the 7-signal

@@ -56,6 +56,10 @@ export const META_INTRADAY_CFG: IntradayCfg = {
   title: 'Meta Intraday', subtitle: 'Live Board · Meta 7-signal model',
   base: '/meta-intraday', board: (s) => api2.metaIntradayBoard(s),
 };
+export const CLAUDE_PRO_INTRADAY_CFG: IntradayCfg = {
+  title: 'Claude Pro Intraday', subtitle: 'Live Board · real 5-min engine · 7-block model',
+  base: '/claude-pro-intraday', board: (s) => api2.claudeProIntradayBoard(s),
+};
 
 export default function GrokIntradayPage({ ctx, cfg = GROK_CFG }:
   { ctx: PageContext; cfg?: IntradayCfg }) {
