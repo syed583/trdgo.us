@@ -129,6 +129,27 @@ GEMINI_WEIGHTS: dict[str, int] = {
     "peer_readthrough": 10,       # sector peer performance (early reporters)
 }                                 # sum = 100
 
+# --- Claude Pro: refined direction model (merged blocks, magnitude separated) -
+# Addresses the critique: positioning signals merged into one block (they
+# co-move), technicals merged into trend/run-up, magnitude pulled OUT of the
+# direction score into a separate Move-Size field, heavier weight on expectations.
+# Block weights sum to 100; sub-weights sum to their block.
+CLAUDE_PRO_BLOCKS: dict[str, dict] = {
+    "expectations": {"label": "Expectations & Fundamentals", "subs": {
+        "eps_revisions": 12, "revenue_revisions": 9, "guidance": 8,
+        "estimate_dispersion": 5, "implied_vs_hist": 6}},          # 40
+    "positioning": {"label": "Positioning (flow/skew/dark pool)", "subs": {
+        "options_flow": 7, "unusual": 5, "skew_disparity": 5, "dark_pool": 3}},  # 20
+    "trend_runup": {"label": "Pre-earnings Trend / Run-up", "subs": {
+        "price_structure": 5, "ema_trend": 4, "runup": 3}},        # 12
+    "history": {"label": "History (reaction + peers)", "subs": {
+        "hist_reaction": 9, "peers": 6}},                          # 15
+    "short_insider": {"label": "Short Interest & Insiders", "subs": {
+        "short_interest": 5, "insider": 3}},                       # 8
+    "regime": {"label": "Sector / Market Regime", "subs": {
+        "spy_vix": 5}},                                            # 5
+}                                 # block weights sum to 100
+
 # --- Meta: Pre-Earnings Direction (owner's 11-factor / 100-pt model) ----------
 # Adds Implied-vs-Historical move, IV Rank and Gamma/OI concentration to the
 # direction factors. All read from the warmed equity signals + trade cache, so

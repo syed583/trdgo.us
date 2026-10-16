@@ -50,6 +50,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/chatgpt', label: 'ChatGPT', icon: <Brain size={S} /> },
     { to: '/kimi', label: 'Kimi', icon: <Compass size={S} /> },
     { to: '/gemini', label: 'Gemini', icon: <Waypoints size={S} /> },
+    { to: '/claude-pro', label: 'Claude Pro', icon: <Star size={S} /> },
     { to: '/option-scanner', label: 'IV Crush Check', icon: <Flame size={S} /> },
     { to: '/unusual-activity', label: 'Unusual Activity', icon: <Zap size={S} /> },
     { to: '/pre-earnings-direction', label: 'Pre-Earnings Direction', icon: <Compass size={S} /> },

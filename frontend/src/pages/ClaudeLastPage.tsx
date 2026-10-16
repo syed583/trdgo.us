@@ -162,6 +162,27 @@ export const GEMINI_MODEL: DirModelCfg = {
   scan: (d, s) => api2.geminiScan(d, s),
 };
 
+// Claude Pro -- refined 6-block model (critique-driven).
+const CLAUDE_PRO_PARAMS: { key: string; label: string }[] = [
+  { key: 'expectations', label: 'Expectations' },
+  { key: 'positioning', label: 'Positioning' },
+  { key: 'trend_runup', label: 'Trend/Run-up' },
+  { key: 'history', label: 'History' },
+  { key: 'short_insider', label: 'Short/Insider' },
+  { key: 'regime', label: 'Regime' },
+];
+
+export const CLAUDE_PRO_MODEL: DirModelCfg = {
+  base: '/claude-pro',
+  title: 'Claude Pro · Refined Direction · 6 blocks',
+  subtitle: 'Refined model: correlated positioning signals merged into one block, technicals '
+    + 'merged into trend/run-up, magnitude pulled out into a separate Move-Size read. Weights: '
+    + 'Expectations 40, Positioning 20, Trend/Run-up 12, History 15, Short/Insider 8, Regime 5. '
+    + 'Each box is a stock reporting soon; click for the sub-signals inside each block.',
+  params: CLAUDE_PRO_PARAMS,
+  scan: (d, s) => api2.claudeProScan(d, s),
+};
+
 export const GROK_MODEL: DirModelCfg = {
   base: '/grok',
   title: 'Grok · Pre-Earnings Direction · 9 factors',
