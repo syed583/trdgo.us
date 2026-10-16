@@ -448,6 +448,68 @@ def grok_detail(symbol: str) -> dict:
     return swr.serve(f"grok:one:{sym}", build, market.session_ttl(120, 1800))
 
 
+@router.get("/kimi/scan")
+def kimi_scan(days: int = 15) -> dict:
+    """Kimi -- Pre-Earnings Direction (14 factors), ranked. Non-blocking."""
+    import kimi_service as ki
+    import threading
+
+    d = max(1, min(int(days or 15), 30))
+    key = f"kimi:scan:{d}"
+    res = swr.peek(key)
+
+    def _compute() -> None:
+        try:
+            swr.serve(key, lambda: ki.scan(d), 90.0)
+        except Exception:  # noqa: BLE001
+            pass
+
+    threading.Thread(target=_compute, daemon=True).start()
+    if res is None:
+        return {"status": "WARMING", "source": ki.SOURCE, "rows": [],
+                "universe": 0, "scored": 0, "missing": []}
+    return res
+
+
+@router.get("/kimi/{symbol}")
+def kimi_detail(symbol: str) -> dict:
+    """Kimi single-stock detail: 14-factor score, signal, confidence + breakdown."""
+    import kimi_service as ki
+    import earnings_equity_service as eq_svc
+
+    sym = symbol.upper()
+    eq = swr.serve(f"earn:equity:{sym}", lambda: eq_svc.get_analysis(sym), 21600.0)
+    if not eq or not eq.get("params"):
+        return {"status": "NO_DATA", "symbol": sym}
+    if "signals" not in eq:
+        fresh = eq_svc.get_analysis(sym)
+        if fresh and fresh.get("params"):
+            eq = fresh
+            swr._values[f"earn:equity:{sym}"] = (__import__("time").time(), fresh)
+
+    def build() -> dict:
+        trade = None
+        try:
+            import earnings_trade_service as ets
+            trade = swr.serve(f"earn:trade:default:{sym}",
+                              lambda: ets.get_summary(sym, "default"),
+                              market.session_ttl(120, 1800))
+        except Exception:  # noqa: BLE001
+            trade = None
+        row = {}
+        try:
+            import uw_earnings_calendar as uwcal
+            pv = uwcal.preview(sym) or {}
+            row = {"company": pv.get("name"), "date": pv.get("next_report"),
+                   "short_label": pv.get("next_report_time"),
+                   "sector": pv.get("sector"), "prior_close": pv.get("prior_close")}
+        except Exception:  # noqa: BLE001
+            row = {}
+        return {"status": "OK", **ki.score_one(sym, eq, trade, row)}
+
+    return swr.serve(f"kimi:one:{sym}", build, market.session_ttl(120, 1800))
+
+
 @router.get("/chatgpt/scan")
 def chatgpt_scan(days: int = 15) -> dict:
     """ChatGPT -- US Pre-Earnings Direction V1 (16 features), ranked. Non-blocking."""

@@ -113,6 +113,35 @@ export const CHATGPT_MODEL: DirModelCfg = {
   scan: (d, s) => api2.chatgptScan(d, s),
 };
 
+// Kimi -- 14 factors (category-grouped), rescaled to 100.
+const KIMI_PARAMS: { key: string; label: string }[] = [
+  { key: 'eps_rev', label: 'EPS+Rev' },
+  { key: 'guidance', label: 'Guid' },
+  { key: 'price_target', label: 'PT/Rating' },
+  { key: 'peers', label: 'Peers' },
+  { key: 'em_vs_hist', label: 'EM/Hist' },
+  { key: 'unusual_flow', label: 'Unusual' },
+  { key: 'skew_oi', label: 'Skew/OI' },
+  { key: 'drift', label: 'Drift' },
+  { key: 'rel_strength', label: 'RS' },
+  { key: 'hist_reaction', label: 'Hist Rx' },
+  { key: 'spy_vix', label: 'SPY/VIX' },
+  { key: 'short_interest', label: 'Short' },
+  { key: 'insider', label: 'Insider' },
+  { key: 'dark_pool', label: 'Dark' },
+];
+
+export const KIMI_MODEL: DirModelCfg = {
+  base: '/kimi',
+  title: 'Kimi · Pre-Earnings Direction · 14 factors',
+  subtitle: 'Category-grouped direction (Fundamentals / Options / Price-Volume / Context / '
+    + 'Confirmation): EPS+revenue revisions, guidance, price-target & rating changes, peers, '
+    + 'expected-vs-historical move, unusual flow, skew+OI, drift, relative strength, historical '
+    + 'reactions, SPY+VIX regime, short interest, insider and dark pool. 100 pts.',
+  params: KIMI_PARAMS,
+  scan: (d, s) => api2.kimiScan(d, s),
+};
+
 export const GROK_MODEL: DirModelCfg = {
   base: '/grok',
   title: 'Grok · Pre-Earnings Direction · 9 factors',

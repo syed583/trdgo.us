@@ -734,6 +734,10 @@ export const api2 = {
     request<any>(`/api/chatgpt/scan?days=${days}`, s),
   chatgptDetail: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/chatgpt/${encodeURIComponent(symbol)}`, s),
+  kimiScan: (days = 15, s?: AbortSignal) =>
+    request<any>(`/api/kimi/scan?days=${days}`, s),
+  kimiDetail: (symbol: string, s?: AbortSignal) =>
+    request<any>(`/api/kimi/${encodeURIComponent(symbol)}`, s),
   earningsEquity: (symbol: string, profile?: string, s?: AbortSignal) =>
     request<any>(`/api/earnings/equity/${encodeURIComponent(symbol)}`
       + (profile && profile !== 'default' ? `?profile=${profile}` : ''), s),

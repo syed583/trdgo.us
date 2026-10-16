@@ -26,7 +26,8 @@ const EarningsTradePage = lazy(() => import('./pages/EarningsTradePage'));
 const EarningsClaudePage = lazy(() => import('./pages/EarningsClaudePage'));
 const ClaudeLastPage = lazy(() => import('./pages/ClaudeLastPage'));
 const ClaudeLastDetail = lazy(() => import('./pages/ClaudeLastDetail'));
-import { GROK_MODEL, META_MODEL, CHATGPT_MODEL } from './pages/ClaudeLastPage';
+import { GROK_MODEL, META_MODEL, CHATGPT_MODEL, KIMI_MODEL } from './pages/ClaudeLastPage';
+const KIMI_DETAIL = { base: '/kimi', title: 'Kimi', detail: (s: string, sig?: AbortSignal) => api2.kimiDetail(s, sig) };
 const GROK_DETAIL = { base: '/grok', title: 'Grok', detail: (s: string, sig?: AbortSignal) => api2.grokDetail(s, sig) };
 const META_DETAIL = { base: '/meta', title: 'Meta', detail: (s: string, sig?: AbortSignal) => api2.metaDetail(s, sig) };
 const CHATGPT_DETAIL = { base: '/chatgpt', title: 'ChatGPT', detail: (s: string, sig?: AbortSignal) => api2.chatgptDetail(s, sig) };
@@ -99,7 +100,7 @@ const OPTIONS_ROUTES = [
 
 /** Sections that carry a symbol in the URL. */
 const SYMBOL_SECTIONS =
-  /^\/(earnings|earnings-trade|earnings-claude|claude-last|claude-new-pz|grok|meta|chatgpt|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)(\/|$)/;
+  /^\/(earnings|earnings-trade|earnings-claude|claude-last|claude-new-pz|grok|meta|chatgpt|kimi|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)(\/|$)/;
 
 /**
  * The same sections, capturing the ticker itself.
@@ -111,7 +112,7 @@ const SYMBOL_SECTIONS =
  * ticker card changed the address bar while every panel kept showing NVDA.
  */
 const SYMBOL_IN_PATH =
-  /^\/(?:earnings|earnings-trade|earnings-claude|claude-last|claude-new-pz|grok|meta|chatgpt|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)\/([A-Za-z0-9.\-]+)/;
+  /^\/(?:earnings|earnings-trade|earnings-claude|claude-last|claude-new-pz|grok|meta|chatgpt|kimi|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)\/([A-Za-z0-9.\-]+)/;
 
 export interface PageContext {
   symbol: string;
@@ -359,6 +360,8 @@ function Shell() {
           <Route path="/meta/:symbol" element={<ClaudeLastDetail ctx={ctx} model={META_DETAIL} />} />
           <Route path="/chatgpt" element={<ClaudeLastPage ctx={ctx} model={CHATGPT_MODEL} />} />
           <Route path="/chatgpt/:symbol" element={<ClaudeLastDetail ctx={ctx} model={CHATGPT_DETAIL} />} />
+          <Route path="/kimi" element={<ClaudeLastPage ctx={ctx} model={KIMI_MODEL} />} />
+          <Route path="/kimi/:symbol" element={<ClaudeLastDetail ctx={ctx} model={KIMI_DETAIL} />} />
           <Route path="/option-scanner" element={<OptionScannerPage ctx={ctx} />} />
           <Route path="/unusual-activity" element={<UnusualActivityPage ctx={ctx} />} />
           <Route path="/pre-earnings-direction" element={<PreEarningsDirectionPage ctx={ctx} />} />

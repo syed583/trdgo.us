@@ -95,6 +95,28 @@ CHATGPT_WEIGHTS: dict[str, int] = {
 }                                # sum = 100
 CHATGPT_THRESHOLDS: dict[str, float] = {"bullish": 55.0, "bearish": 45.0}
 
+# --- Kimi: Pre-Earnings Direction (14 factors, category-grouped) --------------
+# From the owner's CSV (weights summed to 88); rescaled x100/88 to 100 so the
+# 55/45 bands stay meaningful (relative weights unchanged). Adds price-target /
+# rating changes, relative strength vs sector (replaces EMA) and a SPY+VIX market
+# regime. Same 5-step scale and BUY>=55 / SELL<=45 bands as the other models.
+KIMI_WEIGHTS: dict[str, float] = {
+    "eps_rev": 13.7,          # EPS + revenue estimate revisions (12)
+    "guidance": 9.1,          # guidance / beat-raise history (8)
+    "price_target": 5.7,      # price target & rating changes (5, new)
+    "peers": 5.7,             # peer read-through (5)
+    "em_vs_hist": 9.1,        # expected move vs historical (8, new)
+    "unusual_flow": 9.1,      # unusual flow -- sweeps/blocks (8)
+    "skew_oi": 6.8,           # skew + OI changes merged (6)
+    "drift": 9.1,             # pre-earnings drift / price structure (8)
+    "rel_strength": 6.8,      # relative strength vs sector (6, replaces EMA)
+    "hist_reaction": 6.8,     # historical earnings reaction pattern (6)
+    "spy_vix": 6.8,           # SPY trend + VIX regime (6, new)
+    "short_interest": 4.5,    # short interest change + days-to-cover (4)
+    "insider": 3.4,           # insider open-market buys (3)
+    "dark_pool": 3.4,         # dark pool (3)
+}                             # sum = 100.0
+
 # --- Meta: Pre-Earnings Direction (owner's 11-factor / 100-pt model) ----------
 # Adds Implied-vs-Historical move, IV Rank and Gamma/OI concentration to the
 # direction factors. All read from the warmed equity signals + trade cache, so
