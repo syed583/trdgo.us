@@ -150,6 +150,23 @@ CLAUDE_PRO_BLOCKS: dict[str, dict] = {
         "spy_vix": 5}},                                            # 5
 }                                 # block weights sum to 100
 
+# --- Grok Intraday: short-term directional model (10 live signals) ------------
+# Intraday/short-term weighting: heavy on options flow + unusual activity +
+# participation, with trend/levels/vol as filters. All from the live equity
+# signals. Sum = 100.
+INTRADAY_GROK_WEIGHTS: dict[str, int] = {
+    "options_flow": 18,       # 1  net premium flow
+    "unusual_activity": 14,   # 2  aggressive positioning
+    "volume_pcr": 12,         # 3  volume + put/call ratio
+    "trend_price": 15,        # 4  EMA trend + price structure
+    "key_levels": 10,         # 5  OI / gamma walls
+    "oi_change_expiry": 8,    # 6  daily OI change + flow by expiry
+    "volatility_em": 8,       # 7  IV + expected move
+    "rsi_momentum": 6,        # 8  RSI / short-term momentum
+    "disparity": 5,           # 9  options disparity (C/P)
+    "event_radar": 4,         # 10 same-day catalyst
+}                             # sum = 100
+
 # --- Meta: Pre-Earnings Direction (owner's 11-factor / 100-pt model) ----------
 # Adds Implied-vs-Historical move, IV Rank and Gamma/OI concentration to the
 # direction factors. All read from the warmed equity signals + trade cache, so

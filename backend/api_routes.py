@@ -448,6 +448,58 @@ def grok_detail(symbol: str) -> dict:
     return swr.serve(f"grok:one:{sym}", build, market.session_ttl(120, 1800))
 
 
+@router.get("/grok-intraday/scan")
+def grok_intraday_scan(days: int = 15) -> dict:
+    """Grok Intraday -- short-term 10-signal direction, ranked. Non-blocking."""
+    import intraday_grok_service as ig
+    import threading
+
+    d = max(1, min(int(days or 15), 30))
+    key = f"grokintra:scan:{d}"
+    res = swr.peek(key)
+
+    def _compute() -> None:
+        try:
+            swr.serve(key, lambda: ig.scan(d), 90.0)
+        except Exception:  # noqa: BLE001
+            pass
+
+    threading.Thread(target=_compute, daemon=True).start()
+    if res is None:
+        return {"status": "WARMING", "source": ig.SOURCE, "rows": [],
+                "universe": 0, "scored": 0, "missing": []}
+    return res
+
+
+@router.get("/grok-intraday/{symbol}")
+def grok_intraday_detail(symbol: str) -> dict:
+    """Grok Intraday single-stock detail: 10-signal short-term score + breakdown."""
+    import intraday_grok_service as ig
+    import earnings_equity_service as eq_svc
+
+    sym = symbol.upper()
+    eq = swr.serve(f"earn:equity:{sym}", lambda: eq_svc.get_analysis(sym), 1800.0)
+    if not eq or not eq.get("params"):
+        return {"status": "NO_DATA", "symbol": sym}
+    if "signals" not in eq:
+        fresh = eq_svc.get_analysis(sym)
+        if fresh and fresh.get("params"):
+            eq = fresh
+            swr._values[f"earn:equity:{sym}"] = (__import__("time").time(), fresh)
+    row = {}
+    try:
+        import uw_earnings_calendar as uwcal
+        pv = uwcal.preview(sym) or {}
+        row = {"company": pv.get("name"), "date": pv.get("next_report"),
+               "short_label": pv.get("next_report_time"),
+               "sector": pv.get("sector"), "prior_close": pv.get("prior_close")}
+    except Exception:  # noqa: BLE001
+        row = {}
+    return swr.serve(f"grokintra:one:{sym}",
+                     lambda: {"status": "OK", **ig.score_one(sym, eq, None, row)},
+                     market.session_ttl(60, 900))
+
+
 @router.get("/all-models/scan")
 def all_models_scan(days: int = 15) -> dict:
     """All-in-One matrix: every model's call per upcoming name. Non-blocking."""

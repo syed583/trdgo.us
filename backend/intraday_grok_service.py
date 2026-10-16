@@ -1,0 +1,157 @@
+"""Grok Intraday -- short-term directional model (10 live signals).
+
+A fast intraday/short-term lean built from the live equity signals (options flow,
+unusual activity, participation, trend, levels, volatility, momentum), weighted
+toward the signals that move a stock on the day rather than fundamentals:
+
+  Options Flow                18   Unusual Activity            14
+  Volume & Put/Call Ratio     12   Trend & Price Action        15
+  Key Option Levels (OI)      10   Daily OI Change + Expiry      8
+  Volatility & Expected Move   8   RSI / Momentum                6
+  Options Disparity (C/P)      5   Event Radar                   4
+
+All-positive 5-step scale, 0-100, BUY>=55 / NEUTRAL / SELL<=45. Reads the warmed
+equity signals so the whole universe scores in one pass with no extra calls.
+"""
+from __future__ import annotations
+
+from datetime import date, datetime
+from typing import Optional
+
+import tab_settings as cfg
+import claude_last_service as cl
+
+SOURCE = "Grok Intraday — Short-term Direction (10 signals)"
+
+_LABEL = {
+    "options_flow": "Options Flow",
+    "unusual_activity": "Unusual Activity",
+    "volume_pcr": "Volume & Put/Call",
+    "trend_price": "Trend & Price Action",
+    "key_levels": "Key Option Levels (OI/Gamma)",
+    "oi_change_expiry": "Daily OI Change + Expiry",
+    "volatility_em": "Volatility & Expected Move",
+    "rsi_momentum": "RSI / Momentum",
+    "disparity": "Options Disparity (C/P)",
+    "event_radar": "Event Radar",
+}
+_ORDER = list(_LABEL.keys())
+
+
+def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
+              row: Optional[dict] = None) -> dict:
+    biases = {p.get("name"): p.get("bias") for p in (eq.get("params") or [])}
+    sig = eq.get("signals") or {}
+    row = row or {}
+    W = cfg.INTRADAY_GROK_WEIGHTS
+
+    raw: dict[str, Optional[float]] = {
+        "options_flow": sig.get("options_flow", biases.get("options_positioning")),
+        "unusual_activity": sig.get("unusual_activity", biases.get("unusual_options")),
+        "volume_pcr": sig.get("volume_pcr"),
+        "trend_price": cl._avg([sig.get("ema_trend"),
+                                sig.get("price_action", biases.get("price_action"))]),
+        "key_levels": sig.get("key_levels"),
+        "oi_change_expiry": cl._avg([sig.get("daily_oi_change"), sig.get("flow_by_expiry")]),
+        "volatility_em": cl._avg([sig.get("implied_volatility"), sig.get("expected_move")]),
+        "rsi_momentum": sig.get("rsi"),
+        "disparity": sig.get("disparity", biases.get("disparity")),
+        "event_radar": sig.get("event_radar"),
+    }
+
+    params: list[dict] = []
+    for name in _ORDER:
+        qb = cl._quant(raw.get(name))
+        params.append({"name": name, "label": _LABEL[name], "max": W[name],
+                       "points": round(cl._pts(W[name], qb), 2), "bias": qb})
+
+    score = round(sum(p["points"] for p in params), 1)
+    cut = cfg.V3_CUTOFFS
+    signal = "BUY" if score >= cut["buy"] else "SELL" if score <= cut["sell"] else "NEUTRAL"
+
+    covered = sum(p["max"] for p in params if p["bias"] is not None)
+    pos_w = sum(p["max"] for p in params if (p["bias"] or 0) > 0.05)
+    neg_w = sum(p["max"] for p in params if (p["bias"] or 0) < -0.05)
+    coverage = round(covered / 100.0, 3)
+    side = 1 if score >= 50 else -1
+    agreement = round(((pos_w if side > 0 else neg_w) / covered), 3) if covered else 0.0
+    conf = cfg.V3_CONFIDENCE
+    low_conf = coverage < conf["min_coverage"] or agreement < conf["min_agreement"]
+
+    days_to = None
+    d = row.get("date")
+    if d:
+        try:
+            days_to = (datetime.fromisoformat(str(d)[:10]).date() - date.today()).days
+        except Exception:  # noqa: BLE001
+            days_to = None
+
+    return {"symbol": symbol, "company": row.get("company"),
+            "date": d, "date_label": row.get("date_label"),
+            "time_label": row.get("short_label"), "days_to": days_to,
+            "report_timing": row.get("time_label") or row.get("timing_label"),
+            "prior_close": row.get("prior_close"), "market_cap": row.get("market_cap"),
+            "sector": row.get("sector"),
+            "score": score, "signal": signal, "params": params,
+            "coverage": round(coverage * 100, 1), "agreement": round(agreement * 100, 1),
+            "low_confidence": low_conf}
+
+
+def scan(days: int = 15) -> dict:
+    """Score every name reporting in the next ~`days`, ranked by score."""
+    import swr
+    import uw_earnings_calendar as calmod
+
+    rows = (calmod.calendar(days=days) or {}).get("rows") or []
+    seen: set[str] = set()
+    uniq: list[dict] = []
+    for r in rows:
+        s = (r.get("symbol") or "").upper()
+        if s and s not in seen:
+            seen.add(s)
+            uniq.append(r)
+    eqs = swr.peek_many([f"earn:equity:{s}" for s in seen])
+    try:
+        import finviz_service as fv
+        fmap = fv.earnings_map()
+    except Exception:  # noqa: BLE001
+        fmap = {}
+
+    def _days_to(r: dict):
+        d = r.get("date")
+        if not d:
+            return None
+        try:
+            return (datetime.fromisoformat(str(d)[:10]).date() - date.today()).days
+        except Exception:  # noqa: BLE001
+            return None
+
+    out: list[dict] = []
+    missing: list[str] = []
+    scored = 0
+    for r in uniq:
+        s = r["symbol"].upper()
+        eq = eqs.get(f"earn:equity:{s}")
+        res = None
+        if eq and eq.get("params"):
+            try:
+                res = score_one(s, eq, None, r)
+                scored += 1
+            except Exception:  # noqa: BLE001
+                res = None
+        if res is None:
+            missing.append(s)
+            res = {"symbol": s, "company": r.get("company"), "date": r.get("date"),
+                   "date_label": r.get("date_label"), "time_label": r.get("short_label"),
+                   "report_timing": r.get("time_label") or r.get("timing_label"),
+                   "days_to": _days_to(r), "prior_close": r.get("prior_close"),
+                   "market_cap": r.get("market_cap"), "sector": r.get("sector"),
+                   "score": None, "signal": "PENDING", "params": [],
+                   "coverage": None, "agreement": None, "low_confidence": None}
+        fvi = fmap.get(s)
+        if fvi and fvi.get("time") and str(fvi.get("date"))[:10] == str(res.get("date"))[:10]:
+            res["report_clock"] = fvi["time"]
+        out.append(res)
+    out.sort(key=lambda x: (x["score"] if x["score"] is not None else -1), reverse=True)
+    return {"status": "OK", "source": SOURCE, "rows": out,
+            "universe": len(seen), "scored": scored, "missing": missing[:60]}

@@ -183,6 +183,30 @@ export const CLAUDE_PRO_MODEL: DirModelCfg = {
   scan: (d, s) => api2.claudeProScan(d, s),
 };
 
+// Grok Intraday -- short-term 10-signal model (in the Analysis group).
+const GROK_INTRADAY_PARAMS: { key: string; label: string }[] = [
+  { key: 'options_flow', label: 'Flow' },
+  { key: 'unusual_activity', label: 'Unusual' },
+  { key: 'volume_pcr', label: 'Vol/PCR' },
+  { key: 'trend_price', label: 'Trend' },
+  { key: 'key_levels', label: 'Levels' },
+  { key: 'oi_change_expiry', label: 'OI Chg' },
+  { key: 'volatility_em', label: 'Vol/EM' },
+  { key: 'rsi_momentum', label: 'RSI' },
+  { key: 'disparity', label: 'C/P' },
+  { key: 'event_radar', label: 'Event' },
+];
+
+export const GROK_INTRADAY_MODEL: DirModelCfg = {
+  base: '/grok-intraday',
+  title: 'Grok Intraday · Short-term Direction · 10 signals',
+  subtitle: 'Short-term directional lean from live signals: options flow 18, unusual activity 14, '
+    + 'volume/PCR 12, trend & price action 15, key option levels 10, OI change + expiry 8, '
+    + 'volatility & expected move 8, RSI 6, C/P disparity 5, event radar 4. 100 pts.',
+  params: GROK_INTRADAY_PARAMS,
+  scan: (d, s) => api2.grokIntradayScan(d, s),
+};
+
 export const GROK_MODEL: DirModelCfg = {
   base: '/grok',
   title: 'Grok · Pre-Earnings Direction · 9 factors',
