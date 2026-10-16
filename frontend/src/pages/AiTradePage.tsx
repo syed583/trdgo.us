@@ -331,18 +331,26 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
   // v2 Today view: the shared intraday model + signal log, in place of the v1
   // board. Header kept so the horizon switch still lets the reader leave Today.
   if (im2On) {
-    // Before the open (pre-market / overnight) the RTH model has no bars, so show
-    // the pre-market board (gap + flow + daily trend). The live board takes over
-    // once RTH begins.
+    // The RTH model only has live signals during regular hours AND after the
+    // 10:00 confirmation window. Any other time -- pre-market, the 9:30-10:00 gap,
+    // after-hours, overnight, a quiet session with nothing open -- fall back to the
+    // gap/flow/trend board so the reader always has a ranked list, not an empty 0.
     const phase = im2.data?.phase;
-    const showPre = phase === 'pre' || phase === 'closed';
+    const liveCounts = im2.data?.counts || {};
+    const liveHasSignals = ((liveCounts.buy || 0) + (liveCounts.sell || 0)) > 0;
+    const showPre = !!phase && (phase !== 'rth' || !liveHasSignals);
+    const preLabel = phase === 'pre'
+      ? 'Pre-Market · what to buy / sell before the open'
+      : phase === 'rth'
+        ? 'Gap + flow + daily trend — live intraday signals confirm from 10:00 ET'
+        : 'After the close · next-session read (gap + flow + daily trend)';
     return (
       <div className="page">
         <div className="at-head">
           <div>
             <h1>Trdgo Stock</h1>
             <p className="at-basis at-basis-sm">
-              <b>{showPre ? 'Pre-Market · what to buy / sell before the open' : 'Today · Intraday Model v2'}</b>
+              <b>{showPre ? preLabel : 'Today · Intraday Model v2'}</b>
             </p>
           </div>
           <div className="at-head-right">
