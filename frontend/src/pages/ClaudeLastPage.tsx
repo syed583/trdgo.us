@@ -29,6 +29,44 @@ const PARAMS: { key: string; label: string }[] = [
   { key: 'dark_pool', label: 'Dark' },
 ];
 
+// Grok -- 9 research-strength factors.
+const GROK_PARAMS: { key: string; label: string }[] = [
+  { key: 'eps_revisions', label: 'EPS' },
+  { key: 'prior_beat_history', label: 'Beat Hist' },
+  { key: 'options_skew_flow', label: 'Skew/Flow' },
+  { key: 'realized_vs_implied', label: 'R/I Move' },
+  { key: 'peer_readthrough', label: 'Peers' },
+  { key: 'short_interest', label: 'Short' },
+  { key: 'analyst_dispersion', label: 'Dispersion' },
+  { key: 'premarket_momentum', label: 'Momentum' },
+  { key: 'dark_pool_insiders', label: 'Dark/Insider' },
+];
+
+export type DirModelCfg = {
+  base: string; title: string; subtitle: string;
+  params: { key: string; label: string }[];
+  scan: (days: number, s?: AbortSignal) => Promise<any>;
+};
+
+const CLAUDE_NEW_MODEL = (pz: boolean): DirModelCfg => ({
+  base: '/claude-last',
+  title: `${pz ? 'Claude New +0' : 'Claude New'} · Direction v2 · 13-param`,
+  subtitle: 'Two-sided, SELL-capable pre-earnings direction (13 parameters, 100 pts, + '
+    + 'Implied-Move gate). Each box is a stock reporting soon, coloured by its signal.',
+  params: PARAMS,
+  scan: (d, s) => api2.claudeLastScan(d, s),
+});
+
+export const GROK_MODEL: DirModelCfg = {
+  base: '/grok',
+  title: 'Grok · Pre-Earnings Direction · 9 factors',
+  subtitle: 'Direction from 9 research-strength factors (EPS revisions, beat history, skew/flow, '
+    + 'realized-vs-implied, peers, short interest, analyst dispersion, momentum, dark pool/insiders), '
+    + 'weighted by evidence strength. 100 pts. Each box is a stock reporting soon, coloured by its signal.',
+  params: GROK_PARAMS,
+  scan: (d, s) => api2.grokScan(d, s),
+};
+
 const sigTier = (sig: string) =>
   sig === 'BUY' ? 'buy' : sig === 'SELL' ? 'sell' : sig === 'PENDING' ? 'none' : 'neutral';
 
@@ -48,13 +86,16 @@ const dayLabel = (iso: string) => {
   } catch { return iso; }
 };
 
-export default function ClaudeLastPage({ ctx, base = '/claude-last', pz = false }:
-  { ctx: PageContext; base?: string; pz?: boolean }) {
+export default function ClaudeLastPage({ ctx, base, pz = false, model }:
+  { ctx: PageContext; base?: string; pz?: boolean; model?: DirModelCfg }) {
+  const cfg = model || CLAUDE_NEW_MODEL(pz);
   const navigate = useNavigate();
   const [days, setDays] = useState(15);
   const [query, setQuery] = useState('');
+  const PARAMS = cfg.params;
+  base = base || cfg.base;
 
-  const resp = useApi<any>((s) => api2.claudeLastScan(days, s), [days],
+  const resp = useApi<any>((s) => cfg.scan(days, s), [days, cfg],
     { refreshMs: ctx.demo ? undefined : 120_000 });
   const rows: any[] = resp.data?.rows || [];
   // The scan warms in the background (a cold scan takes a while); while it has no
@@ -89,12 +130,9 @@ export default function ClaudeLastPage({ ctx, base = '/claude-last', pz = false 
   return (
     <div className="page">
       <div className="ts-head">
-        <h1><Target size={20} /> {pz ? 'Claude New +0' : 'Claude New'} · Direction v2 · 13-param</h1>
-        <p>Two-sided, SELL-capable pre-earnings direction (13 parameters, 100 pts, +
-          Implied-Move gate). Each box is a stock reporting soon, coloured by its signal.
-          BUY ≥ 55 · SELL ≤ 45. Click a card for
-          {pz ? ' the +/0/− form (bullish, neutral and bearish parameters).'
-              : ' its full breakdown and confidence meter.'}</p>
+        <h1><Target size={20} /> {cfg.title}</h1>
+        <p>{cfg.subtitle} BUY ≥ 55 · SELL ≤ 45. Click a card for its full breakdown
+          and confidence meter.</p>
       </div>
 
       <div className="cn-toolbar">

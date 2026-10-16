@@ -55,6 +55,22 @@ V3_CUTOFFS: dict[str, float] = {"buy": 55.0, "sell": 45.0}
 # Below either threshold -> LOW CONFIDENCE, do not trade.
 V3_CONFIDENCE: dict[str, float] = {"min_coverage": 0.50, "min_agreement": 0.55}
 
+# --- Grok: Pre-Earnings Direction (9 research-strength factors) --------------
+# Weights set by each factor's evidence strength (the owner's research table):
+# High / Moderate-High / Moderate / Low-Moderate / Low. Sum = 100. Same all-
+# positive 5-step scale and BUY>=55 / SELL<=45 bands as Claude New.
+GROK_WEIGHTS: dict[str, int] = {
+    "eps_revisions": 18,         # High
+    "prior_beat_history": 15,    # Moderate-High
+    "options_skew_flow": 12,     # Moderate
+    "realized_vs_implied": 11,   # Moderate
+    "peer_readthrough": 11,      # Moderate (timing dependent)
+    "short_interest": 10,        # Moderate
+    "analyst_dispersion": 10,    # Moderate
+    "premarket_momentum": 8,     # Low-Moderate
+    "dark_pool_insiders": 5,     # Low
+}                                # sum = 100
+
 # --- Tab B: Short Straddle Scanner (banded, 100 pts) ------------------------
 TAB_B_WEIGHTS: dict[str, int] = {
     "iv_rank": 40, "implied_move": 25, "impl_vs_hist": 20, "liquidity": 15,

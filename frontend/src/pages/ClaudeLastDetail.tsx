@@ -25,14 +25,16 @@ const SETUP = (s: number | null) =>
     : s <= 35 ? 'Weak Setup' : s <= 45 ? 'Soft Setup' : 'Neutral';
 const num = (v: any, d = 2) => (v == null ? '--' : Number(v).toFixed(d));
 
-export default function ClaudeLastDetail({ ctx, base = '/claude-last', pz = false }:
-  { ctx: PageContext; base?: string; pz?: boolean }) {
+export default function ClaudeLastDetail({ ctx, base = '/claude-last', pz = false, model }:
+  { ctx: PageContext; base?: string; pz?: boolean;
+    model?: { base: string; title: string; detail: (sym: string, s?: AbortSignal) => Promise<any> } }) {
   const { symbol } = useParams();
   const navigate = useNavigate();
   const [whyOpen, setWhyOpen] = useState(true);
   const sym = (symbol || ctx.symbol || '').toUpperCase();
+  if (model) base = model.base;
 
-  const resp = useApi<any>((s) => api2.claudeLastDetail(sym, s), [sym],
+  const resp = useApi<any>((s) => (model ? model.detail(sym, s) : api2.claudeLastDetail(sym, s)), [sym],
     { refreshMs: ctx.demo ? undefined : 120_000 });
   const quote = useApi<any>((s) => (ctx.demo ? Promise.resolve(null) : api.quote(sym, s)), [sym],
     { refreshMs: ctx.demo ? undefined : 60_000 });
@@ -53,7 +55,7 @@ export default function ClaudeLastDetail({ ctx, base = '/claude-last', pz = fals
 
   const q = quote.data || {};
   const chg = q.change_percent ?? q.changePercent;
-  const title = pz ? 'Claude New +0' : 'Claude New';
+  const title = model ? model.title : pz ? 'Claude New +0' : 'Claude New';
 
   const leanOf = (p: any) => (p.bias == null ? 'none'
     : p.bias > 0.15 ? 'buy' : p.bias < -0.15 ? 'sell' : 'flat');

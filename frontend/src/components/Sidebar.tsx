@@ -45,6 +45,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/earnings-claude', label: 'Claude +-', icon: <Scale size={S} /> },
     { to: '/claude-last', label: 'Claude New', icon: <Crosshair size={S} /> },
     { to: '/claude-new-pz', label: 'Claude New +0', icon: <Scale size={S} /> },
+    { to: '/grok', label: 'Grok', icon: <Sparkles size={S} /> },
     { to: '/option-scanner', label: 'IV Crush Check', icon: <Flame size={S} /> },
     { to: '/unusual-activity', label: 'Unusual Activity', icon: <Zap size={S} /> },
     { to: '/pre-earnings-direction', label: 'Pre-Earnings Direction', icon: <Compass size={S} /> },

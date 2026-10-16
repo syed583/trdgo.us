@@ -722,6 +722,10 @@ export const api2 = {
     request<any>(`/api/pre-earnings-direction/scan?days=${days}`, s),
   claudeLastDetail: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/claude-last/${encodeURIComponent(symbol)}`, s),
+  grokScan: (days = 15, s?: AbortSignal) =>
+    request<any>(`/api/grok/scan?days=${days}`, s),
+  grokDetail: (symbol: string, s?: AbortSignal) =>
+    request<any>(`/api/grok/${encodeURIComponent(symbol)}`, s),
   earningsEquity: (symbol: string, profile?: string, s?: AbortSignal) =>
     request<any>(`/api/earnings/equity/${encodeURIComponent(symbol)}`
       + (profile && profile !== 'default' ? `?profile=${profile}` : ''), s),
