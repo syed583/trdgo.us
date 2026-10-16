@@ -162,16 +162,6 @@ export default function ClaudeLastPage({ ctx, base = '/claude-last', pz = false 
                             </span>
                             <span className="cn-status-score">Score {r.score}/100</span>
                           </div>
-                          {(r.im_gate === 'no_trade' || r.im_gate === 'half') && (
-                            <div className={`cn-gate ${r.im_gate === 'no_trade' ? 'no' : 'half'}`}>
-                              <AlertTriangle size={11} />
-                              {r.im_gate === 'no_trade'
-                                ? `NO TRADE — implied move ${r.im_ratio}× history${r.priced_in ? ' · priced in' : ''}`
-                                : `Half size — implied move ${r.im_ratio}× history`}
-                              {r.raw_signal && r.raw_signal !== 'NEUTRAL' && r.raw_signal !== r.signal
-                                ? ` (would be ${r.raw_signal})` : ''}
-                            </div>
-                          )}
                           {r.low_confidence && (
                             <div className="cn-lowconf"><AlertTriangle size={11} /> Low confidence
                               {r.coverage != null ? ` · coverage ${r.coverage}% · agree ${r.agreement}%` : ''}
