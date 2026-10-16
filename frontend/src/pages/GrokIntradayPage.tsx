@@ -12,7 +12,7 @@ import '../components/intraday-v2.css';
 const money = (v: any) => (v == null ? '—' : `$${Number(v).toFixed(2)}`);
 const callClass = (c: string) => (c === 'BUY' ? 'im2-buy' : c === 'SELL' ? 'im2-sell' : 'im2-noedge');
 
-function SignalTable({ rows, side }: { rows: any[]; side: 'BUY' | 'SELL' }) {
+function SignalTable({ rows, side, base }: { rows: any[]; side: 'BUY' | 'SELL'; base: string }) {
   const nav = useNavigate();
   if (!rows.length) {
     return <p className="im2-note">No {side === 'BUY' ? 'buy' : 'sell'} signals right now.</p>;
@@ -28,7 +28,7 @@ function SignalTable({ rows, side }: { rows: any[]; side: 'BUY' | 'SELL' }) {
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.symbol} className="im2-rowlink" onClick={() => nav(`/grok-intraday/${r.symbol}`)}>
+            <tr key={r.symbol} className="im2-rowlink" onClick={() => nav(`${base}/${r.symbol}`)}>
               <td className="sym">{r.symbol}</td>
               <td><span className={`im2-call ${callClass(r.signal)}`}>{r.signal}</span></td>
               <td className="n">{r.score ?? '—'}</td>
@@ -44,11 +44,25 @@ function SignalTable({ rows, side }: { rows: any[]; side: 'BUY' | 'SELL' }) {
   );
 }
 
-export default function GrokIntradayPage({ ctx }: { ctx: PageContext }) {
+export type IntradayCfg = {
+  title: string; subtitle: string; base: string;
+  board: (s?: AbortSignal) => Promise<any>;
+};
+const GROK_CFG: IntradayCfg = {
+  title: 'Grok Intraday', subtitle: 'Live Board · Grok 10-signal model',
+  base: '/grok-intraday', board: (s) => api2.grokIntradayBoard(s),
+};
+export const META_INTRADAY_CFG: IntradayCfg = {
+  title: 'Meta Intraday', subtitle: 'Live Board · Meta 7-signal model',
+  base: '/meta-intraday', board: (s) => api2.metaIntradayBoard(s),
+};
+
+export default function GrokIntradayPage({ ctx, cfg = GROK_CFG }:
+  { ctx: PageContext; cfg?: IntradayCfg }) {
   void ctx;
   const [tab, setTab] = useState<'board'>('board');
   void tab; void setTab;
-  const b = useApi<any>((s) => api2.grokIntradayBoard(s), [], { refreshMs: 60_000 });
+  const b = useApi<any>((s) => cfg.board(s), [cfg], { refreshMs: 60_000 });
   const d = b.data;
   const counts = d?.counts || {};
   const warming = d?.status === 'WARMING' || (b.initialLoading && !d);
@@ -63,8 +77,8 @@ export default function GrokIntradayPage({ ctx }: { ctx: PageContext }) {
     <div className="page">
       <div className="at-head">
         <div>
-          <h1><Zap size={20} /> Grok Intraday</h1>
-          <p className="at-basis at-basis-sm"><b>Live Board · Grok 10-signal model</b></p>
+          <h1><Zap size={20} /> {cfg.title}</h1>
+          <p className="at-basis at-basis-sm"><b>{cfg.subtitle}</b></p>
         </div>
       </div>
 
@@ -85,9 +99,9 @@ export default function GrokIntradayPage({ ctx }: { ctx: PageContext }) {
         ) : (
           <>
             <h3 className="im2-h">Top Buyers</h3>
-            <SignalTable rows={d?.buyers || []} side="BUY" />
+            <SignalTable rows={d?.buyers || []} side="BUY" base={cfg.base} />
             <h3 className="im2-h">Top Sellers</h3>
-            <SignalTable rows={d?.sellers || []} side="SELL" />
+            <SignalTable rows={d?.sellers || []} side="SELL" base={cfg.base} />
             <h3 className="im2-h">NEUTRAL</h3>
             <div className="im2-chips">
               {neutral.length ? neutral.map((r: any) =>

@@ -35,6 +35,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/ai-insights', label: 'Analysis', icon: <Brain size={S} /> },
     { to: '/ai-trade', label: 'Trdgo Stock', icon: <Sparkles size={S} /> },
     { to: '/grok-intraday', label: 'Grok Intraday', icon: <Zap size={S} /> },
+    { to: '/meta-intraday', label: 'Meta Intraday', icon: <Layers size={S} /> },
     { to: '/tradgo-call', label: 'Tradgo Call', icon: <Gauge size={S} /> },
     { to: '/trade-plan', label: 'Trade Plan', icon: <Crosshair size={S} /> },
     { to: '/signal-history', label: 'Signal History', icon: <History size={S} /> },

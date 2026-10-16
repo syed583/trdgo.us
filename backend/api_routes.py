@@ -471,6 +471,56 @@ def grok_intraday_scan(days: int = 15) -> dict:
     return res
 
 
+@router.get("/meta-intraday/board")
+def meta_intraday_board() -> dict:
+    """Meta Intraday LIVE board over the liquid universe, scored with the 7-signal
+    model. Non-blocking."""
+    import meta_intraday_service as mi
+    import threading
+    res = swr.peek("metaintra:board")
+
+    def _bg() -> None:
+        try:
+            swr.serve("metaintra:board", lambda: mi.board(), 120.0)
+        except Exception:  # noqa: BLE001
+            pass
+
+    threading.Thread(target=_bg, daemon=True).start()
+    if res is None:
+        return {"status": "WARMING", "source": mi.SOURCE, "buyers": [], "sellers": [],
+                "neutral": [], "counts": {}}
+    return res
+
+
+@router.get("/meta-intraday/{symbol}")
+def meta_intraday_detail(symbol: str) -> dict:
+    """Meta Intraday single-stock detail: 7-signal short-term score + breakdown."""
+    import meta_intraday_service as mi
+    import earnings_equity_service as eq_svc
+
+    sym = symbol.upper()
+    eq = swr.serve(f"earn:equity:{sym}", lambda: eq_svc.get_analysis(sym), 1800.0)
+    if not eq or not eq.get("params"):
+        return {"status": "NO_DATA", "symbol": sym}
+    if "signals" not in eq:
+        fresh = eq_svc.get_analysis(sym)
+        if fresh and fresh.get("params"):
+            eq = fresh
+            swr._values[f"earn:equity:{sym}"] = (__import__("time").time(), fresh)
+    row = {}
+    try:
+        import uw_earnings_calendar as uwcal
+        pv = uwcal.preview(sym) or {}
+        row = {"company": pv.get("name"), "date": pv.get("next_report"),
+               "short_label": pv.get("next_report_time"),
+               "sector": pv.get("sector"), "prior_close": pv.get("prior_close")}
+    except Exception:  # noqa: BLE001
+        row = {}
+    return swr.serve(f"metaintra:one:{sym}",
+                     lambda: {"status": "OK", **mi.score_one(sym, eq, None, row)},
+                     market.session_ttl(60, 900))
+
+
 @router.get("/grok-intraday/board")
 def grok_intraday_board() -> dict:
     """Grok Intraday LIVE board over the liquid universe (like Trdgo Stock), scored

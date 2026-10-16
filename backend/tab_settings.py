@@ -167,6 +167,17 @@ INTRADAY_GROK_WEIGHTS: dict[str, int] = {
     "event_radar": 4,         # 10 same-day catalyst
 }                             # sum = 100
 
+# --- Meta Intraday: 7-signal short-term model (live board like Trdgo Stock) ----
+META_INTRADAY_WEIGHTS: dict[str, int] = {
+    "options_flow": 22,       # KING -- premium calls vs puts
+    "unusual_activity": 18,   # sweeps + blocks > 2x avg
+    "ema_trend_price": 18,    # EMA 20/50 + price structure
+    "volume_pcr": 12,         # volume vs yesterday + PCR
+    "key_levels": 12,         # call wall / put wall (max OI)
+    "volatility_em": 10,      # how much of expected move is done (sizing)
+    "daily_oi_change": 8,     # where new money is going today
+}                             # sum = 100
+
 # --- Meta: Pre-Earnings Direction (owner's 11-factor / 100-pt model) ----------
 # Adds Implied-vs-Historical move, IV Rank and Gamma/OI concentration to the
 # direction factors. All read from the warmed equity signals + trade cache, so

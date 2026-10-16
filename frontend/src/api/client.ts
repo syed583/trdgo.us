@@ -752,6 +752,10 @@ export const api2 = {
     request<any>(`/api/grok-intraday/scan?days=${days}`, s),
   grokIntradayBoard: (s?: AbortSignal) =>
     request<any>('/api/grok-intraday/board', s),
+  metaIntradayBoard: (s?: AbortSignal) =>
+    request<any>('/api/meta-intraday/board', s),
+  metaIntradayDetail: (symbol: string, s?: AbortSignal) =>
+    request<any>(`/api/meta-intraday/${encodeURIComponent(symbol)}`, s),
   grokIntradayDetail: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/grok-intraday/${encodeURIComponent(symbol)}`, s),
   earningsEquity: (symbol: string, profile?: string, s?: AbortSignal) =>
