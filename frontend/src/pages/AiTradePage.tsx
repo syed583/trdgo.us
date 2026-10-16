@@ -14,6 +14,7 @@ import Scorecard from '../components/Scorecard';
 import HorizonSwitch, { HORIZON_COPY, defaultHorizon } from '../components/HorizonSwitch';
 import type { Horizon } from '../components/HorizonSwitch';
 import IntradayV2Board from '../components/IntradayV2Board';
+import PreMarketBoard from '../components/PreMarketBoard';
 
 const EMPTY: Row[] = [];
 
@@ -330,12 +331,19 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
   // v2 Today view: the shared intraday model + signal log, in place of the v1
   // board. Header kept so the horizon switch still lets the reader leave Today.
   if (im2On) {
+    // Before the open (pre-market / overnight) the RTH model has no bars, so show
+    // the pre-market board (gap + flow + daily trend). The live board takes over
+    // once RTH begins.
+    const phase = im2.data?.phase;
+    const showPre = phase === 'pre' || phase === 'closed';
     return (
       <div className="page">
         <div className="at-head">
           <div>
             <h1>Trdgo Stock</h1>
-            <p className="at-basis at-basis-sm"><b>Today · Intraday Model v2</b></p>
+            <p className="at-basis at-basis-sm">
+              <b>{showPre ? 'Pre-Market · what to buy / sell before the open' : 'Today · Intraday Model v2'}</b>
+            </p>
           </div>
           <div className="at-head-right">
             <div className="at-tabgroup">
@@ -343,7 +351,7 @@ export default function AiTradePage({ ctx }: { ctx: PageContext }) {
             </div>
           </div>
         </div>
-        <IntradayV2Board />
+        {showPre ? <PreMarketBoard /> : <IntradayV2Board />}
       </div>
     );
   }

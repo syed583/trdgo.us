@@ -712,6 +712,8 @@ export const api2 = {
     request<any>(`/api/intraday/score/${encodeURIComponent(symbol)}`, s),
   intradayBoard: (s?: AbortSignal) =>
     request<any>('/api/intraday/board', s),
+  intradayPremarket: (s?: AbortSignal) =>
+    request<any>('/api/intraday/premarket', s),
   intradayLog: (date = '', s?: AbortSignal) =>
     request<any>(`/api/intraday/log${date ? `?date=${date}` : ''}`, s),
   claudeLastScan: (days = 15, s?: AbortSignal) =>

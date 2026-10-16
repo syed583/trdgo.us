@@ -410,6 +410,30 @@ def _intraday_v2_on() -> bool:
     return (os.getenv("INTRADAY_MODEL") or "v1").strip().lower() == "v2"
 
 
+@router.get("/intraday/premarket")
+def intraday_premarket() -> dict:
+    """Trdgo Stock PRE-MARKET board: what to buy / sell before the open, from the
+    gap, overnight options flow, the daily trend and prior-day levels. Non-blocking:
+    serves the last board and warms the next in the background."""
+    if not _intraday_v2_on():
+        return {"status": "DISABLED"}
+    import intraday_premarket as pm
+    import threading
+    res = swr.peek("pm:board")
+
+    def _bg() -> None:
+        try:
+            swr.serve("pm:board", lambda: pm.board(), 120.0)
+        except Exception:  # noqa: BLE001
+            pass
+
+    threading.Thread(target=_bg, daemon=True).start()
+    if res is None:
+        return {"status": "WARMING", "model": pm.MODEL, "buyers": [], "sellers": [],
+                "neutral": [], "counts": {}}
+    return res
+
+
 @router.get("/intraday/score/{symbol}")
 def intraday_score(symbol: str) -> dict:
     """Intraday Model v2 score for one ticker (Analysis page). Same function the
