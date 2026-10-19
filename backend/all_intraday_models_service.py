@@ -96,9 +96,20 @@ def scan() -> dict:
         import intraday_indicators as ind
         if ind.market_phase() in ("pre", "closed"):
             pm = swr.peek("pm:board") or {}
-            for grp in ("buyers", "sellers", "neutral"):
-                for r in pm.get(grp) or []:
-                    pm_map[r["symbol"]] = (r.get("signal"), r.get("score"))
+            rows_pm = [r for grp in ("buyers", "sellers", "neutral") for r in (pm.get(grp) or [])]
+            if not rows_pm:
+                # Not warmed yet -- compute it now so the Trdgo column is right this
+                # scan (pre-market board reuses cached quotes, so it is quick).
+                try:
+                    import intraday_premarket as ipm
+                    b = ipm.board()
+                    swr.serve("pm:board", lambda: b, 120.0)
+                    rows_pm = [r for grp in ("buyers", "sellers", "neutral")
+                               for r in (b.get(grp) or [])]
+                except Exception:  # noqa: BLE001
+                    rows_pm = []
+            for r in rows_pm:
+                pm_map[r["symbol"]] = (r.get("signal"), r.get("score"))
     except Exception:  # noqa: BLE001
         pm_map = {}
     out: list[dict] = []
