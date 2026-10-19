@@ -49,13 +49,15 @@ def _row_cells(sym: str, s: dict, eq: Optional[dict], trade: Optional[dict],
     import chatgpt_intraday_service as cgi
     cells: dict[str, dict] = {}
 
-    # Trdgo Stock -- mirror what the Trdgo Stock page shows: the pre-market board
-    # (gap/flow) before the open, else the live RTH score (BUY>=55 / SELL<=45).
+    # Trdgo Stock -- mirror what the Trdgo Stock PAGE shows, exactly. The page's
+    # RTH board only lists confirmed signals (strict gates + 2-scan), so a name it
+    # does not flag is NEUTRAL here too -- not its raw score. Pre-market pm_map
+    # holds all names (the pre-market board).
     if pm_map and sym in pm_map:
         sig, sc = pm_map[sym]
         cells["trdgo"] = _cell(sig, sc)
     else:
-        cells["trdgo"] = _cell(_sig_from_score(s.get("score")), s.get("score"))
+        cells["trdgo"] = _cell("NEUTRAL", s.get("score"))
 
     def safe(fn):
         try:
