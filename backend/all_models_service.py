@@ -53,15 +53,26 @@ def _cell(signal: Optional[str], score) -> dict:
 
 def _row_cells(sym: str, eq: dict, trade: dict, mkt: Optional[float]) -> dict:
     cells: dict[str, dict] = {}
-    # Claude +0 / +- come from the trade engine's equity score + overall decision.
     tr = trade or {}
-    eqscore = ((tr.get("equity") or {}).get("score"))
-    cells["claude_p0"] = _cell(_dir(tr.get("overall_decision")), eqscore)
+    # Claude +0 / +- colour from the SAME source as their tab cards -- the warmed
+    # earnings-equity analysis (earn:equity), NOT the trade engine. Matching the
+    # two list components exactly:
+    #   Claude +0  (UpcomingEarnings.tierClass): strictly by the 0-100 equity
+    #              SCORE band -- BUY >= 55, SELL <= 45, else NEUTRAL; before the
+    #              score is known, fall back to the raw decision.
+    #   Claude +-  (UpcomingEarningsClaude.sigClass): the raw equity DECISION
+    #              bucket -- BUY if the decision says BUY, SELL if SELL, else NEUTRAL.
+    eqscore = cl._f(eq.get("score"))
+    eqdec = (eq.get("decision") or "").upper()
+    dec_sig = ("BUY" if "BUY" in eqdec else "SELL" if "SELL" in eqdec
+               else "NEUTRAL") if eqdec else None
+
     if eqscore is not None:
-        pm = "BUY" if eqscore >= 58 else "SELL" if eqscore <= 42 else "NEUTRAL"
+        p0 = "BUY" if eqscore >= 55 else "SELL" if eqscore <= 45 else "NEUTRAL"
     else:
-        pm = None
-    cells["claude_pm"] = _cell(pm, eqscore)
+        p0 = dec_sig
+    cells["claude_p0"] = _cell(p0, eqscore)
+    cells["claude_pm"] = _cell(dec_sig, eqscore)
 
     # The seven shared-framework direction models. `raw` uses the score-based
     # signal (raw_signal) when present, which is what the card actually shows --
