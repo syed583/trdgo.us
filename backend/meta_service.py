@@ -55,9 +55,10 @@ def _implied_vs_hist_bias(trade: dict) -> Optional[float]:
     im_pct = cl._f(em.get("percent"))
     mags = [abs(x) for x in (cl._f(m.get("move_pct")) for m in (trade or {}).get("historical_moves") or [])
             if x is not None]
-    if im_pct is None or not mags:
+    hist = (sum(mags) / len(mags)) if mags else None
+    if im_pct is None or not hist:        # None/empty/zero -> no usable ratio
         return None
-    ratio = im_pct / (sum(mags) / len(mags))
+    ratio = im_pct / hist
     if ratio < 0.9:
         return 1.0
     if ratio < 1.1:
