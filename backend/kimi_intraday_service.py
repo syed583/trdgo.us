@@ -120,6 +120,15 @@ def score_one(symbol: str, fetch: bool = False) -> Optional[dict]:
 
 
 def board() -> dict:
+    # Before the open the live engine has no bars -> pre-market board fallback.
+    import swr
+    try:
+        import intraday_indicators as ind
+        if ind.market_phase() in ("pre", "closed"):
+            import intraday_premarket as ipm
+            return swr.serve("pm:board", lambda: ipm.board(), 120.0)
+    except Exception:  # noqa: BLE001
+        pass
     import ai_trade_service as ats
     syms = [s.upper() for s in getattr(ats, "UNIVERSE", [])]
     rows: list[dict] = []

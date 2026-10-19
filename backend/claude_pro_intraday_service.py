@@ -109,9 +109,17 @@ def score_one(symbol: str, fetch: bool = False) -> Optional[dict]:
 def board() -> dict:
     """Live board over the liquid universe. Reads Trdgo Stock's live per-name
     scores (im2:{sym}); if too few are cached, kicks a Trdgo Stock scan so the
-    next refresh is populated."""
-    import ai_trade_service as ats
+    next refresh is populated. Before the open the 5-min engine has no bars, so
+    fall back to the pre-market board (gap + overnight flow)."""
     import swr
+    try:
+        import intraday_indicators as ind
+        if ind.market_phase() in ("pre", "closed"):
+            import intraday_premarket as ipm
+            return swr.serve("pm:board", lambda: ipm.board(), 120.0)
+    except Exception:  # noqa: BLE001
+        pass
+    import ai_trade_service as ats
     syms = [s.upper() for s in getattr(ats, "UNIVERSE", [])]
 
     rows: list[dict] = []
