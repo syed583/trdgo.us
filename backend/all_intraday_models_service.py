@@ -91,15 +91,18 @@ def scan() -> dict:
 
     # Before the open, the Trdgo Stock page shows the pre-market board; mirror it
     # in the Trdgo column so the two always agree.
+    # The Trdgo column must mirror the Trdgo Stock page EXACTLY. The page keys off
+    # the signal board's own phase: pre/closed -> the pre-market board (pm:board);
+    # otherwise -> the live RTH signal board (im2:board). Build one symbol->(sig,
+    # score) map from whichever the page is showing.
     pm_map: dict = {}
     try:
-        import intraday_indicators as ind
-        if ind.market_phase() in ("pre", "closed"):
+        im2board = swr.peek("im2:board") or {}
+        page_phase = im2board.get("phase")
+        if page_phase in ("pre", "closed"):
             pm = swr.peek("pm:board") or {}
             rows_pm = [r for grp in ("buyers", "sellers", "neutral") for r in (pm.get(grp) or [])]
             if not rows_pm:
-                # Not warmed yet -- compute it now so the Trdgo column is right this
-                # scan (pre-market board reuses cached quotes, so it is quick).
                 try:
                     import intraday_premarket as ipm
                     b = ipm.board()
@@ -110,6 +113,15 @@ def scan() -> dict:
                     rows_pm = []
             for r in rows_pm:
                 pm_map[r["symbol"]] = (r.get("signal"), r.get("score"))
+        else:
+            # RTH -- use the live signal board's confirmed calls (same as the page).
+            for r in im2board.get("buyers") or []:
+                pm_map[r["symbol"]] = (_dir((r.get("signal") or {}).get("state")), r.get("score"))
+            for r in im2board.get("sellers") or []:
+                pm_map[r["symbol"]] = (_dir((r.get("signal") or {}).get("state")), r.get("score"))
+            for grp in ("no_edge", "withheld"):
+                for r in im2board.get(grp) or []:
+                    pm_map[r["symbol"]] = ("NEUTRAL", r.get("score"))
     except Exception:  # noqa: BLE001
         pm_map = {}
     out: list[dict] = []
