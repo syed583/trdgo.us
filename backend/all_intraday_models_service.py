@@ -42,15 +42,20 @@ def _cell(signal: Optional[str], score) -> dict:
     return {"signal": signal, "score": (round(score, 1) if isinstance(score, (int, float)) else None)}
 
 
-def _row_cells(sym: str, s: dict, eq: Optional[dict], trade: Optional[dict]) -> dict:
+def _row_cells(sym: str, s: dict, eq: Optional[dict], trade: Optional[dict],
+               pm_map: Optional[dict] = None) -> dict:
     import claude_pro_intraday_service as cpi
     import kimi_intraday_service as kin
     import chatgpt_intraday_service as cgi
     cells: dict[str, dict] = {}
 
-    # Trdgo Stock v2 -- by score (BUY>=55 / SELL<=45), consistent with the other
-    # columns; its gated call is WITHHELD pre-market so is not used here.
-    cells["trdgo"] = _cell(_sig_from_score(s.get("score")), s.get("score"))
+    # Trdgo Stock -- mirror what the Trdgo Stock page shows: the pre-market board
+    # (gap/flow) before the open, else the live RTH score (BUY>=55 / SELL<=45).
+    if pm_map and sym in pm_map:
+        sig, sc = pm_map[sym]
+        cells["trdgo"] = _cell(sig, sc)
+    else:
+        cells["trdgo"] = _cell(_sig_from_score(s.get("score")), s.get("score"))
 
     def safe(fn):
         try:
@@ -83,6 +88,19 @@ def scan() -> dict:
     import ai_trade_service as ats
     syms = [s.upper() for s in getattr(ats, "UNIVERSE", [])]
     prev = swr.peek("allintra:last") or {}
+
+    # Before the open, the Trdgo Stock page shows the pre-market board; mirror it
+    # in the Trdgo column so the two always agree.
+    pm_map: dict = {}
+    try:
+        import intraday_indicators as ind
+        if ind.market_phase() in ("pre", "closed"):
+            pm = swr.peek("pm:board") or {}
+            for grp in ("buyers", "sellers", "neutral"):
+                for r in pm.get(grp) or []:
+                    pm_map[r["symbol"]] = (r.get("signal"), r.get("score"))
+    except Exception:  # noqa: BLE001
+        pm_map = {}
     out: list[dict] = []
     snapshot: dict[str, dict] = {}
     for sym in syms:
@@ -91,7 +109,7 @@ def scan() -> dict:
             continue
         eq = swr.peek(f"earn:equity:{sym}")
         trade = swr.peek(f"earn:trade:default:{sym}")
-        cells = _row_cells(sym, s, eq, trade)
+        cells = _row_cells(sym, s, eq, trade, pm_map)
         psig = prev.get(sym) or {}
         changed_any = False
         for k, c in cells.items():
