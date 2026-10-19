@@ -270,7 +270,11 @@ export default function ClaudeLastPage({ ctx, base, pz = false, model }:
     }
     return Object.entries(by)
       .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([iso, items]) => [iso, items] as [string, any[]]);
+      // Within each earnings day, list tickers A->Z (not by score) so the same
+      // name sits in the same place across every model tab -- easy to compare.
+      .map(([iso, items]) => [iso,
+        [...items].sort((x, y) =>
+          String(x.symbol).localeCompare(String(y.symbol)))] as [string, any[]]);
   }, [rows, query]);
 
   const total = groups.reduce((n, [, g]) => n + g.length, 0);

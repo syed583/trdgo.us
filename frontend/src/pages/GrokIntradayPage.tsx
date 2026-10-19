@@ -17,6 +17,9 @@ function SignalTable({ rows, side, base }: { rows: any[]; side: 'BUY' | 'SELL'; 
   if (!rows.length) {
     return <p className="im2-note">No {side === 'BUY' ? 'buy' : 'sell'} signals right now.</p>;
   }
+  // List tickers A->Z (not by score) so the same name lines up across every board.
+  const sorted = [...rows].sort((a, b) =>
+    String(a.symbol).localeCompare(String(b.symbol)));
   return (
     <div className="im2-wrap">
       <table className="im2-tbl">
@@ -27,7 +30,7 @@ function SignalTable({ rows, side, base }: { rows: any[]; side: 'BUY' | 'SELL'; 
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
+          {sorted.map((r) => (
             <tr key={r.symbol} className="im2-rowlink" onClick={() => nav(`${base}/${r.symbol}`)}>
               <td className="sym">{r.symbol}</td>
               <td><span className={`im2-call ${callClass(r.signal)}`}>{r.signal}</span></td>
@@ -82,7 +85,8 @@ export default function GrokIntradayPage({ ctx, cfg = GROK_CFG }:
   const d = b.data;
   const counts = d?.counts || {};
   const warming = d?.status === 'WARMING' || (b.initialLoading && !d);
-  const neutral = d?.neutral || [];
+  const neutral = [...(d?.neutral || [])].sort((a: any, b: any) =>
+    String(a.symbol).localeCompare(String(b.symbol)));
 
   const Stat = ({ icon, label, n, cls }: any) => (
     <div className={`im2-stat ${cls}`}>{icon}<div><div className="im2-stat-n">{n ?? '—'}</div>
@@ -114,9 +118,9 @@ export default function GrokIntradayPage({ ctx, cfg = GROK_CFG }:
           <p className="im2-note"><Loader2 size={12} className="spin" /> Scoring the universe…</p>
         ) : (
           <>
-            <h3 className="im2-h">Top Buyers</h3>
+            <h3 className="im2-h">Buyers</h3>
             <SignalTable rows={d?.buyers || []} side="BUY" base={cfg.base} />
-            <h3 className="im2-h">Top Sellers</h3>
+            <h3 className="im2-h">Sellers</h3>
             <SignalTable rows={d?.sellers || []} side="SELL" base={cfg.base} />
             <h3 className="im2-h">NEUTRAL</h3>
             <div className="im2-chips">
