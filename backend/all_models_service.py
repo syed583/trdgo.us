@@ -63,15 +63,18 @@ def _row_cells(sym: str, eq: dict, trade: dict, mkt: Optional[float]) -> dict:
         pm = None
     cells["claude_pm"] = _cell(pm, eqscore)
 
-    # The seven shared-framework direction models.
-    def safe(fn):
+    # The seven shared-framework direction models. `raw` uses the score-based
+    # signal (raw_signal) when present, which is what the card actually shows --
+    # Claude New colours its card by score, not by the Implied-Move-gated signal.
+    def safe(fn, raw: bool = False):
         try:
             r = fn()
-            return _cell(r.get("signal"), r.get("score"))
+            sig = (r.get("raw_signal") if raw else None) or r.get("signal")
+            return _cell(sig, r.get("score"))
         except Exception:  # noqa: BLE001
             return _cell(None, None)
 
-    cn = safe(lambda: cl.score_one(sym, eq, tr, {}))
+    cn = safe(lambda: cl.score_one(sym, eq, tr, {}), raw=True)
     cells["claude_new"] = cn
     cells["claude_new_pz"] = dict(cn)   # same engine as Claude New
     cells["grok"] = safe(lambda: gk.score_one(sym, eq, tr, {}, with_analyst=False))
