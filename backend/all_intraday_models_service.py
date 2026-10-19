@@ -30,6 +30,14 @@ def _dir(call: Optional[str]) -> str:
     return "NEUTRAL"
 
 
+def _sig_from_score(score) -> Optional[str]:
+    """Same rule as every other column (BUY>=55 / SELL<=45), so the Trdgo column
+    is directional too -- its own call is gated to WITHHELD/NO-EDGE pre-market."""
+    if not isinstance(score, (int, float)):
+        return None
+    return "BUY" if score >= 55 else "SELL" if score <= 45 else "NEUTRAL"
+
+
 def _cell(signal: Optional[str], score) -> dict:
     return {"signal": signal, "score": (round(score, 1) if isinstance(score, (int, float)) else None)}
 
@@ -40,8 +48,9 @@ def _row_cells(sym: str, s: dict, eq: Optional[dict], trade: Optional[dict]) -> 
     import chatgpt_intraday_service as cgi
     cells: dict[str, dict] = {}
 
-    # Trdgo Stock v2 -- straight from the live score.
-    cells["trdgo"] = _cell(_dir(s.get("call")), s.get("score"))
+    # Trdgo Stock v2 -- by score (BUY>=55 / SELL<=45), consistent with the other
+    # columns; its gated call is WITHHELD pre-market so is not used here.
+    cells["trdgo"] = _cell(_sig_from_score(s.get("score")), s.get("score"))
 
     def safe(fn):
         try:
