@@ -152,19 +152,32 @@ export default function ModelAccuracyPage() {
           ) : (
             <>
               <table className="ma-tbl">
-                <thead><tr><th className="l">Model (partial-factor sim.)</th><th>Sim. dir. result</th><th>Events</th>
-                  <th>Avg move</th><th>Input coverage</th><th>Reconstruction</th></tr></thead>
+                <thead><tr><th className="l">Model (partial-factor sim.)</th><th>Events</th>
+                  <th>BUY acc</th><th>SELL acc</th><th>Dir. acc</th><th>Correct / Incorrect</th>
+                  <th>Avg move</th><th>Coverage</th><th>Status</th></tr></thead>
                 <tbody>
                   {bt.data.models.map((m: any) => (
-                    <tr key={m.model}>
-                      <td className="l ma-mdl">{m.label}</td>
-                      <td><span className={`ma-acc ${accClass(m.directional_accuracy)}`}>
-                        {fmtAcc(m.directional_accuracy)}</span> <span className="ma-n">n{m.directional_n}</span></td>
-                      <td>{m.events_tested}</td>
-                      <td className={m.avg_move_pct > 0 ? 'ma-pos' : m.avg_move_pct < 0 ? 'ma-neg' : ''}>{signed(m.avg_move_pct)}</td>
-                      <td className="ma-n">{m.coverage_pct != null ? `${m.coverage_pct}%` : '—'}</td>
-                      <td className="ma-res UNVERIFIABLE">Partial{m.faithful === false ? '' : ''}</td>
-                    </tr>
+                    m.unavailable ? (
+                      <tr key={m.model}>
+                        <td className="l ma-mdl">{m.label}</td>
+                        <td colSpan={7} className="ma-res UNVERIFIABLE" style={{ textAlign: 'left' }}>
+                          Full historical backtest unavailable — derived from the equity engine's score/decision (not reconstructable).</td>
+                        <td className="ma-res UNVERIFIABLE">N/A</td>
+                      </tr>
+                    ) : (
+                      <tr key={m.model}>
+                        <td className="l ma-mdl">{m.label}</td>
+                        <td>{m.events_tested}</td>
+                        <td>{fmtAcc(m.buy_accuracy)} <span className="ma-n">({m.buy_n})</span></td>
+                        <td>{fmtAcc(m.sell_accuracy)} <span className="ma-n">({m.sell_n})</span></td>
+                        <td><span className={`ma-acc ${accClass(m.directional_accuracy)}`}>
+                          {fmtAcc(m.directional_accuracy)}</span> <span className="ma-n">n{m.directional_n}</span></td>
+                        <td><span className="ma-pos">{m.directional_correct}</span> / <span className="ma-neg">{m.directional_incorrect}</span></td>
+                        <td className={m.avg_move_pct > 0 ? 'ma-pos' : m.avg_move_pct < 0 ? 'ma-neg' : ''}>{signed(m.avg_move_pct)}</td>
+                        <td className="ma-n">{m.coverage_pct != null ? `${m.coverage_pct}%` : '—'}</td>
+                        <td className="ma-res UNVERIFIABLE">Partial</td>
+                      </tr>
+                    )
                   ))}
                 </tbody>
               </table>

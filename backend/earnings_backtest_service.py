@@ -376,6 +376,10 @@ def scoreboard() -> dict:
             "  COUNT(*) AS n_events, "
             "  COUNT(*) FILTER (WHERE signal IN ('BUY','SELL')) AS dir_n, "
             "  COUNT(*) FILTER (WHERE signal IN ('BUY','SELL') AND correct=1) AS dir_ok, "
+            "  COUNT(*) FILTER (WHERE signal='BUY') AS buy_n, "
+            "  COUNT(*) FILTER (WHERE signal='BUY' AND correct=1) AS buy_ok, "
+            "  COUNT(*) FILTER (WHERE signal='SELL') AS sell_n, "
+            "  COUNT(*) FILTER (WHERE signal='SELL' AND correct=1) AS sell_ok, "
             "  COUNT(*) FILTER (WHERE signal='NEUTRAL') AS neu_n, "
             "  AVG(actual_move_pct) AS avg_move, "
             "  AVG(coverage_pct) AS avg_cov "
@@ -385,15 +389,20 @@ def scoreboard() -> dict:
     finally:
         db.close()
 
+    def _pct(ok, n):
+        return round(ok / n * 100, 1) if n else None
+
     out = []
     tested_events = 0
     for r in rows:
-        dir_acc = round(r.dir_ok / r.dir_n * 100, 1) if r.dir_n else None
         out.append({
             "model": r.model, "label": labels.get(r.model, r.model),
             "events_tested": r.n_events,
             "directional_n": r.dir_n, "directional_correct": r.dir_ok,
-            "directional_accuracy": dir_acc,
+            "directional_incorrect": r.dir_n - r.dir_ok,
+            "directional_accuracy": _pct(r.dir_ok, r.dir_n),
+            "buy_n": r.buy_n, "buy_correct": r.buy_ok, "buy_accuracy": _pct(r.buy_ok, r.buy_n),
+            "sell_n": r.sell_n, "sell_correct": r.sell_ok, "sell_accuracy": _pct(r.sell_ok, r.sell_n),
             "neutral_n": r.neu_n,
             "avg_move_pct": round(float(r.avg_move), 2) if r.avg_move is not None else None,
             "coverage_pct": round(float(r.avg_cov), 1) if r.avg_cov is not None else None,
@@ -409,6 +418,23 @@ def scoreboard() -> dict:
     for m in out:
         m["reconstruction"] = "partial-factor"
         m["faithful"] = False
+    # Claude +0 / Claude +- derive from the earnings-equity engine's
+    # score/decision, whose ~20 signal builders are current-only, so they cannot
+    # be backtested at all. Show them as unavailable so ALL 10 models appear,
+    # without inventing a number.
+    present = {m["model"] for m in out}
+    for mdl in ("claude_p0", "claude_pm"):
+        if mdl not in present:
+            out.append({
+                "model": mdl, "label": labels.get(mdl, mdl), "events_tested": 0,
+                "directional_n": 0, "directional_correct": 0, "directional_incorrect": 0,
+                "directional_accuracy": None, "buy_n": 0, "buy_correct": 0,
+                "buy_accuracy": None, "sell_n": 0, "sell_correct": 0, "sell_accuracy": None,
+                "neutral_n": 0, "avg_move_pct": None, "coverage_pct": None,
+                "reconstruction": "unavailable", "faithful": False, "unavailable": True})
+    out.sort(key=lambda m: (not m.get("unavailable", False),
+                            m["directional_accuracy"] is not None,
+                            m["directional_accuracy"] or -1), reverse=True)
     full_available = False
     return {"status": "OK", "source": SOURCE, "label": "SIMULATED",
             "full_backtest_available": full_available,
