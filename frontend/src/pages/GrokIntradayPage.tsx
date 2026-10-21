@@ -56,15 +56,15 @@ const GROK_CFG: IntradayCfg = {
   base: '/grok-intraday', board: (s) => api2.grokIntradayBoard(s),
 };
 export const META_INTRADAY_CFG: IntradayCfg = {
-  title: 'Meta Intraday', subtitle: 'Live Board · Meta 7-signal model',
+  title: 'Meta Intraday', subtitle: 'Live Board · Meta 8-signal model',
   base: '/meta-intraday', board: (s) => api2.metaIntradayBoard(s),
 };
 export const CLAUDE_PRO_INTRADAY_CFG: IntradayCfg = {
-  title: 'Claude Pro Intraday', subtitle: 'Live Board · real 5-min engine · 7-block model',
+  title: 'Claude Pro Intraday', subtitle: 'Live Board · real 5-min engine · V2 8-factor model',
   base: '/claude-pro-intraday', board: (s) => api2.claudeProIntradayBoard(s),
 };
 export const KIMI_INTRADAY_CFG: IntradayCfg = {
-  title: 'Kimi Intraday', subtitle: 'Live Board · real 5-min engine · 6-category framework',
+  title: 'Kimi Intraday', subtitle: 'Live Board · Kimi 10-signal model',
   base: '/kimi-intraday', board: (s) => api2.kimiIntradayBoard(s),
 };
 export const GEMINI_INTRADAY_CFG: IntradayCfg = {
@@ -72,7 +72,7 @@ export const GEMINI_INTRADAY_CFG: IntradayCfg = {
   base: '/gemini-intraday', board: (s) => api2.geminiIntradayBoard(s),
 };
 export const CHATGPT_INTRADAY_CFG: IntradayCfg = {
-  title: 'ChatGPT Intraday', subtitle: 'Live Board · TRDGO 18-parameter model',
+  title: 'ChatGPT Intraday', subtitle: 'Live Board · 20-param institutional model · coverage %',
   base: '/chatgpt-intraday', board: (s) => api2.chatgptIntradayBoard(s),
 };
 

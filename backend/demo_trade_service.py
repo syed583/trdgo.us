@@ -49,6 +49,27 @@ def _after_close(now: Optional[datetime] = None) -> bool:
     return n.weekday() < 5 and n.time() >= _MARKET_CLOSE
 
 
+# Trades may OPEN across the extended session (pre-market + RTH + after-hours),
+# so the blotter is useful outside 9:30-4:00 too. Entries use the current price.
+from datetime import time as _dtime
+_EXT_OPEN, _EXT_CLOSE = _dtime(4, 0), _dtime(20, 0)
+
+
+def _can_open(now: Optional[datetime] = None) -> bool:
+    n = (now or _et_now())
+    return n.weekday() < 5 and _EXT_OPEN <= n.time() < _EXT_CLOSE
+
+
+def _exit_timed(t, now: Optional[datetime] = None) -> bool:
+    """Timed exit: a regular-session trade at/after the 4pm close, and any trade
+    carried over from a previous trading day (closed on the next tick)."""
+    n = (now or _et_now())
+    if t.session_date and t.session_date < n.date():
+        return True
+    et_entry = t.entry_time.astimezone(ET) if t.entry_time else None
+    return bool(n.time() >= _MARKET_CLOSE and et_entry and et_entry.time() < _MARKET_CLOSE)
+
+
 def ensure_schema() -> None:
     global _schema_ready
     if _schema_ready:
@@ -122,8 +143,6 @@ def tick(force: bool = False) -> None:
         from models_demo_trades import DemoTrade
         et = _et_now()
         today = et.date()
-        after_close = _after_close(et)
-        rth = _is_rth(et)
 
         boards = {k: _row_map(b) for k, (lbl, spec) in MODELS.items()
                   if (b := _board(spec))}
@@ -136,7 +155,7 @@ def tick(force: bool = False) -> None:
                 last = info.get("now") or t.last_price or t.entry_price
                 t.last_price = last
                 t.profit, t.profit_pct = _pnl(t.side, t.entry_price, last, t.shares)
-                reason = _exit_reason(t, last, info.get("score"), after_close)
+                reason = _exit_reason(t, last, info.get("score"), _exit_timed(t, et))
                 if reason:
                     t.status = reason
                     t.exit_price = last
@@ -144,7 +163,7 @@ def tick(force: bool = False) -> None:
                     t.exit_time = _utcnow()
 
             # open new trades for fresh BUY/SELL (one per strategy+symbol+day)
-            if rth and not after_close:
+            if _can_open(et):
                 have = {(x.strategy, x.symbol) for x in
                         s.query(DemoTrade.strategy, DemoTrade.symbol).filter_by(session_date=today).all()}
                 for strat, rows in boards.items():

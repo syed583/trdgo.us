@@ -504,7 +504,7 @@ def _start_demo_trade_tracker() -> None:
         import demo_trade_service as dts
         while True:
             try:
-                if dts._is_rth() or dts._after_close():
+                if dts._can_open() or dts._after_close():
                     dts.tick(force=True)
             except Exception:  # noqa: BLE001
                 pass
