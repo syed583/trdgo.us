@@ -1,11 +1,13 @@
-"""ChatGPT Intraday -- the recommended TRDGO 18-parameter intraday model (100 pts).
+"""ChatGPT Intraday -- institutional 20-parameter intraday model (100 pts).
 
-Blends the LIVE intraday engine (im2: VWAP, RVOL, opening range, breadth, rel
-strength, EMA, RSI, flow, unusual, disparity, levels) with a few equity-engine
-signals (price action, daily OI change, flow by expiry, OI positioning). Two
-parameters have no source yet (cumulative volume delta, liquidity sweep / BOS /
-CHOCH) and are shown as "no data" (scored neutral, not silent zero) with a
-coverage %.
+Scores the 20 institutional factors, mapping each to the LIVE intraday engine
+(im2: VWAP, RVOL, opening range, rel strength, RSI, flow, unusual, levels, news,
+market) or an equity-engine signal (OI change) where one exists. The factors that
+need tick / Level-2 / volume-profile data we do NOT ingest -- market structure
+(BOS/CHOCH), order flow (CVD/footprint/delta), liquidity sweeps, absorption /
+icebergs, volume profile (POC/VAH/VAL), supply/demand & FVG, breakout quality,
+volatility expansion, breadth/MTF -- are shown as "no data" (scored neutral, never
+fabricated), with a coverage %. ~54% of the weight is currently covered.
 
 All-positive 5-step scale, 0-100, BUY>=55 / SELL<=45. Reads caches so the board
 is fast; same Trdgo Stock UI.
@@ -16,28 +18,34 @@ from typing import Optional
 
 import claude_last_service as cl
 
-SOURCE = "ChatGPT Intraday — TRDGO 18-param"
+SOURCE = "ChatGPT Intraday — 20-param institutional"
 
 # (key, label, weight, source) where source = ("live", pname) | ("eq", signame) | None
+# The institutional 20-factor model. Factors needing tick/L2/volume-profile data
+# we do not ingest (market structure, CVD/footprint, liquidity sweeps, absorption/
+# icebergs, volume profile, supply/demand/FVG, breakout quality) are source=None
+# -> shown as "no data" (scored neutral, never fabricated) with a coverage %.
 PARAMS = [
-    ("options_flow", "Options Flow", 10, ("live", "flow")),
-    ("unusual", "Unusual Options Activity", 7, ("live", "unusual")),
-    ("disparity", "Options Disparity", 5, ("live", "disparity")),
-    ("volume_pcr", "Volume & Put/Call", 5, ("live", "pc_ratio")),
-    ("key_levels", "Key Option Levels", 4, ("live", "levels")),
-    ("daily_oi_change", "Daily OI Change", 2, ("eq", "daily_oi_change")),
-    ("flow_by_expiry", "Flow by Expiry", 1, ("eq", "flow_by_expiry")),
-    ("oi_positioning", "OI Positioning", 1, ("eq", "oi_positioning")),
-    ("ema_trend", "EMA / Trend", 10, ("live", "ema_trend")),
-    ("rsi", "RSI (14)", 3, ("live", "rsi")),
-    ("price_action", "Price Action", 9, ("eq", "price_action")),
-    ("vwap", "VWAP / Anchored VWAP", 8, ("live", "vwap_pos")),
-    ("rvol", "Relative Volume (RVOL)", 7, ("live", "rvol")),
-    ("breadth", "Market Breadth / SPY-QQQ", 7, ("live", "market")),
-    ("cum_delta", "Order Flow / Cumulative Delta", 6, None),
-    ("liq_sweep", "Liquidity Sweep / BOS / CHOCH", 5, None),
-    ("orb", "Opening Range Breakout", 5, ("live", "orb")),
-    ("rel_strength", "Relative Strength vs Sector", 5, ("live", "rel_strength")),
+    ("market_structure", "Market Structure (BOS/CHOCH, HH/HL)", 10, None),
+    ("options_flow", "Institutional Options Flow (Sweeps+Prem)", 10, ("live", "flow")),
+    ("order_flow", "Order Flow (CVD/Footprint/Delta)", 9, None),
+    ("vwap_ema", "VWAP, Anchored VWAP & EMA", 9, ("live", "vwap_pos")),
+    ("liquidity_sweeps", "Liquidity Sweeps / Stop Hunts", 8, None),
+    ("rvol", "Relative Volume (RVOL) & Acceleration", 8, ("live", "rvol")),
+    ("rel_strength", "Market & Sector Relative Strength", 7, ("live", "rel_strength")),
+    ("absorption", "Absorption / Icebergs / Replenishment", 6, None),
+    ("gamma", "Gamma Exposure & Dealer Positioning", 6, ("live", "levels")),
+    ("volume_profile", "Volume Profile (POC/VAH/VAL)", 5, None),
+    ("supply_demand", "Supply/Demand Zones & Fair Value Gaps", 4, None),
+    ("orb", "Opening Range Breakout / Breakdown", 4, ("live", "orb")),
+    ("unusual", "Unusual Options Activity", 3, ("live", "unusual")),
+    ("momentum", "Momentum (RSI / MACD / ROC / ADX)", 3, ("live", "rsi")),
+    ("breakout_quality", "Breakout Quality & Price Acceptance", 2, None),
+    ("catalyst", "News, Earnings & Economic Catalysts", 2, ("live", "news")),
+    ("volatility", "Volatility Expansion / Compression", 1, None),
+    ("oi_change", "Options OI Changes & Positioning", 1, ("eq", "daily_oi_change")),
+    ("intermarket", "Intermarket Confirmation", 1, ("live", "market")),
+    ("breadth_mtf", "Market Breadth & Multi-Timeframe", 1, None),
 ]
 
 

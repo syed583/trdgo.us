@@ -1,17 +1,13 @@
 """Claude Pro Intraday -- a true intraday direction board (critique-driven).
 
-Unlike the equity-signal intraday tabs, this reuses the LIVE intraday engine
-(intraday_model, 5-min bars: VWAP, intraday EMA, opening range, RVOL, 0-2DTE
-flow, levels, market/sector context, liquidity) and re-buckets those live
-signals into the 7 blocks the critique recommends:
+Reuses the LIVE intraday engine (intraday_model, 5-min bars: VWAP, intraday EMA,
+opening range, RVOL, 0-2DTE flow, levels, market/sector context) and scores the
+V2 8-factor intraday model:
 
-  Real-time options flow (merged, near-dated)      30
-  Price structure (VWAP, intraday EMA, opening rng) 25
-  Volume / RVOL                                     12
-  Market & sector context                           12
-  Key levels (OI / gamma, prior-day)                 8
-  Catalyst / news                                    8
-  Liquidity / spread quality                         5
+  Options Flow (Sweeps + Premium)   25   Price Structure (VWAP/EMA/ORB)  20
+  Gamma / Key Option Levels         15   Volume + Put/Call               12
+  Market Context (SPY/QQQ/Sector)   10   Unusual Activity                 8
+  Momentum (RSI / VWAP slope)        5   Pre-market Bias (Gap + OI)       5
 
 IV / expected move is kept OUT of the direction score and reported separately as
 `move_size` (sizing/risk). Recomputed every ~45s via intraday_model's cache.
@@ -23,17 +19,23 @@ from typing import Optional
 
 import claude_last_service as cl
 
-SOURCE = "Claude Pro Intraday — Live 7-block Direction"
+SOURCE = "Claude Pro Intraday — Live V2 8-factor Direction"
 
-# Block -> (label, weight, [intraday_model param names it merges])
+# V2 8-factor intraday model (directional, 100 pts). Each factor merges the live
+# intraday_model params it maps to. Inputs we do not ingest -- true dealer GEX
+# gamma-flip (gamma_levels uses OI/key levels instead), 5m/15m swing structure,
+# and VIX -- are absent, so those merges fall back to "no data" (neutral) rather
+# than being fabricated. V2's trading gates (BLOCKED on session/RVOL/spread/event)
+# are not applied here so Claude Pro stays comparable in the All-Intraday matrix.
 BLOCKS = {
-    "flow": ("Real-time Options Flow", 30, ["flow", "unusual", "disparity"]),
-    "structure": ("Price Structure (VWAP/EMA/ORB)", 25, ["vwap_pos", "ema_trend", "orb", "rel_strength"]),
-    "rvol": ("Volume / RVOL", 12, ["rvol", "pc_ratio"]),
-    "context": ("Market & Sector Context", 12, ["market", "sector"]),
-    "levels": ("Key Levels", 8, ["levels"]),
-    "catalyst": ("Catalyst / News", 8, ["news", "gap"]),
-    "liquidity": ("Liquidity / Spread", 5, []),   # from the G7 gate
+    "options_flow": ("Options Flow (Sweeps + Premium)", 25, ["flow", "disparity"]),
+    "price_structure": ("Price Structure (VWAP/EMA/ORB)", 20, ["vwap_pos", "ema_trend", "orb"]),
+    "gamma_levels": ("Gamma / Key Option Levels", 15, ["levels"]),
+    "volume_pc": ("Volume + Put/Call", 12, ["rvol", "pc_ratio"]),
+    "market_context": ("Market Context (SPY/QQQ/Sector)", 10, ["market", "sector"]),
+    "unusual_activity": ("Unusual Activity", 8, ["unusual"]),
+    "momentum": ("Momentum (RSI / VWAP slope)", 5, ["rsi"]),
+    "premarket_bias": ("Pre-market Bias (Gap + OI)", 5, ["gap", "coi"]),
 }
 
 
