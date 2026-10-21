@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import {
-  Activity, BarChart3, Brain, CalendarDays, Compass, Crosshair, Flame, Gauge, History, Layers, LineChart, Users,
+  Activity, BarChart3, Brain, Building2, CalendarDays, Compass, Crosshair, Flame, Gauge, History, Layers, LineChart, Users,
   LayoutDashboard, ListOrdered, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
   Scale, ScrollText, Settings, Sparkles, Star, TrendingUp, UserCog, Waves, Waypoints, X, Zap,
 } from 'lucide-react';
@@ -75,6 +75,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/volatility', label: 'Volatility', icon: <LineChart size={S} /> },
     { to: '/dark-pool', label: 'Dark Pool', icon: <Waves size={S} /> },
     { to: '/market-insiders', label: 'Market Insiders', icon: <UserCog size={S} /> },
+    { to: '/institutional-intel', label: 'Institutional Intelligence', icon: <Building2 size={S} /> },
   ] },
   { heading: 'Lists', items: [
     { to: '/watchlist', label: 'Watchlist', icon: <Star size={S} /> },

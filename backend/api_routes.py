@@ -3280,3 +3280,104 @@ def admin_logins(request: Request, limit: int = 50) -> dict:
     auth.require_permission(request, "users.view")
     import user_service
     return {"events": user_service.recent_logins(limit), "status": "OK"}
+
+
+# --------------------------------------------------------------------------- #
+# Institutional Intelligence (SEC 13F) -- DEVELOPMENT-ONLY, read-only.
+#
+# Additive, informational module. It reads the TRDGO-US-DEV project through the
+# service's OWN guarded engine (never production, never the Earnings-AI `get_db`),
+# and is gated by the same session middleware as every other /api route. Its
+# BULLISH/BEARISH/NEUTRAL labels describe 13F ownership change only and are kept
+# deliberately separate from the trading BUY/SELL signals -- nothing here feeds
+# an AI score. Every endpoint is GET-only, bounded and paginated; if the dev DB
+# is not configured (e.g. production), each returns a clean UNAVAILABLE instead
+# of raising.
+# --------------------------------------------------------------------------- #
+def _inst():
+    import institutional_dashboard_service as ins
+    return ins
+
+
+def _inst_guard() -> Optional[dict]:
+    """Return an UNAVAILABLE payload when the dev institutional DB is absent."""
+    try:
+        if _inst().available():
+            return None
+    except Exception:  # noqa: BLE001
+        pass
+    return {"status": "UNAVAILABLE", "available": False,
+            "detail": "Institutional Intelligence (SEC 13F) dev dataset is not configured.",
+            "source": _inst().SOURCE}
+
+
+@router.get("/institutional-intel/health")
+def institutional_health() -> dict:
+    try:
+        return {"available": _inst().available(), "source": _inst().SOURCE,
+                "disclosure": _inst().DISCLOSURE}
+    except Exception:  # noqa: BLE001
+        return {"available": False, "source": "Institutional Intelligence (SEC 13F, dev)"}
+
+
+@router.get("/institutional-intel/overview")
+def institutional_overview() -> dict:
+    g = _inst_guard()
+    if g:
+        return g
+    return swr.serve("inst:overview", lambda: _inst().overview(), 300.0)
+
+
+@router.get("/institutional-intel/stock")
+def institutional_stock(ticker: str, as_of: str = "") -> dict:
+    g = _inst_guard()
+    if g:
+        return g
+    tk = (ticker or "").upper().strip()[:12]
+    key = f"inst:stock:{tk}:{as_of}"
+    return swr.serve(key, lambda: _inst().stock(tk, as_of or None), 300.0)
+
+
+@router.get("/institutional-intel/rankings")
+def institutional_rankings(kind: str = "accumulation", limit: int = 20, offset: int = 0) -> dict:
+    g = _inst_guard()
+    if g:
+        return g
+    key = f"inst:rank:{kind}:{limit}:{offset}"
+    return swr.serve(key, lambda: _inst().rankings(kind, limit, offset), 300.0)
+
+
+@router.get("/institutional-intel/managers")
+def institutional_managers(q: str = "", quarter: str = "2026-Q2",
+                           limit: int = 25, offset: int = 0) -> dict:
+    g = _inst_guard()
+    if g:
+        return g
+    key = f"inst:mgr:{q}:{quarter}:{limit}:{offset}"
+    return swr.serve(key, lambda: _inst().managers(q, quarter, limit, offset), 300.0)
+
+
+@router.get("/institutional-intel/history")
+def institutional_history(ticker: str) -> dict:
+    g = _inst_guard()
+    if g:
+        return g
+    tk = (ticker or "").upper().strip()[:12]
+    return swr.serve(f"inst:hist:{tk}", lambda: _inst().history(tk), 300.0)
+
+
+@router.get("/institutional-intel/filing-metadata")
+def institutional_filing_metadata() -> dict:
+    g = _inst_guard()
+    if g:
+        return g
+    return swr.serve("inst:filing", lambda: _inst().filing_metadata(), 300.0)
+
+
+@router.get("/institutional-intel/mapping")
+def institutional_mapping(confidence: str = "", limit: int = 100, offset: int = 0) -> dict:
+    g = _inst_guard()
+    if g:
+        return g
+    key = f"inst:map:{confidence}:{limit}:{offset}"
+    return swr.serve(key, lambda: _inst().mapping(confidence, limit, offset), 300.0)

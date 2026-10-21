@@ -1,0 +1,46 @@
+/* Institutional Intelligence (SEC 13F) — informational module.
+   Pills use a teal/violet/slate palette ON PURPOSE so institutional
+   BULLISH/BEARISH/NEUTRAL can never be mistaken for the green/red trading
+   BUY/SELL signals used elsewhere in the app. */
+.inst-wrap { padding: 4px 0 40px; }
+.inst-disc {
+  font-size: 12.5px; color: var(--muted, #6b7280);
+  background: rgba(217,119,6,.07); border: 1px solid rgba(217,119,6,.28);
+  border-radius: 10px; padding: 10px 12px; margin: 10px 0 16px;
+}
+.inst-disc b { color: #b45309; }
+.inst-tabs { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--border, #e5e7eb); margin: 8px 0 16px; }
+.inst-tab {
+  padding: 8px 13px; cursor: pointer; font-weight: 600; font-size: 13px;
+  color: var(--muted, #6b7280); border: none; background: none;
+  border-bottom: 2px solid transparent;
+}
+.inst-tab.on { color: var(--text, #111827); border-bottom-color: #2563eb; }
+.inst-pill { font-weight: 700; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; display: inline-block; }
+.inst-pill.bullish { background: rgba(13,148,136,.16); color: #0f766e; }   /* teal */
+.inst-pill.bearish { background: rgba(124,58,237,.16); color: #6d28d9; }   /* violet */
+.inst-pill.neutral { background: rgba(100,116,139,.16); color: #475569; }  /* slate */
+.inst-pill.na      { background: rgba(148,163,184,.14); color: #64748b; }
+.inst-conf { font-size: 11px; padding: 1px 7px; border-radius: 999px; font-weight: 600; }
+.inst-conf.HIGH   { background: rgba(22,163,74,.14); color: #15803d; }
+.inst-conf.MEDIUM { background: rgba(217,119,6,.14); color: #b45309; }
+.inst-dir-up { color: #0f766e; font-weight: 600; }
+.inst-dir-down { color: #6d28d9; font-weight: 600; }
+.inst-note { color: var(--muted, #9ca3af); font-size: 11.5px; margin-top: 8px; }
+.inst-bar { height: 10px; width: 140px; background: var(--border, #eef0f3); border-radius: 6px; display: inline-block; vertical-align: middle; overflow: hidden; }
+.inst-bar > i { display: block; height: 100%; background: #2563eb; }
+.inst-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 6px 0 12px; }
+.inst-row input, .inst-row select {
+  padding: 6px 10px; border: 1px solid var(--border, #e5e7eb); border-radius: 8px;
+  font-size: 13px; background: var(--card, #fff); color: inherit;
+}
+.inst-row button {
+  padding: 6px 14px; border: 1px solid #2563eb; background: #2563eb; color: #fff;
+  border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.inst-pager { display: flex; gap: 8px; align-items: center; margin-top: 10px; font-size: 12.5px; }
+.inst-pager button {
+  padding: 4px 10px; border: 1px solid var(--border, #e5e7eb); background: var(--card, #fff);
+  color: inherit; border-radius: 7px; cursor: pointer; font-size: 12.5px;
+}
+.inst-pager button:disabled { opacity: .45; cursor: default; }

@@ -963,6 +963,28 @@ export const api2 = {
   earningsLifecycle: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/earnings/lifecycle/${encodeURIComponent(symbol)}`, s),
 
+  // Institutional Intelligence (SEC 13F) -- read-only, informational, separate
+  // from the trading BUY/SELL signals. Dev-only dataset; endpoints return
+  // { status: 'UNAVAILABLE' } when the dataset is not configured.
+  instOverview: (s?: AbortSignal) =>
+    request<any>('/api/institutional-intel/overview', s),
+  instStock: (ticker: string, asOf = '', s?: AbortSignal) =>
+    request<any>(`/api/institutional-intel/stock?ticker=${encodeURIComponent(ticker)}`
+      + (asOf ? `&as_of=${encodeURIComponent(asOf)}` : ''), s),
+  instRankings: (kind = 'accumulation', limit = 20, offset = 0, s?: AbortSignal) =>
+    request<any>(`/api/institutional-intel/rankings?kind=${encodeURIComponent(kind)}`
+      + `&limit=${limit}&offset=${offset}`, s),
+  instManagers: (q = '', quarter = '2026-Q2', limit = 25, offset = 0, s?: AbortSignal) =>
+    request<any>(`/api/institutional-intel/managers?q=${encodeURIComponent(q)}`
+      + `&quarter=${encodeURIComponent(quarter)}&limit=${limit}&offset=${offset}`, s),
+  instHistory: (ticker: string, s?: AbortSignal) =>
+    request<any>(`/api/institutional-intel/history?ticker=${encodeURIComponent(ticker)}`, s),
+  instFilingMetadata: (s?: AbortSignal) =>
+    request<any>('/api/institutional-intel/filing-metadata', s),
+  instMapping: (confidence = '', limit = 200, offset = 0, s?: AbortSignal) =>
+    request<any>(`/api/institutional-intel/mapping?confidence=${encodeURIComponent(confidence)}`
+      + `&limit=${limit}&offset=${offset}`, s),
+
   // the Trdgo assistant (Claude, grounded on live UW data)
   chat: (message: string, symbol?: string,
          history?: { role: 'user' | 'assistant'; content: string }[]) =>
