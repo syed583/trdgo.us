@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import {
-  Activity, BarChart3, Brain, Building2, CalendarDays, Compass, Crosshair, Flame, Gauge, History, Layers, LineChart, Users,
+  Activity, BarChart3, Brain, Building2, CalendarDays, Compass, Crosshair, Flame, Gauge, History, Layers, LineChart, Receipt, Users,
   LayoutDashboard, ListOrdered, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
   Scale, ScrollText, Settings, Sparkles, Star, TrendingUp, UserCog, Waves, Waypoints, X, Zap,
 } from 'lucide-react';
@@ -41,6 +41,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/gemini-intraday', label: 'Gemini Intraday', icon: <Waypoints size={S} /> },
     { to: '/chatgpt-intraday', label: 'ChatGPT Intraday', icon: <Brain size={S} /> },
     { to: '/all-intraday-models', label: 'All Intraday', icon: <ListOrdered size={S} /> },
+    { to: '/strategy-trades', label: 'Strategy Trades', icon: <Receipt size={S} /> },
     { to: '/tradgo-call', label: 'Tradgo Call', icon: <Gauge size={S} /> },
     { to: '/trade-plan', label: 'Trade Plan', icon: <Crosshair size={S} /> },
     { to: '/signal-history', label: 'Signal History', icon: <History size={S} /> },

@@ -585,13 +585,31 @@ def kimi_intraday_board() -> dict:
 
 @router.get("/kimi-intraday/{symbol}")
 def kimi_intraday_detail(symbol: str) -> dict:
-    """Kimi Intraday single-stock: live 6-category score + sub-factors + move size."""
+    """Kimi Intraday single-stock detail: 10-signal short-term score + breakdown."""
     import kimi_intraday_service as kin
+    import earnings_equity_service as eq_svc
+
     sym = symbol.upper()
-    r = kin.score_one(sym, fetch=True)
-    if not r:
+    eq = swr.serve(f"earn:equity:{sym}", lambda: eq_svc.get_analysis(sym), 1800.0)
+    if not eq or not eq.get("params"):
         return {"status": "NO_DATA", "symbol": sym}
-    return {"status": "OK", **r}
+    if "signals" not in eq:
+        fresh = eq_svc.get_analysis(sym)
+        if fresh and fresh.get("params"):
+            eq = fresh
+            swr._values[f"earn:equity:{sym}"] = (__import__("time").time(), fresh)
+    row = {}
+    try:
+        import uw_earnings_calendar as uwcal
+        pv = uwcal.preview(sym) or {}
+        row = {"company": pv.get("name"), "date": pv.get("next_report"),
+               "short_label": pv.get("next_report_time"),
+               "sector": pv.get("sector"), "prior_close": pv.get("prior_close")}
+    except Exception:  # noqa: BLE001
+        row = {}
+    return swr.serve(f"kimiintra:one:{sym}",
+                     lambda: {"status": "OK", **kin.score_one(sym, eq, None, row)},
+                     market.session_ttl(60, 900))
 
 
 @router.get("/claude-pro-intraday/board")
@@ -3381,3 +3399,16 @@ def institutional_mapping(confidence: str = "", limit: int = 100, offset: int = 
         return g
     key = f"inst:map:{confidence}:{limit}:{offset}"
     return swr.serve(key, lambda: _inst().mapping(confidence, limit, offset), 300.0)
+
+
+@router.get("/strategy-trades")
+def strategy_trades(strategy: str = "", date: str = "") -> dict:
+    """Demo paper-trade blotter -- 100-share trades opened from the intraday
+    model signals, tracked live (entry/stop/target, live P&L, timed exit). The
+    throttled tick that opens/updates trades runs on each request. Paper only."""
+    import demo_trade_service as dts
+    try:
+        return dts.blotter(strategy, date)
+    except Exception as e:  # noqa: BLE001
+        return {"status": "ERROR", "detail": str(e)[:200], "rows": [],
+                "total_profit": 0, "count": 0}

@@ -1,12 +1,12 @@
-"""Meta Intraday -- 7-signal short-term directional model (live board).
+"""Meta Intraday -- 8-signal short-term directional model (live board).
 
 Same live board as Grok Intraday (the liquid universe, same UI as Trdgo Stock),
-scored with a 7-signal intraday matrix weighted toward options flow:
+scored with an 8-signal intraday matrix weighted toward options flow:
 
-  Options Flow                22 (KING)   Unusual Activity   18
-  EMA/Trend + Price Action    18          Volume & PCR       12
-  Key Option Levels           12          Volatility/EM      10 (sizing)
-  Daily OI Change              8
+  Options Flow (sweeps+prem)  25   Price Trend & Structure   20
+  Unusual Activity (filtered) 15   Gamma / Key Option Levels 12
+  Volume + Put/Call           10   Near-Term OI Change        8
+  Event / Catalyst             5   RSI / Momentum             5
 
 All-positive 5-step scale, 0-100, BUY>=55 / SELL<=45. Reads the live equity
 signals; reuses Grok Intraday's board plumbing (cache + entry/TP/SL levels).
@@ -20,17 +20,19 @@ import tab_settings as cfg
 import claude_last_service as cl
 import intraday_grok_service as ig   # reuse _eq_cached / _price_atr / _levels
 
-SOURCE = "Meta Intraday — Short-term Direction (7 signals)"
+SOURCE = "Meta Intraday — Short-term Direction (8 signals)"
 
 _LABEL = {
-    "options_flow": "Options Flow",
-    "unusual_activity": "Unusual Activity",
-    "ema_trend_price": "EMA / Trend + Price Action",
-    "volume_pcr": "Volume & Put/Call",
-    "key_levels": "Key Option Levels",
-    "volatility_em": "Volatility & Expected Move",
-    "daily_oi_change": "Daily OI Change",
+    "options_flow": "Options Flow (Sweeps + Premium)",
+    "ema_trend_price": "Price Trend & Structure",
+    "unusual_activity": "Unusual Activity (Filtered)",
+    "key_levels": "Gamma / Key Option Levels",
+    "volume_pcr": "Volume + Put/Call",
+    "daily_oi_change": "Near-Term OI Change",
+    "event_radar": "Event / Catalyst",
+    "rsi_momentum": "RSI / Momentum",
 }
+# Display/scoring order follows the ranked weighting (highest first).
 _ORDER = list(_LABEL.keys())
 
 
@@ -43,13 +45,14 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
 
     raw: dict[str, Optional[float]] = {
         "options_flow": sig.get("options_flow", biases.get("options_positioning")),
-        "unusual_activity": sig.get("unusual_activity", biases.get("unusual_options")),
         "ema_trend_price": cl._avg([sig.get("ema_trend"),
                                     sig.get("price_action", biases.get("price_action"))]),
-        "volume_pcr": sig.get("volume_pcr"),
+        "unusual_activity": sig.get("unusual_activity", biases.get("unusual_options")),
         "key_levels": sig.get("key_levels"),
-        "volatility_em": cl._avg([sig.get("implied_volatility"), sig.get("expected_move")]),
+        "volume_pcr": sig.get("volume_pcr"),
         "daily_oi_change": sig.get("daily_oi_change"),
+        "event_radar": sig.get("event_radar"),
+        "rsi_momentum": sig.get("rsi"),
     }
 
     params: list[dict] = []

@@ -985,6 +985,11 @@ export const api2 = {
     request<any>(`/api/institutional-intel/mapping?confidence=${encodeURIComponent(confidence)}`
       + `&limit=${limit}&offset=${offset}`, s),
 
+  // Strategy Trades -- demo 100-share paper trades from the intraday signals.
+  strategyTrades: (strategy = '', date = '', s?: AbortSignal) =>
+    request<any>(`/api/strategy-trades?strategy=${encodeURIComponent(strategy)}`
+      + (date ? `&date=${encodeURIComponent(date)}` : ''), s),
+
   // the Trdgo assistant (Claude, grounded on live UW data)
   chat: (message: string, symbol?: string,
          history?: { role: 'user' | 'assistant'; content: string }[]) =>

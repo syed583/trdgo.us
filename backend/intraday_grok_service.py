@@ -4,11 +4,11 @@ A fast intraday/short-term lean built from the live equity signals (options flow
 unusual activity, participation, trend, levels, volatility, momentum), weighted
 toward the signals that move a stock on the day rather than fundamentals:
 
-  Options Flow                18   Unusual Activity            14
-  Volume & Put/Call Ratio     12   Trend & Price Action        15
-  Key Option Levels (OI)      10   Daily OI Change + Expiry      8
-  Volatility & Expected Move   8   RSI / Momentum                6
-  Options Disparity (C/P)      5   Event Radar                   4
+  Options Flow (sweeps+prem)  34   Price Trend & Structure     24
+  Unusual Activity (filtered) 10   Volume + Put/Call             8
+  Gamma / Key Option Levels    8   Near-Term OI Change           6
+  Event / Catalyst             5   RSI / Momentum                3
+  Options Disparity (C/P)      2   Expected Move                 0 (sizing only)
 
 All-positive 5-step scale, 0-100, BUY>=55 / NEUTRAL / SELL<=45. Reads the warmed
 equity signals so the whole universe scores in one pass with no extra calls.
@@ -24,17 +24,18 @@ import claude_last_service as cl
 SOURCE = "Grok Intraday — Short-term Direction (10 signals)"
 
 _LABEL = {
-    "options_flow": "Options Flow",
-    "unusual_activity": "Unusual Activity",
-    "volume_pcr": "Volume & Put/Call",
-    "trend_price": "Trend & Price Action",
-    "key_levels": "Key Option Levels (OI/Gamma)",
-    "oi_change_expiry": "Daily OI Change + Expiry",
-    "volatility_em": "Volatility & Expected Move",
+    "options_flow": "Options Flow (Sweeps + Premium)",
+    "trend_price": "Price Trend & Structure",
+    "unusual_activity": "Unusual Activity (Filtered)",
+    "volume_pcr": "Volume + Put/Call",
+    "key_levels": "Gamma / Key Option Levels",
+    "oi_change_expiry": "Near-Term OI Change",
+    "event_radar": "Event / Catalyst",
     "rsi_momentum": "RSI / Momentum",
     "disparity": "Options Disparity (C/P)",
-    "event_radar": "Event Radar",
+    "volatility_em": "Expected Move (sizing only)",
 }
+# Display/scoring order follows the ranked weighting (highest first).
 _ORDER = list(_LABEL.keys())
 
 

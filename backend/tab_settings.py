@@ -155,27 +155,42 @@ CLAUDE_PRO_BLOCKS: dict[str, dict] = {
 # participation, with trend/levels/vol as filters. All from the live equity
 # signals. Sum = 100.
 INTRADAY_GROK_WEIGHTS: dict[str, int] = {
-    "options_flow": 18,       # 1  net premium flow
-    "unusual_activity": 14,   # 2  aggressive positioning
-    "volume_pcr": 12,         # 3  volume + put/call ratio
-    "trend_price": 15,        # 4  EMA trend + price structure
-    "key_levels": 10,         # 5  OI / gamma walls
-    "oi_change_expiry": 8,    # 6  daily OI change + flow by expiry
-    "volatility_em": 8,       # 7  IV + expected move
-    "rsi_momentum": 6,        # 8  RSI / short-term momentum
-    "disparity": 5,           # 9  options disparity (C/P)
-    "event_radar": 4,         # 10 same-day catalyst
+    "options_flow": 34,       # 1  options flow (sweeps + premium)
+    "trend_price": 24,        # 2  price trend & structure
+    "unusual_activity": 10,   # 3  unusual activity (filtered)
+    "volume_pcr": 8,          # 4  volume + put/call
+    "key_levels": 8,          # 5  gamma / key option levels
+    "oi_change_expiry": 6,    # 6  near-term OI change
+    "event_radar": 5,         # 7  event / catalyst
+    "rsi_momentum": 3,        # 8  RSI / momentum
+    "disparity": 2,           # 9  options disparity (C/P)
+    "volatility_em": 0,       # -- expected move (sizing only, no score)
+}                             # sum = 100
+
+# --- Kimi Intraday: same flat 10-signal model as Grok, Kimi weight profile -----
+INTRADAY_KIMI_WEIGHTS: dict[str, int] = {
+    "options_flow": 28,       # 1  options flow (sweeps + premium)
+    "trend_price": 23,        # 2  price trend & structure
+    "unusual_activity": 13,   # 3  unusual activity (filtered)
+    "volume_pcr": 11,         # 4  volume + put/call
+    "key_levels": 9,          # 5  gamma / key option levels
+    "oi_change_expiry": 7,    # 6  near-term OI change
+    "event_radar": 4,         # 7  event / catalyst
+    "rsi_momentum": 3,        # 8  RSI / momentum
+    "disparity": 2,           # 9  options disparity (C/P)
+    "volatility_em": 0,       # -- expected move (sizing only, no score)
 }                             # sum = 100
 
 # --- Meta Intraday: 7-signal short-term model (live board like Trdgo Stock) ----
 META_INTRADAY_WEIGHTS: dict[str, int] = {
-    "options_flow": 22,       # KING -- premium calls vs puts
-    "unusual_activity": 18,   # sweeps + blocks > 2x avg
-    "ema_trend_price": 18,    # EMA 20/50 + price structure
-    "volume_pcr": 12,         # volume vs yesterday + PCR
-    "key_levels": 12,         # call wall / put wall (max OI)
-    "volatility_em": 10,      # how much of expected move is done (sizing)
-    "daily_oi_change": 8,     # where new money is going today
+    "options_flow": 25,       # 1  options flow (sweeps + premium)
+    "ema_trend_price": 20,    # 2  price trend & structure
+    "unusual_activity": 15,   # 3  unusual activity (filtered)
+    "key_levels": 12,         # 4  gamma / key option levels
+    "volume_pcr": 10,         # 5  volume + put/call
+    "daily_oi_change": 8,     # 6  near-term OI change
+    "event_radar": 5,         # 7  event / catalyst
+    "rsi_momentum": 5,        # 8  RSI / momentum
 }                             # sum = 100
 
 # --- Gemini Intraday: 80/20 market/company execution model (rescaled to 100) --

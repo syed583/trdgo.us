@@ -492,6 +492,28 @@ def _capture_earnings_signals() -> None:
 
 
 @_bg
+def _start_demo_trade_tracker() -> None:
+    """Open + track the intraday demo (paper) trades continuously. Runs a tick
+    every 60s during regular hours so signals are captured even when nobody has
+    the blotter open, and a final tick just after the close for the timed exits.
+    Paper only; its own additive table; never touches the Earnings AI data."""
+    import threading
+    import time as _t
+
+    def loop() -> None:
+        import demo_trade_service as dts
+        while True:
+            try:
+                if dts._is_rth() or dts._after_close():
+                    dts.tick(force=True)
+            except Exception:  # noqa: BLE001
+                pass
+            _t.sleep(60)
+
+    threading.Thread(target=loop, name="demo-trade-tracker", daemon=True).start()
+
+
+@_bg
 def _warm_default_strip() -> None:
     """
     Start scoring the default ticker basket as soon as the server is up.

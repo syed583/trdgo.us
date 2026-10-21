@@ -1,153 +1,172 @@
-"""Kimi Intraday -- live intraday direction on the framework's 6 categories.
+"""Kimi Intraday -- short-term directional model (10 live signals).
 
-Same live engine as Claude Pro Intraday (intraday_model: VWAP, intraday EMA,
-opening range, RVOL, 0-2DTE flow, levels, market/sector) re-bucketed into the
-Kimi framework's category structure (100 pts directional, VIX/IV sizing kept
-separate):
+Same flat 10-signal engine as Grok Intraday (reads the warmed equity signals),
+with the Kimi weight profile (see tab_settings.INTRADAY_KIMI_WEIGHTS):
 
-  Trend & VWAP        16   Volume & Delta        16
-  Options Tape        24   Market Context        18
-  Catalyst & Events   12   Levels & Confirmation 14
+  Options Flow (sweeps+prem)  28   Price Trend & Structure     23
+  Unusual Activity (filtered) 13   Volume + Put/Call            11
+  Gamma / Key Option Levels    9   Near-Term OI Change           7
+  Event / Catalyst             4   RSI / Momentum                3
+  Options Disparity (C/P)      2   Expected Move                 0 (sizing only)
 
-Sub-factors the live engine does not produce (cumulative volume delta, large
-prints, VIX, breadth, analyst actions, intraday short/borrow) are reported as
-"no data" and scored neutral (never silently zero), with a coverage %. Reads
-Trdgo Stock's live per-name cache so the board is instant.
+All-positive 5-step scale, 0-100, BUY>=55 / NEUTRAL / SELL<=45. Reads the warmed
+equity signals so the whole universe scores in one pass with no extra calls.
 """
 from __future__ import annotations
 
+from datetime import date, datetime
 from typing import Optional
 
+import tab_settings as cfg
 import claude_last_service as cl
 
-SOURCE = "Kimi Intraday — Live 6-category Direction"
+SOURCE = "Kimi Intraday — Short-term Direction (10 signals)"
 
-# block -> (label, [(sub_label, intraday_model_param_or_None, weight)])
-BLOCKS = {
-    "trend_vwap": ("Trend & VWAP", [
-        ("VWAP relation & slope", "vwap_pos", 6),
-        ("5/15-min structure", "ema_trend", 5),
-        ("Opening range", "orb", 3),
-        ("Gap fill / hold", "gap", 2)]),
-    "volume_delta": ("Volume & Delta", [
-        ("RVOL (time-of-day)", "rvol", 6),
-        ("Cumulative volume delta", None, 6),
-        ("Large prints / tape", None, 4)]),
-    "options_tape": ("Options Tape (intraday)", [
-        ("Premium-weighted flow", "flow", 8),
-        ("Sweeps / blocks", "unusual", 6),
-        ("Intraday skew shift", "disparity", 5),
-        ("Flow by expiry (0DTE)", None, 5)]),
-    "market_ctx": ("Market Context", [
-        ("SPY/QQQ intraday trend", "market", 6),
-        ("Sector ETF rel. strength", "sector", 5),
-        ("VIX intraday move", None, 4),
-        ("Breadth (TICK / A-D)", None, 3)]),
-    "catalyst": ("Catalyst & Events", [
-        ("News freshness", "news", 6),
-        ("Earnings / event timing", None, 4),
-        ("Analyst actions", None, 2)]),
-    "levels": ("Levels & Confirmation", [
-        ("Key levels (PM/prior/LOD-HOD)", "levels", 6),
-        ("Put/Call vs norm", "pc_ratio", 4),
-        ("Short interest / borrow", None, 4)]),
+_LABEL = {
+    "options_flow": "Options Flow (Sweeps + Premium)",
+    "trend_price": "Price Trend & Structure",
+    "unusual_activity": "Unusual Activity (Filtered)",
+    "volume_pcr": "Volume + Put/Call",
+    "key_levels": "Gamma / Key Option Levels",
+    "oi_change_expiry": "Near-Term OI Change",
+    "event_radar": "Event / Catalyst",
+    "rsi_momentum": "RSI / Momentum",
+    "disparity": "Options Disparity (C/P)",
+    "volatility_em": "Expected Move (sizing only)",
 }
+# Display/scoring order follows the ranked weighting (highest first).
+_ORDER = list(_LABEL.keys())
 
 
-def score_from_model(symbol: str, s: dict) -> dict:
-    pmap = {p.get("name"): p for p in (s.get("params") or [])}
+def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
+              row: Optional[dict] = None) -> dict:
+    biases = {p.get("name"): p.get("bias") for p in (eq.get("params") or [])}
+    sig = eq.get("signals") or {}
+    row = row or {}
+    W = cfg.INTRADAY_KIMI_WEIGHTS
 
-    def _bias(name: Optional[str]) -> Optional[float]:
-        if not name:
-            return None
-        p = pmap.get(name)
-        if not p or not p.get("has_data"):
-            return None
-        mx, v = p.get("max"), p.get("value")
-        if not mx or v is None:
-            return None
-        return cl._clamp(v / mx)
+    raw: dict[str, Optional[float]] = {
+        "options_flow": sig.get("options_flow", biases.get("options_positioning")),
+        "unusual_activity": sig.get("unusual_activity", biases.get("unusual_options")),
+        "volume_pcr": sig.get("volume_pcr"),
+        "trend_price": cl._avg([sig.get("ema_trend"),
+                                sig.get("price_action", biases.get("price_action"))]),
+        "key_levels": sig.get("key_levels"),
+        "oi_change_expiry": cl._avg([sig.get("daily_oi_change"), sig.get("flow_by_expiry")]),
+        "volatility_em": cl._avg([sig.get("implied_volatility"), sig.get("expected_move")]),
+        "rsi_momentum": sig.get("rsi"),
+        "disparity": sig.get("disparity", biases.get("disparity")),
+        "event_radar": sig.get("event_radar"),
+    }
 
     params: list[dict] = []
-    for key, (label, subs) in BLOCKS.items():
-        srows = []
-        for slabel, pname, w in subs:
-            qb = cl._quant(_bias(pname))
-            srows.append({"name": slabel, "max": w, "points": round(cl._pts(w, qb), 2),
-                          "bias": qb, "no_data": qb is None})
-        bmax = sum(s2["max"] for s2 in srows)
-        bpts = round(sum(s2["points"] for s2 in srows), 2)
-        bvals = [s2["bias"] for s2 in srows if s2["bias"] is not None]
-        bbias = round(sum(bvals) / len(bvals), 3) if bvals else None
-        params.append({"name": key, "label": label, "max": bmax, "points": bpts,
-                       "bias": bbias, "sub": srows})
+    for name in _ORDER:
+        qb = cl._quant(raw.get(name))
+        params.append({"name": name, "label": _LABEL[name], "max": W[name],
+                       "points": round(cl._pts(W[name], qb), 2), "bias": qb})
 
     score = round(sum(p["points"] for p in params), 1)
-    cut = cl.cfg.V3_CUTOFFS
+    cut = cfg.V3_CUTOFFS
     signal = "BUY" if score >= cut["buy"] else "SELL" if score <= cut["sell"] else "NEUTRAL"
-    covered = sum(s2["max"] for p in params for s2 in p["sub"] if not s2["no_data"])
 
-    spot = cl._f(s.get("spot"))
-    atr = cl._f(s.get("atr"))
-    entry = now = sl = tp = None
-    if spot is not None:
-        entry = now = round(spot, 2)
-        if atr and signal in ("BUY", "SELL"):
-            sgn = 1 if signal == "BUY" else -1
-            sl = round(spot - sgn * 0.5 * atr, 2)
-            tp = round(spot + sgn * 1.0 * atr, 2)
+    covered = sum(p["max"] for p in params if p["bias"] is not None)
+    pos_w = sum(p["max"] for p in params if (p["bias"] or 0) > 0.05)
+    neg_w = sum(p["max"] for p in params if (p["bias"] or 0) < -0.05)
+    coverage = round(covered / 100.0, 3)
+    side = 1 if score >= 50 else -1
+    agreement = round(((pos_w if side > 0 else neg_w) / covered), 3) if covered else 0.0
+    conf = cfg.V3_CONFIDENCE
+    low_conf = coverage < conf["min_coverage"] or agreement < conf["min_agreement"]
 
-    return {"symbol": symbol, "score": score, "signal": signal, "params": params,
-            "coverage": round(covered / 100.0 * 100, 1),
-            "entry": entry, "now": now, "tp": tp, "sl": sl, "spot": entry,
-            "atr": round(atr, 2) if atr else None,
-            "move_size": round(atr / spot * 100, 2) if (atr and spot) else None,
-            "model_status": s.get("status")}
-
-
-def score_one(symbol: str, fetch: bool = False) -> Optional[dict]:
-    import swr
-    s = swr.peek(f"im2:{symbol.upper()}")
-    if not s and fetch:
+    days_to = None
+    d = row.get("date")
+    if d:
         try:
-            import intraday_model as im
-            s = im.score(symbol)
+            days_to = (datetime.fromisoformat(str(d)[:10]).date() - date.today()).days
         except Exception:  # noqa: BLE001
-            s = None
-    if not s:
-        return None
-    return score_from_model(symbol, s)
+            days_to = None
+
+    return {"symbol": symbol, "company": row.get("company"),
+            "date": d, "date_label": row.get("date_label"),
+            "time_label": row.get("short_label"), "days_to": days_to,
+            "report_timing": row.get("time_label") or row.get("timing_label"),
+            "prior_close": row.get("prior_close"), "market_cap": row.get("market_cap"),
+            "sector": row.get("sector"),
+            "score": score, "signal": signal, "params": params,
+            "coverage": round(coverage * 100, 1), "agreement": round(agreement * 100, 1),
+            "low_confidence": low_conf}
+
+
+def _eq_cached(symbol: str) -> Optional[dict]:
+    """Equity signals for the board. Reuse the shared earn:equity cache (already
+    warmed for the big liquid names) so the board is fast; compute+cache only for
+    a name that has none yet."""
+    import swr
+    v = swr.peek(f"earn:equity:{symbol}")
+    if v and v.get("params") and "signals" in v:
+        return v
+    import earnings_equity_service as eq_svc
+    return swr.serve(f"earn:equity:{symbol}", lambda: eq_svc.get_analysis(symbol), 21600.0)
+
+
+def _price_atr(symbol: str):
+    """(price, atr14_daily) for entry/stop/target, lightly cached."""
+    import swr
+    import unusualwhales_service as uw
+    import intraday_indicators as ind
+
+    def _px():
+        q = uw.get_quote(symbol) or {}
+        return cl._f(q.get("price")) or cl._f(q.get("close"))
+
+    def _atr():
+        return ind.atr14_daily(uw.get_daily_bars(symbol, "3 M") or [])
+
+    price = swr.serve(f"kimiintra:px:{symbol}", _px, 120.0)
+    atr = swr.serve(f"kimiintra:atr:{symbol}", _atr, 6 * 3600.0)
+    return price, atr
+
+
+def _levels(r: dict) -> None:
+    """Attach entry / now / tp / sl to a row (entry = price; +-0.5 ATR stop,
+    +-1.0 ATR target, 2:1), matching the Trdgo Stock board columns."""
+    try:
+        price, atr = _price_atr(r["symbol"])
+    except Exception:  # noqa: BLE001
+        price = atr = None
+    if price is None:
+        return
+    r["entry"] = round(price, 2)
+    r["now"] = round(price, 2)
+    if atr and r["signal"] in ("BUY", "SELL"):
+        sgn = 1 if r["signal"] == "BUY" else -1
+        r["sl"] = round(price - sgn * 0.5 * atr, 2)
+        r["tp"] = round(price + sgn * 1.0 * atr, 2)
 
 
 def board() -> dict:
-    # Before the open the live engine has no bars -> pre-market board fallback.
-    import swr
-    try:
-        import intraday_indicators as ind
-        if ind.market_phase() in ("pre", "closed"):
-            import intraday_premarket as ipm
-            return swr.serve("pm:board", lambda: ipm.board(), 120.0)
-    except Exception:  # noqa: BLE001
-        pass
+    """Live board over the liquid universe (same ~38 names as Trdgo Stock), scored
+    with the Kimi 10-signal model. Top Buyers / Top Sellers / Neutral by score."""
     import ai_trade_service as ats
+    from concurrent.futures import ThreadPoolExecutor
     syms = [s.upper() for s in getattr(ats, "UNIVERSE", [])]
-    rows: list[dict] = []
-    for sym in syms:
+
+    def _one(s: str):
         try:
-            r = score_one(sym)
+            eq = _eq_cached(s)
+            if eq and eq.get("params"):
+                r = score_one(s, eq, None, {"symbol": s})
+                _levels(r)
+                return r
+        except Exception:  # noqa: BLE001
+            return None
+        return None
+
+    rows: list[dict] = []
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        for r in ex.map(_one, syms):
             if r:
                 rows.append(r)
-        except Exception:  # noqa: BLE001
-            pass
-    if len(rows) < len(syms) * 0.5:
-        import threading
-        def _kick():
-            try:
-                import intraday_signal_v2 as eng
-                eng.scan_once()
-            except Exception:  # noqa: BLE001
-                pass
-        threading.Thread(target=_kick, daemon=True).start()
     buyers = sorted([r for r in rows if r["signal"] == "BUY"], key=lambda r: r["score"], reverse=True)
     sellers = sorted([r for r in rows if r["signal"] == "SELL"], key=lambda r: r["score"])
     neutral = [r for r in rows if r["signal"] == "NEUTRAL"]
@@ -160,3 +179,65 @@ def board() -> dict:
             "buyers": buyers, "sellers": sellers, "neutral": neutral,
             "counts": {"buy": len(buyers), "sell": len(sellers), "neutral": len(neutral)},
             "universe": len(syms), "scored": len(rows)}
+
+
+def scan(days: int = 15) -> dict:
+    """Score every name reporting in the next ~`days`, ranked by score."""
+    import swr
+    import uw_earnings_calendar as calmod
+
+    rows = (calmod.calendar(days=days) or {}).get("rows") or []
+    seen: set[str] = set()
+    uniq: list[dict] = []
+    for r in rows:
+        s = (r.get("symbol") or "").upper()
+        if s and s not in seen:
+            seen.add(s)
+            uniq.append(r)
+    eqs = swr.peek_many([f"earn:equity:{s}" for s in seen])
+
+    def _days_to(r: dict):
+        d = r.get("date")
+        if not d:
+            return None
+        try:
+            return (datetime.fromisoformat(str(d)[:10]).date() - date.today()).days
+        except Exception:  # noqa: BLE001
+            return None
+
+    out: list[dict] = []
+    missing: list[str] = []
+    scored = 0
+    for r in uniq:
+        s = r["symbol"].upper()
+        eq = eqs.get(f"earn:equity:{s}")
+        res = None
+        if eq and eq.get("params"):
+            try:
+                res = score_one(s, eq, None, r)
+                scored += 1
+            except Exception:  # noqa: BLE001
+                res = None
+        if res is None:
+            missing.append(s)
+            res = {"symbol": s, "company": r.get("company"), "date": r.get("date"),
+                   "date_label": r.get("date_label"), "time_label": r.get("short_label"),
+                   "report_timing": r.get("time_label") or r.get("timing_label"),
+                   "days_to": _days_to(r), "prior_close": r.get("prior_close"),
+                   "market_cap": r.get("market_cap"), "sector": r.get("sector"),
+                   "score": None, "signal": "PENDING", "params": [],
+                   "coverage": None, "agreement": None, "low_confidence": None}
+        out.append(res)
+    out.sort(key=lambda x: (x["score"] if x["score"] is not None else -1), reverse=True)
+    return {"status": "OK", "source": SOURCE, "rows": out,
+            "universe": len(seen), "scored": scored, "missing": missing[:60]}
+
+
+def score_from_model(symbol: str, s: dict) -> Optional[dict]:
+    """Back-compat shim for the All-Intraday matrix: Kimi is now a flat 10-signal
+    equity-signal model, so score it from the warmed equity cache rather than the
+    live intraday_model payload `s`. Returns None if no equity signals yet."""
+    eq = _eq_cached(symbol)
+    if not eq or not eq.get("params"):
+        return None
+    return score_one(symbol, eq, None, {"symbol": symbol})

@@ -43,6 +43,7 @@ const CHATGPT_DETAIL = { base: '/chatgpt', title: 'ChatGPT', detail: (s: string,
 const OptionScannerPage = lazy(() => import('./pages/OptionScannerPage'));
 const UnusualActivityPage = lazy(() => import('./pages/UnusualActivityPage'));
 const InstitutionalPage = lazy(() => import('./pages/InstitutionalPage'));
+const StrategyTradesPage = lazy(() => import('./pages/StrategyTradesPage'));
 const PreEarningsDirectionPage = lazy(() => import('./pages/PreEarningsDirectionPage'));
 const TradgoCallPage = lazy(() => import('./pages/TradgoCallPage'));
 const VolatilityPage = lazy(() => import('./pages/VolatilityPage'));
@@ -379,6 +380,7 @@ function Shell() {
           <Route path="/all-models" element={<AllModelsPage ctx={ctx} />} />
           <Route path="/model-accuracy" element={<ModelAccuracyPage />} />
           <Route path="/institutional-intel" element={<InstitutionalPage />} />
+          <Route path="/strategy-trades" element={<StrategyTradesPage />} />
           <Route path="/grok-intraday" element={<GrokIntradayPage ctx={ctx} />} />
           <Route path="/grok-intraday/:symbol" element={<ClaudeLastDetail ctx={ctx} model={GROK_INTRADAY_DETAIL} />} />
           <Route path="/meta-intraday" element={<GrokIntradayPage ctx={ctx} cfg={META_INTRADAY_CFG} />} />
