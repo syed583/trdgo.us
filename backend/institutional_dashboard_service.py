@@ -52,21 +52,59 @@ def _dev_url() -> Optional[str]:
     return url
 
 
+import re as _re
+_DATE_RE = _re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _valid_as_of(s: Optional[str]) -> bool:
+    """A clean ISO date (YYYY-MM-DD) that parses, or None. Rejects anything else
+    so a malformed value never reaches a SQL date comparison."""
+    if s is None or s == "":
+        return True
+    if not _DATE_RE.match(s):
+        return False
+    import datetime
+    try:
+        datetime.date.fromisoformat(s)
+        return True
+    except ValueError:
+        return False
+
+
 def _ref(url: str) -> Optional[str]:
     u = urlparse(url.replace("postgresql+psycopg", "postgresql"))
     return u.username.split(".", 1)[1] if "." in (u.username or "") else None
 
 
+_DEV_REF = "qzmsozpyypjdxzfprhoz"
+
+
+def _allowed_refs() -> set:
+    """Environment-aware allow-list of institutional project refs. The dev ref is
+    always allowed; a future production institutional ref is opted in explicitly
+    via INSTITUTIONAL_ALLOWED_REFS (comma-separated). The Earnings AI production
+    ref is never allowed, even if someone lists it."""
+    refs = {_DEV_REF}
+    extra = os.getenv("INSTITUTIONAL_ALLOWED_REFS", "")
+    refs |= {r.strip() for r in extra.split(",") if r.strip()}
+    refs.discard(_PROD_REF)
+    return refs
+
+
 @lru_cache(maxsize=1)
 def _engine():
-    """A dedicated engine for the dev institutional DB. Refuses production."""
+    """A dedicated engine for the institutional DB. Allow-list + deny-list guard:
+    the Earnings AI production ref is always refused, and the ref must be on the
+    institutional allow-list (defence in depth)."""
     from sqlalchemy import create_engine
     url = _dev_url()
     if not url:
-        raise RuntimeError("INSTITUTIONAL: no dev DATABASE_URL configured")
+        raise RuntimeError("INSTITUTIONAL: no institutional DATABASE_URL configured")
     ref = _ref(url)
     if ref == _PROD_REF:
-        raise RuntimeError("INSTITUTIONAL: refusing production project ref")
+        raise RuntimeError("INSTITUTIONAL: refusing Earnings AI production project ref")
+    if ref not in _allowed_refs():
+        raise RuntimeError(f"INSTITUTIONAL: project ref not on the institutional allow-list")
     return create_engine(url, connect_args={"sslmode": "require", "connect_timeout": 8},
                           pool_pre_ping=True, pool_size=3, max_overflow=2)
 
@@ -162,7 +200,10 @@ def _visible_quarters(c, cusip: Optional[str], as_of: Optional[str]) -> list[str
 def stock(ticker: str, as_of: Optional[str] = None,
           prev_q: Optional[str] = None, cur_q: Optional[str] = None) -> dict:
     from sqlalchemy import text
-    tk = (ticker or "").upper().strip()
+    tk = (ticker or "").upper().strip()[:12]
+    if not _valid_as_of(as_of):
+        return {"status": "INVALID_AS_OF", "ticker": tk,
+                "detail": "as_of must be an ISO date (YYYY-MM-DD)."}
     with _conn() as c:
         mp = c.execute(text("SELECT cusip,sec_issuer_name,ticker,security_type,exchange,confidence,status "
                             "FROM institutional_cusip_map WHERE UPPER(ticker)=:t"), {"t": tk}).first()

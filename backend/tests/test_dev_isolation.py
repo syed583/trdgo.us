@@ -87,9 +87,29 @@ def test_institutional_engine_refuses_production(monkeypatch):
     import institutional_dashboard_service as ins
     monkeypatch.setenv("INSTITUTIONAL_DATABASE_URL", PROD_URL)
     ins._engine.cache_clear()
-    with pytest.raises(RuntimeError, match="refusing production project ref"):
+    with pytest.raises(RuntimeError, match="production project ref"):
         ins._engine()
     ins._engine.cache_clear()
+
+
+def test_institutional_engine_allow_list_rejects_unknown_ref(monkeypatch):
+    import institutional_dashboard_service as ins
+    monkeypatch.setenv("INSTITUTIONAL_DATABASE_URL", DEV_URL.replace(DEV_REF, "notallowedref99"))
+    monkeypatch.delenv("INSTITUTIONAL_ALLOWED_REFS", raising=False)
+    ins._engine.cache_clear()
+    with pytest.raises(RuntimeError, match="allow-list"):
+        ins._engine()
+    ins._engine.cache_clear()
+
+
+def test_dev_config_requires_session_secret(monkeypatch):
+    monkeypatch.setenv("TRDGO_ENV", "development")
+    monkeypatch.setenv("INSTITUTIONAL_DATABASE_URL", DEV_URL)
+    monkeypatch.delenv("SESSION_SECRET", raising=False)
+    monkeypatch.setattr("dotenv.dotenv_values", lambda *a, **k: {})  # no .env.dev secret
+    import dev_config
+    with pytest.raises(RuntimeError, match="SESSION_SECRET"):
+        dev_config.require_dev_config()
 
 
 def test_available_is_safe_error_when_db_unreachable(monkeypatch):

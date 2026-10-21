@@ -75,6 +75,14 @@ def test_point_in_time_full_comparison_after_q2():
     assert s["verifiable"] is True
 
 
+def test_invalid_as_of_is_rejected():
+    # A malformed as_of must never reach a SQL date comparison.
+    r = ins.stock("AAPL", as_of="not-a-date")
+    assert r["status"] == "INVALID_AS_OF"
+    r2 = ins.stock("AAPL", as_of="2026-13-99")
+    assert r2["status"] == "INVALID_AS_OF"
+
+
 def test_limitations_are_flagged_not_hidden():
     s = ins.stock("AAPL")
     assert "13F-A" in s["amendment_handling"]          # amendments not faked

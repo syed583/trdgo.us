@@ -47,8 +47,15 @@ def require_dev_config() -> str:
 
     # Publish the validated dev URL; deliberately never set DATABASE_URL.
     os.environ["INSTITUTIONAL_DATABASE_URL"] = norm
-    if envd.get("SESSION_SECRET"):
-        os.environ.setdefault("SESSION_SECRET", envd["SESSION_SECRET"])
+    # Require a DISTINCT session secret for the dev backend so it can never fall
+    # back to the on-disk persisted secret shared with production -- that was the
+    # Phase 6.1 cross-environment-cookie gap. Fail closed if one is not provided.
+    secret = os.environ.get("SESSION_SECRET") or envd.get("SESSION_SECRET")
+    if not secret:
+        raise RuntimeError(
+            "DEV GUARD: SESSION_SECRET is required (set it in .env.dev) so the dev "
+            "backend uses its own signing key and never shares production cookies")
+    os.environ["SESSION_SECRET"] = secret
     if envd.get("ACCESS_PASSWORD"):
         os.environ.setdefault("ACCESS_PASSWORD", envd["ACCESS_PASSWORD"])
     return norm
