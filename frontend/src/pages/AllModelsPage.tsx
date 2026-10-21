@@ -15,6 +15,9 @@ const tier = (sig?: string) =>
 const letter = (sig?: string) =>
   sig === 'BUY' ? 'B' : sig === 'SELL' ? 'S' : sig === 'NEUTRAL' ? '–' : '·';
 
+const signedPct = (v: any) =>
+  v == null ? null : `${v > 0 ? '+' : ''}${Number(v).toFixed(1)}%`;
+
 const dayLabel = (iso: string) => {
   if (!iso || iso === '￿') return 'TBD';
   try {
@@ -34,6 +37,7 @@ export default function AllModelsPage({ ctx }: { ctx: PageContext }) {
 
   const resp = useApi<any>((s) => api2.allModelsScan(days, s), [days], { refreshMs: 120_000 });
   const models: [string, string][] = resp.data?.models || [];
+  const modelStats: Record<string, any> = resp.data?.model_stats || {};
   const rows: any[] = resp.data?.rows || [];
   const warming = resp.data?.status === 'WARMING' || (!!resp.data && !rows.length);
   useEffect(() => {
@@ -115,11 +119,21 @@ export default function AllModelsPage({ ctx }: { ctx: PageContext }) {
               <tr>
                 <th className="am-sticky am-th-sym" onClick={() => sortBy('symbol')}>Ticker</th>
                 <th onClick={() => sortBy('date')}>Date</th>
+                <th title="The company's most recent real post-earnings move">Last move</th>
                 <th title="BUY vs SELL across models">Cons.</th>
-                {models.map(([k, label]) => (
-                  <th key={k} className="am-th-model" onClick={() => sortBy(k)}
-                    title="Click to sort by this model's score">{label}</th>
-                ))}
+                {models.map(([k, label]) => {
+                  const st = modelStats[k] || {};
+                  const acc = st.directional_accuracy;
+                  return (
+                    <th key={k} className="am-th-model" onClick={() => sortBy(k)}
+                      title={`Click to sort by this model's score.\nVerified directional (BUY/SELL) accuracy: `
+                        + `${acc != null ? `${acc}% over ${st.directional_n} calls` : 'no history yet'}`}>
+                      <span className="am-th-name">{label}</span>
+                      <span className={`am-th-acc ${acc == null ? 'none' : acc >= 55 ? 'good' : acc >= 45 ? 'mid' : 'bad'}`}>
+                        {acc != null ? `${acc}% · n${st.directional_n}` : 'no hist'}</span>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
@@ -133,17 +147,27 @@ export default function AllModelsPage({ ctx }: { ctx: PageContext }) {
                     </td>
                     <td className="am-date">{dayLabel(r.date)}
                       {r.report_clock ? <em>{r.report_clock}</em> : null}</td>
+                    <td className={`am-lastmove ${r.last_move ? (r.last_move.move_pct > 0 ? 'up' : r.last_move.move_pct < 0 ? 'down' : '') : ''}`}
+                      title={r.last_move ? `Previous earnings (${r.last_move.earnings_date}): ${signedPct(r.last_move.move_pct)}`
+                        : 'No recorded previous earnings move'}>
+                      {r.last_move ? signedPct(r.last_move.move_pct) : '—'}</td>
                     <td className="am-cons">
                       <span className="am-cons-b">{t.b}</span>
                       <span className="am-cons-s">{t.s}</span>
                     </td>
                     {models.map(([k]) => {
                       const c = r.cells?.[k] || {};
+                      const p = c.prev;
                       return (
                         <td key={k} className={`am-cell ${tier(c.signal)} ${c.changed ? 'chg' : ''}`}
-                          title={`${c.signal || 'no data'}${c.score != null ? ` · ${c.score}` : ''}`}>
+                          title={`${c.signal || 'no data'}${c.score != null ? ` · ${c.score}` : ''}`
+                            + (p ? `\nPrevious earnings call: ${p.signal} → actual ${signedPct(p.actual_move_pct)} (${p.result})`
+                              : '\nNo recorded previous call')}>
                           <span className="am-l">{letter(c.signal)}</span>
                           <span className="am-sc">{c.score != null ? c.score : ''}</span>
+                          {p && <span className={`am-prev ${p.result === 'CORRECT' ? 'ok' : 'no'}`}
+                            title={`Previous: ${p.signal} → ${signedPct(p.actual_move_pct)} (${p.result})`}>
+                            {p.result === 'CORRECT' ? '✓' : '✗'}</span>}
                         </td>
                       );
                     })}

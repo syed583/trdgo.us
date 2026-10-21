@@ -748,6 +748,11 @@ export const api2 = {
     request<any>(`/api/claude-pro/${encodeURIComponent(symbol)}`, s),
   allModelsScan: (days = 15, s?: AbortSignal) =>
     request<any>(`/api/all-models/scan?days=${days}`, s),
+  modelAccuracyScoreboard: (s?: AbortSignal) =>
+    request<any>('/api/model-accuracy/scoreboard', s),
+  modelAccuracyHistory: (model = '', symbol = '', limit = 500, s?: AbortSignal) =>
+    request<any>(`/api/model-accuracy/history?model=${encodeURIComponent(model)}`
+      + `&symbol=${encodeURIComponent(symbol)}&limit=${limit}`, s),
   grokIntradayScan: (days = 15, s?: AbortSignal) =>
     request<any>(`/api/grok-intraday/scan?days=${days}`, s),
   grokIntradayBoard: (s?: AbortSignal) =>

@@ -29,6 +29,7 @@ const ClaudeLastDetail = lazy(() => import('./pages/ClaudeLastDetail'));
 import { GROK_MODEL, META_MODEL, CHATGPT_MODEL, KIMI_MODEL, GEMINI_MODEL, CLAUDE_PRO_MODEL } from './pages/ClaudeLastPage';
 const CLAUDE_PRO_DETAIL = { base: '/claude-pro', title: 'Claude Pro', detail: (s: string, sig?: AbortSignal) => api2.claudeProDetail(s, sig) };
 const AllModelsPage = lazy(() => import('./pages/AllModelsPage'));
+const ModelAccuracyPage = lazy(() => import('./pages/ModelAccuracyPage'));
 const GrokIntradayPage = lazy(() => import('./pages/GrokIntradayPage'));
 const AllIntradayModelsPage = lazy(() => import('./pages/AllIntradayModelsPage'));
 import { META_INTRADAY_CFG, CLAUDE_PRO_INTRADAY_CFG, KIMI_INTRADAY_CFG, GEMINI_INTRADAY_CFG, CHATGPT_INTRADAY_CFG } from './pages/GrokIntradayPage';
@@ -375,6 +376,7 @@ function Shell() {
           <Route path="/claude-pro" element={<ClaudeLastPage ctx={ctx} model={CLAUDE_PRO_MODEL} />} />
           <Route path="/claude-pro/:symbol" element={<ClaudeLastDetail ctx={ctx} model={CLAUDE_PRO_DETAIL} />} />
           <Route path="/all-models" element={<AllModelsPage ctx={ctx} />} />
+          <Route path="/model-accuracy" element={<ModelAccuracyPage />} />
           <Route path="/grok-intraday" element={<GrokIntradayPage ctx={ctx} />} />
           <Route path="/grok-intraday/:symbol" element={<ClaudeLastDetail ctx={ctx} model={GROK_INTRADAY_DETAIL} />} />
           <Route path="/meta-intraday" element={<GrokIntradayPage ctx={ctx} cfg={META_INTRADAY_CFG} />} />

@@ -749,6 +749,23 @@ def all_models_scan(days: int = 15) -> dict:
     return res
 
 
+@router.get("/model-accuracy/scoreboard")
+def model_accuracy_scoreboard() -> dict:
+    """Read-only accuracy scoreboard for the earnings models: per-model hit-rate
+    with 7/30/90-day cuts, BUY/SELL splits, consensus and confidence buckets.
+    Every figure carries its sample size; unreached events stay UNVERIFIED."""
+    import model_prediction_service as mp
+    return swr.serve("modacc:scoreboard", lambda: mp.scoreboard(), 300.0)
+
+
+@router.get("/model-accuracy/history")
+def model_accuracy_history(model: str = "", symbol: str = "", limit: int = 500) -> dict:
+    """Flat list of graded predictions (the verification table)."""
+    import model_prediction_service as mp
+    key = f"modacc:hist:{model}:{symbol}:{limit}"
+    return swr.serve(key, lambda: mp.history(model or None, symbol or None, limit), 300.0)
+
+
 @router.get("/claude-pro/scan")
 def claude_pro_scan(days: int = 15) -> dict:
     """Claude Pro -- refined 6-block direction model, ranked. Non-blocking."""

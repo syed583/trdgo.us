@@ -460,6 +460,17 @@ def _capture_earnings_signals() -> None:
                 # today's decision snapshot for the whole universe.
                 esh.warm_reactions(syms)
                 esh.capture(syms)
+                # Record all 10 earnings models' calls for the accuracy
+                # scoreboard, then grade any whose earnings have reported. Pure
+                # capture/grade -- it never touches a model or a live signal.
+                try:
+                    import model_prediction_service as mp
+                    mp.backfill_ped()
+                    mp.backfill_claude_pm()
+                    mp.capture(days=21)
+                    mp.grade()
+                except Exception:  # noqa: BLE001
+                    pass
             except Exception:  # noqa: BLE001
                 pass
             time.sleep(12 * 3600)

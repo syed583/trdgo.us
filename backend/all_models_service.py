@@ -164,5 +164,29 @@ def scan(days: int = 15) -> dict:
         pass
 
     out.sort(key=lambda r: (r["date"] or "￿", r["symbol"]))
+
+    # Historical overlay (req 2): attach each model's verified directional
+    # accuracy, each company's last real post-earnings move, and each model's
+    # previous call on that company -- all from stored graded predictions, no
+    # extra API calls and no model recomputation.
+    model_stats: dict = {}
+    try:
+        import model_prediction_service as mp
+        ov = mp.overlay([r["symbol"] for r in out])
+        model_stats = ov.get("model_stats", {})
+        prev = ov.get("prev", {})
+        last_move = ov.get("last_move", {})
+        for row in out:
+            sym = row["symbol"]
+            lm = last_move.get(sym)
+            if lm:
+                row["last_move"] = lm
+            for mdl, cell in row["cells"].items():
+                p = (prev.get(mdl) or {}).get(sym)
+                if p:
+                    cell["prev"] = p
+    except Exception:  # noqa: BLE001
+        pass
+
     return {"status": "OK", "source": SOURCE, "models": MODELS, "rows": out,
-            "universe": len(seen), "scored": scored}
+            "model_stats": model_stats, "universe": len(seen), "scored": scored}

@@ -1,0 +1,39 @@
+.ma-wrap { padding: 4px 0 40px; }
+.ma-note {
+  font-size: 12.5px; color: var(--muted, #6b7280);
+  background: rgba(37,99,235,.06); border: 1px solid rgba(37,99,235,.18);
+  border-radius: 10px; padding: 10px 12px; margin: 10px 0 18px;
+}
+.ma-cards { display: flex; flex-wrap: wrap; gap: 12px; margin: 6px 0 20px; }
+.ma-card {
+  flex: 1 1 150px; background: var(--card, #fff);
+  border: 1px solid var(--border, #e5e7eb); border-radius: 12px; padding: 12px 14px;
+}
+.ma-card .k { font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted, #6b7280); }
+.ma-card .v { font-size: 22px; font-weight: 700; margin-top: 4px; }
+.ma-h { font-size: 15px; font-weight: 700; margin: 24px 0 8px; }
+.ma-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ma-tbl th, .ma-tbl td {
+  padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--border, #eef0f3); white-space: nowrap;
+}
+.ma-tbl th { font-size: 11.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted, #6b7280); }
+.ma-tbl th.l, .ma-tbl td.l { text-align: left; }
+.ma-tbl tbody tr:hover { background: rgba(0,0,0,.02); }
+.ma-mdl { font-weight: 600; }
+.ma-n { color: var(--muted, #9ca3af); font-size: 11.5px; }
+.ma-acc { font-weight: 700; padding: 2px 8px; border-radius: 999px; display: inline-block; min-width: 46px; }
+.ma-acc.good { background: rgba(22,163,74,.14); color: #15803d; }
+.ma-acc.mid  { background: rgba(217,119,6,.14); color: #b45309; }
+.ma-acc.bad  { background: rgba(220,38,38,.14); color: #b91c1c; }
+.ma-acc.na   { background: rgba(148,163,184,.14); color: #64748b; }
+.ma-pos { color: #15803d; } .ma-neg { color: #b91c1c; }
+.ma-sig { font-weight: 700; } .ma-sig.BUY { color: #15803d; } .ma-sig.SELL { color: #b91c1c; } .ma-sig.NEUTRAL { color: #b45309; }
+.ma-res.CORRECT { color: #15803d; font-weight: 600; }
+.ma-res.INCORRECT { color: #b91c1c; font-weight: 600; }
+.ma-res.UNVERIFIED { color: #9ca3af; }
+.ma-toolbar { display: flex; gap: 10px; align-items: center; margin: 6px 0 14px; flex-wrap: wrap; }
+.ma-toolbar select, .ma-toolbar input {
+  padding: 6px 10px; border: 1px solid var(--border, #e5e7eb); border-radius: 8px; font-size: 13px; background: var(--card,#fff); color: inherit;
+}
+.ma-res.PENDING { color: #9ca3af; }
+.ma-res.UNVERIFIABLE { color: #a16207; }

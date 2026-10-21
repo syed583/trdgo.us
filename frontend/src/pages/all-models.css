@@ -42,3 +42,26 @@
   :root:not([data-theme="light"]) .am-cell.s { background: rgba(220,38,38,.22); color: #f87171; }
   :root:not([data-theme="light"]) .am-cell.n { background: rgba(217,119,6,.22); color: #fbbf24; }
 }
+
+/* Historical overlay (req 2): per-model accuracy under each column header,
+   the company's previous earnings move, and a prev-call hit/miss mark. */
+.am-th-model { line-height: 1.15; }
+.am-th-name { display: block; }
+.am-th-acc { display: block; font-size: 10px; font-weight: 600; margin-top: 2px; opacity: .9; }
+.am-th-acc.good { color: #15803d; }
+.am-th-acc.mid  { color: #b45309; }
+.am-th-acc.bad  { color: #b91c1c; }
+.am-th-acc.none { color: #9ca3af; font-weight: 500; }
+.am-lastmove { text-align: right; font-variant-numeric: tabular-nums; font-size: 12px; color: #6b7280; white-space: nowrap; }
+.am-lastmove.up { color: #15803d; }
+.am-lastmove.down { color: #b91c1c; }
+.am-cell { position: relative; }
+.am-prev { position: absolute; top: 1px; right: 3px; font-size: 9px; line-height: 1; }
+.am-prev.ok { color: #16a34a; }
+.am-prev.no { color: #dc2626; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .am-th-acc.good { color: #4ade80; }
+  :root:not([data-theme="light"]) .am-th-acc.bad { color: #f87171; }
+  :root:not([data-theme="light"]) .am-lastmove.up { color: #4ade80; }
+  :root:not([data-theme="light"]) .am-lastmove.down { color: #f87171; }
+}

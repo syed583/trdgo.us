@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import {
-  Activity, Brain, CalendarDays, Compass, Crosshair, Flame, Gauge, History, Layers, LineChart, Users,
+  Activity, BarChart3, Brain, CalendarDays, Compass, Crosshair, Flame, Gauge, History, Layers, LineChart, Users,
   LayoutDashboard, ListOrdered, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
   Scale, ScrollText, Settings, Sparkles, Star, TrendingUp, UserCog, Waves, Waypoints, X, Zap,
 } from 'lucide-react';
@@ -59,6 +59,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/gemini', label: 'Gemini', icon: <Waypoints size={S} /> },
     { to: '/claude-pro', label: 'Claude Pro', icon: <Star size={S} /> },
     { to: '/all-models', label: 'All Models', icon: <ListOrdered size={S} /> },
+    { to: '/model-accuracy', label: 'Model Accuracy', icon: <BarChart3 size={S} /> },
     { to: '/option-scanner', label: 'IV Crush Check', icon: <Flame size={S} /> },
     { to: '/unusual-activity', label: 'Unusual Activity', icon: <Zap size={S} /> },
     { to: '/pre-earnings-direction', label: 'Pre-Earnings Direction', icon: <Compass size={S} /> },
