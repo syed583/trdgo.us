@@ -470,25 +470,41 @@ def scoreboard() -> dict:
                                    m["evaluated"]), reverse=True)
 
     # ---- consensus accuracy ----
-    n_models = max(1, len(labels))
-    consensus = {k: {"n": 0, "correct": 0, "move_sum": 0.0}
+    # An event's "agreement" is how many of the 10 models made the SAME
+    # directional (BUY/SELL) call -- NEUTRAL is never counted as agreement
+    # (req 4). A threshold is only populated by events where that many models
+    # actually voted the same way. Verified = the event has a real outcome;
+    # pending = it has not reported / not graded yet (req 5/7).
+    consensus = {k: {"signals": 0, "verified": 0, "pending": 0,
+                     "correct": 0, "incorrect": 0}
                  for k in ("6", "7", "8", "9", "10")}
     for (_sym, _ed), ev in events.items():
-        actual = ev["actual"]
-        if actual is None:
-            continue
-        votes = list(ev["votes"].values())
+        votes = list(ev["votes"].values())          # directional votes only
         buys = sum(1 for v in votes if v == "BUY")
         sells = sum(1 for v in votes if v == "SELL")
+        if buys == 0 and sells == 0:
+            continue
         side, agree = ("BUY", buys) if buys >= sells else ("SELL", sells)
+        actual = ev["actual"]
         for thr in (6, 7, 8, 9, 10):
             if agree >= thr:
                 c = consensus[str(thr)]
-                c["n"] += 1
-                c["correct"] += 1 if side == actual else 0
-    consensus_out = {k: {"agree_at_least": int(k), "n": v["n"],
-                         "accuracy": pct(v["correct"], v["n"])}
+                c["signals"] += 1
+                if actual is None:
+                    c["pending"] += 1
+                else:
+                    c["verified"] += 1
+                    if side == actual:
+                        c["correct"] += 1
+                    else:
+                        c["incorrect"] += 1
+    consensus_out = {k: {"agree_at_least": int(k),
+                         "signals": v["signals"], "verified": v["verified"],
+                         "pending": v["pending"], "correct": v["correct"],
+                         "incorrect": v["incorrect"],
+                         "accuracy": pct(v["correct"], v["verified"])}
                      for k, v in consensus.items()}
+    consensus_has_history = any(v["verified"] for v in consensus.values())
 
     total_eval = sum(m["evaluated"] for m in out_models)
     best = next((m for m in out_models if m["accuracy"] is not None), None)
@@ -498,6 +514,7 @@ def scoreboard() -> dict:
             "as_of": today.isoformat(),
             "models": out_models,
             "consensus": consensus_out,
+            "consensus_has_history": consensus_has_history,
             "totals": {"models": len(out_models), "evaluated_events": total_eval,
                        "best_model": best["label"] if best else None,
                        "best_accuracy": best["accuracy"] if best else None,

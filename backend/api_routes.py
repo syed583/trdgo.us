@@ -766,6 +766,14 @@ def model_accuracy_history(model: str = "", symbol: str = "", limit: int = 500) 
     return swr.serve(key, lambda: mp.history(model or None, symbol or None, limit), 300.0)
 
 
+@router.get("/earnings-backtest/scoreboard")
+def earnings_backtest_scoreboard() -> dict:
+    """SIMULATED historical backtest results per model (separate from recorded
+    accuracy): directional accuracy, events tested, coverage %, missing factors."""
+    import earnings_backtest_service as bt
+    return swr.serve("earnbt:scoreboard", lambda: bt.scoreboard(), 300.0)
+
+
 @router.get("/claude-pro/scan")
 def claude_pro_scan(days: int = 15) -> dict:
     """Claude Pro -- refined 6-block direction model, ranked. Non-blocking."""

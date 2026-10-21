@@ -151,9 +151,16 @@ export default function AllModelsPage({ ctx }: { ctx: PageContext }) {
                       title={r.last_move ? `Previous earnings (${r.last_move.earnings_date}): ${signedPct(r.last_move.move_pct)}`
                         : 'No recorded previous earnings move'}>
                       {r.last_move ? signedPct(r.last_move.move_pct) : '—'}</td>
-                    <td className="am-cons">
+                    <td className="am-cons" title={`${t.b} BUY vs ${t.s} SELL across ${models.length} models`}>
                       <span className="am-cons-b">{t.b}</span>
                       <span className="am-cons-s">{t.s}</span>
+                      {(() => {
+                        const dirN = t.b + t.s;
+                        if (!dirN) return <span className="am-cons-dir n">—</span>;
+                        const dir = t.b >= t.s ? 'BUY' : 'SELL';
+                        const pct = Math.round(Math.max(t.b, t.s) / dirN * 100);
+                        return <span className={`am-cons-dir ${dir === 'BUY' ? 'b' : 's'}`}>{dir} {pct}%</span>;
+                      })()}
                     </td>
                     {models.map(([k]) => {
                       const c = r.cells?.[k] || {};

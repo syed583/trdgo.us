@@ -753,6 +753,8 @@ export const api2 = {
   modelAccuracyHistory: (model = '', symbol = '', limit = 500, s?: AbortSignal) =>
     request<any>(`/api/model-accuracy/history?model=${encodeURIComponent(model)}`
       + `&symbol=${encodeURIComponent(symbol)}&limit=${limit}`, s),
+  earningsBacktestScoreboard: (s?: AbortSignal) =>
+    request<any>('/api/earnings-backtest/scoreboard', s),
   grokIntradayScan: (days = 15, s?: AbortSignal) =>
     request<any>(`/api/grok-intraday/scan?days=${days}`, s),
   grokIntradayBoard: (s?: AbortSignal) =>

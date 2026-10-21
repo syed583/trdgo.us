@@ -19,6 +19,7 @@ export default function ModelAccuracyPage() {
   const [model, setModel] = useState('');
   const hist = useApi<any>((s) => api2.modelAccuracyHistory(model, '', 400, s), [model],
     { refreshMs: 300_000 });
+  const bt = useApi<any>((s) => api2.earningsBacktestScoreboard(s), [], { refreshMs: 600_000 });
 
   const d = sb.data;
   const models: any[] = d?.models || [];
@@ -93,23 +94,86 @@ export default function ModelAccuracyPage() {
             </tbody>
           </table>
 
-          <div className="ma-h">Consensus accuracy</div>
+          <div className="ma-h">Consensus accuracy (verified history)</div>
           <p className="ma-n" style={{ margin: '0 0 8px' }}>
-            When at least N of the models agree on a direction, how often the majority call was right.
+            When at least N of the 10 models made the SAME directional (BUY/SELL) call on one
+            earnings event, how often that majority call was right. NEUTRAL is never counted as
+            agreement. Requires all 10 models to have a recorded call on the same past event.
           </p>
-          <table className="ma-tbl" style={{ maxWidth: 420 }}>
-            <thead><tr><th className="l">Agreement</th><th>Signals</th><th>Accuracy</th></tr></thead>
+          {!d?.consensus_has_history && (
+            <div className="ma-note" style={{ maxWidth: 620 }}>
+              <b>No verified consensus history yet.</b> Verified accuracy needs the agreeing models
+              to have recorded calls on an earnings event that has already reported. The signals
+              below are <b>current</b> (upcoming earnings), so their accuracy is pending — it fills
+              in automatically as those earnings report.
+            </div>
+          )}
+          <table className="ma-tbl" style={{ maxWidth: 680 }}>
+            <thead><tr><th className="l">Agreement</th><th>Current signals</th><th>Verified</th>
+              <th>Pending</th><th>Correct</th><th>Incorrect</th><th>Verified accuracy</th></tr></thead>
             <tbody>
-              {['6', '7', '8', '9', '10'].map((k) => (
-                <tr key={k}>
-                  <td className="l">≥ {k} models agree</td>
-                  <td>{consensus[k]?.n ?? 0}</td>
-                  <td><span className={`ma-acc ${accClass(consensus[k]?.accuracy ?? null)}`}>
-                    {fmtAcc(consensus[k]?.accuracy ?? null)}</span></td>
-                </tr>
-              ))}
+              {['6', '7', '8', '9', '10'].map((k) => {
+                const c = consensus[k] || {};
+                return (
+                  <tr key={k}>
+                    <td className="l">≥ {k} models agree</td>
+                    <td>{c.signals ?? 0}</td>
+                    <td>{c.verified ?? 0}</td>
+                    <td className="ma-n">{c.pending ?? 0}</td>
+                    <td className="ma-pos">{c.correct ?? 0}</td>
+                    <td className="ma-neg">{c.incorrect ?? 0}</td>
+                    <td>{(c.verified ?? 0) === 0
+                      ? <span className="ma-res PENDING">No verified history</span>
+                      : <span className={`ma-acc ${accClass(c.accuracy ?? null)}`}>{fmtAcc(c.accuracy ?? null)}</span>}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+
+          <div className="ma-h">Historical backtest</div>
+          {bt.data?.full_backtest_available === false && (
+            <div className="ma-note" style={{ maxWidth: 680, borderColor: 'rgba(180,83,9,.4)', background: 'rgba(180,83,9,.07)' }}>
+              <b style={{ color: '#b45309' }}>Full historical backtest unavailable.</b> {bt.data.unavailable_reason}
+              {' '}The original models therefore <b>cannot be faithfully reproduced</b>. The table below is a
+              <b> partial-factor simulation only</b> — it is NOT the models' historical accuracy and must not be
+              read as such.
+            </div>
+          )}
+          <p className="ma-n" style={{ margin: '8px 0' }}>
+            The unmodified model scorers are re-run through a separate point-in-time adapter.
+            {bt.data?.events_tested ? ` ${bt.data.events_tested} past earnings events tested.` : ''}
+            {' '}Each row shows input coverage; lower coverage = less of the real model reproduced.
+          </p>
+          {!bt.data || bt.data.status !== 'OK' || !(bt.data.models || []).length ? (
+            <div className="ma-note" style={{ maxWidth: 560 }}>
+              {bt.initialLoading ? 'Loading backtest…' : 'No backtest results yet.'}
+            </div>
+          ) : (
+            <>
+              <table className="ma-tbl">
+                <thead><tr><th className="l">Model (partial-factor sim.)</th><th>Sim. dir. result</th><th>Events</th>
+                  <th>Avg move</th><th>Input coverage</th><th>Reconstruction</th></tr></thead>
+                <tbody>
+                  {bt.data.models.map((m: any) => (
+                    <tr key={m.model}>
+                      <td className="l ma-mdl">{m.label}</td>
+                      <td><span className={`ma-acc ${accClass(m.directional_accuracy)}`}>
+                        {fmtAcc(m.directional_accuracy)}</span> <span className="ma-n">n{m.directional_n}</span></td>
+                      <td>{m.events_tested}</td>
+                      <td className={m.avg_move_pct > 0 ? 'ma-pos' : m.avg_move_pct < 0 ? 'ma-neg' : ''}>{signed(m.avg_move_pct)}</td>
+                      <td className="ma-n">{m.coverage_pct != null ? `${m.coverage_pct}%` : '—'}</td>
+                      <td className="ma-res UNVERIFIABLE">Partial{m.faithful === false ? '' : ''}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="ma-n" style={{ marginTop: 8 }}>
+                <b>Reconstructed point-in-time:</b> {(bt.data.present_factors || []).join(', ')}.<br />
+                <b>Missing (left absent, never back-filled with today's data):</b> {(bt.data.missing_factors || []).join(', ')}.
+              </p>
+            </>
+          )}
 
           <div className="ma-h">Prediction verification</div>
           <div className="ma-toolbar">
