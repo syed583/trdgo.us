@@ -77,6 +77,10 @@ def main() -> int:
         chk("migration 001 creates schema on fresh Postgres", all(got))
         idx = c.execute(text("SELECT COUNT(*) FROM pg_indexes WHERE tablename='institutional_holdings' AND indexname='ix_ih_cusip_q'")).scalar()
         chk("performance index created", idx == 1)
+        # 1b. fresh project must contain no unexpected pre-existing data
+        h0 = c.execute(text("SELECT COUNT(*) FROM institutional_holdings")).scalar()
+        f0 = c.execute(text("SELECT COUNT(*) FROM institutional_funds")).scalar()
+        chk("fresh TEST project has no leftover institutional data", h0 == 0 and f0 == 0, f"holdings={h0} funds={f0}")
 
     with eng.begin() as c:
         c.execute(text("SET statement_timeout='30000'"))
@@ -160,6 +164,11 @@ def main() -> int:
     with eng.begin() as c:
         c.execute(text("DELETE FROM institutional_holdings WHERE cusip='ZZZZZZZZZ'"))
         c.execute(text("DELETE FROM institutional_funds WHERE id>=900001"))
+    # 9. post-cleanup: no leftover test data
+    with eng.connect() as c:
+        hN = c.execute(text("SELECT COUNT(*) FROM institutional_holdings")).scalar()
+        fN = c.execute(text("SELECT COUNT(*) FROM institutional_funds")).scalar()
+        chk("test rows cleaned up (no leftover data)", hN == 0 and fN == 0, f"holdings={hN} funds={fN}")
     print(f"\n================ PG COMPAT: {len(PASS)} PASS, {len(FAIL)} FAIL ================", flush=True)
     if FAIL:
         print("FAILED:", FAIL, flush=True)

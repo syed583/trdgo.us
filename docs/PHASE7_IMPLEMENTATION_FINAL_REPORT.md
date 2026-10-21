@@ -21,8 +21,8 @@ Built/validated this phase on top of the development-complete module:
   place; health check distinguishes service-up from DB-available; prepared,
   guarded, idempotent **schema migration 001**; production **config template**.
 - **7B** Static Postgres audit + **11/11 real-Postgres read-path checks** (dev
-  PG 17.11, read-only). Write/migration/`ON CONFLICT` PG validation **BLOCKED**
-  (no disposable PG permitted).
+  PG 17.11, read-only) **and 11/11 write/migration/rollback/concurrency checks**
+  on a disposable TEST project (§C.1). PostgreSQL compatibility **fully verified**.
 - **7C** **Distinct `SESSION_SECRET` now required** for the dev backend
   (fail-closed) — closes the Phase 6.1 cross-environment-cookie gap; **as_of
   input validation** (`INVALID_AS_OF`); parameterized SQL throughout; new
@@ -68,8 +68,33 @@ dev preview proxy), `.env.dev` (gitignored secrets).
     `ILIKE`); large-integer share totals exact (no float drift); ordering and
     pagination correct; as-of/no-look-ahead correct. 11/11 checks pass.
   - **Write / migration / `ON CONFLICT` / concurrency on a fresh Postgres —
-    BLOCKED:** requires a disposable PG, which the constraints (no Docker, no
-    new software, no writes to dev/prod) do not permit. **Not claimed verified.**
+    VERIFIED (11/11)** on a user-provisioned **disposable TEST project**
+    (ref `…ayrfef…`, confirmed NOT dev, NOT earnings-prod). See §C.1 below.
+
+### C.1 PostgreSQL TEST validation (disposable project — completed)
+
+Run: `migrations/institutional/pg_compat_check.py` against the TEST project only.
+Credentials stayed in gitignored `backend/.env.test`, were never printed (only a
+6-char ref prefix) and never committed. **Result: 11 passed / 0 failed.**
+
+- **Isolation evidence:** the fail-closed guard accepted the TEST ref and
+  refused to run had it been TRDGO-US-DEV (`qzmso…`) or Earnings AI prod
+  (`ddeto…`); neither existing database was connected to or modified.
+- **Migration validation:** migration 001 created the full schema + performance
+  index on a fresh Postgres; the fresh project held **no pre-existing data**
+  (holdings=0, funds=0).
+- **Write / constraints:** large-integer shares round-trip exact (9,123,456,789);
+  **ON CONFLICT** upsert idempotent (no duplicate row); **unique constraint**
+  violation enforced; **timestamptz** round-trip (tz-aware); **concurrent
+  writes** succeeded (0 errors); FILTER + FULL OUTER JOIN read query ran.
+- **Rollback results:** a forced error inside a transaction left **no partial
+  rows** (count unchanged 1→1).
+- **No leftover data:** test rows cleaned up afterwards — holdings=0, funds=0.
+
+Combined with the **11/11 read-path** checks on dev PG 17.11, PostgreSQL
+compatibility is now **fully verified (read + write)**. No remaining PG blocker.
+AI files re-confirmed unchanged after the run (no diff vs `main`;
+`database.py`/`main.py` untouched).
 
 ## D. Security readiness
 
@@ -158,14 +183,17 @@ fail-closed test guard); auth gating; input validation; 13/13 data-quality;
 read-path Postgres validation; measured performance; 6-section frontend; 549-test
 regression; AI preservation; prepared migration + config template + planning docs.
 
+**Resolved since first draft:**
+- ✅ **PostgreSQL compatibility fully verified** — 11/11 read (dev) + 11/11
+  write/migration/rollback/concurrency (disposable TEST project, §C.1).
+
 **Outstanding / blockers:**
 1. **Production institutional database not provisioned** (separate Supabase
-   project) — requires your approval + creation (cost).
-2. **Full Postgres write/migration/concurrency validation — BLOCKED** (no
-   disposable PG under the no-Docker/no-install constraint).
-3. **Distinct production `SESSION_SECRET`** not set on any host (needs approval).
-4. **Live data migration + ingestion** not run (prepared only).
-5. **Live monitoring** (§7I) documented, not deployed.
+   project, ~$25/mo Pro) — requires your approval + creation (cost).
+2. **Distinct production `SESSION_SECRET`** not set on any host (needs approval).
+3. **Live data migration + ingestion** not run (prepared; runs on the new prod
+   project after provisioning).
+4. **Live monitoring** (§7I) documented, not deployed.
 
 **7E Ingestion:** the ingest pipeline exists (`institutional_service.ingest_dataset`
 — idempotent `ALREADY_INGESTED`, logged in `institutional_ingest`); **staging/
@@ -173,14 +201,13 @@ promotion controls and quarterly data-quality gating are specified but not fully
 built** → PARTIAL.
 
 ### GO / NO-GO: **NO-GO for production deployment at this time (conditional).**
-The module is development-complete, read-path Postgres-validated, fully tested
-(549/0), and provably isolated with the Earnings AI untouched. But per the rule
-*"do not mark GO if critical database compatibility or data-integrity
-requirements remain unverified,"* deployment is **NO-GO until**: (1) the separate
-production institutional DB is provisioned, (2) Postgres write/migration
-validation is completed on an approved disposable PG, and (3) a distinct
-production `SESSION_SECRET` is set. These are the explicit gates; none can be
-satisfied without a production-sensitive action you must approve.
+The module is development-complete, **fully PostgreSQL-validated (read + write)**,
+fully tested (549/0), data-quality-clean (13/13), and provably isolated with the
+Earnings AI untouched. The former compatibility blocker is **cleared**. Remaining
+gates are **provisioning/secret actions only** — deployment is **NO-GO until**:
+(1) the separate production institutional DB is provisioned, and (2) a distinct
+production `SESSION_SECRET` is set — both production-sensitive actions you must
+approve. No *technical* validation blocker remains.
 
 ## K. Next approval required (single next action)
 
