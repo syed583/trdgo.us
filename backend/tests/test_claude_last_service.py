@@ -67,11 +67,14 @@ def test_short_interest_is_two_sided_with_price():
     assert v3._short_interest_bias(None, 0.8) is None
 
 
-def test_v31_has_ten_parameters_including_separate_skew_and_short():
+def test_v3_has_thirteen_parameters_including_separate_skew_and_short():
+    # Claude New v2 is officially a 13-parameter / 100-point model (tab_settings
+    # .V3_WEIGHTS). Skew/disparity and short interest are kept as their own
+    # parameters rather than folded into other factors.
     res = v3.score_one("X", _eq({"disparity": 0.5}), None, {})
     names = [p["name"] for p in res["params"]]
-    assert len(names) == 10
-    for required in ("skew_disparity", "options_flow_unusual", "insider", "short_interest"):
+    assert len(names) == 13
+    for required in ("unusual_skew", "disparity", "insider", "short_interest"):
         assert required in names
 
 
