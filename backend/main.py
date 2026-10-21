@@ -456,6 +456,19 @@ def _capture_earnings_signals() -> None:
                 # stocks get no baseline and never show a session-over-session
                 # change. warm_earnings is cheap when the 6h cache is already warm.
                 sh.warm_earnings(syms)
+                # Pre-warm the analyst (Finnhub recommendation) cache for the
+                # calendar names so the All Models matrix serves grok/chatgpt
+                # analyst_dispersion from cache instead of per-name live calls.
+                # Runs on its OWN daemon thread so the rate-limited warm never
+                # delays the critical capture + grading below; finnhub pacing is
+                # central (finnhub_service._rate_gate), and a miss keeps the last
+                # good value (never overwrites with None).
+                try:
+                    import grok_service as _gk
+                    threading.Thread(target=lambda: _gk.warm_analyst(syms),
+                                     daemon=True, name="analyst-warmer").start()
+                except Exception:  # noqa: BLE001
+                    pass
                 # Real past-earnings reactions for the Signal History grid, plus
                 # today's decision snapshot for the whole universe.
                 esh.warm_reactions(syms)

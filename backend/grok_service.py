@@ -51,9 +51,51 @@ _STRENGTH = {
 
 def _analyst_bias(symbol: str) -> Optional[float]:
     """Cached wrapper -- the recommendation trend changes slowly, so persist it
-    6h so the scan never re-hits Finnhub for the same name within a session."""
+    6h so the scan never re-hits Finnhub for the same name within a session.
+
+    Keep-last-good: if a refresh comes back empty (Finnhub down, rate-limited,
+    or a transient miss) it must NOT replace a previously good reading with a
+    missing value. When the fresh calc is None but a prior numeric value is
+    cached, we re-serve the prior value, so the cache never regresses to None
+    over real data. A genuinely never-seen name (no prior) still caches None."""
     import swr
-    return swr.serve(f"grok:analyst:{symbol}", lambda: _analyst_bias_calc(symbol), 6 * 3600.0)
+    key = f"grok:analyst:{symbol}"
+
+    def _calc():
+        v = _analyst_bias_calc(symbol)
+        if v is None:
+            prev = swr.peek(key)
+            if isinstance(prev, (int, float)):
+                return prev
+        return v
+
+    v = swr.serve(key, _calc, 6 * 3600.0)
+    # swr returns a status dict ({"status": "LOADING"/"DATA_UNAVAILABLE"}) when a
+    # cold build yields None. The scorer must only ever see a float or None, so
+    # coerce anything non-numeric to None (no-data) -- never a dict.
+    return v if isinstance(v, (int, float)) else None
+
+
+def warm_analyst(symbols: list, per_minute: int = 55) -> int:
+    """Pre-populate the 6h analyst cache for `symbols` so the All Models scan
+    serves from cache instead of per-name live calls. Pacing is handled centrally
+    by finnhub_service._rate_gate (shared across every Finnhub caller), so this
+    just loops. A rate-limited/failed fetch keeps the last good value (never
+    overwrites with None, never fabricates). Returns how many names now have a
+    non-None analyst reading. Safe to run in the background; non-blocking by
+    design when the caller runs it on its own thread."""
+    import swr
+    import finnhub_service as fh
+    if not fh.configured():
+        return 0
+    got = 0
+    for s in [str(x).upper() for x in (symbols or []) if x]:
+        try:
+            if _analyst_bias(s) is not None:
+                got += 1
+        except Exception:  # noqa: BLE001
+            pass
+    return got
 
 
 def _analyst_bias_calc(symbol: str) -> Optional[float]:

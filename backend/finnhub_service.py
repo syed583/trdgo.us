@@ -30,6 +30,39 @@ def configured() -> bool:
     return _key() is not None
 
 
+# Account-wide request pacing. EVERY Finnhub call (analyst recommendation,
+# peers, insider sentiment, the warmer, ...) goes through _get, so gating here
+# -- not in any one caller -- means the whole app shares one budget and the
+# free-tier per-minute limit is respected no matter which service calls. Spaced
+# by _MIN_GAP seconds; FINNHUB_PER_MINUTE overrides (default 55/min, a margin
+# under Finnhub's 60).
+import threading as _threading
+
+_rl_lock = _threading.Lock()
+_next_slot = [0.0]
+
+
+def _min_gap() -> float:
+    try:
+        per_min = int(os.getenv("FINNHUB_PER_MINUTE") or 55)
+    except ValueError:
+        per_min = 55
+    return 60.0 / max(1, min(per_min, 60))
+
+
+def _rate_gate() -> None:
+    """Block just long enough that calls leave at most _per_minute_. Shared by
+    every caller so other services' calls count against the same budget."""
+    gap = _min_gap()
+    with _rl_lock:
+        now = time.time()
+        slot = max(now, _next_slot[0])
+        _next_slot[0] = slot + gap
+    wait = slot - time.time()
+    if wait > 0:
+        time.sleep(wait)
+
+
 def _get(path: str, ttl: float = 600.0) -> Optional[object]:
     """GET a Finnhub path with a short in-proc cache. Returns parsed JSON or None."""
     k = _key()
@@ -39,11 +72,12 @@ def _get(path: str, ttl: float = 600.0) -> Optional[object]:
     hit = _cache.get(path)
     if hit and now - hit[0] < ttl:
         return hit[1]
+    _rate_gate()   # pace every real request, across all callers
     try:
         req = urllib.request.Request(BASE + path, headers={"X-Finnhub-Token": k})
         with urllib.request.urlopen(req, timeout=12) as r:
             data = json.loads(r.read().decode("utf-8", "replace"))
-        _cache[path] = (now, data)
+        _cache[path] = (time.time(), data)
         return data
     except Exception:  # noqa: BLE001 - a missing provider just means no data
         return None

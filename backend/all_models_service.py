@@ -88,9 +88,16 @@ def _row_cells(sym: str, eq: dict, trade: dict, mkt: Optional[float]) -> dict:
     cn = safe(lambda: cl.score_one(sym, eq, tr, {}), raw=True)
     cells["claude_new"] = cn
     cells["claude_new_pz"] = dict(cn)   # same engine as Claude New
-    cells["grok"] = safe(lambda: gk.score_one(sym, eq, tr, {}, with_analyst=False))
+    # Analyst inputs: enable ONLY where the factor's source is the correct one.
+    # grok/chatgpt `analyst_dispersion` is defined as analyst recommendation
+    # consensus (gk._analyst_bias, Finnhub) -- its intended source -> enable.
+    # kimi `price_target` and claude_pro `estimate_dispersion` would be fed the
+    # same recommendation counts, which is NOT a price target / estimate spread,
+    # so they stay OFF (no-data) until sourced correctly. Served from the warmed
+    # 6h analyst cache; a miss returns None (no fabrication), never a fake value.
+    cells["grok"] = safe(lambda: gk.score_one(sym, eq, tr, {}, with_analyst=True))
     cells["meta"] = safe(lambda: mt.score_one(sym, eq, tr, {}))
-    cells["chatgpt"] = safe(lambda: cg.score_one(sym, eq, tr, {}, with_analyst=False))
+    cells["chatgpt"] = safe(lambda: cg.score_one(sym, eq, tr, {}, with_analyst=True))
     cells["kimi"] = safe(lambda: ki.score_one(sym, eq, tr, {}, with_analyst=False, mkt=mkt))
     cells["gemini"] = safe(lambda: gm.score_one(sym, eq, tr, {}))
     cells["claude_pro"] = safe(lambda: cp.score_one(sym, eq, tr, {}, with_analyst=False, mkt=mkt))
