@@ -72,6 +72,14 @@ def _ensure_tables() -> bool:
                 " graded_at TIMESTAMPTZ NOT NULL DEFAULT now(), entry_price DOUBLE PRECISION,"
                 " exit_price DOUBLE PRECISION, exit_reason VARCHAR(24), net_pct DOUBLE PRECISION,"
                 " outcome VARCHAR(8), notes TEXT, UNIQUE(prediction_id))"))
+            # Phase 8 — numeric trade levels (for future intraday grading) + scheduler state.
+            for col in ("entry_spot", "atr14", "stop_price", "target_price"):
+                db.execute(text(f"ALTER TABLE pe_predictions ADD COLUMN IF NOT EXISTS {col} DOUBLE PRECISION"))
+            db.execute(text(
+                "CREATE TABLE IF NOT EXISTS pe_scheduler_state ("
+                " key VARCHAR(40) PRIMARY KEY, status VARCHAR(16), paused SMALLINT DEFAULT 0,"
+                " last_run_ts TIMESTAMPTZ, last_success_ts TIMESTAMPTZ, last_error TEXT,"
+                " runs INT DEFAULT 0)"))
             db.commit()
             _ready = True
             return True
@@ -86,6 +94,14 @@ def _ensure_tables() -> bool:
 # --------------------------------------------------------------------------- #
 # Experimental signal engine (pure, versioned, isolated)                      #
 # --------------------------------------------------------------------------- #
+def daily_proxy_net(side: str, entry: float, exit_px: float, cost_pct: float) -> float:
+    """Directional net return (%) for the daily-proxy grade. BUY profits when price
+    rises, SELL when it falls; costs always subtract."""
+    sgn = 1.0 if side == "BUY" else -1.0
+    gross = (exit_px - entry) / entry * 100.0 * sgn
+    return round(gross - cost_pct, 3)
+
+
 def _dir(x: Optional[float], thr: float = 0.1) -> Optional[int]:
     if x is None:
         return None
@@ -254,12 +270,18 @@ def capture_signals() -> dict:
             sig = pe_signal(readings)
             pid = uuid.uuid4().hex[:16]
             atr, spot = readings.get("atr"), readings.get("spot")
+            stop_px = tgt_px = None
+            if spot and atr:
+                s = 1 if sig["signal"] == "BUY" else -1 if sig["signal"] == "SELL" else 0
+                stop_px = round(spot - s * 1.5 * atr, 2) if s else None
+                tgt_px = round(spot + s * 2.0 * atr, 2) if s else None
             db.execute(text(
                 "INSERT INTO pe_predictions (prediction_id,event_id,symbol,model_version,signal,"
                 " hypothesis,confidence,factor_readings,coverage_pct,missing_factors,regime,"
-                " entry_rule,stop_rule,target_rule,exit_horizon,risk_alloc,reason) "
+                " entry_rule,stop_rule,target_rule,exit_horizon,risk_alloc,reason,"
+                " entry_spot,atr14,stop_price,target_price) "
                 "VALUES (:pid,:eid,:sym,:v,:sig,:hyp,:conf,:fr,:cov,:miss,:reg,"
-                " :entry,:stop,:tgt,:hz,:alloc,:reason) "
+                " :entry,:stop,:tgt,:hz,:alloc,:reason,:spot,:atr,:sp,:tp) "
                 "ON CONFLICT (event_id, model_version) DO NOTHING"),
                 {"pid": pid, "eid": eid, "sym": sym, "v": PE_MODEL_VERSION,
                  "sig": sig["signal"], "hyp": sig["hypothesis"], "conf": sig["confidence"],
@@ -268,10 +290,9 @@ def capture_signals() -> dict:
                  "cov": readings.get("coverage_pct"), "miss": ",".join(readings.get("missing") or []),
                  "reg": readings.get("regime"),
                  "entry": "Next 5m close after signal (hypothetical).",
-                 "stop": f"1.5 x ATR14 ({round(1.5*atr,2) if atr else 'n/a'})",
-                 "tgt": f"2.0 x ATR14 ({round(2.0*atr,2) if atr else 'n/a'})",
-                 "hz": "session_close", "alloc": 0.05,
-                 "reason": sig["reason"]})
+                 "stop": f"1.5 x ATR14 ({stop_px})", "tgt": f"2.0 x ATR14 ({tgt_px})",
+                 "hz": "session_close", "alloc": 0.05, "reason": sig["reason"],
+                 "spot": spot, "atr": atr, "sp": stop_px, "tp": tgt_px})
             made += 1
             db.commit()
         return {"status": "OK", "snapshots_made": made,
@@ -280,6 +301,126 @@ def capture_signals() -> dict:
         db.rollback(); return {"status": "ERROR", "detail": str(e)[:160]}
     finally:
         db.close()
+
+
+def grade() -> dict:
+    """Auto-grade matured BUY/SELL predictions with a DAILY-PRICE proxy (entry at
+    the reaction-session close, exit next session close, net of costs). WAIT is
+    never graded. Intrabar stop/target are NOT evaluated — no historical intraday
+    exists — so exit_reason is DAILY_PROXY. Insert-only into pe_grades."""
+    if not _ensure_tables():
+        return {"status": "NO_TABLE"}
+    import historical_backtest_service as htb
+    import forward_scoreboard_service as fsb
+    from sqlalchemy import text
+    from database import SessionLocal
+    db = SessionLocal()
+    graded = 0
+    try:
+        today = date.today().isoformat()
+        rows = db.execute(text(
+            "SELECT p.prediction_id, p.symbol, p.signal, e.scheduled_date, e.timing "
+            "FROM pe_predictions p JOIN pe_events e ON e.id=p.event_id "
+            "LEFT JOIN pe_grades g ON g.prediction_id=p.prediction_id "
+            "WHERE g.id IS NULL AND p.signal IN ('BUY','SELL')")).all()
+        for pid, sym, side, sched, timing in rows:
+            bars = htb._bars2y(sym)
+            if not bars:
+                continue
+            dates = [str(b.get("date"))[:10] for b in bars]
+            closes = [cl._f(b.get("close")) for b in bars]
+            ed = str(sched)[:10]
+            eidx = fsb._idx_on_or_before(dates, ed)
+            if eidx is None:
+                continue
+            tk = fsb._timing_key(timing)
+            entry_i = eidx if tk == "bmo" else eidx + 1          # reaction session
+            exit_i = entry_i + 1
+            if exit_i >= len(bars):
+                continue                                          # not matured yet
+            entry, exit_px = closes[entry_i], closes[exit_i]
+            if not entry or not exit_px:
+                continue
+            net = daily_proxy_net(side, entry, exit_px, htb._cost_pct(side, entry, 1))
+            db.execute(text(
+                "INSERT INTO pe_grades (prediction_id, entry_price, exit_price, exit_reason, "
+                " net_pct, outcome, notes) VALUES (:pid,:en,:ex,'DAILY_PROXY',:net,:out,:n) "
+                "ON CONFLICT (prediction_id) DO NOTHING"),
+                {"pid": pid, "en": round(entry, 4), "ex": round(exit_px, 4), "net": net,
+                 "out": "WIN" if net > 0 else "LOSS",
+                 "n": "Daily proxy (no historical intraday; intrabar stop/target not evaluated)."})
+            graded += 1
+            db.commit()
+        return {"status": "OK", "graded": graded,
+                "note": "DAILY-PROXY grading; intrabar stop/target not evaluable (no intraday history)."}
+    except Exception as e:  # noqa: BLE001
+        db.rollback(); return {"status": "ERROR", "detail": str(e)[:160]}
+    finally:
+        db.close()
+
+
+def scheduler_status() -> dict:
+    if not _ensure_tables():
+        return {"status": "NO_TABLE"}
+    from sqlalchemy import text
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        r = db.execute(text("SELECT status, paused, last_run_ts, last_success_ts, last_error, runs "
+                            "FROM pe_scheduler_state WHERE key='forward'")).first()
+        if not r:
+            return {"activated": False, "status": "NOT_ACTIVATED", "paused": False,
+                    "last_run": None, "last_success": None, "runs": 0,
+                    "note": "Scheduler is built but NOT activated (awaiting approval)."}
+        return {"activated": True, "status": r[0], "paused": bool(r[1]),
+                "last_run": r[2].isoformat() if r[2] else None,
+                "last_success": r[3].isoformat() if r[3] else None,
+                "last_error": r[4], "runs": r[5]}
+    finally:
+        db.close()
+
+
+def run_cycle(days: int = 7) -> dict:
+    """One MANUAL capture cycle: record -> capture -> grade, with an in-DB lock so
+    concurrent/overlapping runs do not double-ingest. Updates scheduler state. This
+    is invoked on demand only; it is NOT auto-scheduled (that needs approval)."""
+    if not _ensure_tables():
+        return {"status": "NO_TABLE"}
+    from sqlalchemy import text
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        # idempotency lock: skip if a run started < 60s ago and is RUNNING
+        row = db.execute(text("SELECT status, last_run_ts, paused FROM pe_scheduler_state "
+                              "WHERE key='forward'")).first()
+        if row and row[2]:
+            return {"status": "PAUSED"}
+        db.execute(text(
+            "INSERT INTO pe_scheduler_state (key,status,last_run_ts,runs) "
+            "VALUES ('forward','RUNNING',now(),1) "
+            "ON CONFLICT (key) DO UPDATE SET status='RUNNING', last_run_ts=now(), "
+            " runs=pe_scheduler_state.runs+1"))
+        db.commit()
+    finally:
+        db.close()
+    err = None
+    try:
+        rec = record_events(days=days)
+        cap = capture_signals()
+        grd = grade()
+        ok = all(x.get("status") == "OK" for x in (rec, cap, grd))
+    except Exception as e:  # noqa: BLE001
+        rec = cap = grd = {"status": "ERROR"}; ok = False; err = str(e)[:200]
+    db = SessionLocal()
+    try:
+        db.execute(text("UPDATE pe_scheduler_state SET status=:s, last_error=:e, "
+                        "last_success_ts=CASE WHEN :ok THEN now() ELSE last_success_ts END "
+                        "WHERE key='forward'"),
+                   {"s": "OK" if ok else "ERROR", "e": err, "ok": ok})
+        db.commit()
+    finally:
+        db.close()
+    return {"status": "OK" if ok else "ERROR", "record": rec, "capture": cap, "grade": grd}
 
 
 def dashboard() -> dict:
@@ -297,21 +438,32 @@ def dashboard() -> dict:
                               "GROUP BY signal"), {"v": PE_MODEL_VERSION}).all()
         graded = db.execute(text("SELECT COUNT(*), AVG(net_pct), "
                                  "COUNT(*) FILTER (WHERE net_pct>0) FROM pe_grades")).first()
+        # BUY/SELL graded performance (join predictions)
+        side_perf = db.execute(text(
+            "SELECT p.signal, COUNT(*), AVG(g.net_pct), COUNT(*) FILTER (WHERE g.net_pct>0) "
+            "FROM pe_grades g JOIN pe_predictions p ON p.prediction_id=g.prediction_id "
+            "GROUP BY p.signal")).all()
         sigc = {s: n for s, n in sig}
         gn = graded[0] or 0
+        sp = {s: {"n": n, "avg_net": round(float(a), 3) if a is not None else None,
+                  "win_rate": round(w / n * 100, 1) if n else None} for s, n, a, w in side_perf}
         return {"status": "OK", "source": SOURCE, "label": "FORWARD-RECORDED · SIMULATED · NO LIVE TRADING",
                 "model_version": PE_MODEL_VERSION, "as_of": _utcnow().isoformat(),
                 "events_observed": ev[0] or 0, "verified_timestamps": ev[1] or 0,
+                "verified_pct": round((ev[1] or 0) / ev[0] * 100, 1) if ev[0] else 0.0,
                 "events_with_results": ev[2] or 0,
                 "buy": sigc.get("BUY", 0), "sell": sigc.get("SELL", 0), "wait": sigc.get("WAIT", 0),
                 "pending_outcomes": (sum(sigc.get(x, 0) for x in ("BUY", "SELL")) - gn),
                 "completed_sim_trades": gn,
                 "win_rate": round(graded[2] / gn * 100, 1) if gn else None,
                 "avg_net_pct": round(float(graded[1]), 3) if graded[1] is not None else None,
+                "buy_performance": sp.get("BUY"), "sell_performance": sp.get("SELL"),
+                "scheduler": scheduler_status(),
                 "missing": ["revenue surprise", "true 15m bars", "verified release timestamps",
                             "extended-hours history", "historical options/IV"],
                 "note": ("Forward pipeline — starts near-empty and accrues as earnings report. "
-                         "Pending predictions are NOT trades. No statistically supported conclusion "
-                         "until enough independent events grade out.")}
+                         "Pending predictions are NOT trades. Grading is a DAILY proxy (no intraday "
+                         "history). No statistically supported conclusion until enough independent "
+                         "events grade out.")}
     finally:
         db.close()

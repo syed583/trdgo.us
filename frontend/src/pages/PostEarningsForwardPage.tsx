@@ -36,12 +36,19 @@ export default function PostEarningsForwardPage() {
         {stat('SELL', d.sell)}
         {stat('WAIT', d.wait)}
       </div>
-      <h3 className="fsb-h">Simulated outcomes (graded)</h3>
+      <h3 className="fsb-h">Simulated outcomes (graded) <small className="fsb-sub">DAILY proxy · no live trading · tiny sample</small></h3>
       <div className="fsb-stats">
         {stat('Pending outcomes', d.pending_outcomes)}
         {stat('Completed sim trades', d.completed_sim_trades)}
         {stat('Win rate', d.win_rate == null ? '—' : `${d.win_rate}%`)}
         {stat('Avg net', d.avg_net_pct == null ? '—' : `${d.avg_net_pct}%`)}
+        {stat('Verified ts', `${d.verified_pct ?? 0}%`)}
+      </div>
+      <div className="fsb-stats">
+        {d.buy_performance && stat('BUY graded', `${d.buy_performance.n} · ${d.buy_performance.win_rate}% · ${d.buy_performance.avg_net}%`)}
+        {d.sell_performance && stat('SELL graded', `${d.sell_performance.n} · ${d.sell_performance.win_rate}% · ${d.sell_performance.avg_net}%`)}
+        {stat('Scheduler', d.scheduler?.status || '—')}
+        {stat('Last success', d.scheduler?.last_success ? String(d.scheduler.last_success).slice(0, 16) : '—')}
       </div>
       <div className="fsb-notes">
         <div className="fsb-note warn"><b>Missing data (recorded, never fabricated):</b> {(d.missing || []).join(', ')}.</div>

@@ -58,3 +58,23 @@ def test_confidence_scales_with_coverage():
     hi = pe.pe_signal(_r(reaction=0.5, v5=0.6, ema5=0.5, mom5=0.4, trend15=0.5, eps=5.0, cov=90.0))
     lo = pe.pe_signal(_r(reaction=0.5, v5=0.6, ema5=0.5, mom5=0.4, trend15=0.5, eps=5.0, cov=50.0))
     assert hi["confidence"] > lo["confidence"]
+
+
+# --- Phase 8: grading math (directional sign + cost) --------------------------
+def test_grade_buy_sign():
+    # BUY, price rose 100 -> 110, 0.2% cost -> ~ +9.8%
+    assert abs(pe.daily_proxy_net("BUY", 100.0, 110.0, 0.2) - 9.8) < 1e-6
+
+
+def test_grade_sell_sign():
+    # SELL, price rose 100 -> 110 -> a LOSS (~ -10.2% incl cost)
+    assert pe.daily_proxy_net("SELL", 100.0, 110.0, 0.2) < 0
+
+
+def test_grade_sell_profits_on_drop():
+    # SELL, price fell 100 -> 90 -> profit minus cost
+    assert abs(pe.daily_proxy_net("SELL", 100.0, 90.0, 0.2) - 9.8) < 1e-6
+
+
+def test_grade_cost_always_subtracts():
+    assert pe.daily_proxy_net("BUY", 100.0, 100.0, 0.25) == -0.25
