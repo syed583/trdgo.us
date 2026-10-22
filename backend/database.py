@@ -1,7 +1,8 @@
 import os
+import re
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 load_dotenv()
@@ -75,6 +76,53 @@ SessionLocal = sessionmaker(
 )
 
 Base = declarative_base()
+
+
+# --- environment isolation of saved predictions / signal history ---------------
+# These tables hold history that must only ever be written by production. Outside
+# production (APP_ENV != "production": a dev machine, CI, an unset variable) every
+# statement that names one of them is rewritten to a "_local" twin, so local testing
+# reads and writes its own copy and can never touch production history. Fail-closed:
+# forgetting APP_ENV isolates, it never shares.
+ISOLATED_TABLES = (
+    "model_predictions", "model_backtests", "earnings_signal_snapshots", "score_snapshots",
+    "ped_scores", "pe_events", "pe_predictions", "pe_grades", "pe_scheduler_state",
+    "pe_pilot_state", "pe_pilot_daily", "intraday_sig_v2", "straddle_snap_v2",
+)
+_ISO_RE = re.compile(r"(?<![A-Za-z0-9])(" + "|".join(ISOLATED_TABLES) + r")(?![A-Za-z0-9])")
+
+
+def is_production() -> bool:
+    return (os.getenv("APP_ENV") or "").strip().lower() == "production"
+
+
+def isolate_sql(statement: str) -> str:
+    """The statement with every isolated table renamed to its "_local" twin."""
+    return _ISO_RE.sub(lambda m: m.group(1) + "_local", statement)
+
+
+if not is_production():
+    @event.listens_for(engine, "before_cursor_execute", retval=True)
+    def _isolate_history(conn, cursor, statement, parameters, context, executemany):
+        return isolate_sql(statement), parameters
+
+
+def ensure_local_orm_tables() -> None:
+    """Outside production, make sure the ORM-managed history table has its "_local"
+    twin (raw SQL creates the others itself). Uses a raw DBAPI cursor so the rewrite
+    above does not touch the statement."""
+    if is_production():
+        return
+    raw = engine.raw_connection()
+    try:
+        cur = raw.cursor()
+        cur.execute("CREATE TABLE IF NOT EXISTS score_snapshots_local "
+                    "(LIKE score_snapshots INCLUDING ALL)")
+        raw.commit()
+    except Exception:  # noqa: BLE001 - the source table may not exist yet
+        raw.rollback()
+    finally:
+        raw.close()
 
 
 def get_db():

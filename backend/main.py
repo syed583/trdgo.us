@@ -169,6 +169,11 @@ def _create_schema() -> None:
 
     try:
         Base.metadata.create_all(engine)
+        try:
+            from database import ensure_local_orm_tables
+            ensure_local_orm_tables()
+        except Exception:  # noqa: BLE001
+            pass
         print(f"schema: {len(Base.metadata.tables)} tables present")
     except Exception as exc:  # noqa: BLE001
         print(f"schema: database unavailable, tables not created ({exc})")

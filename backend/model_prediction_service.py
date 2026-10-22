@@ -39,7 +39,7 @@ def _model_labels() -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     try:
         import all_models_service as am
-        out = [(k, lbl) for k, lbl in am.MODELS]
+        out = [(_STORED_ID.get(k, k), lbl) for k, lbl in am.MODELS]
     except Exception:  # noqa: BLE001
         out = []
     # PED (Pre-Earnings Direction tab) is tracked too -- it is the one earnings
@@ -182,6 +182,10 @@ def _direction(move_pct) -> Optional[str]:
 # --------------------------------------------------------------------------- #
 # Capture                                                                     #
 # --------------------------------------------------------------------------- #
+# Sheet column id -> the model id its history was always stored under.
+_STORED_ID = {"claude": "claude_new"}
+
+
 def capture(days: int = 15) -> int:
     """Record today's BUY/SELL/NEUTRAL + score for every one of the 10 models,
     for each upcoming earnings name. Reads the warmed caches via all_models.
@@ -212,6 +216,8 @@ def capture(days: int = 15) -> int:
             sig = (cell or {}).get("signal")
             if sig not in ("BUY", "SELL", "NEUTRAL"):
                 continue
+            # The sheet's "claude" column is the stored history's "claude_new" model.
+            model = _STORED_ID.get(model, model)
             payload.append({"model": model, "symbol": sym, "edate": edate,
                             "timing": timing, "snap": today,
                             "signal": sig, "score": (cell or {}).get("score")})
