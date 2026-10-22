@@ -22,7 +22,7 @@ const STATUS_LABEL: Record<string, string> = {
   OPEN: 'Open', STOP: 'Stopped', TARGET: 'Target', TIMED_EXIT: 'Timed Exit', SCORE_EXIT: 'Score Exit',
 };
 const CLOSED = new Set(['STOP', 'TARGET', 'TIMED_EXIT', 'SCORE_EXIT']);
-const NEW_BLINK_MS = 45_000;   // how long a just-opened trade blinks / stays pinned on top
+const FLASH_MS = 180_000;   // 3 min: how long an entry / target / stop stays pinned on top & blinking
 
 // --- page-only audio alerts (voice + a short beep). Built lazily on first
 // enable so it starts from a user gesture (browsers block autoplay otherwise). ---
@@ -92,12 +92,13 @@ export default function StrategyTradesPage() {
     return { p, l };
   }, [allRows]);
 
-  // Track what we've seen so we can detect NEW trades and OPEN->closed transitions.
+  // Track what we've seen so we can detect NEW entries and OPEN->closed exits.
   const seenRef = useRef<Map<number, string>>(new Map());
   const initedRef = useRef(false);
   const soundRef = useRef(sound);
   soundRef.current = sound;
-  const [newIds, setNewIds] = useState<Set<number>>(new Set());
+  // id -> flash kind: 'NEW' (entry), or the exit status (TARGET / STOP / ...).
+  const [flash, setFlash] = useState<Record<number, string>>({});
 
   useEffect(() => {
     if (!d || !Array.isArray(d.rows)) return;
@@ -108,36 +109,36 @@ export default function StrategyTradesPage() {
       initedRef.current = true;
       return;
     }
-    const fresh: number[] = [];
-    const exits: { ok: boolean; text: string }[] = [];
+    const hits: { id: number; kind: string }[] = [];
+    const voice: { ok: boolean; text: string }[] = [];
     for (const r of all) {
       const prev = seen.get(r.id);
       if (prev === undefined) {             // a brand-new trade row
         if (r.status === 'OPEN') {
-          fresh.push(r.id);
-          exits.push({ ok: r.side === 'LONG', text:
+          hits.push({ id: r.id, kind: 'NEW' });
+          voice.push({ ok: r.side === 'LONG', text:
             `New ${r.side === 'LONG' ? 'buy' : 'sell'} trade, take it now. ${spell(r.symbol)}, ${shortStrat(r.strategy_label)}, entry ${Math.round((r.entry_price ?? 0) * 100) / 100}` });
         }
-      } else if (prev === 'OPEN' && CLOSED.has(r.status)) {   // just closed
+      } else if (prev === 'OPEN' && CLOSED.has(r.status)) {   // just hit stop / target / exit
         const win = (r.profit ?? 0) >= 0;
         const what = r.status === 'TARGET' ? 'hit target' : r.status === 'STOP' ? 'stopped out'
           : r.status === 'SCORE_EXIT' ? 'exited on signal drop' : 'closed at end of day';
-        exits.push({ ok: win, text:
+        hits.push({ id: r.id, kind: r.status });
+        voice.push({ ok: win, text:
           `${spell(r.symbol)} ${shortStrat(r.strategy_label)} ${what}, ${win ? 'profit' : 'loss'} ${Math.abs(Math.round(r.profit ?? 0))} dollars` });
       }
       seen.set(r.id, r.status);
     }
-    if (fresh.length) {
-      setNewIds((cur) => {
-        const nx = new Set(cur); fresh.forEach((id) => nx.add(id)); return nx;
+    if (hits.length) {
+      setFlash((cur) => {
+        const nx = { ...cur }; hits.forEach((h) => { nx[h.id] = h.kind; }); return nx;
       });
-      fresh.forEach((id) => setTimeout(() =>
-        setNewIds((cur) => { const nx = new Set(cur); nx.delete(id); return nx; }), NEW_BLINK_MS));
+      hits.forEach((h) => setTimeout(() =>
+        setFlash((cur) => { const nx = { ...cur }; delete nx[h.id]; return nx; }), FLASH_MS));
     }
-    if (soundRef.current && exits.length) {
-      // a short beep (win/loss tone), then speak the events in turn
-      _beep(exits.some((e) => e.ok));
-      exits.slice(0, 4).forEach((e) => _say(e.text));
+    if (soundRef.current && voice.length) {
+      _beep(voice.some((e) => e.ok));          // short win/loss tone
+      voice.slice(0, 4).forEach((e) => _say(e.text));
     }
   }, [d]);
 
@@ -148,17 +149,16 @@ export default function StrategyTradesPage() {
     if (on) { _beep(true); _say('Trade alerts on'); }   // first gesture unlocks audio
   }
 
-  // New trades pinned to the top (and blinking); then the backend's profit sort.
+  // Flashing trades (new entry / stop / target) pinned on top; then profit sort.
   const view = useMemo(() => {
-    const isNew = (r: any) => newIds.has(r.id);
     return [...rows].sort((a, b) => {
-      const na = isNew(a) ? 1 : 0, nb = isNew(b) ? 1 : 0;
-      if (na !== nb) return nb - na;
+      const fa = flash[a.id] ? 1 : 0, fb = flash[b.id] ? 1 : 0;
+      if (fa !== fb) return fb - fa;
       return (b.profit ?? 0) - (a.profit ?? 0);
     });
-  }, [rows, newIds]);
+  }, [rows, flash]);
 
-  const freshRows = view.filter((r) => newIds.has(r.id));
+  const flashRows = view.filter((r) => flash[r.id]);
 
   return (
     <div className="page st-wrap">
@@ -192,16 +192,30 @@ export default function StrategyTradesPage() {
           {d.date ? ` · ${d.date}` : ''}{d.after_close ? ' · market closed' : d.rth ? ' · live' : ''}</span>}
       </div>
 
-      {freshRows.length > 0 && (
+      {flashRows.length > 0 && (
         <div className="st-alert">
-          <span className="st-alert-h">🔔 NEW — TAKE THE TRADE</span>
+          <span className="st-alert-h">🔔 LIVE — last 3 min</span>
           <div className="st-alert-list">
-            {freshRows.map((r) => (
-              <span className={`st-alert-chip ${r.side === 'LONG' ? 'long' : 'short'}`} key={r.id}>
-                <b>{r.symbol}</b> {r.side === 'LONG' ? 'BUY' : 'SELL'} @ {px(r.entry_price)}
-                <span className="st-alert-sub"> · SL {px(r.stop)} · TP {px(r.target)} · {shortStrat(r.strategy_label)}</span>
-              </span>
-            ))}
+            {flashRows.map((r) => {
+              const k = flash[r.id];
+              if (k === 'NEW') return (
+                <span className={`st-alert-chip new ${r.side === 'LONG' ? 'long' : 'short'}`} key={r.id}>
+                  <span className="st-alert-tag new">TAKE NOW</span>
+                  <b>{r.symbol}</b> {r.side === 'LONG' ? 'BUY' : 'SELL'} @ {px(r.entry_price)}
+                  <span className="st-alert-sub"> · SL {px(r.stop)} · TP {px(r.target)} · {shortStrat(r.strategy_label)}</span>
+                </span>
+              );
+              const tgt = k === 'TARGET';
+              const label = tgt ? 'TARGET HIT' : k === 'STOP' ? 'STOPPED OUT'
+                : k === 'SCORE_EXIT' ? 'EXIT (signal)' : 'CLOSED';
+              return (
+                <span className={`st-alert-chip ${tgt ? 'won' : 'lost'}`} key={r.id}>
+                  <span className={`st-alert-tag ${tgt ? 'won' : 'lost'}`}>{label}</span>
+                  <b>{r.symbol}</b> @ {px(r.exit_price ?? r.last_price)}
+                  <span className="st-alert-sub"> · {money(r.profit)} · {shortStrat(r.strategy_label)}</span>
+                </span>
+              );
+            })}
           </div>
         </div>
       )}
@@ -227,13 +241,16 @@ export default function StrategyTradesPage() {
                 const win = (r.profit ?? 0) > 0;
                 const loss = (r.profit ?? 0) < 0;
                 const ew = entryWindow(r);
-                const fresh = newIds.has(r.id);
+                const fk = flash[r.id];                       // flash kind or undefined
+                const flashCls = fk === 'NEW' ? 'st-new' : fk === 'TARGET' ? 'st-flash-won'
+                  : fk ? 'st-flash-lost' : '';
+                const tag = fk === 'NEW' ? 'NEW' : fk === 'TARGET' ? 'TP' : fk === 'STOP' ? 'SL' : fk ? '•' : '';
                 return (
-                  <tr key={r.id} className={`${fresh ? 'st-new' : ''} ${win ? 'st-win' : loss ? 'st-loss' : ''}`}>
+                  <tr key={r.id} className={`${flashCls} ${win ? 'st-win' : loss ? 'st-loss' : ''}`}>
                     <td className="l">{r.entry_time}</td>
                     <td className="l"><span className={`st-ls ${r.side === 'LONG' ? 'long' : 'short'}`}>
                       {r.side === 'LONG' ? 'Long' : 'Short'}</span></td>
-                    <td className="l"><b>{r.symbol}</b>{fresh && <span className="st-newtag">NEW</span>}</td>
+                    <td className="l"><b>{r.symbol}</b>{fk && <span className={`st-newtag ${fk === 'NEW' ? '' : fk === 'TARGET' ? 'won' : 'lost'}`}>{tag}</span>}</td>
                     <td className="l ma-n">{r.strategy_label?.replace(' Intraday', '')}</td>
                     <td>{r.shares}</td>
                     <td>{px(r.entry_price)}</td>
@@ -243,7 +260,7 @@ export default function StrategyTradesPage() {
                     <td className={win ? 'pos' : loss ? 'neg' : ''}>{signed(r.profit_pct, '%')}</td>
                     <td className="ma-n">{px(r.stop)}</td>
                     <td className="ma-n">{px(r.target)}</td>
-                    <td className="l">{fresh && r.status === 'OPEN'
+                    <td className="l">{fk === 'NEW' && r.status === 'OPEN'
                       ? <span className="st-take takenow" title="Brand-new signal — enter now at the entry price.">⚡ TAKE NOW</span>
                       : ew
                         ? <span className={`st-take ${ew.cls}`} title={ew.tip}>{ew.label}</span>

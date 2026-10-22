@@ -57,15 +57,25 @@
   padding: 1px 6px; border-radius: 999px; background: #1d4ed8; color: #fff;
   vertical-align: middle; animation: st-blink 1s steps(2, start) infinite;
 }
+.st-newtag.won { background: #15803d; } .st-newtag.lost { background: #b91c1c; }
 .st-new td { animation: st-rowblink 1s ease-in-out infinite; }
+.st-flash-won td { animation: st-rowblink-won 1s ease-in-out infinite; }
+.st-flash-lost td { animation: st-rowblink-lost 1s ease-in-out infinite; }
 @keyframes st-blink { 50% { opacity: .25; } }
 @keyframes st-rowblink {
-  0%, 100% { background: rgba(37,99,235,.14); }
-  50%      { background: rgba(37,99,235,.02); }
+  0%, 100% { background: rgba(37,99,235,.14); } 50% { background: rgba(37,99,235,.02); }
+}
+@keyframes st-rowblink-won {
+  0%, 100% { background: rgba(22,163,74,.18); } 50% { background: rgba(22,163,74,.02); }
+}
+@keyframes st-rowblink-lost {
+  0%, 100% { background: rgba(220,38,38,.18); } 50% { background: rgba(220,38,38,.02); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .st-newtag, .st-new td { animation: none; }
+  .st-newtag, .st-new td, .st-flash-won td, .st-flash-lost td { animation: none; }
   .st-new td { background: rgba(37,99,235,.12); }
+  .st-flash-won td { background: rgba(22,163,74,.14); }
+  .st-flash-lost td { background: rgba(220,38,38,.14); }
 }
 /* Loud "new trade — take it" banner above the table. */
 .st-alert {
@@ -81,8 +91,17 @@
 }
 .st-alert-chip.long { border-left: 4px solid #15803d; }
 .st-alert-chip.short { border-left: 4px solid #b91c1c; }
+.st-alert-chip.won { border-left: 4px solid #15803d; }
+.st-alert-chip.lost { border-left: 4px solid #b91c1c; }
 .st-alert-chip b { font-size: 14px; }
 .st-alert-sub { color: var(--muted, #6b7280); font-weight: 400; font-size: 11.5px; }
+.st-alert-tag {
+  font-size: 10px; font-weight: 800; letter-spacing: .03em; padding: 1px 6px;
+  border-radius: 999px; margin-right: 6px; color: #fff; vertical-align: middle;
+}
+.st-alert-tag.new { background: #1d4ed8; }
+.st-alert-tag.won { background: #15803d; }
+.st-alert-tag.lost { background: #b91c1c; }
 .st-take.takenow {
   background: #1d4ed8; color: #fff; font-weight: 800; letter-spacing: .03em;
   animation: st-blink 1s steps(2, start) infinite;
