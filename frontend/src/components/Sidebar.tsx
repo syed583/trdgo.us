@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import {
-  Activity, BarChart3, Brain, Building2, CalendarDays, Compass, Crosshair, Flame, Gauge, History, Layers, LineChart, Receipt, Users,
+  Activity, BarChart3, Brain, Building2, CalendarDays, Compass, Crosshair, FlaskConical, Flame, Gauge, History, Layers, LineChart, Receipt, Users,
   LayoutDashboard, ListOrdered, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
   Scale, ScrollText, Settings, ShieldCheck, Sparkles, Star, TrendingUp, UserCog, Waves, Waypoints, X, Zap,
 } from 'lucide-react';
@@ -66,6 +66,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/pre-earnings-direction', label: 'Pre-Earnings Direction', icon: <Compass size={S} /> },
     { to: '/earnings-signals', label: 'Signal History', icon: <History size={S} /> },
     { to: '/forward-scoreboard', label: 'Forward Scoreboard', icon: <ShieldCheck size={S} /> },
+    { to: '/historical-backtest', label: 'Historical Backtest', icon: <FlaskConical size={S} /> },
     { to: '/news', label: 'News & Sentiment', icon: <Newspaper size={S} /> },
   ] },
   { heading: 'Markets', items: [

@@ -2589,6 +2589,33 @@ def earnings_trade(symbol: str, profile: str = "default") -> dict:
                      market.session_ttl(120, 1800))
 
 
+_htbt_computing: set = set()
+
+
+@router.get("/earnings/historical-backtest")
+def earnings_historical_backtest(months: int = 18, max_symbols: int = 25) -> dict:
+    """Track B — 1-2y PARTIAL-FACTOR historical earnings backtest (SIMULATED).
+    Background-computed and polled (reconstructs point-in-time signals + prices)."""
+    import historical_backtest_service as htb
+    import threading
+
+    key = f"htbt1:{months}:{max_symbols}"
+    cached = swr.peek(key)
+    if cached is not None:
+        return cached
+    if key not in _htbt_computing:
+        _htbt_computing.add(key)
+
+        def _run():
+            try:
+                swr.serve(key, lambda: htb.run(months=months, max_symbols=max_symbols), 12 * 3600.0)
+            finally:
+                _htbt_computing.discard(key)
+
+        threading.Thread(target=_run, daemon=True).start()
+    return {"status": "COMPUTING", "source": htb.SOURCE}
+
+
 _fwdsb_computing: set = set()
 
 

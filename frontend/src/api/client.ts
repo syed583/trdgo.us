@@ -709,6 +709,8 @@ export const api2 = {
       + (profile && profile !== 'default' ? `?profile=${profile}` : ''), s),
   forwardScoreboard: (model?: string, s?: AbortSignal) =>
     request<any>(`/api/earnings/forward-scoreboard${model ? `?model=${encodeURIComponent(model)}` : ''}`, s),
+  historicalBacktest: (s?: AbortSignal) =>
+    request<any>('/api/earnings/historical-backtest', s),
   tabBScan: (days = 15, s?: AbortSignal) =>
     request<any>(`/api/tab-b/scan?days=${days}`, s),
   unusualActivityScan: (s?: AbortSignal) =>
