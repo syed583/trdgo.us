@@ -2589,6 +2589,38 @@ def earnings_trade(symbol: str, profile: str = "default") -> dict:
                      market.session_ttl(120, 1800))
 
 
+_fwdsb_computing: set = set()
+
+
+@router.get("/earnings/forward-scoreboard")
+def earnings_forward_scoreboard(model: str = "", max_symbols: int = 80) -> dict:
+    """Genuine Forward Scoreboard: after-cost performance of the real recorded
+    pre-earnings predictions (simulated execution on historical daily bars).
+
+    Pricing many symbols from cold can exceed the client timeout, so compute runs
+    in the background and the page polls: returns the cached result if ready, else
+    {status: COMPUTING}."""
+    import forward_scoreboard_service as fsb
+    import threading
+
+    key = f"fwdsb:{model or 'all'}:{max_symbols}"
+    cached = swr.peek(key)
+    if cached is not None:
+        return cached
+    if key not in _fwdsb_computing:
+        _fwdsb_computing.add(key)
+
+        def _run():
+            try:
+                swr.serve(key, lambda: fsb.scoreboard(model or None, max_symbols),
+                          market.session_ttl(900, 1800))
+            finally:
+                _fwdsb_computing.discard(key)
+
+        threading.Thread(target=_run, daemon=True).start()
+    return {"status": "COMPUTING", "source": fsb.SOURCE}
+
+
 @router.get("/earnings/data-health/{symbol}")
 def earnings_data_health(symbol: str, profile: str = "default") -> dict:
     """Data Health for the Earnings Trade equity model: per-parameter provider,

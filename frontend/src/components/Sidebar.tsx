@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom';
 import {
   Activity, BarChart3, Brain, Building2, CalendarDays, Compass, Crosshair, Flame, Gauge, History, Layers, LineChart, Receipt, Users,
   LayoutDashboard, ListOrdered, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
-  Scale, ScrollText, Settings, Sparkles, Star, TrendingUp, UserCog, Waves, Waypoints, X, Zap,
+  Scale, ScrollText, Settings, ShieldCheck, Sparkles, Star, TrendingUp, UserCog, Waves, Waypoints, X, Zap,
 } from 'lucide-react';
 import { BrandLockup, BRAND_QUOTE_EARNINGS } from './Brand';
 
@@ -65,6 +65,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/unusual-activity', label: 'Unusual Activity', icon: <Zap size={S} /> },
     { to: '/pre-earnings-direction', label: 'Pre-Earnings Direction', icon: <Compass size={S} /> },
     { to: '/earnings-signals', label: 'Signal History', icon: <History size={S} /> },
+    { to: '/forward-scoreboard', label: 'Forward Scoreboard', icon: <ShieldCheck size={S} /> },
     { to: '/news', label: 'News & Sentiment', icon: <Newspaper size={S} /> },
   ] },
   { heading: 'Markets', items: [

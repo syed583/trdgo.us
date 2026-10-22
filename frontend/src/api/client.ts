@@ -707,6 +707,8 @@ export const api2 = {
   earningsDataHealth: (symbol: string, profile?: string, s?: AbortSignal) =>
     request<any>(`/api/earnings/data-health/${encodeURIComponent(symbol)}`
       + (profile && profile !== 'default' ? `?profile=${profile}` : ''), s),
+  forwardScoreboard: (model?: string, s?: AbortSignal) =>
+    request<any>(`/api/earnings/forward-scoreboard${model ? `?model=${encodeURIComponent(model)}` : ''}`, s),
   tabBScan: (days = 15, s?: AbortSignal) =>
     request<any>(`/api/tab-b/scan?days=${days}`, s),
   unusualActivityScan: (s?: AbortSignal) =>
