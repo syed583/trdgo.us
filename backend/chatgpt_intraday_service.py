@@ -149,14 +149,107 @@ def score_one(symbol: str, fetch: bool = False) -> Optional[dict]:
     return _score(sym, s, eq, enrich)
 
 
+# Pre/after-hours fallback: the live 5-min engine has no bars, so score off the
+# shared equity signals through THIS model's OWN weights. Each ChatGPT factor
+# maps to an equity signal (or a sector fallback bias) where one exists; the rest
+# stay "no data" (neutral). This keeps ChatGPT and Claude Pro DISTINCT when the
+# market is closed instead of both echoing the identical raw pre-market board.
+_EQ_SRC = {
+    "options_flow": ("options_flow", "options_positioning"),
+    "order_flow": ("disparity", "disparity"),
+    "vwap_ema": ("ema_trend", "price_action"),
+    "rvol": ("volume_pcr", None),
+    "gamma": ("key_levels", None),
+    "unusual": ("unusual_activity", "unusual_options"),
+    "momentum": ("rsi", None),
+    "catalyst": ("event_radar", None),
+    "oi_change": ("daily_oi_change", None),
+    "breadth_mtf": ("__breadth__", None),
+}
+
+
+def _score_equity(symbol: str, eq: dict) -> dict:
+    """Score the 20-factor model from the equity signals (closed-market path)."""
+    sig = (eq or {}).get("signals") or {}
+    biases = {p.get("name"): p.get("bias") for p in (eq.get("params") or [])}
+    try:
+        import intraday_enrich as ie
+        breadth = ie.market_breadth_bias()
+    except Exception:  # noqa: BLE001
+        breadth = None
+
+    def _b(key):
+        src = _EQ_SRC.get(key)
+        if not src:
+            return None
+        s0, b0 = src
+        if s0 == "__breadth__":
+            return breadth
+        v = sig.get(s0)
+        if v is None and b0:
+            v = biases.get(b0)
+        return cl._clamp(v) if v is not None else None
+
+    params: list[dict] = []
+    for key, label, weight, _source in PARAMS:
+        qb = cl._quant(_b(key))
+        params.append({"name": key, "label": label, "max": weight,
+                       "points": round(cl._pts(weight, qb), 2), "bias": qb,
+                       "no_data": qb is None})
+    score = round(sum(p["points"] for p in params), 1)
+    cut = cl.cfg.V3_CUTOFFS
+    signal = "BUY" if score >= cut["buy"] else "SELL" if score <= cut["sell"] else "NEUTRAL"
+    covered = sum(p["max"] for p in params if not p["no_data"])
+    return {"symbol": symbol, "score": score, "signal": signal, "params": params,
+            "coverage": round(covered / 100.0 * 100, 1),
+            "entry": None, "now": None, "tp": None, "sl": None,
+            "model_status": "equity-fallback"}
+
+
+def _equity_board() -> dict:
+    import ai_trade_service as ats
+    from concurrent.futures import ThreadPoolExecutor
+    import intraday_grok_service as gk        # reuse its equity cache + level math
+    syms = [s.upper() for s in getattr(ats, "UNIVERSE", [])]
+
+    def _one(s: str):
+        try:
+            eq = gk._eq_cached(s)
+            if eq and eq.get("params"):
+                r = _score_equity(s, eq)
+                gk._levels(r)                  # entry = live/last price, +-ATR stop/target
+                return r
+        except Exception:  # noqa: BLE001
+            return None
+        return None
+
+    rows: list[dict] = []
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        for r in ex.map(_one, syms):
+            if r:
+                rows.append(r)
+    buyers = sorted([r for r in rows if r["signal"] == "BUY"], key=lambda r: r["score"], reverse=True)
+    sellers = sorted([r for r in rows if r["signal"] == "SELL"], key=lambda r: r["score"])
+    neutral = [r for r in rows if r["signal"] == "NEUTRAL"]
+    try:
+        import intraday_indicators as ind
+        phase = ind.market_phase()
+    except Exception:  # noqa: BLE001
+        phase = None
+    return {"status": "OK", "source": SOURCE + " · closed-market (equity signals)",
+            "phase": phase, "buyers": buyers, "sellers": sellers, "neutral": neutral,
+            "counts": {"buy": len(buyers), "sell": len(sellers), "neutral": len(neutral)},
+            "universe": len(syms), "scored": len(rows)}
+
+
 def board() -> dict:
-    # Before the open the live engine has no bars -> pre-market board fallback.
+    # Before/after the session the live engine has no bars -> score off the equity
+    # signals through ChatGPT's own weights (NOT the shared pre-market board).
     import swr
     try:
         import intraday_indicators as ind
         if ind.market_phase() in ("pre", "closed"):
-            import intraday_premarket as ipm
-            return swr.serve("pm:board", lambda: ipm.board(), 120.0)
+            return swr.serve("chatgptintra:eqboard", _equity_board, 120.0)
     except Exception:  # noqa: BLE001
         pass
     import ai_trade_service as ats
