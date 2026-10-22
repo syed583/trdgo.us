@@ -58,6 +58,7 @@ const CLAUDE_NEW_MODEL = (pz: boolean): DirModelCfg => ({
     + 'Historical Earnings Reaction 8, Peers 7, Implied-vs-Realized 5, Big Fund 3, Dark Pool 3, '
     + 'Short/Insider 3, Calendar 2. Bands: BUY > 70 · NEUTRAL 50–70 · SELL < 50 (+ Implied-Move gate).',
   params: PARAMS,
+  legend: { buy: 'Buy > 70', sell: 'Sell < 50' },
   scan: (d, s) => api2.claudeLastScan(d, s),
 });
 
@@ -111,6 +112,7 @@ export const CHATGPT_MODEL: DirModelCfg = {
     + 'Dark Pool 3, Short/Insider 3, Calendar 2. Bands: 80+ STRONG BUY · 65–79 BUY · 40–64 NEUTRAL · '
     + '21–39 SELL · 0–20 STRONG SELL.',
   params: CHATGPT_PARAMS,
+  legend: { buy: 'Buy ≥ 65', sell: 'Sell ≤ 39' },
   scan: (d, s) => api2.chatgptScan(d, s),
 };
 
@@ -138,6 +140,7 @@ export const KIMI_MODEL: DirModelCfg = {
     + 'Bands: STRONG BUY ≥65 · BUY 58–64 · NEUTRAL 43–57 · SELL 36–42 · STRONG SELL ≤35. '
     + 'Needs ≥3 of 6 buckets aligned and options not opposing.',
   params: KIMI_PARAMS,
+  legend: { buy: 'Buy ≥ 58', sell: 'Sell ≤ 42' },
   scan: (d, s) => api2.kimiScan(d, s),
 };
 
@@ -163,6 +166,7 @@ export const GEMINI_MODEL: DirModelCfg = {
     + 'Guidance 8, Hit-rate 8, Squeeze 6, Insider 8. STRONG BUY ≥68 · SPEC BUY 58–67 · NOISE 43–57 · '
     + 'SPEC SHORT 33–42 · STRONG SHORT ≤32. Quality and hit-rate have no data feed yet (neutral).',
   params: GEMINI_PARAMS,
+  legend: { buy: 'Buy ≥ 58', sell: 'Sell ≤ 42' },
   scan: (d, s) => api2.geminiScan(d, s),
 };
 
@@ -290,7 +294,7 @@ export default function ClaudeLastPage({ ctx, base, pz = false, model }:
     <div className="page">
       <div className="ts-head">
         <h1><Target size={20} /> {cfg.title}</h1>
-        <p>{cfg.subtitle} BUY ≥ 55 · SELL ≤ 45. Click a card for its full breakdown
+        <p>{cfg.subtitle} Click a card for its full breakdown
           and confidence meter.</p>
       </div>
 
@@ -306,7 +310,7 @@ export default function ClaudeLastPage({ ctx, base, pz = false, model }:
             onChange={(e) => setQuery(e.target.value)} />
         </span>
         <span className="cn-legend">
-          <i className="buy" /> Buy ≥ 55 <i className="neu" /> Neutral <i className="sell" /> Sell ≤ 45
+          <i className="buy" /> {cfg.legend?.buy ?? 'Buy ≥ 55'} <i className="neu" /> Neutral <i className="sell" /> {cfg.legend?.sell ?? 'Sell ≤ 45'}
         </span>
         <span className="at-chip">{total}</span>
       </div>
@@ -362,8 +366,8 @@ export default function ClaudeLastPage({ ctx, base, pz = false, model }:
                           <div className="cn-status-top">
                             <span className="cn-status-h">
                               {r.tier ? r.tier
-                                : (r.raw_signal || r.signal) === 'BUY' ? 'BUY — long into earnings'
-                                  : (r.raw_signal || r.signal) === 'SELL' ? 'SELL — short into earnings'
+                                : r.signal === 'BUY' ? 'BUY — long into earnings'
+                                  : r.signal === 'SELL' ? 'SELL — short into earnings'
                                     : 'NEUTRAL — check the Straddle Scanner'}
                             </span>
                             <span className="cn-status-score">Score {r.score}/100</span>
