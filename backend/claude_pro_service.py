@@ -96,27 +96,36 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
     }
 
     params: list[dict] = []
+    all_subs: list[dict] = []
     for bname, bcfg in cfg.CLAUDE_PRO_BLOCKS.items():
         subs = []
         for sname, sweight in bcfg["subs"].items():
             qb = cl._quant(raw.get(sname))
             subs.append({"name": _SUBLABEL.get(sname, sname), "max": sweight,
                          "points": round(cl._pts(sweight, qb), 2), "bias": qb})
-        bmax = sum(s["max"] for s in subs)
-        bpts = round(sum(s["points"] for s in subs), 2)
-        bvals = [s["bias"] for s in subs if s["bias"] is not None]
-        bbias = round(sum(bvals) / len(bvals), 3) if bvals else None
-        params.append({"name": bname, "label": bcfg["label"], "max": bmax,
-                       "points": bpts, "bias": bbias, "sub": subs})
+        all_subs.extend(subs)
+        params.append({"name": bname, "label": bcfg["label"], "sub": subs})
 
-    score = round(sum(p["points"] for p in params), 1)
+    # Missing sub-parameters are excluded and the rest rescaled to 100 (no neutral
+    # default); blocks are then summarised from their present subs.
+    score, cov_pct = cl.finalize(all_subs, None, row)
+    for p in params:
+        subs = p["sub"]
+        present = [s_ for s_ in subs if s_["bias"] is not None]
+        p["max"] = round(sum(s_["max"] for s_ in present), 2)
+        p["base_max"] = round(sum(s_["base_max"] for s_ in subs), 2)
+        p["points"] = round(sum(s_["points"] for s_ in present), 2) if present else None
+        p["excluded"] = not present
+        p["bias"] = (round(sum(s_["bias"] for s_ in present) / len(present), 3)
+                     if present else None)
+
     cut = cfg.V3_CUTOFFS
     signal = "BUY" if score >= cut["buy"] else "SELL" if score <= cut["sell"] else "NEUTRAL"
 
     covered = sum(p["max"] for p in params if p["bias"] is not None)
     pos_w = sum(p["max"] for p in params if (p["bias"] or 0) > 0.05)
     neg_w = sum(p["max"] for p in params if (p["bias"] or 0) < -0.05)
-    coverage = round(covered / 100.0, 3)
+    coverage = round(cov_pct / 100.0, 3)
     side = 1 if score >= 50 else -1
     agreement = round(((pos_w if side > 0 else neg_w) / covered), 3) if covered else 0.0
     conf = cfg.V3_CONFIDENCE

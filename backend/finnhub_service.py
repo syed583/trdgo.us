@@ -135,6 +135,16 @@ def company_earnings(symbol: str) -> Optional[dict]:
     return None
 
 
+def earnings_history(symbol: str, n: int = 8) -> list[dict]:
+    """Last `n` reported quarters (Finnhub /stock/earnings), oldest first, each with
+    EPS actual / estimate. [] if nothing."""
+    rows = _get(f"/stock/earnings?symbol={urllib.parse.quote(symbol)}", 21600)
+    if not isinstance(rows, list):
+        return []
+    rows = sorted(rows, key=lambda r: r.get("period", ""))
+    return rows[-n:]
+
+
 def earnings_calendar(symbol: str) -> Optional[dict]:
     """The symbol's next scheduled earnings row, if any in the next ~40 days."""
     from datetime import date, timedelta

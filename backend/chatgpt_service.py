@@ -75,7 +75,8 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
         params.append({"name": name, "label": _LABEL[name], "max": W[name],
                        "points": round(cl._pts(W[name], qb), 2), "bias": qb})
 
-    score = round(sum(p["points"] for p in params), 1)
+    timing_p = next((p for p in params if p["name"] == "calendar_timing"), None)
+    score, cov_pct = cl.finalize(params, timing_p, row)
     th = cfg.CHATGPT_THRESHOLDS
     # 5-tier spec bands. `tier`/`direction` carry the full label (STRONG BUY ...),
     # while `signal` stays a 3-way BUY/SELL/NEUTRAL so the shared list UI colours
@@ -95,7 +96,7 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
     covered = sum(p["max"] for p in params if p["bias"] is not None)
     pos_w = sum(p["max"] for p in params if (p["bias"] or 0) > 0.05)
     neg_w = sum(p["max"] for p in params if (p["bias"] or 0) < -0.05)
-    coverage = round(covered / 100.0, 3)
+    coverage = round(cov_pct / 100.0, 3)
     side = 1 if score >= 50 else -1
     agreement = round(((pos_w if side > 0 else neg_w) / covered), 3) if covered else 0.0
     conf = cfg.V3_CONFIDENCE

@@ -911,7 +911,7 @@ def gemini_detail(symbol: str) -> dict:
                    "sector": pv.get("sector"), "prior_close": pv.get("prior_close")}
         except Exception:  # noqa: BLE001
             row = {}
-        return {"status": "OK", **gm.score_one(sym, eq, trade, row)}
+        return {"status": "OK", **gm.score_one(sym, eq, trade, row, fetch_hit_rate=True)}
 
     return swr.serve(f"gemini:one:{sym}", build, market.session_ttl(120, 1800))
 

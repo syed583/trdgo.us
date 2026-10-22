@@ -124,11 +124,11 @@ KIMI_CUTOFFS: dict[str, float] = {"strong_buy": 65.0, "buy": 58.0, "sell": 42.0,
 # Category-level weighting from the spec; each category is the average of its
 # sub-components (normalised -1..+1), then weighted. Sum = 100.
 GEMINI_WEIGHTS: dict[str, int] = {      # Anas Engine v2 (11 params)
-    "eps_revision": 12, "revenue_revision": 8, "earnings_quality": 8,
+    "eps_revision": 12, "revenue_revision": 8,
     "price_rs": 12, "sector_market": 8, "options_flow": 14, "iv_crush": 8,
     "forward_guidance": 8, "guidance_hit_rate": 8, "short_squeeze": 6,
     "insider_buyback": 8,
-}                                 # sum = 100
+}                                 # sum = 92; scores are rescaled to 100 from the present weights
 # Bands: STRONG BUY >=68, SPEC BUY 58-67, NOISE 43-57, SPEC SHORT 33-42, STRONG SHORT <=32.
 GEMINI_CUTOFFS: dict[str, float] = {"strong_buy": 68.0, "buy": 58.0, "sell": 42.0, "strong_sell": 32.0}
 

@@ -467,6 +467,9 @@ def _capture_earnings_signals() -> None:
                     import grok_service as _gk
                     threading.Thread(target=lambda: _gk.warm_analyst(syms),
                                      daemon=True, name="analyst-warmer").start()
+                    import gemini_service as _gm
+                    threading.Thread(target=lambda: _gm.warm_hit_rate(syms),
+                                     daemon=True, name="hit-rate-warmer").start()
                 except Exception:  # noqa: BLE001
                     pass
                 # Real past-earnings reactions for the Signal History grid, plus

@@ -26,6 +26,7 @@ from datetime import date, datetime
 from typing import Optional
 
 import tab_settings as cfg
+import claude_last_service as _cl
 
 SOURCE = "Pre-Earnings Direction (v2)"
 
@@ -156,17 +157,22 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
     dp_pts = _pts(W["dark_pool"], dp_bias) if agrees else W["dark_pool"] * 0.5
     params.append({"name": "dark_pool", "label": _LABEL["dark_pool"],
                    "points": round(dp_pts, 2), "max": W["dark_pool"],
-                   "bias": (round(dp_bias, 3) if dp_bias is not None else None),
+                   # no data -> excluded; data that does not confirm -> a real neutral
+                   "bias": (round(dp_bias, 3) if agrees else (0.0 if dp_bias is not None else None)),
                    "confirmed": agrees})
 
-    # NOTE: the spec lists weights that sum to 90 (16+14+12+10+10+10+8+6+4) yet
-    # states "sum = 100" and requires no-signal -> 50 with 65/35 cut-offs each 15
-    # from neutral. To honour BOTH the listed per-parameter weights AND that
-    # neutral=50 / symmetric-cut-off design, the row points keep the spec weights
-    # and the headline score is the row total rescaled to 0..100.
-    raw = round(sum(p["points"] for p in params), 2)
-    max_total = sum(W.values()) or 100
-    score = round(raw / max_total * 100, 1)
+    # No-neutral-default scoring: parameters without data are EXCLUDED and the
+    # present ones rescaled to 100 (this also covers the spec's 90-point weights).
+    opt_p = params[0]
+    leaves = list(opt_p["sub"]) + params[1:]
+    score, cov_pct = _cl.finalize(leaves, None, row)
+    present_subs = [x for x in opt_p["sub"] if x["bias"] is not None]
+    opt_p["base_max"] = opt_p["max"]
+    opt_p["max"] = round(sum(x["max"] for x in present_subs), 2)
+    opt_p["points"] = round(sum(x["points"] for x in present_subs), 2) if present_subs else None
+    opt_p["excluded"] = not present_subs
+    raw = round(sum(p["points"] for p in leaves if p.get("points") is not None), 2)
+    max_total = 100.0
     cut = cfg.PED_CUTOFFS
     signal = "BUY" if score >= cut["buy"] else "SELL" if score <= cut["sell"] else "NEUTRAL"
 
@@ -184,7 +190,7 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
             "prior_close": row.get("prior_close"), "market_cap": row.get("market_cap"),
             "sector": row.get("sector"),
             "score": score, "signal": signal, "params": params,
-            "raw_total": raw, "max_total": max_total}
+            "raw_total": raw, "max_total": max_total, "coverage": cov_pct}
 
 
 def scan(days: int = 15) -> dict:

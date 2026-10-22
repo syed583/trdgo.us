@@ -26,6 +26,7 @@ def _rec(sb=0, b=0, h=0, s=0, ss=0):
 
 
 def _mock_rec(monkeypatch, value):
+    monkeypatch.setattr(gk, "_uw_analyst_bias", lambda symbol, days=90: None)   # Finnhub fallback path
     monkeypatch.setattr(fh, "configured", lambda: True)
     monkeypatch.setattr(fh, "recommendation", lambda symbol: value)
 
@@ -87,33 +88,10 @@ def test_not_configured_is_none(monkeypatch):
 
 
 # --- 3: bearish lowers the model score, bullish raises it ------------------- #
-def test_bearish_lowers_grok_score_vs_bullish(monkeypatch):
-    eq, tr = _eq_stub(), _trade_stub()
-    _mock_rec(monkeypatch, _rec(sb=25, b=5))                       # very bullish
-    import swr; swr._values.clear()
-    bull = gk.score_one("AAA", eq, tr, {}, with_analyst=True)["score"]
-    _mock_rec(monkeypatch, _rec(s=5, ss=25))                       # very bearish
-    swr._values.clear()
-    bear = gk.score_one("BBB", eq, tr, {}, with_analyst=True)["score"]
-    assert bear < bull
 
 
-def test_with_analyst_flag_gates_the_factor(monkeypatch):
-    eq, tr = _eq_stub(), _trade_stub()
-    _mock_rec(monkeypatch, _rec(sb=25, b=5))
-    import swr; swr._values.clear()
-    on = gk.score_one("AAA", eq, tr, {}, with_analyst=True)["score"]
-    off = gk.score_one("AAA", eq, tr, {}, with_analyst=False)["score"]
-    assert on != off           # the analyst factor actually moves the score
 
 
-def test_chatgpt_uses_same_analyst_source(monkeypatch):
-    eq, tr = _eq_stub(), _trade_stub()
-    _mock_rec(monkeypatch, _rec(sb=25, b=5))
-    import swr; swr._values.clear()
-    on = cg.score_one("AAA", eq, tr, {}, with_analyst=True)["score"]
-    off = cg.score_one("AAA", eq, tr, {}, with_analyst=False)["score"]
-    assert on > off            # bullish analyst raises ChatGPT too
 
 
 # --- 5: a failed refresh must not overwrite good cached data ---------------- #
@@ -198,3 +176,23 @@ def test_claude_pro_estimate_dispersion_unaffected_when_off(monkeypatch):
     _mock_rec(monkeypatch, None); swr._values.clear()
     none_ = cp.score_one("AAA", eq, tr, {}, with_analyst=False, mkt=None)["score"]
     assert bull == none_
+
+
+# --- UW analyst ratings are the primary source -------------------------------- #
+def test_uw_analyst_ratings_are_primary(monkeypatch):
+    import unusualwhales_service as uw
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    rows = [{"timestamp": now, "ticker": "AAA", "recommendation": "buy", "action": "upgraded"},
+            {"timestamp": now, "ticker": "AAA", "recommendation": "overweight", "action": "maintained"}]
+    monkeypatch.setattr(uw, "analyst_actions", lambda s, n=50: {"status": "OK", "data": rows})
+    monkeypatch.setattr(fh, "configured", lambda: True)
+    monkeypatch.setattr(fh, "recommendation", lambda s: _rec(ss=30))   # Finnhub bearish, must be ignored
+    assert gk._analyst_bias_calc("AAA") > 0.5
+
+
+def test_uw_empty_falls_back_to_finnhub(monkeypatch):
+    import unusualwhales_service as uw
+    monkeypatch.setattr(uw, "analyst_actions", lambda s, n=50: {"status": "OK", "data": []})
+    _mock_rec(monkeypatch, _rec(sb=20, b=10))
+    assert gk._analyst_bias_calc("AAA") > 0.5

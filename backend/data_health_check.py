@@ -162,7 +162,8 @@ CATALOG = [
     ("Price action / relative strength (daily OHLC)", EARN_TABS, "UW", "/api/stock/{t}/ohlc/1d", {"limit": 60}, "t"),
     ("Live quote / prior close", EARN_TABS + ", IV Crush Check", "UW", "/api/stock/{t}/quote", {}, "t"),
     ("Sector & market regime (SPY quote)", "Claude, Grok, Meta, ChatGPT, Kimi, Gemini, Claude Pro", "UW", "/api/stock/SPY/quote", {}, "m"),
-    ("VIX regime", "Kimi, Claude Pro", "UW", "/api/stock/VIX/quote", {}, "m"),
+    ("VIX index (raw endpoint)", "Kimi, Claude Pro", "UW", "/api/stock/VIX/quote", {}, "m"),
+    ("VIX regime proxy (VIXY ETF quote)", "Kimi, Claude Pro", "UW", "/api/stock/VIXY/quote", {}, "m"),
     ("Market tide (market flow)", "Pre-Earnings Direction, Unusual Activity", "UW", "/api/market/market-tide", {}, "m"),
     ("Options flow / sweeps", EARN_TABS, "UW", "/api/stock/{t}/flow-alerts", {"limit": 50}, "t"),
     ("Unusual options activity", EARN_TABS + ", Unusual Activity", "UW", "/api/option-activity/unusual",
@@ -180,14 +181,13 @@ CATALOG = [
      {"ticker_symbol": "{t}", "limit": 100}, "t"),
     ("Insider flow summary", "Claude, Grok, Meta, ChatGPT, Kimi", "UW", "/api/insider/{t}", {}, "t"),
     ("Institutional ownership / big funds (13F)", "Claude, Claude Pro, Pre-Earnings Direction", "UW", "/api/institution/{t}/ownership", {"limit": 100}, "t"),
-    ("Analyst ratings / price targets", "Grok, Kimi, Claude Pro", "UW", "/api/screener/analysts", {"ticker": "{t}", "limit": 20}, "t"),
+    ("Analyst ratings (scored: Grok, ChatGPT, Kimi, Claude Pro)", "Grok, ChatGPT, Kimi, Claude Pro", "UW", "/api/screener/analysts", {"ticker": "{t}", "limit": 20}, "t"),
     ("News headlines", "News & Sentiment", "UW", "/api/news/headlines", {"ticker": "{t}", "limit": 20}, "t"),
     ("Earnings calendar / timing / implied move (pre-market)", "Earnings Calendar, IV Crush Check, all models", "UW", "/api/earnings/premarket", {"date": THIS_WEEK, "limit": 500}, "m"),
     ("Earnings calendar / timing / implied move (after-hours)", "Earnings Calendar, IV Crush Check, all models", "UW", "/api/earnings/afterhours", {"date": THIS_WEEK, "limit": 500}, "m"),
     ("Peer read-through: peers list", "Claude, Grok, Meta, ChatGPT, Kimi, Gemini, Claude Pro", "FH", "/stock/peers", {"symbol": "{t}"}, "t"),
     ("Analyst recommendations (Finnhub)", "Grok, Kimi, Claude Pro, ChatGPT", "FH", "/stock/recommendation", {"symbol": "{t}"}, "t"),
-    ("Earnings surprise history (Finnhub)", "Claude, Grok, Meta, ChatGPT, Kimi", "FH", "/stock/earnings", {"symbol": "{t}"}, "t"),
-    ("Price target (Finnhub)", "Grok, Kimi", "FH", "/stock/price-target", {"symbol": "{t}"}, "t"),
+    ("Guidance hit-rate: 8Q EPS beat history (Finnhub)", "Gemini", "FH", "/stock/earnings", {"symbol": "{t}"}, "t"),
     ("Fundamental metrics (Finnhub)", "Grok, Claude Pro", "FH", "/stock/metric", {"symbol": "{t}", "metric": "all"}, "t"),
     ("Insider sentiment (Finnhub)", "Claude, Grok, Meta, ChatGPT", "FH", "/stock/insider-sentiment",
      {"symbol": "{t}", "from": (date.today() - timedelta(days=180)).isoformat(), "to": TODAY}, "t"),
@@ -198,14 +198,7 @@ CATALOG = [
 ]
 
 # Model parameters that have no data source wired at all.
-UNWIRED = [
-    ("Earnings quality / Sloan accruals", "Gemini (Anas v2)",
-     "no provider wired (scored neutral)"),
-    ("Guidance hit-rate history (12 qtrs)", "Gemini (Anas v2)",
-     "no provider wired (scored neutral)"),
-    ("BMO/AMC timing & day-of-week", "Kimi (Anas v1 review), Claude (calendar), Grok, Meta, ChatGPT",
-     "no scored input wired (neutral); calendar timing is read from the UW calendar rows"),
-]
+UNWIRED: list[tuple] = []     # every scored parameter now has a wired source
 
 
 # ------------------------------------------------------------------ driver ---
@@ -277,12 +270,54 @@ def run(out_path: Path) -> list[dict]:
                      "Status": status, "HTTP code": code, "Error message": msg, "Sample value": smp,
                      "Used by": used, "Tickers OK": f"{len(oks)}/{len(calls)}"})
         print(f"  {status:8} {name}")
+    rows += app_checks(tickers)
     for name, used, why in UNWIRED:
         rows.append({"Parameter": name, "Provider": "none", "Endpoint": "-", "Status": "NO DATA",
                      "HTTP code": "n/a", "Error message": why, "Sample value": "",
                      "Used by": used, "Tickers OK": "0/0"})
     write_xlsx(rows, out_path, tickers)
     return rows
+
+
+def app_checks(tickers: list[str]) -> list[dict]:
+    """Checks that go through the app's own code (what the scorers actually use):
+    the VIX fallback value and the calendar-timing input."""
+    out: list[dict] = []
+    sys.path.insert(0, str(HERE))
+    base = {"Provider": "Unusual Whales"}
+    try:
+        import kimi_service as ki
+        lv = ki.vix_level()
+        out.append({"Parameter": "VIX regime (app fallback value)", **base,
+                    "Endpoint": "kimi_service.vix_level()", "Status": "OK" if lv else "NO DATA",
+                    "HTTP code": "200" if lv else "n/a",
+                    "Error message": "" if lv else "neither VIX index nor VIXY available",
+                    "Sample value": f"{lv[0]:.2f} ({lv[1]})" if lv else "",
+                    "Used by": "Kimi, Claude Pro", "Tickers OK": "1/1" if lv else "0/1"})
+    except Exception as e:  # noqa: BLE001
+        out.append({"Parameter": "VIX regime (app fallback value)", **base,
+                    "Endpoint": "kimi_service.vix_level()", "Status": "ERROR", "HTTP code": "n/a",
+                    "Error message": f"{type(e).__name__}: {e}"[:200], "Sample value": "",
+                    "Used by": "Kimi, Claude Pro", "Tickers OK": "0/1"})
+    try:
+        import claude_last_service as cl
+        import uw_earnings_calendar as cal
+        rows = (cal.calendar(days=7) or {}).get("rows") or []
+        timed = [r for r in rows if cl.timing_bias(r, 0.5) is not None]
+        ok = bool(timed)
+        out.append({"Parameter": "BMO/AMC calendar timing (scored)", **base,
+                    "Endpoint": "/api/earnings/premarket|afterhours -> report_time",
+                    "Status": "OK" if ok else "NO DATA", "HTTP code": "200" if ok else "n/a",
+                    "Error message": "" if ok else "no row carries a BMO/AMC time",
+                    "Sample value": (f"{timed[0].get('symbol')}: {timed[0].get('report_time')} -> "
+                                     f"bias {cl.timing_bias(timed[0], 0.5)} ({len(timed)}/{len(rows)} rows timed)") if ok else "",
+                    "Used by": "Claude, Grok, Meta, ChatGPT, Kimi", "Tickers OK": f"{len(timed)}/{len(rows)}"})
+    except Exception as e:  # noqa: BLE001
+        out.append({"Parameter": "BMO/AMC calendar timing (scored)", **base,
+                    "Endpoint": "uw_earnings_calendar.calendar()", "Status": "ERROR", "HTTP code": "n/a",
+                    "Error message": f"{type(e).__name__}: {e}"[:200], "Sample value": "",
+                    "Used by": "Claude, Grok, Meta, ChatGPT, Kimi", "Tickers OK": "0/0"})
+    return out
 
 
 def write_xlsx(rows: list[dict], path: Path, tickers: list[str]) -> None:

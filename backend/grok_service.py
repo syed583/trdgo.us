@@ -101,9 +101,46 @@ def warm_analyst(symbols: list, per_minute: int = 55) -> int:
     return got
 
 
+_POS_REC = ("buy", "overweight", "outperform", "positive", "accumulate", "add")
+_NEG_REC = ("sell", "underweight", "underperform", "negative", "reduce")
+
+
+def _uw_analyst_bias(symbol: str, days: int = 90) -> Optional[float]:
+    """Analyst lean from Unusual Whales /api/screener/analysts: each recent rating
+    scores +1 (buy-type) / -1 (sell-type) / 0 (hold); an upgrade adds +0.5 and a
+    downgrade -0.5. Average over the last `days`, clamped to -1..+1. None when UW
+    has no rating in the window."""
+    try:
+        import unusualwhales_service as uw
+        from datetime import datetime, timedelta, timezone
+        out = uw.analyst_actions(symbol, 50)
+        rows = uw._rows(out) if out.get("status") == "OK" else []
+    except Exception:  # noqa: BLE001
+        return None
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    vals: list[float] = []
+    for r in rows:
+        try:
+            ts = datetime.fromisoformat(str(r.get("timestamp")).replace("Z", "+00:00"))
+        except Exception:  # noqa: BLE001
+            continue
+        if ts < cutoff or str(r.get("ticker") or symbol).upper() != symbol.upper():
+            continue
+        rec = str(r.get("recommendation") or "").lower()
+        v = 1.0 if any(k in rec for k in _POS_REC) else -1.0 if any(k in rec for k in _NEG_REC) else 0.0
+        act = str(r.get("action") or "").lower()
+        v += 0.5 if "upgrad" in act else -0.5 if "downgrad" in act else 0.0
+        vals.append(v)
+    return cl._clamp(sum(vals) / len(vals)) if vals else None
+
+
 def _analyst_bias_calc(symbol: str) -> Optional[float]:
-    """Analyst consensus/dispersion from Finnhub recommendation counts: net
-    (strongBuy+buy - sell-strongSell)/total. Needs FINNHUB_API_KEY, else None."""
+    """Analyst lean: Unusual Whales analyst ratings first; Finnhub recommendation
+    counts (net (strongBuy+buy - sell-strongSell)/total) only as a fallback when
+    UW has nothing. Needs FINNHUB_API_KEY for the fallback, else None."""
+    uwb = _uw_analyst_bias(symbol)
+    if uwb is not None:
+        return uwb
     try:
         import finnhub_service as fh
         if not fh.configured():
@@ -169,14 +206,15 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
                        "points": round(cl._pts(W[name], qb), 2), "bias": qb,
                        "strength": _STRENGTH[name]})
 
-    score = round(sum(p["points"] for p in params), 1)
+    timing_p = next((p for p in params if p["name"] == "calendar_timing"), None)
+    score, cov_pct = cl.finalize(params, timing_p, row)
     cut = cfg.V3_CUTOFFS
     signal = "BUY" if score >= cut["buy"] else "SELL" if score <= cut["sell"] else "NEUTRAL"
 
     covered = sum(p["max"] for p in params if p["bias"] is not None)
     pos_w = sum(p["max"] for p in params if (p["bias"] or 0) > 0.05)
     neg_w = sum(p["max"] for p in params if (p["bias"] or 0) < -0.05)
-    coverage = round(covered / 100.0, 3)
+    coverage = round(cov_pct / 100.0, 3)
     side = 1 if score >= 50 else -1
     agreement = round(((pos_w if side > 0 else neg_w) / covered), 3) if covered else 0.0
     conf = cfg.V3_CONFIDENCE

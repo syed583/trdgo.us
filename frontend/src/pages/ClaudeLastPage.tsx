@@ -148,7 +148,6 @@ export const KIMI_MODEL: DirModelCfg = {
 const GEMINI_PARAMS: { key: string; label: string }[] = [
   { key: 'eps_revision', label: 'EPS Rev' },
   { key: 'revenue_revision', label: 'Rev Rev' },
-  { key: 'earnings_quality', label: 'Quality' },
   { key: 'price_rs', label: 'Price/RS' },
   { key: 'sector_market', label: 'Sect/Mkt' },
   { key: 'options_flow', label: 'Options' },
@@ -162,9 +161,9 @@ const GEMINI_PARAMS: { key: string; label: string }[] = [
 export const GEMINI_MODEL: DirModelCfg = {
   base: '/gemini',
   title: 'Gemini · Anas Engine v2 · 11 parameters · 100 pts',
-  subtitle: 'EPS rev 12, Revenue 8, Quality 8, Price/RS 12, Sector/Mkt 8, Options 14, IV crush 8, '
+  subtitle: 'EPS rev 12, Revenue 8, Price/RS 12, Sector/Mkt 8, Options 14, IV crush 8, '
     + 'Guidance 8, Hit-rate 8, Squeeze 6, Insider 8. STRONG BUY ≥68 · SPEC BUY 58–67 · NOISE 43–57 · '
-    + 'SPEC SHORT 33–42 · STRONG SHORT ≤32. Quality and hit-rate have no data feed yet (neutral).',
+    + 'SPEC SHORT 33–42 · STRONG SHORT ≤32. Missing inputs are excluded and the score rescaled to 100 (see Data coverage).',
   params: GEMINI_PARAMS,
   legend: { buy: 'Buy ≥ 58', sell: 'Sell ≤ 42' },
   scan: (d, s) => api2.geminiScan(d, s),
@@ -287,7 +286,7 @@ export default function ClaudeLastPage({ ctx, base, pz = false, model }:
   }, [rows, query]);
 
   const total = groups.reduce((n, [, g]) => n + g.length, 0);
-  const leanOf = (d: any) => d.points > d.max / 2 + 0.3 ? 'pos'
+  const leanOf = (d: any) => d.points == null ? 'na' : d.points > d.max / 2 + 0.3 ? 'pos'
     : d.points < d.max / 2 - 0.3 ? 'neg' : 'neu';
 
   return (
@@ -370,7 +369,7 @@ export default function ClaudeLastPage({ ctx, base, pz = false, model }:
                                   : r.signal === 'SELL' ? 'SELL — short into earnings'
                                     : 'NEUTRAL — check the Straddle Scanner'}
                             </span>
-                            <span className="cn-status-score">Score {r.score}/100</span>
+                            <span className="cn-status-score">Score {r.score}/100{r.coverage != null ? ` · Data coverage ${r.coverage}%` : ''}</span>
                           </div>
                           {r.low_confidence && (
                             <div className="cn-lowconf"><AlertTriangle size={11} /> Low confidence
@@ -383,8 +382,8 @@ export default function ClaudeLastPage({ ctx, base, pz = false, model }:
                               if (!d) return null;
                               return (
                                 <span key={p.key} className={`cn-chip ${leanOf(d)}`}
-                                  title={`${p.label}: ${d.points?.toFixed(1)} of ${d.max}`}>
-                                  {p.label} <b>{d.points?.toFixed(1)}</b>
+                                  title={d.points == null ? `${p.label}: no data (excluded)` : `${p.label}: ${d.points.toFixed(1)} of ${d.max}`}>
+                                  {p.label} <b>{d.points == null ? '—' : d.points.toFixed(1)}</b>
                                 </span>
                               );
                             })}

@@ -19,7 +19,7 @@ summary (earn:trade:default:{SYM}) when available.
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 import tab_settings as cfg
@@ -75,6 +75,73 @@ def _pts(weight: float, bias: Optional[float]) -> float:
     if bias is None:
         return weight * 0.5
     return weight * (0.5 + 0.5 * _clamp(bias))
+
+
+def timing_bias(row: Optional[dict], lean: Optional[float]) -> Optional[float]:
+    """Calendar timing (BMO/AMC + weekday of the reaction session) as a scored input.
+
+    Timing has no direction of its own, so it scores how much to TRUST the lean of
+    the other parameters: a Before-Open report is reacted to on the report day
+    (full 1.0); an After-Close report loses the same-day gap (0.8). Mon/Fri
+    reaction sessions are thinner (x0.6), Tue-Thu are 1.0. The result pushes in
+    the direction of the rest of the score (neutral lean -> 0). Unknown timing or
+    date -> None, i.e. the parameter is excluded, never scored neutral."""
+    row = row or {}
+    raw = str(row.get("report_time") or row.get("short_label") or row.get("time_label") or "").lower()
+    if "pre" in raw or "bmo" in raw or "before" in raw:
+        q_t, amc = 1.0, False
+    elif "post" in raw or "amc" in raw or "after" in raw:
+        q_t, amc = 0.8, True
+    else:
+        return None
+    try:
+        d = datetime.fromisoformat(str(row.get("date"))[:10]).date()
+    except Exception:  # noqa: BLE001
+        return None
+    if amc:                                   # reaction session = next trading day
+        d = d + timedelta(days=3 if d.weekday() == 4 else 1)
+    q = q_t * (1.0 if d.weekday() in (1, 2, 3) else 0.6)
+    if lean is None or abs(lean) < 0.05:
+        return 0.0
+    return _quant((1 if lean > 0 else -1) * q)
+
+
+def finalize(leaves: list[dict], timing: Optional[dict] = None,
+             row: Optional[dict] = None) -> tuple[float, float]:
+    """No-neutral-default scoring. `leaves` are the scored parameters
+    ({"max","bias","points",...}); a bias of None means NO DATA for this ticker.
+
+    Missing parameters are EXCLUDED (points=None, excluded=True) and the present
+    ones are rescaled so their weights sum to 100 (`max` becomes the rescaled
+    weight, `base_max` keeps the model's own). Returns (score, coverage_pct) where
+    coverage_pct = present weight / total weight. Raises ValueError if nothing has
+    data (callers' scan() treats that as PENDING)."""
+    total = sum(float(p["max"]) for p in leaves) or 100.0
+    if timing is not None and timing.get("bias") is None:
+        lean_w = [(p["bias"], float(p["max"])) for p in leaves
+                  if p is not timing and p.get("bias") is not None]
+        wsum = sum(w for _, w in lean_w)
+        lean = (sum(b * w for b, w in lean_w) / wsum) if wsum else None
+        tb = timing_bias(row, lean)
+        if tb is not None:
+            timing["bias"] = tb
+            timing["points"] = round(_pts(float(timing["max"]), tb), 2)
+    present = [p for p in leaves if p.get("bias") is not None]
+    covered = sum(float(p["max"]) for p in present)
+    if covered <= 0:
+        raise ValueError("no parameter has data")
+    f = 100.0 / covered
+    for p in leaves:
+        p["base_max"] = p["max"]
+        if p.get("bias") is None:
+            p["points"] = None
+            p["excluded"] = True
+        else:
+            p["points"] = round(float(p["points"]) * f, 2)
+            p["max"] = round(float(p["max"]) * f, 2)
+            p["excluded"] = False
+    score = round(sum(p["points"] for p in present), 1)
+    return score, round(covered / total * 100.0, 1)
 
 
 def _avg(vals: list[Optional[float]]) -> Optional[float]:
@@ -255,7 +322,7 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
         "implied_vs_realized": _realized_vs_implied_bias(trade.get("historical_moves"), options_lean),
         "big_fund":           sig.get("funding_activity"),   # institutional add/reduce
         "short_insider":      _avg([_short_interest_bias(eq.get("short_interest"), pa_bias), insider_b]),
-        "calendar_timing":    None,                          # no directional bias -> neutral
+        "calendar_timing":    None,                          # filled by finalize() from the calendar row
     }
 
     params: list[dict] = []
@@ -273,14 +340,17 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
         (pa_bias is not None and pa_bias * dp_bias > 0)
         or (flow_bias is not None and flow_bias * dp_bias > 0))
     dp_pts = _pts(W["dark_pool"], dp_bias) if agrees else W["dark_pool"] * 0.5
+    # No dark-pool data -> excluded. Data that does not confirm -> a real neutral.
     params.append({"name": "dark_pool", "label": _LABEL["dark_pool"], "max": W["dark_pool"],
-                   "points": round(dp_pts, 2), "bias": (dp_bias if agrees else None),
+                   "points": round(dp_pts, 2),
+                   "bias": (dp_bias if agrees else (0.0 if dp_bias is not None else None)),
                    "confirmed": agrees})
 
     # Implied Move is no longer a scoring parameter: the 13 params already sum to
     # 100, so the score is their total. The IM gate still runs (size / NO-TRADE)
     # using the score's direction.
-    score = round(sum(p["points"] for p in params), 1)
+    timing_p = next((p for p in params if p["name"] == "calendar_timing"), None)
+    score, cov_pct = finalize(params, timing_p, row)
     side = 1 if score >= 50 else -1
     im = _implied_move_eval(trade, side, trade.get("spark"))
     cut = cfg.CLAUDE_CUTOFFS
@@ -303,7 +373,7 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
             pos_w += p["max"]
         elif b < -0.05:
             neg_w += p["max"]
-    coverage = round(covered / 100.0, 3)
+    coverage = round(cov_pct / 100.0, 3)
     side = 1 if score >= 50 else -1
     agreement = round(((pos_w if side > 0 else neg_w) / covered), 3) if covered else 0.0
     conf = cfg.V3_CONFIDENCE

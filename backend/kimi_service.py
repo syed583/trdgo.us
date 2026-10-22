@@ -53,19 +53,40 @@ def market_bias() -> Optional[float]:
     return swr.serve("kimi:market", _market_bias_calc, 600.0)
 
 
-def _market_bias_calc() -> Optional[float]:
-    spy = cl._spy_15d_return()                      # SPY 15-session return
-    trend = cl._clamp(spy / 0.03) if spy is not None else None
-    vix_reg = None
+def vix_level() -> Optional[tuple[float, str]]:
+    """(value, source). The VIX index itself is not served by the current Unusual
+    Whales / Finnhub plans (UW 422 cboe_index_access_missing, Finnhub needs an index
+    subscription), so the real fallback is the VIXY ETF: its 5-session change is the
+    regime reading. Returns None when neither is available."""
     try:
         import unusualwhales_service as uw
         q = uw.get_quote("VIX") or uw.get_quote("^VIX") or {}
-        vix = cl._f(q.get("price"))
-        if vix is not None:
-            # <15 calm (+), 15-25 neutral, >25 fear (-); map to +-0.5.
-            vix_reg = cl._clamp((18.0 - vix) / 10.0)
+        v = cl._f(q.get("price"))
+        if v is not None:
+            return v, "VIX index"
+        bars = uw.get_daily_bars("VIXY", "1 M") or []
+        closes = [cl._f(b.get("close")) for b in bars if cl._f(b.get("close")) is not None]
+        if len(closes) >= 6:
+            return (closes[-1] / closes[-6] - 1.0) * 100.0, "VIXY 5-session change %"
     except Exception:  # noqa: BLE001
-        vix_reg = None
+        pass
+    return None
+
+
+def _vix_regime() -> Optional[float]:
+    lv = vix_level()
+    if lv is None:
+        return None
+    v, src = lv
+    if src == "VIX index":
+        return cl._clamp((18.0 - v) / 10.0)      # <15 calm (+), >25 fear (-)
+    return cl._clamp(-v / 10.0)                  # VIXY up 10% in 5 sessions = full fear
+
+
+def _market_bias_calc() -> Optional[float]:
+    spy = cl._spy_15d_return()                      # SPY 15-session return
+    trend = cl._clamp(spy / 0.03) if spy is not None else None
+    vix_reg = _vix_regime()
     parts = [p for p in (trend, vix_reg) if p is not None]
     if not parts:
         return None
@@ -109,7 +130,8 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
         params.append({"name": name, "label": _LABEL[name], "max": W[name],
                        "points": round(cl._pts(W[name], qb), 2), "bias": qb})
 
-    score = round(sum(p["points"] for p in params), 1)
+    timing_p = next((p for p in params if p["name"] == "timing"), None)
+    score, cov_pct = cl.finalize(params, timing_p, row)
     cut = cfg.KIMI_CUTOFFS
     if score >= cut["strong_buy"]:
         tier, raw_signal = "STRONG BUY", "BUY"
@@ -138,7 +160,7 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
     covered = sum(p["max"] for p in params if p["bias"] is not None)
     pos_w = sum(p["max"] for p in params if (p["bias"] or 0) > 0.05)
     neg_w = sum(p["max"] for p in params if (p["bias"] or 0) < -0.05)
-    coverage = round(covered / 100.0, 3)
+    coverage = round(cov_pct / 100.0, 3)
     side = 1 if score >= 50 else -1
     agreement = round(((pos_w if side > 0 else neg_w) / covered), 3) if covered else 0.0
     conf = cfg.V3_CONFIDENCE

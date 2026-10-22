@@ -18,9 +18,35 @@ _BEAR = {k: -1.0 for k in _BULL}
 
 
 def test_all_neutral_lands_at_50():
-    res = v3.score_one("TEST", _eq({}), None, {})
+    # Real (zero) readings -> exactly neutral. Parameters with no data are excluded,
+    # not defaulted to neutral, so an empty analysis cannot be scored at all.
+    res = v3.score_one("TEST", _eq({k: 0.0 for k in _BULL}, {"funding_activity": 0.0}), None, {})
     assert abs(res["score"] - 50.0) < 0.6
     assert res["signal"] == "NEUTRAL"
+    assert res["coverage"] < 100                      # hist_reaction etc. had no data
+
+
+def test_no_data_parameters_are_excluded_and_rescaled():
+    res = v3.score_one("X", _eq({"eps_estimates": 1.0}), None, {})
+    eps = next(p for p in res["params"] if p["name"] == "eps_estimates")
+    assert res["score"] == 100.0 and eps["max"] == 100.0       # only EPS present -> rescaled to 100
+    assert next(p for p in res["params"] if p["name"] == "revenue_estimates")["points"] is None
+    assert res["coverage"] == 15.0                             # 15 of 100 weight present
+
+
+def test_empty_analysis_raises_instead_of_scoring_neutral():
+    import pytest
+    with pytest.raises(ValueError):
+        v3.score_one("X", _eq({}), None, {})
+
+
+def test_calendar_timing_is_scored_from_bmo_amc():
+    row = {"report_time": "premarket", "date": "2026-10-21"}      # Wed BMO -> full trust
+    res = v3.score_one("T", _eq(_BULL, {"funding_activity": 1.0}), None, row)
+    t = next(p for p in res["params"] if p["name"] == "calendar_timing")
+    assert t["bias"] == 1.0 and t["points"] is not None
+    none = v3.score_one("T", _eq(_BULL, {"funding_activity": 1.0}), None, {})
+    assert next(p for p in none["params"] if p["name"] == "calendar_timing")["points"] is None
 
 
 def test_strong_bullish_is_buy():

@@ -188,6 +188,7 @@
 .cn-chip b { font-variant-numeric: tabular-nums; }
 .cn-chip.pos { color: var(--green); background: rgba(46,184,122,.12); }
 .cn-chip.neg { color: var(--red); background: rgba(242,70,90,.12); }
+.cn-chip.na { opacity: .45; text-decoration: line-through; }
 
 /* Claude New -- inner detail page (score gauge + parameter breakdown). */
 .cnd-top { margin: 0 0 12px; }
