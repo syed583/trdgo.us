@@ -45,7 +45,9 @@ except ValueError:
 
 # A finished day is immutable; today and tomorrow are not.
 TTL_SETTLED = 30 * 24 * 3600.0
-TTL_LIVE = 900.0
+TTL_LIVE = 900.0              # today: report times and actuals still move
+TTL_FUTURE = 6 * 3600.0         # tomorrow and later: dates change rarely; was 15 min, which re-fetched a
+                                # 40-day window (80 requests) over and over
 
 # How far a bare "upcoming" ask looks forward.
 DEFAULT_FORWARD_DAYS = 14
@@ -127,14 +129,19 @@ def _label(when: str) -> str:
         return when
 
 
+def ttl_for(when: str) -> float:
+    """Cache lifetime for one date's calendar: settled (past) dates are final, today
+    refreshes every 15 min, future dates every 6 h."""
+    today = date.today().isoformat()
+    return TTL_SETTLED if when < today else TTL_LIVE if when == today else TTL_FUTURE
+
+
 def _for_date(when: str) -> list[dict]:
     """Every company reporting on one date, both sessions."""
-    settled = when < date.today().isoformat()
     rows: list[dict] = []
     for path in ("/api/earnings/premarket", "/api/earnings/afterhours"):
         key = f"uwcal:{path}:{when}"
-        out = uw._cached(key, path, {"date": when, "limit": 500},
-                         ttl=TTL_SETTLED if settled else TTL_LIVE)
+        out = uw._cached(key, path, {"date": when, "limit": 500}, ttl=ttl_for(when))
         if out["status"] != "OK":
             continue
         rows.extend(_row(r, when) for r in uw._rows(out) if _us_listed(r))
