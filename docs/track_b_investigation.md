@@ -28,12 +28,16 @@ The "T‑3 is +0.13% per trade but −34% portfolio" paradox has two causes, bot
    Verified: `test_fixed_frac_less_extreme_than_fully_invested`, `test_fixed_frac_compounds_fixed_fraction`.
 
 ## REPORT B — SELL profitability investigation
-SELL looks great (avg +3.01%, PF 4.15) but is **not statistically reliable** [FACT]:
-- 33 SELL predictions = **only 5 independent events**; consensus SELL = 10 trades / **5 events**.
-- **32 of 33 are one sector (Manufacturing)**; the single Services SELL is a +12.6% outlier.
-- Top SELL returns are the **same event duplicated** across models/timings (12.6, then 10.3 ×4).
-- Outlier‑trimmed avg: with top1 +3.01% → without top1 +2.72% → without top3 +2.21% (still a handful of
-  correlated events, one sector). **Conclusion: no credible SELL edge; too few independent events.**
+SELL looks great (prediction-level avg +3.01%, PF 4.15) but is **not statistically reliable** [FACT].
+Event-level (consensus, dedup to independent events):
+- 33 SELL predictions = **only 5 independent events** (consensus SELL = 10 rows / 5 events).
+- **2 profitable events, 3 LOSING events** — the positive average is driven by 2 winners:
+  ORCL 2026‑06‑10 **+12.58% (Services)**, TSLA 2026‑07‑22 **+9.27%**; losers TSLA −0.02%, TSLA −1.86%,
+  INTC −3.54% (all Manufacturing).
+- Per timing (tiny n): SELL T‑1 +6.92% (n3), T‑2 +2.30% (n3), T‑3 +1.35% (n4).
+- **Event-level mean +3.29%, SD 6.42, SE 2.87 → rough 95% CI [−2.46%, +9.03%] — spans zero, n=5.**
+- **Conclusion: no credible SELL edge.** Majority of SELL *events* lost money; the positive mean is two
+  outliers (one a Services name), and the confidence interval includes zero and large losses.
 
 ## REPORT C — Structural BUY bias root cause
 [FACT] Directional score distribution over 38,652 live predictions is **right‑shifted** (peak 55–64):
