@@ -7,7 +7,46 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+# --- production database is for production only --------------------------------
+PROD_REF = "ddetojbocaxhcfxtcopc"          # the production Supabase project
+
+
+def is_production() -> bool:
+    return (os.getenv("APP_ENV") or "").strip().lower() == "production"
+
+
+def _development_url():
+    """The development database: LOCAL_DATABASE_URL, else DATABASE_URL in .env.dev."""
+    from dotenv import dotenv_values
+    url = (os.getenv("LOCAL_DATABASE_URL") or
+           dotenv_values(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env.dev")).get("DATABASE_URL") or "").strip()
+    if not url:
+        return None
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+    if url.startswith("postgresql+psycopg") and "sslmode=" not in url:
+        url += ("&" if "?" in url else "?") + "sslmode=require"
+    return url
+
+
+def resolve_database_url(raw, production, development_url=_development_url):
+    """The URL this process may use. Production uses what it is given. Anything else
+    (a developer machine, a script, a probe) is NEVER allowed to use the production
+    project: it is redirected to the development database, or refused if there is none.
+    Fail-closed: forgetting APP_ENV can never point a local run at production data."""
+    if production or PROD_REF not in (raw or ""):
+        return raw
+    dev = development_url()
+    if dev and PROD_REF not in dev:
+        return dev
+    raise RuntimeError(
+        "REFUSING TO START: DATABASE_URL points at the PRODUCTION database but APP_ENV is not "
+        "'production'. Local runs, tests and probes must use the development database: set "
+        "LOCAL_DATABASE_URL (or DATABASE_URL in backend/.env.dev) to the dev project. "
+        "(On the production server set APP_ENV=production.)")
+
+
+DATABASE_URL = resolve_database_url(os.getenv("DATABASE_URL"), is_production())
 
 # SQLAlchemy defaults (pool_size 5 + max_overflow 10) let a single process open
 # 15 connections, which is exactly Supabase's session-mode pooler limit -- so
@@ -88,12 +127,12 @@ ISOLATED_TABLES = (
     "model_predictions", "model_backtests", "earnings_signal_snapshots", "score_snapshots",
     "ped_scores", "pe_events", "pe_predictions", "pe_grades", "pe_scheduler_state",
     "pe_pilot_state", "pe_pilot_daily", "intraday_sig_v2", "straddle_snap_v2",
+    # paper trades and trade-call/plan records (ORM-managed; twins made by ensure_local_orm_tables)
+    "demo_trades", "trade_calls", "trade_plans", "trade_plan_events", "trade_plan_seen",
 )
+ORM_ISOLATED_TABLES = ("score_snapshots", "demo_trades", "trade_calls", "trade_plans",
+                       "trade_plan_events", "trade_plan_seen")
 _ISO_RE = re.compile(r"(?<![A-Za-z0-9])(" + "|".join(ISOLATED_TABLES) + r")(?![A-Za-z0-9])")
-
-
-def is_production() -> bool:
-    return (os.getenv("APP_ENV") or "").strip().lower() == "production"
 
 
 def isolate_sql(statement: str) -> str:
@@ -108,21 +147,21 @@ if not is_production():
 
 
 def ensure_local_orm_tables() -> None:
-    """Outside production, make sure the ORM-managed history table has its "_local"
-    twin (raw SQL creates the others itself). Uses a raw DBAPI cursor so the rewrite
-    above does not touch the statement."""
+    """Outside production, make sure every ORM-managed isolated table has its "_local" twin
+    (raw SQL creates the others itself). Uses a raw DBAPI cursor so the rewrite above does
+    not touch the statement. A twin whose source table does not exist is simply skipped."""
     if is_production():
         return
-    raw = engine.raw_connection()
-    try:
-        cur = raw.cursor()
-        cur.execute("CREATE TABLE IF NOT EXISTS score_snapshots_local "
-                    "(LIKE score_snapshots INCLUDING ALL)")
-        raw.commit()
-    except Exception:  # noqa: BLE001 - the source table may not exist yet
-        raw.rollback()
-    finally:
-        raw.close()
+    for table in ORM_ISOLATED_TABLES:
+        raw = engine.raw_connection()
+        try:
+            cur = raw.cursor()
+            cur.execute(f"CREATE TABLE IF NOT EXISTS {table}_local (LIKE {table} INCLUDING ALL)")
+            raw.commit()
+        except Exception:  # noqa: BLE001 - the source table may not exist yet
+            raw.rollback()
+        finally:
+            raw.close()
 
 
 def get_db():

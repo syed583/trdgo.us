@@ -24,3 +24,81 @@ def test_production_flag(monkeypatch):
     assert d.is_production()
     monkeypatch.setenv("APP_ENV", "staging")
     assert not d.is_production()
+
+
+# --- local must never touch production data -------------------------------------------
+import pytest  # noqa: E402
+
+PROD_URL = f"postgresql+psycopg://postgres.{d.PROD_REF}:pw@aws-1-eu-central-1.pooler.supabase.com:5432/postgres"
+DEV_URL = "postgresql+psycopg://postgres.qzmsozpyypjdxzfprhoz:pw@aws-1-eu-central-1.pooler.supabase.com:5432/postgres"
+
+
+def test_non_production_is_redirected_to_the_dev_database():
+    assert d.resolve_database_url(PROD_URL, False, lambda: DEV_URL) == DEV_URL
+
+
+def test_non_production_without_a_dev_database_refuses_to_start():
+    with pytest.raises(RuntimeError, match="PRODUCTION"):
+        d.resolve_database_url(PROD_URL, False, lambda: None)
+    with pytest.raises(RuntimeError):                       # a "dev" url that is really production
+        d.resolve_database_url(PROD_URL, False, lambda: PROD_URL)
+
+
+def test_production_and_unrelated_urls_pass_through():
+    assert d.resolve_database_url(PROD_URL, True) == PROD_URL
+    assert d.resolve_database_url("sqlite:///x.db", False) == "sqlite:///x.db"
+
+
+def test_this_test_session_is_not_connected_to_production():
+    assert d.PROD_REF not in str(d.engine.url)
+    assert d.PROD_REF not in (d.DATABASE_URL or "")
+
+
+def test_every_protected_table_is_rewritten_in_every_statement_form():
+    forms = ["INSERT INTO {t} (a) VALUES (1)", "UPDATE {t} SET a = 1", "DELETE FROM {t}",
+             "SELECT * FROM {t} x JOIN {t} y ON 1=1", "CREATE TABLE IF NOT EXISTS {t} (a int)",
+             "ALTER TABLE {t} ADD COLUMN b int", "SELECT count(*) FROM public.{t}"]
+    for t in d.ISOLATED_TABLES:
+        for f in forms:
+            out = d.isolate_sql(f.format(t=t))
+            assert f"{t}_local" in out, (t, f)
+            import re
+            assert not re.search(rf"(?<![A-Za-z0-9_]){t}(?![A-Za-z0-9_])", out), (t, f, out)
+
+
+# (ORM tables the test schema already created with real columns -- score_snapshots, trade_calls --
+# are covered by the pure rewrite test above; these four are created from scratch here.)
+@pytest.mark.parametrize("table", ["demo_trades", "model_predictions", "earnings_signal_snapshots", "ped_scores"])
+def test_a_local_write_lands_in_the_twin_never_in_the_real_table(table):
+    """Executes real statements through the app's engine: the real table must never appear."""
+    from sqlalchemy import text
+    db = d.SessionLocal()
+    try:
+        db.execute(text(f"CREATE TABLE IF NOT EXISTS {table} (id INTEGER PRIMARY KEY, v TEXT)"))
+        db.execute(text(f"DELETE FROM {table}"))
+        db.execute(text(f"INSERT INTO {table} (id, v) VALUES (1, 'local')"))
+        db.commit()
+        assert db.execute(text(f"SELECT count(*) FROM {table}")).scalar() == 1
+    finally:
+        db.close()
+    raw = d.engine.raw_connection()                         # bypasses the rewrite: sees the real names
+    try:
+        cur = raw.cursor()
+        names = {r[0] for r in cur.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        assert f"{table}_local" in names
+        if table in names:                                  # a stale real table from before isolation: untouched
+            marker = cur.execute(f"SELECT count(*) FROM {table} WHERE v = 'local'").fetchone()[0]                 if "v" in {c[1] for c in cur.execute(f"PRAGMA table_info({table})").fetchall()} else 0
+            assert marker == 0, f"local code wrote into the real table {table}"
+    finally:
+        raw.close()
+
+
+def test_no_source_file_hardcodes_the_production_project():
+    import pathlib
+    root = pathlib.Path(d.__file__).parent
+    allowed = {"database.py", "dev_config.py", "conftest.py", "test_env_isolation.py",
+               "institutional_dashboard_service.py", "test_dev_isolation.py", "pg_compat_check.py"}   # guards that REFUSE prod
+    offenders = [p.name for p in root.rglob("*.py")
+                 if ".venv" not in p.parts and p.name not in allowed
+                 and d.PROD_REF in p.read_text(encoding="utf-8", errors="ignore")]
+    assert not offenders, f"production project ref found in {offenders}"
