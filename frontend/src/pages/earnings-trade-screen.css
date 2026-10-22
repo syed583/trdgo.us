@@ -211,6 +211,13 @@
 .dh-stat.bad { color: var(--red); background: rgba(242,70,90,.14); }
 .dh-stat.neutral { color: var(--text-dim); background: rgba(127,127,127,.12); }
 .dh-stat.muted { color: var(--text-mute); background: rgba(127,127,127,.08); }
+.dh-block { font-size: 12px; font-weight: 600; color: var(--red); background: rgba(242,70,90,.1);
+  border: 1px solid rgba(242,70,90,.35); border-radius: var(--r); padding: 8px 12px; margin-bottom: 12px; }
+.dh-dir { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.dh-dir.ok { color: var(--green); background: rgba(46,184,122,.14); }
+.dh-dir.bad { color: var(--red); background: rgba(242,70,90,.14); }
+.dh-dir.neutral { color: var(--text-dim); background: rgba(127,127,127,.12); }
+.dh-none { color: var(--text-mute); font-style: italic; }
 .dh-note { font-size: 11px; color: var(--text-mute); margin-top: 12px; background: var(--panel-2);
   border-radius: var(--r); padding: 8px 10px; line-height: 1.5; }
 

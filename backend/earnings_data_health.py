@@ -1,58 +1,66 @@
-"""Data Health for the Earnings Trade equity model (Phase 1).
+"""Data Health for the Earnings Trade equity model (Phase 1, strict).
 
-For each of the 12 equity parameters this reports, honestly, whether real and
-sufficiently fresh data actually reached the scoring engine -- NOT merely whether
-a request returned HTTP 200. The equity `Param` keeps only the computed bias
-(None = unavailable), so the status is derived from:
+Verifies, per parameter, whether real and provably-fresh data reached the scoring
+engine -- NOT whether a request returned HTTP 200. Two strict rules:
 
-  * `param.available` (bias is not None) and the magnitude of the bias,
-  * the known provider + data class behind each parameter (the map below),
-  * the live provider state (Unusual Whales `provider_status()` / `budget()`,
-    Finnhub / Finviz key presence),
-  * the one or two real observation timestamps that DO survive (short-interest
-    `as_of`, 13F quarter).
+  1. A factor is LIVE only when a VERIFIED observation timestamp exists AND it is
+     within that data class's freshness window. No timestamp -> never LIVE.
+  2. Freshness and direction are separate axes. `status` is a data-health state
+     only: LIVE | DELAYED | STALE | UNVERIFIED | MISSING | UNSUPPORTED | ERROR.
+     Direction (Bullish / Bearish / Neutral) is reported separately -- NEUTRAL is
+     "no directional edge", never a freshness status.
 
-Status vocabulary (spec section 5):
-  LIVE | DELAYED | STALE | MISSING | ERROR | UNSUPPORTED | NEUTRAL
+Today the pipeline retains an observation timestamp only for short interest
+(`as_of`) and the 13F quarter; quotes and estimates carry no `as_of` (the live
+quote path itself sets as_of=None), so those read UNVERIFIED rather than LIVE.
+Nothing is gap-filled: a missing input is MISSING, not a zero, and never upgraded.
 
-Never reports a missing input as a genuine zero-point neutral signal: a factor
-reads NEUTRAL only when valid data arrived and showed no directional edge.
-Per-observation raw values are not retained for most factors today; where a real
-timestamp/value exists it is shown, otherwise the computed reading is shown and
-the limitation is stated rather than a precise timestamp being invented.
+High-confidence BUY/SELL is blocked when any essential (critical) directional
+input is MISSING / ERROR / UNSUPPORTED.
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Optional
 
-import freshness as fr
+SOURCE = "Earnings Trade — Data Health (equity model, strict)"
 
-SOURCE = "Earnings Trade — Data Health (equity model)"
-
-# Flat band: a valid bias this small is treated as NEUTRAL (no edge), not a lean.
-FLAT = 0.08
-# Critical directional inputs. If too little of this weight is covered, the panel
-# flags INSUFFICIENT DATA so high-confidence signals can be blocked upstream.
+# Critical directional inputs. If too little of this weight is present, the panel
+# flags INSUFFICIENT DATA; if any one is MISSING, high-confidence calls are blocked.
 CRITICAL = {"eps_estimates", "revenue_estimates", "price_action", "options_positioning"}
-CRITICAL_MIN_COVERAGE = 60.0   # % of critical weight that must be present
+CRITICAL_MIN_COVERAGE = 60.0        # % of critical weight that must be present
+NOT_PRESENT = {"MISSING", "ERROR", "UNSUPPORTED"}
+
+# Freshness windows for a VERIFIED LIVE reading.
+QUOTE_LIVE_MIN = 5.0                 # a quote timestamp within 5 min, during RTH
+SHORTINT_FRESH_DAYS = 18.0          # short interest settles ~twice a month
 
 # param name -> (provider label, endpoint/method, provider key, data class)
-#   provider key: "uw" | "finnhub" | "uw+sec" | "uw+13f"   (drives MISSING vs ERROR/UNSUPPORTED)
-#   data class  : "snapshot" | "tape" | "filed" | "quarterly"  (drives the freshness stamp)
+#   provider key: "uw" | "finnhub" | "uw+sec" | "uw+13f"
+#   data class  : "quote" | "tape" | "flow13f" | "filed" | "shortint"
 PROVIDERS: dict[str, tuple[str, str, str, str]] = {
     "eps_estimates":       ("Unusual Whales", "/api/companies/{t}/earnings-estimates", "uw", "filed"),
     "revenue_estimates":   ("Unusual Whales", "/api/companies/{t}/earnings-estimates", "uw", "filed"),
     "guidance":            ("Unusual Whales", "/api/companies/{t}/earnings-estimates", "uw", "filed"),
     "historical_reaction": ("Unusual Whales", "/api/stock/{t}/earnings", "uw", "filed"),
-    "price_action":        ("Unusual Whales", "/api/stock/{t}/ohlc/1d + option-contracts", "uw", "snapshot"),
-    "sector_market":       ("Unusual Whales", "/api/stock/SPY/quote", "uw", "snapshot"),
-    "options_positioning": ("Unusual Whales + SEC 13F", "options overview + 13F holdings", "uw+13f", "quarterly"),
+    "price_action":        ("Unusual Whales", "/api/stock/{t}/ohlc/1d + option-contracts", "uw", "quote"),
+    "sector_market":       ("Unusual Whales", "/api/stock/SPY/quote", "uw", "quote"),
+    "options_positioning": ("Unusual Whales + SEC 13F", "options overview + 13F holdings", "uw+13f", "flow13f"),
     "unusual_options":     ("Unusual Whales", "/api/option-activity/unusual", "uw", "tape"),
     "disparity":           ("Unusual Whales", "option chain / disparity", "uw", "tape"),
-    "dark_pool":           ("Unusual Whales", "/api/stock/{t}/stock-volume-price-levels", "uw", "snapshot"),
+    "dark_pool":           ("Unusual Whales", "/api/stock/{t}/stock-volume-price-levels", "uw", "quote"),
     "peer_readthrough":    ("Finnhub", "/stock/peers · /stock/earnings · /stock/recommendation", "finnhub", "filed"),
-    "short_insider":       ("Unusual Whales + SEC EDGAR", "/api/shorts/{t}/interest-float/v2 + insider", "uw+sec", "filed"),
+    "short_insider":       ("Unusual Whales + SEC EDGAR", "/api/shorts/{t}/interest-float/v2 + insider", "uw+sec", "shortint"),
+}
+
+# How each class's freshness reads when the data is present (for the display
+# detail -- NOT the status). The status is computed strictly from a real timestamp.
+_FRESH_DETAIL = {
+    "quote":    "Quote/last price — no observation timestamp is retained, so freshness is UNVERIFIED.",
+    "tape":     "OPRA options tape — delivered on a 15-minute licensing delay.",
+    "flow13f":  "Delayed options flow (15-min) combined with quarterly 13F holdings.",
+    "filed":    "Analyst estimate / filing — no observation timestamp is retained, so freshness is UNVERIFIED.",
+    "shortint": "Short interest — settles about twice a month; judged by its as-of date.",
 }
 
 
@@ -69,44 +77,30 @@ def _session() -> str:
 
 
 def _age_days(as_of: Optional[str]) -> Optional[float]:
+    s = _age_seconds(as_of)
+    return None if s is None else s / 86400.0
+
+
+def _age_minutes(as_of: Optional[str]) -> Optional[float]:
+    s = _age_seconds(as_of)
+    return None if s is None else s / 60.0
+
+
+def _age_seconds(as_of: Optional[str]) -> Optional[float]:
     if not as_of:
         return None
     try:
         ts = datetime.fromisoformat(str(as_of).replace("Z", "+00:00"))
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
-        return max(0.0, (datetime.now(timezone.utc) - ts).total_seconds() / 86400.0)
+        return max(0.0, (datetime.now(timezone.utc) - ts).total_seconds())
     except (TypeError, ValueError):
         return None
 
 
-def _stamp(klass: str, session: str, *, provider: str,
-           si_asof: Optional[str] = None) -> dict:
-    """Freshness descriptor for a data class, from the real feed behaviour."""
-    if klass == "snapshot":
-        return fr.for_quote(provider, session)
-    if klass == "tape":
-        if session == "OPEN":
-            return fr.for_tape(15.0)                         # OPRA licensing delay
-        return fr.stamp(fr.SNAPSHOT, source=provider,
-                        detail="Options are closed; last session's tape.")
-    if klass == "quarterly":
-        return fr.weakest(fr.for_tape(15.0), fr.for_quarterly(None)) or fr.for_quarterly(None)
-    # "filed": the latest analyst estimate / filing is the current reading
-    if si_asof:
-        return fr.for_filing("Short interest", filed=str(si_asof)[:10])
-    return fr.stamp(fr.FILED, source=provider,
-                    detail="The latest published estimate/filing is the current reading.")
-
-
-# freshness.kind -> our status vocabulary (present-and-directional case)
-_KIND_STATUS = {fr.LIVE: "LIVE", fr.DELAYED: "DELAYED", fr.SNAPSHOT: "LIVE",
-                fr.FILED: "LIVE", fr.QUARTERLY: "LIVE"}
-
-
 def _unavailable_status(provider_key: str, uw_state: dict) -> str:
     """Why is this factor absent? MISSING unless the provider tells us more."""
-    if provider_key.startswith("uw") or provider_key == "uw+sec" or provider_key == "uw+13f":
+    if provider_key.startswith("uw"):
         st = (uw_state or {}).get("status")
         if st == "ENTITLEMENT_REQUIRED":
             return "UNSUPPORTED"
@@ -124,13 +118,38 @@ def _unavailable_status(provider_key: str, uw_state: dict) -> str:
     return "MISSING"
 
 
-def _reading(p: dict) -> str:
-    """The only 'raw' the Param retains: the computed directional bias."""
+def _present_status(klass: str, verified_asof: Optional[str], session: str) -> tuple[str, Optional[str]]:
+    """Data-health status for a PRESENT factor, strict about LIVE.
+
+    Returns (status, verified_asof_used). LIVE only with a real timestamp inside
+    the window; otherwise DELAYED (known bounded delay), STALE (timestamp but
+    old), or UNVERIFIED (present, no timestamp to confirm freshness)."""
+    if klass == "tape":
+        return "DELAYED", None                      # OPRA 15-min licensing delay
+    if klass == "flow13f":
+        return "DELAYED", None                      # delayed flow + quarterly 13F
+    if klass == "shortint":
+        age = _age_days(verified_asof)
+        if age is None:
+            return "UNVERIFIED", None
+        return ("DELAYED" if age <= SHORTINT_FRESH_DAYS else "STALE"), verified_asof
+    # "quote" / "filed": LIVE needs a verified, recent timestamp.
+    age_min = _age_minutes(verified_asof)
+    if age_min is not None and klass == "quote" and session == "OPEN" and age_min <= QUOTE_LIVE_MIN:
+        return "LIVE", verified_asof
+    if verified_asof:
+        return "STALE", verified_asof               # have a timestamp, but it's old
+    return "UNVERIFIED", None                        # present, no observation timestamp
+
+
+def _direction(p: dict) -> Optional[str]:
     if not p.get("available") or p.get("bias") is None:
-        return "—"
+        return None
+    lean = p.get("leaning")
+    if lean in ("Bullish", "Bearish", "Neutral"):
+        return lean
     b = float(p["bias"])
-    lean = p.get("leaning") or ("Bullish" if b > FLAT else "Bearish" if b < -FLAT else "Neutral")
-    return f"{lean} ({b:+.2f})"
+    return "Bullish" if b > 0.15 else "Bearish" if b < -0.15 else "Neutral"
 
 
 def health(symbol: str, profile: str = "default") -> dict:
@@ -145,7 +164,6 @@ def health(symbol: str, profile: str = "default") -> dict:
     si_asof = si_meta.get("as_of")
     session = _session()
 
-    # Live provider state, fetched once.
     try:
         import unusualwhales_service as uw
         uw_state = uw.provider_status()
@@ -171,32 +189,17 @@ def health(symbol: str, profile: str = "default") -> dict:
             continue
         provider, endpoint, pkey, klass = prov
         available = bool(p.get("available"))
-        bias = p.get("bias")
 
-        if available and bias is not None:
-            st = _stamp(klass, session, provider=fr.UW,
-                        si_asof=si_asof if name == "short_insider" else None)
-            # Use the engine's own leaning so the status matches the shown reading:
-            # valid data with no directional lean is NEUTRAL, not a MISSING-style gap.
-            if (p.get("leaning") or "Neutral") == "Neutral":
-                status = "NEUTRAL"
-            else:
-                status = _KIND_STATUS.get(st.get("kind"), "LIVE")
-                # Real timestamp older than its class threshold -> STALE.
-                if name == "short_insider":
-                    age = _age_days(si_asof)
-                    if age is not None and age > 20:       # short interest ~twice a month
-                        status = "STALE"
-            fresh = st
-            last_update = st.get("as_of")
+        if available:
+            verified = si_asof if name == "short_insider" else None
+            status, used_asof = _present_status(klass, verified, session)
         else:
             status = _unavailable_status(pkey, uw_state)
-            fresh = None
-            last_update = None
+            used_asof = None
 
         counts[status] = counts.get(status, 0) + 1
         raw = None
-        if name == "short_insider" and (si_meta.get("pct_float") is not None):
+        if name == "short_insider" and si_meta.get("pct_float") is not None:
             raw = {"short_pct_float": si_meta.get("pct_float"),
                    "days_to_cover": si_meta.get("days_to_cover"), "as_of": si_asof}
 
@@ -205,9 +208,10 @@ def health(symbol: str, profile: str = "default") -> dict:
             "provider": provider, "endpoint": endpoint, "data_class": klass,
             "critical": name in CRITICAL,
             "status": status,
-            "freshness": fresh,
-            "last_update": last_update,
-            "reading": _reading(p),
+            "verified_timestamp": used_asof,          # the only honest "last update"
+            "freshness_detail": _FRESH_DETAIL.get(klass, ""),
+            "direction": _direction(p),               # Bullish/Bearish/Neutral or None
+            "bias": p.get("bias"),
             "raw_value": raw,
             "contribution": p.get("points"),
             "contribution_label": p.get("points_label"),
@@ -223,7 +227,8 @@ def health(symbol: str, profile: str = "default") -> dict:
 
     coverage = _cov(None)
     critical_coverage = _cov(CRITICAL)
-    panel = fr.weakest(*[r["freshness"] for r in rows if r["freshness"]])
+    missing_critical = [r["label"] for r in rows if r["critical"] and r["status"] in NOT_PRESENT]
+    block_high_confidence = bool(missing_critical)
 
     return {
         "status": "OK", "symbol": symbol, "source": SOURCE, "as_of": _now(),
@@ -231,24 +236,23 @@ def health(symbol: str, profile: str = "default") -> dict:
         "coverage_pct": coverage,
         "critical_coverage_pct": critical_coverage,
         "insufficient_data": critical_coverage < CRITICAL_MIN_COVERAGE,
-        "panel_freshness": panel,
+        "block_high_confidence": block_high_confidence,
+        "blocked_inputs": missing_critical,
         "counts": counts,
         "rows": rows,
         "providers": {
             "unusual_whales": {
-                "configured": uw_state.get("configured"),
-                "status": uw_state.get("status"),
-                "blocked": uw_state.get("blocked"),
-                "env_var": uw_state.get("env_var"),
-                "daily_limit": uw_state.get("daily_limit"),
-                "app_left": uw_state.get("app_left"),
+                "configured": uw_state.get("configured"), "status": uw_state.get("status"),
+                "blocked": uw_state.get("blocked"), "env_var": uw_state.get("env_var"),
+                "daily_limit": uw_state.get("daily_limit"), "app_left": uw_state.get("app_left"),
             },
             "finnhub": {"configured": fh_conf, "env_var": "FINNHUB_API_KEY"},
             "finviz": {"configured": fv_conf, "env_var": "FINVIZ_API_TOKEN"},
             "sec_13f": {"note": "public; gated by quarterly 13F ingest"},
         },
-        "note": ("Status reflects whether real, mapped, sufficiently-fresh data "
-                 "reached the model — not HTTP 200. Per-observation raw values and "
-                 "exact timestamps are retained only for short interest and 13F "
-                 "today; other factors show the data class's freshness."),
+        "note": ("Status is a data-health state only (LIVE needs a verified, fresh "
+                 "observation timestamp); direction is separate. The pipeline retains "
+                 "an observation timestamp only for short interest and 13F today, so "
+                 "quotes and estimates read UNVERIFIED rather than LIVE. Nothing is "
+                 "gap-filled; a missing input stays MISSING."),
     }

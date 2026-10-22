@@ -166,10 +166,13 @@ function Signal15View({ symbol }: { symbol: string }) {
 // Data Health: per-parameter proof that real, fresh, correctly-mapped data
 // actually reached the equity model -- not just HTTP 200. Status vocabulary and
 // coverage come straight from the backend earnings_data_health service.
+// Status is a DATA-HEALTH state only (never a direction). LIVE needs a verified,
+// fresh observation timestamp; UNVERIFIED = present but freshness can't be proven.
 const HEALTH_TONE: Record<string, string> = {
-  LIVE: 'ok', NEUTRAL: 'neutral', DELAYED: 'warn', STALE: 'warn',
+  LIVE: 'ok', DELAYED: 'warn', STALE: 'warn', UNVERIFIED: 'muted',
   MISSING: 'bad', ERROR: 'bad', UNSUPPORTED: 'muted',
 };
+const DIR_TONE: Record<string, string> = { Bullish: 'ok', Bearish: 'bad', Neutral: 'neutral' };
 function DataHealthView({ symbol }: { symbol: string }) {
   const q = useApi<any>((s) => api2.earningsDataHealth(symbol, undefined, s), [symbol], { refreshMs: 60_000 });
   const d = q.data;
@@ -188,8 +191,11 @@ function DataHealthView({ symbol }: { symbol: string }) {
         <div className={`dh-cov ${crit >= 80 ? 'ok' : crit >= 60 ? 'warn' : 'bad'}`}>
           <span className="dh-cov-l">Critical factors</span><b>{crit}%</b></div>
         {d.insufficient_data && <span className="dh-insuff">⚠ INSUFFICIENT DATA — core directional inputs missing</span>}
-        {d.panel_freshness && <span className="dh-panel">Panel freshness: <b>{d.panel_freshness.label}</b></span>}
       </div>
+      {d.block_high_confidence && (
+        <div className="dh-block">🚫 High-confidence BUY/SELL blocked — essential input missing:
+          <b> {(d.blocked_inputs || []).join(', ')}</b>. Treat as WAIT / INSUFFICIENT DATA.</div>
+      )}
       <div className="dh-prov">
         <span className={`dh-badge ${uw.status === 'OK' ? 'ok' : uw.blocked ? 'bad' : 'warn'}`}>
           Unusual Whales: {uw.configured ? (uw.status || 'OK') : 'NOT CONFIGURED'}
@@ -202,8 +208,9 @@ function DataHealthView({ symbol }: { symbol: string }) {
       <div className="dh-tblwrap">
         <table className="dh-tbl">
           <thead><tr>
-            <th className="l">Parameter</th><th className="l">Provider</th><th className="l">Status</th>
-            <th className="l">Freshness</th><th className="l">Reading</th><th>Contribution</th>
+            <th className="l">Parameter</th><th className="l">Provider</th>
+            <th className="l">Data status</th><th className="l">Verified&nbsp;timestamp</th>
+            <th className="l">Direction</th><th>Bias</th><th>Contribution</th>
           </tr></thead>
           <tbody>
             {rows.map((r) => (
@@ -211,11 +218,15 @@ function DataHealthView({ symbol }: { symbol: string }) {
                 <td className="l"><b>{r.label}</b>{r.critical && <span className="dh-key" title="Critical directional input">core</span>}
                   <div className="dh-ep">{r.endpoint}</div></td>
                 <td className="l dh-mut">{r.provider}</td>
-                <td className="l"><span className={`dh-stat ${HEALTH_TONE[r.status] || 'muted'}`}>{r.status}</span>
+                <td className="l"><span className={`dh-stat ${HEALTH_TONE[r.status] || 'muted'}`} title={r.freshness_detail || ''}>{r.status}</span>
                   {!r.available && r.unavailable_reason && <div className="dh-ep">{r.unavailable_reason}</div>}</td>
-                <td className="l dh-mut">{r.freshness?.label || '—'}
-                  {r.raw_value?.as_of && <div className="dh-ep">as of {String(r.raw_value.as_of).slice(0, 10)}</div>}</td>
-                <td className="l dh-mut">{r.reading}</td>
+                <td className="l dh-mut">{r.verified_timestamp
+                  ? String(r.verified_timestamp).slice(0, 10)
+                  : <span className="dh-none">none</span>}</td>
+                <td className="l">{r.direction
+                  ? <span className={`dh-dir ${DIR_TONE[r.direction] || 'neutral'}`}>{r.direction}</span>
+                  : <span className="dh-mut">—</span>}</td>
+                <td className="dh-mut">{r.bias != null ? Number(r.bias).toFixed(2) : '—'}</td>
                 <td className="dh-mut">{r.contribution_label || '—'}</td>
               </tr>
             ))}
