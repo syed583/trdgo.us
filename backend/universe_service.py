@@ -55,10 +55,21 @@ def build() -> Optional[dict]:
             "min_dollar_volume": ranked[-1]["dollar_volume"]}
 
 
-def get() -> Optional[dict]:
+def get(wait: float = 0.0) -> Optional[dict]:
+    """The universe, building it if needed. The screener fetch takes ~25s, longer than
+    swr's first-request wait, so a cold call returns a LOADING status while the build
+    carries on in the background. `wait` > 0 polls for it (used by the cache warmer);
+    wait=0 returns None straight away so a page request never blocks on it."""
+    import time
     import swr
-    v = swr.serve(_KEY, build, _TTL)
-    return v if isinstance(v, dict) and v.get("rows") else None
+    deadline = time.time() + max(0.0, wait)
+    while True:
+        v = swr.serve(_KEY, build, _TTL)
+        if isinstance(v, dict) and v.get("rows"):
+            return v
+        if time.time() >= deadline:
+            return None
+        time.sleep(5)
 
 
 def peek() -> Optional[dict]:

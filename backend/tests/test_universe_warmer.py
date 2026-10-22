@@ -60,3 +60,17 @@ def test_provider_counter_is_capped_at_13000_in_production(monkeypatch):
                                                "blocked": False, "blocked_for_seconds": 0})
     b = lw._budget()
     assert b["app_budget"] == 13000 and b["app_left"] == 1000        # not the plan's 15,000
+
+
+def test_get_polls_a_loading_build_when_asked_to_wait(monkeypatch):
+    import swr
+    answers = iter([{"status": "LOADING"}, {"status": "LOADING"}, {"rows": [{"ticker": "AAPL"}]}])
+    monkeypatch.setattr(swr, "serve", lambda k, fn, ttl: next(answers))
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    assert us.get(wait=60)["rows"][0]["ticker"] == "AAPL"
+
+
+def test_get_does_not_block_without_wait(monkeypatch):
+    import swr
+    monkeypatch.setattr(swr, "serve", lambda k, fn, ttl: {"status": "LOADING"})
+    assert us.get() is None

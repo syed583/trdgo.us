@@ -121,7 +121,7 @@ def build_queue() -> tuple[list[str], int]:
     (all of them are 'priority'). Development: next 7 days first, then the rest of the 1,000."""
     import universe_service as us
     import uw_earnings_calendar as cal
-    u = us.get()
+    u = us.get(wait=240)                          # the first build takes ~25s
     if not u:
         raise RuntimeError("universe unavailable (Unusual Whales screener)")
     ranked = [r["ticker"] for r in u["rows"]]
