@@ -91,14 +91,28 @@ export default function HistoricalBacktestPage() {
         </table>
       </div>
 
-      <h3 className="fsb-h">Portfolio drawdown <small className="fsb-sub">(event-level consensus · daily-marked · equal-weight · net of costs)</small></h3>
+      <h3 className="fsb-h">Portfolio — realistic sizing <small className="fsb-sub">(fixed 10%/trade, ≤10 concurrent, cash otherwise — the honest number)</small></h3>
+      <div className="fsb-stats">
+        {['T-1', 'T-2', 'T-3', 'all_timings'].map((k) => {
+          const g = (d.portfolio_realistic || {})[k]; if (!g) return null;
+          return (
+            <div className="fsb-stat" key={k}>
+              <span>{k === 'all_timings' ? 'All timings*' : k} ({g.positions_taken} pos)</span>
+              <b className={tone(g.total_return_pct)}>{sp(g.total_return_pct)} total</b>
+              <small>max DD <span className="neg">{sp(g.max_drawdown_pct)}</span></small>
+            </div>
+          );
+        })}
+      </div>
+
+      <h3 className="fsb-h">Portfolio — fully-invested equal-weight <small className="fsb-sub">(daily-marked; amplifies when few names are open — kept for reference)</small></h3>
       <div className="fsb-stats">
         <Port label="T-1" g={pf['T-1']} />
         <Port label="T-2" g={pf['T-2']} />
         <Port label="T-3" g={pf['T-3']} />
         <Port label="All timings*" g={pf['all_timings']} />
       </div>
-      <div className="fsb-note" style={{ marginTop: 4 }}><small>*All-timings combines T-1/T-2/T-3 as three separate entry strategies per event; the per-timing books hold one position per event.</small></div>
+      <div className="fsb-note" style={{ marginTop: 4 }}><small>*All-timings combines T-1/T-2/T-3 as three separate entry strategies per event; per-timing books hold one position per event. The fully-invested book stays ~100% in whatever is open, so its magnitude is a sizing artifact — the realistic fixed-fractional book above is the honest read.</small></div>
 
       {models.length > 0 && (<>
         <h3 className="fsb-h">By model</h3>

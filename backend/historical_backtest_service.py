@@ -113,7 +113,8 @@ def _cost_pct(side: str, entry: float, held: int) -> float:
 
 
 def run(symbols: Optional[list[str]] = None, months: int = 18,
-        max_symbols: int = 25, max_events_per_symbol: int = 10) -> dict:
+        max_symbols: int = 25, max_events_per_symbol: int = 10,
+        detail: bool = False) -> dict:
     import ai_trade_service as ats
 
     if not symbols:
@@ -121,6 +122,14 @@ def run(symbols: Optional[list[str]] = None, months: int = 18,
     syms = [s.upper() for s in symbols if s][:max_symbols]
     cutoff = (date.today() - timedelta(days=int(months * 30.4))).isoformat()
     today_s = date.today().isoformat()
+
+    sectors: dict[str, Optional[str]] = {}
+    try:
+        import company_profile_service as cps
+        profs = cps.get_profiles(syms) or {}
+        sectors = {s: (profs.get(s) or {}).get("sector") or "Unknown" for s in syms}
+    except Exception:  # noqa: BLE001
+        sectors = {}
 
     model_trades: list[dict] = []        # one per (model, event, timing)
     cons_trades: list[dict] = []         # one per (event, timing) — consensus
@@ -183,6 +192,7 @@ def run(symbols: Optional[list[str]] = None, months: int = 18,
                     cp = _cost_pct(sig, entry, held)
                     model_trades.append({
                         "model": model, "symbol": sym, "side": sig, "signal": sig,
+                        "sector": sectors.get(sym, "Unknown"),
                         "earnings_date": ed, "t_minus": k, "held_days": held,
                         "entry_price": round(entry, 4), "exit_price": round(exit_px, 4),
                         "entry_date": dates[tki], "exit_date": dates[exit_i],
@@ -199,6 +209,7 @@ def run(symbols: Optional[list[str]] = None, months: int = 18,
                 cp = _cost_pct(side, entry, held)
                 cons_trades.append({
                     "model": "consensus", "symbol": sym, "side": side,
+                    "sector": sectors.get(sym, "Unknown"),
                     "earnings_date": ed, "t_minus": k, "held_days": held,
                     "entry_price": round(entry, 4), "exit_price": round(exit_px, 4),
                     "exit_date": dates[exit_i], "gross_pct": round(gp, 3),
@@ -207,7 +218,7 @@ def run(symbols: Optional[list[str]] = None, months: int = 18,
                     "daily": _daily_rets(closes, opens, tki, exit_i, side),
                 })
 
-    return _assemble(model_trades, cons_trades, events_seen, syms, months, skips)
+    return _assemble(model_trades, cons_trades, events_seen, syms, months, skips, detail)
 
 
 def _daily_rets(closes, opens, ei, xi, side) -> list[tuple]:
@@ -246,7 +257,7 @@ def _portfolio(trades: list[dict], net: bool = True) -> dict:
             "max_drawdown_pct": round(dd * 100, 3)}
 
 
-def _assemble(model_trades, cons_trades, events_seen, syms, months, skips) -> dict:
+def _assemble(model_trades, cons_trades, events_seen, syms, months, skips, detail: bool = False) -> dict:
     def pair(ts):
         return {"cost": fsb._agg(ts, "net_pct"), "zero_cost": fsb._agg(ts, "gross_pct")}
 
@@ -262,8 +273,14 @@ def _assemble(model_trades, cons_trades, events_seen, syms, months, skips) -> di
             for k in TIMINGS}
     port["all_timings"] = {"net": _portfolio(cons_trades, True),
                            "zero_cost": _portfolio(cons_trades, False)}
+    # Realistic fixed-fractional portfolio (fixed % of equity per position, capped
+    # concurrency, cash otherwise) -- the honest sizing, vs the fully-invested
+    # equal-weight book above which amplifies when few names are open.
+    port_realistic = {f"T-{k}": _portfolio_fixed_frac([t for t in cons_trades if t["t_minus"] == k])
+                      for k in TIMINGS}
+    port_realistic["all_timings"] = _portfolio_fixed_frac(cons_trades)
 
-    return {
+    out = {
         "status": "OK", "source": SOURCE, "label": "SIMULATED · PARTIAL-FACTOR",
         "as_of": date.today().isoformat(), "months": months, "symbols_tested": len(syms),
         "events_tested": len(events_seen),
@@ -290,3 +307,49 @@ def _assemble(model_trades, cons_trades, events_seen, syms, months, skips) -> di
         "metrics_note": ("Prediction-level = per model×event×timing (correlated). Portfolio = "
                          "event-level consensus, daily-marked, equal-weight. Costs: same as Track A."),
     }
+    # Consensus-only prediction average per timing (reconciles vs the all-model avg).
+    out["consensus_avg_net_by_timing"] = {
+        f"T-{k}": fsb._agg([t for t in cons_trades if t["t_minus"] == k], "net_pct")
+        for k in TIMINGS}
+    out["portfolio_realistic"] = port_realistic
+    # Loss attribution by sector (model-level trades).
+    sect: dict[str, list] = defaultdict(list)
+    for t in model_trades:
+        sect[t.get("sector", "Unknown")].append(t["net_pct"])
+    out["by_sector"] = sorted(
+        [{"sector": k, "n": len(v), "avg_net_pct": round(sum(v) / len(v), 3),
+          "total_net_pct": round(sum(v), 2)} for k, v in sect.items()],
+        key=lambda x: x["total_net_pct"])
+    if detail:
+        out["_model_trades"] = model_trades
+        out["_cons_trades"] = cons_trades
+    return out
+
+
+def _portfolio_fixed_frac(trades: list[dict], frac: float = 0.1, start: float = 1.0) -> dict:
+    """Realistic sizing: each position risks a FIXED fraction of current equity,
+    realized at exit, chronological by exit date; at most 1/frac concurrent
+    (extra signals that would exceed full investment are skipped, not leveraged).
+    Max drawdown is on the realized equity curve. This avoids the fully-invested
+    equal-weight book's amplification when only a few names are open."""
+    ts = sorted([t for t in trades if t.get("exit_date")], key=lambda t: t["exit_date"])
+    max_concurrent = max(1, int(round(1.0 / frac)))
+    equity, peak, dd = start, start, 0.0
+    taken = skipped = 0
+    # Approximate concurrency with a simple cap on open count by entry/exit window.
+    open_until: list[str] = []
+    for t in ts:
+        ed_in = t.get("entry_date") or t["exit_date"]
+        open_until = [x for x in open_until if x > ed_in]     # free up closed slots
+        if len(open_until) >= max_concurrent:
+            skipped += 1
+            continue
+        open_until.append(t["exit_date"])
+        equity *= (1.0 + frac * (t["net_pct"] / 100.0))
+        peak = max(peak, equity)
+        dd = min(dd, equity / peak - 1.0)
+        taken += 1
+    return {"positions_taken": taken, "positions_skipped_capacity": skipped,
+            "frac_per_trade": frac, "max_concurrent": max_concurrent,
+            "total_return_pct": round((equity / start - 1.0) * 100, 3),
+            "max_drawdown_pct": round(dd * 100, 3)}

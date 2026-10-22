@@ -2599,7 +2599,7 @@ def earnings_historical_backtest(months: int = 18, max_symbols: int = 25) -> dic
     import historical_backtest_service as htb
     import threading
 
-    key = f"htbt1:{months}:{max_symbols}"
+    key = f"htbt2:{months}:{max_symbols}"
     cached = swr.peek(key)
     if cached is not None:
         return cached

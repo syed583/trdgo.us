@@ -67,3 +67,34 @@ def test_portfolio_no_duplicate_event_inflation():
 def test_portfolio_drawdown_bounded():
     p = htb._portfolio([_trade("SELL", 0, 3)], net=False)   # SELL on rising price = loss
     assert -10.0 < p["max_drawdown_pct"] <= 0.0
+
+
+def _ftrade(net, ed_in, ed_out):
+    return {"side": "BUY", "net_pct": net, "entry_date": ed_in, "exit_date": ed_out}
+
+
+def test_fixed_frac_compounds_fixed_fraction():
+    # two non-overlapping -10% trades at 50% per trade -> (1-0.05)^2 ~ -9.75%
+    ts = [_ftrade(-10.0, "2025-01-01", "2025-01-03"),
+          _ftrade(-10.0, "2025-02-01", "2025-02-03")]
+    p = htb._portfolio_fixed_frac(ts, frac=0.5)
+    assert p["positions_taken"] == 2
+    assert abs(p["total_return_pct"] - (-9.75)) < 0.01
+
+
+def test_fixed_frac_caps_concurrency():
+    # three fully-overlapping trades, cap = 2 -> one is skipped (not leveraged)
+    ts = [_ftrade(1.0, "2025-01-01", "2025-01-10") for _ in range(3)]
+    p = htb._portfolio_fixed_frac(ts, frac=0.5)   # max_concurrent = 2
+    assert p["positions_taken"] == 2 and p["positions_skipped_capacity"] == 1
+
+
+def test_fixed_frac_less_extreme_than_fully_invested():
+    # A losing book: realistic 10%/trade sizing must be far less extreme than the
+    # fully-invested equal-weight daily book that amplifies when few names open.
+    cons = [_trade("SELL", 0, 3) for _ in range(5)]        # overlapping losers (gross)
+    for i, t in enumerate(cons):
+        t["entry_date"], t["exit_date"], t["net_pct"] = f"2025-01-0{i+1}", f"2025-01-0{i+4}", -2.0
+    full = htb._portfolio(cons, net=False)
+    frac = htb._portfolio_fixed_frac(cons, frac=0.1)
+    assert abs(frac["max_drawdown_pct"]) < abs(full["max_drawdown_pct"])
