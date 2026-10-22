@@ -48,6 +48,8 @@ export type DirModelCfg = {
   base: string; title: string; subtitle: string;
   params: { key: string; label: string }[];
   scan: (days: number, s?: AbortSignal) => Promise<any>;
+  /** Band text for the legend; defaults to the 55/45 bands. */
+  legend?: { buy: string; sell: string };
 };
 
 const CLAUDE_NEW_MODEL = (pz: boolean): DirModelCfg => ({

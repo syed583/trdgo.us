@@ -25,7 +25,12 @@ Write-Host "==> frontend"
 Push-Location "$Root\frontend"
 npm ci --silent
 npm run build
+$buildFailed = $LASTEXITCODE
 Pop-Location
+if ($buildFailed -ne 0) {
+    Write-Host "Frontend build failed -- the running service was left alone." -ForegroundColor Red
+    exit 1
+}
 
 Write-Host "==> tests"
 Push-Location "$Root\backend"
