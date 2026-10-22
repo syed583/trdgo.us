@@ -30,6 +30,16 @@ SOURCE = "Post-Earnings AI — Forward Validation (SIMULATED · FORWARD-RECORDED
 PE_MODEL_VERSION = "pe-v1"
 _ready = False
 
+# --- Safety limits ---
+# The provider's daily cap is NOT exposed via headers here (daily_limit_known=False,
+# app_left is a 10M fallback), so we enforce a SELF-IMPOSED daily cap on the app's
+# own measured call count (uw.budget().used_by_this_app), well under the documented
+# ~15k/day allowance, PLUS the provider headroom guard if/when it ever is known.
+SELF_IMPOSED_DAILY_CAP = 8000   # hard-stop when the app has made this many calls today
+API_WARN_REMAINING = 3000       # warn when known provider headroom drops below this
+API_HARDSTOP_REMAINING = 1500   # hard-stop when known provider headroom drops below this
+MEASURED_CALLS = {"record_cycle": 38, "intraday_score": 11}  # measured 2026-10-22
+
 
 # --------------------------------------------------------------------------- #
 # Schema (isolated pe_* tables)                                               #
@@ -380,17 +390,86 @@ def scheduler_status() -> dict:
         db.close()
 
 
-def run_cycle(days: int = 7) -> dict:
-    """One MANUAL capture cycle: record -> capture -> grade, with an in-DB lock so
-    concurrent/overlapping runs do not double-ingest. Updates scheduler state. This
-    is invoked on demand only; it is NOT auto-scheduled (that needs approval)."""
+def pause(on: bool = True) -> dict:
+    """Manual pause / resume (and the target of the emergency stop)."""
     if not _ensure_tables():
         return {"status": "NO_TABLE"}
     from sqlalchemy import text
     from database import SessionLocal
     db = SessionLocal()
     try:
-        # idempotency lock: skip if a run started < 60s ago and is RUNNING
+        db.execute(text(
+            "INSERT INTO pe_scheduler_state (key,status,paused) VALUES ('forward',:s,:p) "
+            "ON CONFLICT (key) DO UPDATE SET paused=:p, status=:s"),
+            {"s": "PAUSED" if on else "IDLE", "p": 1 if on else 0})
+        db.commit()
+        return {"status": "OK", "paused": on}
+    finally:
+        db.close()
+
+
+def _should_hardstop(app_left: Optional[float], used_today: Optional[float] = None) -> bool:
+    """Refuse a recording cycle when the SELF-IMPOSED daily cap on our own measured
+    call count is reached, or (when known) provider headroom is below the hard-stop.
+    Unknown headroom alone does not block — the self-imposed used-today cap does."""
+    if used_today is not None and used_today >= SELF_IMPOSED_DAILY_CAP:
+        return True
+    return app_left is not None and app_left < API_HARDSTOP_REMAINING
+
+
+def _budget() -> dict:
+    try:
+        import unusualwhales_service as uw
+        return uw.budget() or {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def health() -> dict:
+    """Operational monitor: scheduler state, API headroom, data-quality %, and the
+    auto-pause conditions. Read-only; used by the dashboard + the activation gate."""
+    sch = scheduler_status()
+    bud = _budget()
+    app_left = bud.get("app_left")
+    used = bud.get("used_by_this_app")
+    d = dashboard() if _ready or _ensure_tables() else {}
+    ev = d.get("events_observed") or 0
+    unverified_pct = 100.0 - (d.get("verified_pct") or 0.0) if ev else None
+    conditions = []
+    if _should_hardstop(app_left, used):
+        conditions.append("API_BUDGET_HARDSTOP")
+    elif app_left is not None and app_left < API_WARN_REMAINING:
+        conditions.append("API_BUDGET_WARN")
+    if used is not None and used >= SELF_IMPOSED_DAILY_CAP * 0.8:
+        conditions.append("DAILY_CAP_WARN")
+    if sch.get("status") == "ERROR":
+        conditions.append("LAST_CYCLE_ERROR")
+    return {"scheduler": sch,
+            "api": {"used_today": used, "self_imposed_cap": SELF_IMPOSED_DAILY_CAP,
+                    "app_left": app_left, "daily_limit_known": bud.get("daily_limit_known"),
+                    "blocked": bud.get("blocked")},
+            "events_observed": ev, "unverified_pct": unverified_pct,
+            "auto_pause_conditions": conditions,
+            "would_pause": any(c.endswith("HARDSTOP") for c in conditions),
+            "note": "A cycle auto-refuses while PAUSED, at the self-imposed daily cap, or below known provider hard-stop."}
+
+
+def run_cycle(days: int = 7) -> dict:
+    """One MANUAL capture cycle: record -> capture -> grade, with an in-DB lock so
+    concurrent/overlapping runs do not double-ingest. Updates scheduler state. This
+    is invoked on demand only; it is NOT auto-scheduled (that needs approval)."""
+    if not _ensure_tables():
+        return {"status": "NO_TABLE"}
+    # hard-stop on API budget before doing any provider work
+    bud = _budget()
+    if _should_hardstop(bud.get("app_left"), bud.get("used_by_this_app")):
+        return {"status": "BUDGET_HARDSTOP", "app_left": bud.get("app_left"),
+                "used_today": bud.get("used_by_this_app"), "self_cap": SELF_IMPOSED_DAILY_CAP}
+    from sqlalchemy import text
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        # idempotency lock: skip if paused
         row = db.execute(text("SELECT status, last_run_ts, paused FROM pe_scheduler_state "
                               "WHERE key='forward'")).first()
         if row and row[2]:

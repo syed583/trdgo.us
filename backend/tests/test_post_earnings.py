@@ -78,3 +78,23 @@ def test_grade_sell_profits_on_drop():
 
 def test_grade_cost_always_subtracts():
     assert pe.daily_proxy_net("BUY", 100.0, 100.0, 0.25) == -0.25
+
+
+# --- Phase 8.1: API budget hard-stop decision --------------------------------
+def test_budget_hardstop_below_threshold():
+    assert pe._should_hardstop(pe.API_HARDSTOP_REMAINING - 1) is True
+
+
+def test_budget_ok_above_threshold():
+    assert pe._should_hardstop(pe.API_HARDSTOP_REMAINING + 1) is False
+
+
+def test_budget_unknown_is_safe_to_run():
+    # unknown headroom must not block (provider state simply isn't known)
+    assert pe._should_hardstop(None) is False
+
+
+def test_self_imposed_daily_cap_hardstops():
+    # even with unlimited provider headroom, our own daily cap must stop recording
+    assert pe._should_hardstop(10_000_000, used_today=pe.SELF_IMPOSED_DAILY_CAP) is True
+    assert pe._should_hardstop(10_000_000, used_today=pe.SELF_IMPOSED_DAILY_CAP - 1) is False
