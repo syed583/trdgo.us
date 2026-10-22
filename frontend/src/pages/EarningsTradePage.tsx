@@ -163,6 +163,70 @@ function Signal15View({ symbol }: { symbol: string }) {
   );
 }
 
+// Data Health: per-parameter proof that real, fresh, correctly-mapped data
+// actually reached the equity model -- not just HTTP 200. Status vocabulary and
+// coverage come straight from the backend earnings_data_health service.
+const HEALTH_TONE: Record<string, string> = {
+  LIVE: 'ok', NEUTRAL: 'neutral', DELAYED: 'warn', STALE: 'warn',
+  MISSING: 'bad', ERROR: 'bad', UNSUPPORTED: 'muted',
+};
+function DataHealthView({ symbol }: { symbol: string }) {
+  const q = useApi<any>((s) => api2.earningsDataHealth(symbol, undefined, s), [symbol], { refreshMs: 60_000 });
+  const d = q.data;
+  if (q.initialLoading) return <div className="ets-empty ets-loading"><Loader2 className="ets-spin" size={18} /> Checking every data source…</div>;
+  if (!d || d.status !== 'OK') return <div className="ets-empty">{d?.detail || 'Data health unavailable.'}</div>;
+  const rows: any[] = d.rows || [];
+  const prov = d.providers || {};
+  const uw = prov.unusual_whales || {};
+  const cov = d.coverage_pct ?? 0;
+  const crit = d.critical_coverage_pct ?? 0;
+  return (
+    <div className="dh-wrap">
+      <div className="dh-head">
+        <div className={`dh-cov ${cov >= 80 ? 'ok' : cov >= 50 ? 'warn' : 'bad'}`}>
+          <span className="dh-cov-l">Data coverage</span><b>{cov}%</b></div>
+        <div className={`dh-cov ${crit >= 80 ? 'ok' : crit >= 60 ? 'warn' : 'bad'}`}>
+          <span className="dh-cov-l">Critical factors</span><b>{crit}%</b></div>
+        {d.insufficient_data && <span className="dh-insuff">⚠ INSUFFICIENT DATA — core directional inputs missing</span>}
+        {d.panel_freshness && <span className="dh-panel">Panel freshness: <b>{d.panel_freshness.label}</b></span>}
+      </div>
+      <div className="dh-prov">
+        <span className={`dh-badge ${uw.status === 'OK' ? 'ok' : uw.blocked ? 'bad' : 'warn'}`}>
+          Unusual Whales: {uw.configured ? (uw.status || 'OK') : 'NOT CONFIGURED'}
+          {uw.app_left != null ? ` · ${uw.app_left} calls left` : ''}</span>
+        <span className={`dh-badge ${prov.finnhub?.configured ? 'ok' : 'muted'}`}>
+          Finnhub: {prov.finnhub?.configured ? 'configured' : 'no key'}</span>
+        <span className={`dh-badge ${prov.finviz?.configured ? 'ok' : 'muted'}`}>
+          Finviz: {prov.finviz?.configured ? 'configured' : 'no key'}</span>
+      </div>
+      <div className="dh-tblwrap">
+        <table className="dh-tbl">
+          <thead><tr>
+            <th className="l">Parameter</th><th className="l">Provider</th><th className="l">Status</th>
+            <th className="l">Freshness</th><th className="l">Reading</th><th>Contribution</th>
+          </tr></thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.name} className={r.critical ? 'dh-crit' : ''}>
+                <td className="l"><b>{r.label}</b>{r.critical && <span className="dh-key" title="Critical directional input">core</span>}
+                  <div className="dh-ep">{r.endpoint}</div></td>
+                <td className="l dh-mut">{r.provider}</td>
+                <td className="l"><span className={`dh-stat ${HEALTH_TONE[r.status] || 'muted'}`}>{r.status}</span>
+                  {!r.available && r.unavailable_reason && <div className="dh-ep">{r.unavailable_reason}</div>}</td>
+                <td className="l dh-mut">{r.freshness?.label || '—'}
+                  {r.raw_value?.as_of && <div className="dh-ep">as of {String(r.raw_value.as_of).slice(0, 10)}</div>}</td>
+                <td className="l dh-mut">{r.reading}</td>
+                <td className="dh-mut">{r.contribution_label || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="dh-note">{d.note}</div>
+    </div>
+  );
+}
+
 // The landing view: the two change tabs (Intraday / Last 10 days) live in the
 // page header and drive the Upcoming-earnings list's change banner below.
 function EarningsTradeLanding({ demo, search, base, profile, embedded, mode, onMode }:
@@ -283,7 +347,7 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
   // list-view early return; the data calls are disabled until a ticker is picked.
   const on = !!pathSym && !demo;
   const [whyOpen, setWhyOpen] = useState(false);
-  const [view, setView] = useState<'trade' | 'signal15'>('trade');
+  const [view, setView] = useState<'trade' | 'signal15' | 'health'>('trade');
   const [riskTab, setRiskTab] = useState<'confidence' | 'exit'>('confidence');
   // Stock vs Options is a hard split kept in the URL. My Calls ("final") never
   // splits -- it shows the original combined view.
@@ -433,6 +497,8 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
               onClick={() => setView('trade')}>Claude +0</button>
             <button type="button" className={`ets-subtab${view === 'signal15' ? ' active' : ''}`}
               onClick={() => setView('signal15')}>15-Day Signal</button>
+            <button type="button" className={`ets-subtab${view === 'health' ? ' active' : ''}`}
+              onClick={() => setView('health')}>Data Health</button>
             {dual ? <>
               <Link className="ets-subtab" to={`/earnings-equity/${symbol}${subSearch}`}>Equity detail</Link>
               <Link className="ets-subtab" to={`/earnings-options/${symbol}${subSearch}`}>Options detail</Link>
@@ -450,6 +516,8 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
 
           {view === 'signal15' ? (
             <Signal15View symbol={symbol} />
+          ) : view === 'health' ? (
+            <DataHealthView symbol={symbol} />
           ) : (<>
           {/* Row 1: signal / expected move / calendar */}
           <div className="ets-row ets-row-3">

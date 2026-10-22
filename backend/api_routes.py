@@ -2589,6 +2589,19 @@ def earnings_trade(symbol: str, profile: str = "default") -> dict:
                      market.session_ttl(120, 1800))
 
 
+@router.get("/earnings/data-health/{symbol}")
+def earnings_data_health(symbol: str, profile: str = "default") -> dict:
+    """Data Health for the Earnings Trade equity model: per-parameter provider,
+    status (LIVE/DELAYED/STALE/MISSING/ERROR/UNSUPPORTED/NEUTRAL), freshness and
+    coverage. Short TTL so a provider going down shows up quickly."""
+    import earnings_data_health as dh
+
+    pf = "final" if profile == "final" else "default"
+    return swr.serve(f"earn:health:{pf}:{symbol.upper()}",
+                     lambda: dh.health(symbol, pf),
+                     market.session_ttl(60, 300))
+
+
 @router.get("/earnings/equity/{symbol}")
 def earnings_equity(symbol: str, profile: str = "default") -> dict:
     """Engine 1: the 100-point Equity Earnings analysis."""

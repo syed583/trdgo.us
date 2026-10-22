@@ -175,6 +175,45 @@
 .ets-note { font-size: 11px; color: var(--text-mute); text-align: center; margin-top: 14px;
   background: var(--panel-2); border-radius: var(--r); padding: 8px; }
 
+/* Data Health panel */
+.dh-wrap { padding: 4px 0 20px; }
+.dh-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.dh-cov { display: inline-flex; flex-direction: column; line-height: 1.25; padding: 6px 12px;
+  border-radius: var(--r); border: 1px solid var(--border); background: var(--panel-2); }
+.dh-cov-l { font-size: 10px; text-transform: uppercase; letter-spacing: .03em; color: var(--text-mute); }
+.dh-cov b { font-size: 17px; }
+.dh-cov.ok b { color: var(--green); } .dh-cov.warn b { color: var(--amber); } .dh-cov.bad b { color: var(--red); }
+.dh-insuff { font-size: 12px; font-weight: 700; color: var(--red); background: rgba(242,70,90,.12);
+  padding: 6px 10px; border-radius: var(--r); }
+.dh-panel { font-size: 11px; color: var(--text-mute); }
+.dh-prov { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.dh-badge { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); }
+.dh-badge.ok { color: var(--green); border-color: rgba(46,184,122,.4); background: rgba(46,184,122,.08); }
+.dh-badge.warn { color: var(--amber); border-color: rgba(217,164,65,.4); background: rgba(217,164,65,.08); }
+.dh-badge.bad { color: var(--red); border-color: rgba(242,70,90,.4); background: rgba(242,70,90,.08); }
+.dh-badge.muted { color: var(--text-mute); }
+.dh-tblwrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--r); }
+.dh-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.dh-tbl th { text-align: right; padding: 8px 10px; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .03em; color: var(--text-mute); border-bottom: 1px solid var(--border); white-space: nowrap; }
+.dh-tbl th.l { text-align: left; }
+.dh-tbl td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--border); vertical-align: top; }
+.dh-tbl td.l { text-align: left; }
+.dh-tbl tr:last-child td { border-bottom: none; }
+.dh-crit { background: rgba(127,127,127,.04); }
+.dh-mut { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.dh-ep { font-size: 10px; color: var(--text-mute); margin-top: 2px; }
+.dh-key { font-size: 9px; font-weight: 800; letter-spacing: .04em; margin-left: 6px; padding: 1px 5px;
+  border-radius: 999px; background: var(--panel-3, var(--panel-2)); color: var(--text-mute); vertical-align: middle; }
+.dh-stat { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.dh-stat.ok { color: var(--green); background: rgba(46,184,122,.14); }
+.dh-stat.warn { color: var(--amber); background: rgba(217,164,65,.14); }
+.dh-stat.bad { color: var(--red); background: rgba(242,70,90,.14); }
+.dh-stat.neutral { color: var(--text-dim); background: rgba(127,127,127,.12); }
+.dh-stat.muted { color: var(--text-mute); background: rgba(127,127,127,.08); }
+.dh-note { font-size: 11px; color: var(--text-mute); margin-top: 12px; background: var(--panel-2);
+  border-radius: var(--r); padding: 8px 10px; line-height: 1.5; }
+
 /* expected move */
 .ets-em { text-align: center; }
 .ets-em-big { font-size: 34px; font-weight: 800; color: var(--text); }
