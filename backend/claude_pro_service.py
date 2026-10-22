@@ -122,6 +122,9 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
     cut = cfg.V3_CUTOFFS
     signal = "BUY" if score >= cut["buy"] else "SELL" if score <= cut["sell"] else "NEUTRAL"
 
+    tier = None
+    if cl.low_data(cov_pct):           # below the minimum data coverage: no BUY/SELL
+        signal, tier = "LOW_DATA", "Low data"
     covered = sum(p["max"] for p in params if p["bias"] is not None)
     pos_w = sum(p["max"] for p in params if (p["bias"] or 0) > 0.05)
     neg_w = sum(p["max"] for p in params if (p["bias"] or 0) < -0.05)
@@ -146,7 +149,7 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
             "report_timing": row.get("time_label") or row.get("timing_label"),
             "prior_close": row.get("prior_close"), "market_cap": row.get("market_cap"),
             "sector": row.get("sector"),
-            "score": score, "signal": signal, "params": params,
+            "score": score, "signal": signal, "tier": tier, "params": params,
             "coverage": round(coverage * 100, 1), "agreement": round(agreement * 100, 1),
             "low_confidence": low_conf, **ms}
 

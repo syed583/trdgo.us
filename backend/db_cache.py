@@ -28,6 +28,17 @@ from sqlalchemy import text
 from database import SessionLocal
 
 
+def namespace() -> str:
+    """Key prefix that keeps environments' cache rows apart in the shared DB.
+
+    Production (APP_ENV=production, set in the VPS .env) keeps the bare keys it has
+    always used. Anything else -- a developer machine, CI, an unset variable -- is
+    "local:" so it can neither read nor overwrite what production cached. Fail-closed:
+    forgetting to set the variable isolates, it never shares."""
+    env = (os.environ.get("APP_ENV") or "").strip().lower()
+    return "" if env == "production" else "local:"
+
+
 def _disabled() -> bool:
     # Never touch the shared DB from the test suite: a test building a cached
     # value would otherwise write fixture data into the live cache.
@@ -83,7 +94,7 @@ def get(key: str) -> Optional[tuple[float, Any]]:
     try:
         row = db.execute(
             text("SELECT value, updated_at FROM swr_cache WHERE cache_key = :k"),
-            {"k": key}).first()
+            {"k": namespace() + key}).first()
         if not row:
             return None
         return float(row[1]), json.loads(row[0])
@@ -104,15 +115,16 @@ def get_many(keys: list[str]) -> dict[str, tuple[float, Any]]:
     ks = [k for k in (keys or []) if k]
     if not ks or _disabled() or not _ensure_table():
         return out
+    ns = namespace()
     db = SessionLocal()
     try:
         rows = db.execute(
             text("SELECT cache_key, value, updated_at FROM swr_cache "
                  "WHERE cache_key = ANY(:ks)"),
-            {"ks": ks}).all()
+            {"ks": [ns + k for k in ks]}).all()
         for k, v, t in rows:
             try:
-                out[k] = (float(t), json.loads(v))
+                out[k[len(ns):]] = (float(t), json.loads(v))
             except Exception:  # noqa: BLE001 - skip a single corrupt row
                 pass
     except Exception:  # noqa: BLE001 - a read miss is just a miss
@@ -152,5 +164,5 @@ def put(key: str, value: Any) -> None:
     if isinstance(value, dict) and value.get("status") in _SKIP_STATUS:
         return
     when = time.time()
-    threading.Thread(target=_write, args=(key, value, when),
+    threading.Thread(target=_write, args=(namespace() + key, value, when),
                      daemon=True, name="dbcache-put").start()

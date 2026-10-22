@@ -54,20 +54,23 @@ def market_bias() -> Optional[float]:
 
 
 def vix_level() -> Optional[tuple[float, str]]:
-    """(value, source). The VIX index itself is not served by the current Unusual
-    Whales / Finnhub plans (UW 422 cboe_index_access_missing, Finnhub needs an index
-    subscription), so the real fallback is the VIXY ETF: its 5-session change is the
-    regime reading. Returns None when neither is available."""
+    """(value, source). Primary: the real VIX index from IBKR (ibkr_vix, read-only).
+    Fallback, clearly labelled: the VIXY ETF's 5-session change %, because neither
+    Unusual Whales nor Finnhub serves the VIX index on the current plans. None when
+    nothing is available."""
+    try:
+        import ibkr_vix
+        v = ibkr_vix.get_vix()
+        if v:
+            return v["value"], v["source"]
+    except Exception:  # noqa: BLE001
+        pass
     try:
         import unusualwhales_service as uw
-        q = uw.get_quote("VIX") or uw.get_quote("^VIX") or {}
-        v = cl._f(q.get("price"))
-        if v is not None:
-            return v, "VIX index"
         bars = uw.get_daily_bars("VIXY", "1 M") or []
         closes = [cl._f(b.get("close")) for b in bars if cl._f(b.get("close")) is not None]
         if len(closes) >= 6:
-            return (closes[-1] / closes[-6] - 1.0) * 100.0, "VIXY 5-session change %"
+            return (closes[-1] / closes[-6] - 1.0) * 100.0, "VIXY 5-session change % (fallback)"
     except Exception:  # noqa: BLE001
         pass
     return None
@@ -78,7 +81,7 @@ def _vix_regime() -> Optional[float]:
     if lv is None:
         return None
     v, src = lv
-    if src == "VIX index":
+    if src == "IBKR VIX index":
         return cl._clamp((18.0 - v) / 10.0)      # <15 calm (+), >25 fear (-)
     return cl._clamp(-v / 10.0)                  # VIXY up 10% in 5 sessions = full fear
 
@@ -157,6 +160,8 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
     if raw_signal != "NEUTRAL" and (aligned < 3 or opt_against):
         signal, tier = "NEUTRAL", "NEUTRAL"
 
+    if cl.low_data(cov_pct):           # below the minimum data coverage: no BUY/SELL
+        signal, tier = "LOW_DATA", "Low data"
     covered = sum(p["max"] for p in params if p["bias"] is not None)
     pos_w = sum(p["max"] for p in params if (p["bias"] or 0) > 0.05)
     neg_w = sum(p["max"] for p in params if (p["bias"] or 0) < -0.05)

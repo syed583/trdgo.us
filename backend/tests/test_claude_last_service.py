@@ -31,7 +31,8 @@ def test_no_data_parameters_are_excluded_and_rescaled():
     eps = next(p for p in res["params"] if p["name"] == "eps_estimates")
     assert res["score"] == 100.0 and eps["max"] == 100.0       # only EPS present -> rescaled to 100
     assert next(p for p in res["params"] if p["name"] == "revenue_estimates")["points"] is None
-    assert res["coverage"] == 15.0                             # 15 of 100 weight present
+    assert abs(res["coverage"] - 15.3) < 0.1                   # 15 of 98 weight (timing is label-only)
+    assert res["signal"] == "LOW_DATA" and res["tier"] == "Low data"   # coverage < 70%
 
 
 def test_empty_analysis_raises_instead_of_scoring_neutral():
@@ -40,13 +41,18 @@ def test_empty_analysis_raises_instead_of_scoring_neutral():
         v3.score_one("X", _eq({}), None, {})
 
 
-def test_calendar_timing_is_scored_from_bmo_amc():
-    row = {"report_time": "premarket", "date": "2026-10-21"}      # Wed BMO -> full trust
+def test_calendar_timing_is_label_only():
+    row = {"report_time": "premarket", "date": "2026-10-21"}
     res = v3.score_one("T", _eq(_BULL, {"funding_activity": 1.0}), None, row)
     t = next(p for p in res["params"] if p["name"] == "calendar_timing")
-    assert t["bias"] == 1.0 and t["points"] is not None
-    none = v3.score_one("T", _eq(_BULL, {"funding_activity": 1.0}), None, {})
-    assert next(p for p in none["params"] if p["name"] == "calendar_timing")["points"] is None
+    assert t["label_only"] is True and t["points"] is None and t["timing_label"] == "BMO Wed"
+    base = v3.score_one("T", _eq(_BULL, {"funding_activity": 1.0}), None, {})
+    assert res["score"] == base["score"] and res["coverage"] == base["coverage"]   # no effect on score
+
+
+def test_low_data_below_minimum_coverage():
+    import claude_last_service as c
+    assert c.low_data(69.9) and not c.low_data(70.0)
 
 
 def test_strong_bullish_is_buy():

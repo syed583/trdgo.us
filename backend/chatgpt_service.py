@@ -91,6 +91,8 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
         tier, signal = "SELL", "SELL"
     else:
         tier, signal = "STRONG SELL", "SELL"
+    if cl.low_data(cov_pct):           # below the minimum data coverage: no BUY/SELL
+        signal, tier = "LOW_DATA", "Low data"
     direction = tier
 
     covered = sum(p["max"] for p in params if p["bias"] is not None)

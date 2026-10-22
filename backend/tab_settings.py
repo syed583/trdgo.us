@@ -330,3 +330,13 @@ PED_WEIGHTS: dict[str, int] = {
 }
 PED_OPTIONS_SPLIT: dict[str, int] = {"disparity_skew": 7, "flow_oi": 6, "unusual": 3}  # sum 16
 PED_CUTOFFS: dict[str, int] = {"buy": 65, "sell": 35}
+
+
+# Minimum data coverage for a directional call. Below this, a model shows "Low data"
+# instead of BUY/SELL (earnings tabs + Pre-Earnings Direction).
+MIN_COVERAGE_PCT: float = 70.0
+
+# Calendar timing (BMO/AMC, weekday) is shown as a label only until a backtest
+# justifies a weight: every multiplier is 1.0 and the parameter is not scored.
+TIMING_SCORED: bool = False
+TIMING_MULT: dict[str, float] = {"bmo": 1.0, "amc": 1.0, "tue_thu": 1.0, "mon_fri": 1.0}

@@ -77,6 +77,26 @@ def _pts(weight: float, bias: Optional[float]) -> float:
     return weight * (0.5 + 0.5 * _clamp(bias))
 
 
+def low_data(cov_pct: float) -> bool:
+    """True when too little of the model's weight has data for a directional call."""
+    return cov_pct < cfg.MIN_COVERAGE_PCT
+
+
+def timing_label(row: Optional[dict]) -> Optional[str]:
+    """'BMO' / 'AMC' (+ weekday of the report date) for display, or None."""
+    row = row or {}
+    raw = str(row.get("report_time") or row.get("short_label") or row.get("time_label") or "").lower()
+    kind = "BMO" if ("pre" in raw or "bmo" in raw or "before" in raw) else \
+        "AMC" if ("post" in raw or "amc" in raw or "after" in raw) else None
+    if kind is None:
+        return None
+    try:
+        d = datetime.fromisoformat(str(row.get("date"))[:10]).date()
+        return f"{kind} {d.strftime('%a')}"
+    except Exception:  # noqa: BLE001
+        return kind
+
+
 def timing_bias(row: Optional[dict], lean: Optional[float]) -> Optional[float]:
     """Calendar timing (BMO/AMC + weekday of the reaction session) as a scored input.
 
@@ -89,9 +109,9 @@ def timing_bias(row: Optional[dict], lean: Optional[float]) -> Optional[float]:
     row = row or {}
     raw = str(row.get("report_time") or row.get("short_label") or row.get("time_label") or "").lower()
     if "pre" in raw or "bmo" in raw or "before" in raw:
-        q_t, amc = 1.0, False
+        q_t, amc = cfg.TIMING_MULT["bmo"], False
     elif "post" in raw or "amc" in raw or "after" in raw:
-        q_t, amc = 0.8, True
+        q_t, amc = cfg.TIMING_MULT["amc"], True
     else:
         return None
     try:
@@ -100,7 +120,7 @@ def timing_bias(row: Optional[dict], lean: Optional[float]) -> Optional[float]:
         return None
     if amc:                                   # reaction session = next trading day
         d = d + timedelta(days=3 if d.weekday() == 4 else 1)
-    q = q_t * (1.0 if d.weekday() in (1, 2, 3) else 0.6)
+    q = q_t * (cfg.TIMING_MULT["tue_thu"] if d.weekday() in (1, 2, 3) else cfg.TIMING_MULT["mon_fri"])
     if lean is None or abs(lean) < 0.05:
         return 0.0
     return _quant((1 if lean > 0 else -1) * q)
@@ -116,6 +136,17 @@ def finalize(leaves: list[dict], timing: Optional[dict] = None,
     weight, `base_max` keeps the model's own). Returns (score, coverage_pct) where
     coverage_pct = present weight / total weight. Raises ValueError if nothing has
     data (callers' scan() treats that as PENDING)."""
+    if timing is not None and not cfg.TIMING_SCORED:
+        # Label only: shown, never scored, and its weight leaves the denominator so
+        # it neither moves the score nor lowers Data coverage.
+        timing["label_only"] = True
+        timing["bias"] = None
+        timing["timing_label"] = timing_label(row)
+        leaves = [p for p in leaves if p is not timing]
+        timing["points"] = None
+        timing["excluded"] = True
+        timing["base_max"] = timing["max"]
+        timing = None
     total = sum(float(p["max"]) for p in leaves) or 100.0
     if timing is not None and timing.get("bias") is None:
         lean_w = [(p["bias"], float(p["max"])) for p in leaves
@@ -359,6 +390,10 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
     # Implied-Move gate (spec §3c / §5e): a NO-TRADE gate blocks the signal.
     signal = "NEUTRAL" if (raw_signal != "NEUTRAL" and im.get("gate") == "no_trade") else raw_signal
 
+    tier = None
+    if low_data(cov_pct):           # below the minimum data coverage: no BUY/SELL
+        signal, tier = "LOW_DATA", "Low data"
+        raw_signal = "LOW_DATA"
     # Confidence meter: coverage = weight with real data / 100; agreement =
     # covered weight leaning the signal's side / covered weight.
     covered = 0.0
@@ -393,7 +428,8 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
             "report_timing": row.get("time_label") or row.get("timing_label"),
             "prior_close": row.get("prior_close"), "market_cap": row.get("market_cap"),
             "sector": row.get("sector"),
-            "score": score, "signal": signal, "raw_signal": raw_signal, "params": params,
+            "score": score, "signal": signal, "raw_signal": raw_signal, "tier": tier,
+            "params": params,
             "coverage": round(coverage * 100, 1), "agreement": round(agreement * 100, 1),
             "low_confidence": low_conf,
             # Implied-Move gate (spec §3): size/no-trade overlay on top of the score.

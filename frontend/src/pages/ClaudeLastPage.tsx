@@ -226,7 +226,7 @@ export const GROK_MODEL: DirModelCfg = {
 };
 
 const sigTier = (sig: string) =>
-  sig === 'BUY' ? 'buy' : sig === 'SELL' ? 'sell' : sig === 'PENDING' ? 'none' : 'neutral';
+  sig === 'BUY' ? 'buy' : sig === 'SELL' ? 'sell' : (sig === 'PENDING' || sig === 'LOW_DATA') ? 'none' : 'neutral';
 
 const fmtCap = (v: number) => {
   if (!v) return '';
@@ -328,7 +328,7 @@ export default function ClaudeLastPage({ ctx, base, pz = false, model }:
                 const pending = r.score == null;
                 // Colour by the SCORE band (raw signal) so a gated name still shows
                 // its BUY/SELL colour; the NO-TRADE banner below flags the gate.
-                const t = sigTier(r.raw_signal || r.signal);
+                const t = sigTier(r.signal);
                 return (
                   <div key={r.symbol} className="ue-cardwrap">
                     <button className={`ue-row sig-${t}`}

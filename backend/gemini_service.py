@@ -140,6 +140,8 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
     if tier == "SPECULATIVE BUY" and bq.get("iv_crush") is not None and bq["iv_crush"] <= 0:
         tier, signal = "NEUTRAL", "NEUTRAL"
 
+    if cl.low_data(cov_pct):           # below the minimum data coverage: no BUY/SELL
+        signal, tier = "LOW_DATA", "Low data"
     covered = sum(p["max"] for p in params if p["bias"] is not None)
     pos_w = sum(p["max"] for p in params if (p["bias"] or 0) > 0.05)
     neg_w = sum(p["max"] for p in params if (p["bias"] or 0) < -0.05)

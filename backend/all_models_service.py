@@ -1,170 +1,142 @@
-"""All-in-One -- every pre-earnings model's call for each upcoming name, in one
-matrix (Excel-style). Rows = stocks reporting soon; columns = the models; each
-cell = that model's signal (BUY/SELL/NEUTRAL) + score. A cell is flagged
-`changed` when its signal differs from the previous scan, so status changes stand
-out.
+"""All-in-One -- every earnings model's live call for each upcoming name, one row per
+stock, one column per model.
 
-All models read the same warmed caches (earn:equity signals + earn:trade), so the
-whole matrix is built in one pass with no extra per-name API calls.
+NO separate calculation: each cell is read straight from that model's own tab scan,
+through the SAME swr cache key and the SAME scan() function the tab's route uses. So
+a cell can only differ from its tab if the tab itself changed between two reads.
+
+Cell = {signal, score, coverage, tier}; signal is exactly the tab's signal
+(BUY / SELL / NEUTRAL / LOW_DATA) or PENDING when the model has not scored the name.
+A cell is flagged `changed` when its signal differs from the previous scan.
 """
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Optional
-
-import claude_last_service as cl
-import grok_service as gk
-import meta_service as mt
-import chatgpt_service as cg
-import kimi_service as ki
-import gemini_service as gm
-import claude_pro_service as cp
+from typing import Callable, Optional
 
 SOURCE = "All-in-One — every model, one sheet"
 
-# Column order + display labels (the owner's list).
+# Column order + the EXACT tab names used in the sidebar.
 MODELS = [
-    ("claude_p0", "Claude +0"),
-    ("claude_pm", "Claude +-"),
-    ("claude_new", "Claude New"),
-    ("claude_new_pz", "Claude New +0"),
-    ("grok", "Grok"),
-    ("meta", "Meta"),
-    ("chatgpt", "ChatGPT"),
-    ("kimi", "Kimi"),
-    ("gemini", "Gemini"),
+    ("claude", "Claude"),
     ("claude_pro", "Claude Pro"),
+    ("gemini", "Gemini"),
+    ("grok", "Grok"),
+    ("chatgpt", "ChatGPT"),
+    ("meta", "Meta"),
+    ("kimi", "Kimi"),
+    ("ped", "Pre-Earnings Direction"),
 ]
 
+# model id -> (tab swr key template, scan callable) -- identical to api_routes.py.
+def _sources() -> dict[str, tuple[str, Callable[[int], dict]]]:
+    import claude_last_service as v3
+    import claude_pro_service as cp
+    import gemini_service as gm
+    import grok_service as gk
+    import chatgpt_service as cg
+    import meta_service as mt
+    import kimi_service as ki
+    import pre_earnings_direction_service as ped
+    return {
+        "claude": ("v3:scan:v2:{d}", v3.scan),
+        "claude_pro": ("claudepro:scan:{d}", cp.scan),
+        "gemini": ("gemini:scan:{d}", gm.scan),
+        "grok": ("grok:scan:{d}", gk.scan),
+        "chatgpt": ("chatgpt:scan:{d}", cg.scan),
+        "meta": ("meta:scan:{d}", mt.scan),
+        "kimi": ("kimi:scan:{d}", ki.scan),
+        "ped": ("ped:scan:{d}", ped.scan),
+    }
 
-def _dir(decision: Optional[str]) -> str:
-    """Map a trade-engine decision to BUY/SELL/NEUTRAL."""
-    d = (decision or "").upper()
-    if d in ("BUY", "STRONG BUY", "LONG"):
-        return "BUY"
-    if d in ("SELL", "STRONG SELL", "SHORT"):
-        return "SELL"
-    return "NEUTRAL"
+
+# model_predictions overlay uses the older model ids.
+_OVERLAY_ID = {"claude": "claude_new"}
 
 
-def _cell(signal: Optional[str], score) -> dict:
-    return {"signal": signal, "score": (round(score, 1) if isinstance(score, (int, float)) else None)}
+def _cell(r: Optional[dict]) -> dict:
+    if not r or r.get("score") is None or r.get("signal") in (None, "PENDING"):
+        return {"signal": "PENDING", "score": None, "coverage": None, "tier": None}
+    sc = r.get("score")
+    return {"signal": r.get("signal"),
+            "score": round(sc, 1) if isinstance(sc, (int, float)) else None,
+            "coverage": r.get("coverage"), "tier": r.get("tier")}
 
 
-def _row_cells(sym: str, eq: dict, trade: dict, mkt: Optional[float]) -> dict:
-    cells: dict[str, dict] = {}
-    tr = trade or {}
-    # Claude +0 / +- colour from the SAME source as their tab cards -- the warmed
-    # earnings-equity analysis (earn:equity), NOT the trade engine. Matching the
-    # two list components exactly:
-    #   Claude +0  (UpcomingEarnings.tierClass): strictly by the 0-100 equity
-    #              SCORE band -- BUY >= 55, SELL <= 45, else NEUTRAL; before the
-    #              score is known, fall back to the raw decision.
-    #   Claude +-  (UpcomingEarningsClaude.sigClass): the raw equity DECISION
-    #              bucket -- BUY if the decision says BUY, SELL if SELL, else NEUTRAL.
-    eqscore = cl._f(eq.get("score"))
-    eqdec = (eq.get("decision") or "").upper()
-    dec_sig = ("BUY" if "BUY" in eqdec else "SELL" if "SELL" in eqdec
-               else "NEUTRAL") if eqdec else None
+def _et(epoch: Optional[float]) -> Optional[str]:
+    if not epoch:
+        return None
+    try:
+        from zoneinfo import ZoneInfo
+        d = datetime.fromtimestamp(epoch, ZoneInfo("America/New_York"))
+        return d.strftime("%b %d, %I:%M %p ET").replace(" 0", " ")
+    except Exception:  # noqa: BLE001
+        return None
 
-    if eqscore is not None:
-        p0 = "BUY" if eqscore >= 55 else "SELL" if eqscore <= 45 else "NEUTRAL"
-    else:
-        p0 = dec_sig
-    cells["claude_p0"] = _cell(p0, eqscore)
-    cells["claude_pm"] = _cell(dec_sig, eqscore)
 
-    # The seven shared-framework direction models. `raw` uses the score-based
-    # signal (raw_signal) when present, which is what the card actually shows --
-    # Claude New colours its card by score, not by the Implied-Move-gated signal.
-    def safe(fn, raw: bool = False):
-        try:
-            r = fn()
-            sig = (r.get("raw_signal") if raw else None) or r.get("signal")
-            return _cell(sig, r.get("score"))
-        except Exception:  # noqa: BLE001
-            return _cell(None, None)
-
-    cn = safe(lambda: cl.score_one(sym, eq, tr, {}), raw=True)
-    cells["claude_new"] = cn
-    cells["claude_new_pz"] = dict(cn)   # same engine as Claude New
-    # Analyst inputs: enable ONLY where the factor's source is the correct one.
-    # grok/chatgpt `analyst_dispersion` is defined as analyst recommendation
-    # consensus (gk._analyst_bias, Finnhub) -- its intended source -> enable.
-    # kimi `price_target` and claude_pro `estimate_dispersion` would be fed the
-    # same recommendation counts, which is NOT a price target / estimate spread,
-    # so they stay OFF (no-data) until sourced correctly. Served from the warmed
-    # 6h analyst cache; a miss returns None (no fabrication), never a fake value.
-    cells["grok"] = safe(lambda: gk.score_one(sym, eq, tr, {}, with_analyst=True))
-    cells["meta"] = safe(lambda: mt.score_one(sym, eq, tr, {}))
-    cells["chatgpt"] = safe(lambda: cg.score_one(sym, eq, tr, {}, with_analyst=True))
-    cells["kimi"] = safe(lambda: ki.score_one(sym, eq, tr, {}, with_analyst=False, mkt=mkt))
-    cells["gemini"] = safe(lambda: gm.score_one(sym, eq, tr, {}))
-    cells["claude_pro"] = safe(lambda: cp.score_one(sym, eq, tr, {}, with_analyst=False, mkt=mkt))
-    return cells
+def tab_scan(model: str, d: int) -> tuple[dict, Optional[float]]:
+    """(scan result, time it was built) exactly as the model's own tab sees it."""
+    import swr
+    key_t, fn = _sources()[model]
+    key = key_t.format(d=d)
+    res = swr.serve(key, lambda: fn(d), 90.0) or {}
+    return res, swr.held_at(key)
 
 
 def scan(days: int = 15) -> dict:
     import swr
-    import uw_earnings_calendar as calmod
 
-    rows = (calmod.calendar(days=days) or {}).get("rows") or []
-    seen: set[str] = set()
-    uniq: list[dict] = []
-    for r in rows:
-        s = (r.get("symbol") or "").upper()
-        if s and s not in seen:
-            seen.add(s)
-            uniq.append(r)
-    eqs = swr.peek_many([f"earn:equity:{s}" for s in seen])
-    trades = swr.peek_many([f"earn:trade:default:{s}" for s in seen])
-    mkt = ki.market_bias()
+    per: dict[str, dict[str, dict]] = {}
+    when: dict[str, Optional[float]] = {}
+    meta: dict[str, dict] = {}
+    for model, _ in MODELS:
+        try:
+            res, at = tab_scan(model, days)
+        except Exception:  # noqa: BLE001
+            res, at = {}, None
+        when[model] = at
+        rows = {}
+        for r in res.get("rows") or []:
+            s = (r.get("symbol") or "").upper()
+            if s:
+                rows[s] = r
+                meta.setdefault(s, r)
+        per[model] = rows
+
+    prev = swr.peek("allmodels:last") or {}
     try:
         import finviz_service as fv
         fmap = fv.earnings_map()
     except Exception:  # noqa: BLE001
         fmap = {}
-    prev = swr.peek("allmodels:last") or {}
-
-    def _days_to(r: dict):
-        d = r.get("date")
-        if not d:
-            return None
-        try:
-            return (datetime.fromisoformat(str(d)[:10]).date() - date.today()).days
-        except Exception:  # noqa: BLE001
-            return None
 
     out: list[dict] = []
     snapshot: dict[str, dict] = {}
-    scored = 0
-    for r in uniq:
-        s = r["symbol"].upper()
-        eq = eqs.get(f"earn:equity:{s}")
-        trade = trades.get(f"earn:trade:default:{s}")
-        if not (eq and eq.get("params")):
-            continue   # only show names we can actually score across the models
-        cells = _row_cells(s, eq, trade or {}, mkt)
-        scored += 1
-        # Flag status changes vs the previous scan.
+    for s, m in meta.items():
+        cells = {k: _cell(per[k].get(s)) for k, _ in MODELS}
         psig = prev.get(s) or {}
         changed_any = False
         for k, c in cells.items():
             last = psig.get(k)
-            c["changed"] = bool(last and c.get("signal") and last != c["signal"])
+            c["changed"] = bool(last and c["signal"] not in ("PENDING",) and last != c["signal"])
             changed_any = changed_any or c["changed"]
-        snapshot[s] = {k: c.get("signal") for k, c in cells.items()}
-        row = {"symbol": s, "company": r.get("company"), "date": r.get("date"),
-               "date_label": r.get("date_label"), "days_to": _days_to(r),
-               "report_timing": r.get("time_label") or r.get("timing_label"),
-               "sector": r.get("sector"), "cells": cells, "changed": changed_any}
+        snapshot[s] = {k: c["signal"] for k, c in cells.items()}
+        buy = sum(1 for c in cells.values() if c["signal"] == "BUY")
+        sell = sum(1 for c in cells.values() if c["signal"] == "SELL")
+        # Row freshness: the OLDEST scan feeding a scored cell (conservative).
+        stamps = [when[k] for k, c in cells.items() if c["signal"] != "PENDING" and when.get(k)]
+        upd = min(stamps) if stamps else None
+        row = {"symbol": s, "company": m.get("company"), "date": m.get("date"),
+               "date_label": m.get("date_label"), "days_to": m.get("days_to"),
+               "report_timing": m.get("report_timing") or m.get("time_label"),
+               "sector": m.get("sector"), "cells": cells, "changed": changed_any,
+               "consensus": {"buy": buy, "sell": sell, "text": f"{buy} BUY · {sell} SELL"},
+               "updated_at": upd, "updated_et": _et(upd)}
         fvi = fmap.get(s)
         if fvi and fvi.get("time") and str(fvi.get("date"))[:10] == str(row.get("date"))[:10]:
             row["report_clock"] = fvi["time"]
         out.append(row)
 
-    # Remember this scan's signals (in-process) so the next scan can diff against
-    # it and flag status changes.
     try:
         swr._values["allmodels:last"] = (__import__("time").time(), snapshot)
     except Exception:  # noqa: BLE001
@@ -172,28 +144,29 @@ def scan(days: int = 15) -> dict:
 
     out.sort(key=lambda r: (r["date"] or "￿", r["symbol"]))
 
-    # Historical overlay (req 2): attach each model's verified directional
-    # accuracy, each company's last real post-earnings move, and each model's
-    # previous call on that company -- all from stored graded predictions, no
-    # extra API calls and no model recomputation.
+    # Historical overlay: each model's verified accuracy, each company's last real
+    # post-earnings move, and each model's previous call -- stored predictions only.
     model_stats: dict = {}
     try:
         import model_prediction_service as mp
         ov = mp.overlay([r["symbol"] for r in out])
-        model_stats = ov.get("model_stats", {})
-        prev = ov.get("prev", {})
+        stats = ov.get("model_stats", {})
+        pv = ov.get("prev", {})
         last_move = ov.get("last_move", {})
+        for k, _ in MODELS:
+            if stats.get(_OVERLAY_ID.get(k, k)):
+                model_stats[k] = stats[_OVERLAY_ID.get(k, k)]
         for row in out:
-            sym = row["symbol"]
-            lm = last_move.get(sym)
+            lm = last_move.get(row["symbol"])
             if lm:
                 row["last_move"] = lm
             for mdl, cell in row["cells"].items():
-                p = (prev.get(mdl) or {}).get(sym)
+                p = (pv.get(_OVERLAY_ID.get(mdl, mdl)) or {}).get(row["symbol"])
                 if p:
                     cell["prev"] = p
     except Exception:  # noqa: BLE001
         pass
 
+    scored = sum(1 for r in out if any(c["signal"] != "PENDING" for c in r["cells"].values()))
     return {"status": "OK", "source": SOURCE, "models": MODELS, "rows": out,
-            "model_stats": model_stats, "universe": len(seen), "scored": scored}
+            "model_stats": model_stats, "universe": len(meta), "scored": scored}

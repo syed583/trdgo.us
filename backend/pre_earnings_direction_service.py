@@ -25,6 +25,9 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional
 
+import os
+import threading
+
 import tab_settings as cfg
 import claude_last_service as _cl
 
@@ -176,6 +179,9 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
     cut = cfg.PED_CUTOFFS
     signal = "BUY" if score >= cut["buy"] else "SELL" if score <= cut["sell"] else "NEUTRAL"
 
+    tier = None
+    if _cl.low_data(cov_pct):           # below the minimum data coverage: no BUY/SELL
+        signal, tier = "LOW_DATA", "Low data"
     days_to = None
     d = row.get("date")
     if d:
@@ -189,7 +195,7 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
             "time_label": row.get("short_label"), "days_to": days_to,
             "prior_close": row.get("prior_close"), "market_cap": row.get("market_cap"),
             "sector": row.get("sector"),
-            "score": score, "signal": signal, "params": params,
+            "score": score, "signal": signal, "tier": tier, "params": params,
             "raw_total": raw, "max_total": max_total, "coverage": cov_pct}
 
 
@@ -240,10 +246,11 @@ def scan(days: int = 15) -> dict:
                    "score": None, "signal": "PENDING", "params": []}
         out.append(res)
     out.sort(key=lambda x: (x["score"] if x["score"] is not None else -1), reverse=True)
-    try:
-        _log_scores([x for x in out if x["score"] is not None])
-    except Exception:  # noqa: BLE001
-        pass
+    # The daily score log lives in the shared database, so only production writes it
+    # (a local run must not write production data), and off the scan's critical path.
+    if (os.environ.get("APP_ENV") or "").strip().lower() == "production":
+        threading.Thread(target=lambda: _log_scores([x for x in out if x["score"] is not None]),
+                         daemon=True, name="ped-score-log").start()
     return {"status": "OK", "source": SOURCE, "rows": out,
             "universe": len(seen), "scored": scored, "missing": missing[:60]}
 
@@ -276,15 +283,16 @@ def _log_scores(rows: list[dict]) -> int:
             db.commit()
             _log_ready = True
         today = date.today().isoformat()
-        for r in rows:
-            db.execute(text(
-                "INSERT INTO ped_scores (symbol, snapshot_date, score, signal, earnings_date)"
-                " VALUES (:s, :d, :sc, :sg, :ed)"
-                " ON CONFLICT (symbol, snapshot_date) DO UPDATE SET"
-                " score = EXCLUDED.score, signal = EXCLUDED.signal,"
-                " earnings_date = EXCLUDED.earnings_date"),
-                {"s": r["symbol"], "d": today, "sc": r.get("score"),
-                 "sg": r.get("signal"), "ed": str(r.get("date"))[:10] if r.get("date") else None})
+        # ONE batched statement (executemany), not a round trip per row.
+        db.execute(text(
+            "INSERT INTO ped_scores (symbol, snapshot_date, score, signal, earnings_date)"
+            " VALUES (:s, :d, :sc, :sg, :ed)"
+            " ON CONFLICT (symbol, snapshot_date) DO UPDATE SET"
+            " score = EXCLUDED.score, signal = EXCLUDED.signal,"
+            " earnings_date = EXCLUDED.earnings_date"),
+            [{"s": r["symbol"], "d": today, "sc": r.get("score"),
+              "sg": r.get("signal"),
+              "ed": str(r.get("date"))[:10] if r.get("date") else None} for r in rows])
         db.commit()
         return len(rows)
     except Exception:  # noqa: BLE001

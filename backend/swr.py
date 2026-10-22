@@ -18,7 +18,7 @@ from __future__ import annotations
 import os
 import threading
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 import singleflight
 
@@ -187,6 +187,22 @@ def peek(key: str) -> Any:
             stored = None
         if stored is not None:
             return stored[1]
+    return None
+
+
+def held_at(key: str) -> Optional[float]:
+    """Epoch seconds when the held value for ``key`` was built (in-process, else DB)."""
+    with _lock:
+        held = _values.get(key)
+    if held is not None:
+        return held[0]
+    if db_cache is not None:
+        try:
+            stored = db_cache.get(key)
+        except Exception:  # noqa: BLE001
+            stored = None
+        if stored is not None:
+            return stored[0]
     return None
 
 

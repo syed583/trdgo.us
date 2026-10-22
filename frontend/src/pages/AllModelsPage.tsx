@@ -11,9 +11,10 @@ import './all-models.css';
 // that model's signal + score, with changed cells highlighted.
 
 const tier = (sig?: string) =>
-  sig === 'BUY' ? 'b' : sig === 'SELL' ? 's' : sig === 'NEUTRAL' ? 'n' : 'x';
+  sig === 'BUY' ? 'b' : sig === 'SELL' ? 's' : sig === 'NEUTRAL' ? 'n' : sig === 'LOW_DATA' ? 'l' : 'x';
 const letter = (sig?: string) =>
-  sig === 'BUY' ? 'B' : sig === 'SELL' ? 'S' : sig === 'NEUTRAL' ? '–' : '·';
+  sig === 'BUY' ? 'BUY' : sig === 'SELL' ? 'SELL' : sig === 'NEUTRAL' ? 'NEUTRAL'
+    : sig === 'LOW_DATA' ? 'Low data' : 'Pending';
 
 const signedPct = (v: any) =>
   v == null ? null : `${v > 0 ? '+' : ''}${Number(v).toFixed(1)}%`;
@@ -83,8 +84,9 @@ export default function AllModelsPage({ ctx }: { ctx: PageContext }) {
     <div className="page am-page">
       <div className="ts-head">
         <h1><Grid3x3 size={20} /> All Models · One Sheet</h1>
-        <p>Every pre-earnings model's call for each upcoming name, side by side.
-          Green = BUY, red = SELL, amber = NEUTRAL. A ringed cell changed since the last scan.
+        <p>Every earnings model's live call for each upcoming name, read straight from that model's own tab
+          (signal · score · data coverage). Green = BUY, red = SELL, amber = NEUTRAL, grey = Low data / Pending.
+          A ringed cell changed since the last scan.
           Click a column header to sort; click a ticker for its detail.</p>
       </div>
 
@@ -103,7 +105,7 @@ export default function AllModelsPage({ ctx }: { ctx: PageContext }) {
           Changed only
         </label>
         <span className="am-legend">
-          <i className="b" /> Buy <i className="s" /> Sell <i className="n" /> Neutral
+          <i className="b" /> Buy <i className="s" /> Sell <i className="n" /> Neutral <i className="l" /> Low data
         </span>
         <span className="at-chip">{view.length}</span>
       </div>
@@ -120,7 +122,8 @@ export default function AllModelsPage({ ctx }: { ctx: PageContext }) {
                 <th className="am-sticky am-th-sym" onClick={() => sortBy('symbol')}>Ticker</th>
                 <th onClick={() => sortBy('date')}>Date</th>
                 <th title="The company's most recent real post-earnings move">Last move</th>
-                <th title="BUY vs SELL across models">Cons.</th>
+                <th title="BUY vs SELL across models">Consensus</th>
+                <th title="When the oldest scan feeding this row was built (US Eastern)">Last updated (ET)</th>
                 {models.map(([k, label]) => {
                   const st = modelStats[k] || {};
                   const acc = st.directional_accuracy;
@@ -152,8 +155,7 @@ export default function AllModelsPage({ ctx }: { ctx: PageContext }) {
                         : 'No recorded previous earnings move'}>
                       {r.last_move ? signedPct(r.last_move.move_pct) : '—'}</td>
                     <td className="am-cons" title={`${t.b} BUY vs ${t.s} SELL across ${models.length} models`}>
-                      <span className="am-cons-b">{t.b}</span>
-                      <span className="am-cons-s">{t.s}</span>
+                      <span className="am-cons-b">{r.consensus?.text ?? `${t.b} BUY · ${t.s} SELL`}</span>
                       {(() => {
                         const dirN = t.b + t.s;
                         if (!dirN) return <span className="am-cons-dir n">—</span>;
@@ -162,16 +164,19 @@ export default function AllModelsPage({ ctx }: { ctx: PageContext }) {
                         return <span className={`am-cons-dir ${dir === 'BUY' ? 'b' : 's'}`}>{dir} {pct}%</span>;
                       })()}
                     </td>
+                    <td className="am-date" title={r.updated_at ? new Date(r.updated_at * 1000).toISOString() : ''}>
+                      {r.updated_et || '—'}</td>
                     {models.map(([k]) => {
                       const c = r.cells?.[k] || {};
                       const p = c.prev;
                       return (
                         <td key={k} className={`am-cell ${tier(c.signal)} ${c.changed ? 'chg' : ''}`}
-                          title={`${c.signal || 'no data'}${c.score != null ? ` · ${c.score}` : ''}`
+                          title={`${c.signal || 'no data'}${c.score != null ? ` · ${c.score}` : ''}${c.coverage != null ? ` · coverage ${c.coverage}%` : ''}`
                             + (p ? `\nPrevious earnings call: ${p.signal} → actual ${signedPct(p.actual_move_pct)} (${p.result})`
                               : '\nNo recorded previous call')}>
                           <span className="am-l">{letter(c.signal)}</span>
                           <span className="am-sc">{c.score != null ? c.score : ''}</span>
+                          {c.coverage != null && <span className="am-cov">{c.coverage}%</span>}
                           {p && <span className={`am-prev ${p.result === 'CORRECT' ? 'ok' : 'no'}`}
                             title={`Previous: ${p.signal} → ${signedPct(p.actual_move_pct)} (${p.result})`}>
                             {p.result === 'CORRECT' ? '✓' : '✗'}</span>}
