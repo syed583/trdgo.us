@@ -82,6 +82,15 @@ export default function StrategyTradesPage() {
   const rows: any[] = needle ? allRows.filter((r) => (r.symbol || '').toUpperCase().includes(needle)) : allRows;
   const strategies: any[] = d?.strategies || [];
   const total = d?.total_profit ?? 0;
+  // Gross profit (winners) vs gross loss (losers) for the selected strategy.
+  const gross = useMemo(() => {
+    let p = 0, l = 0;
+    for (const r of allRows) {
+      const v = r.profit || 0;
+      if (v > 0) p += v; else if (v < 0) l += v;
+    }
+    return { p, l };
+  }, [allRows]);
 
   // Track what we've seen so we can detect NEW trades and OPEN->closed transitions.
   const seenRef = useRef<Map<number, string>>(new Map());
@@ -160,9 +169,10 @@ export default function StrategyTradesPage() {
       </div>
 
       <div className="st-bar">
-        <span className={`st-total ${total > 0 ? 'pos' : total < 0 ? 'neg' : ''}`}>
-          Profit <b>{money(total)}</b>
-        </span>
+        <span className="st-total pos"><span className="st-total-l">Profit</span><b>{money(gross.p)}</b></span>
+        <span className="st-total neg"><span className="st-total-l">Loss</span><b>{money(gross.l)}</b></span>
+        <span className={`st-total st-net ${total > 0 ? 'pos' : total < 0 ? 'neg' : ''}`}>
+          <span className="st-total-l">Total</span><b>{money(total)}</b></span>
         <label className="st-filter">Strategy
           <select value={strategy} onChange={(e) => setStrategy(e.target.value)}>
             <option value="all">All Strategies</option>

@@ -6,8 +6,13 @@
   font-size: 14px; padding: 6px 12px; border-radius: 8px;
   background: var(--card, #fff); border: 1px solid var(--border, #e5e7eb);
 }
+.st-total { display: inline-flex; flex-direction: column; line-height: 1.25; min-width: 92px; }
+.st-total-l { font-size: 11px; color: var(--muted, #6b7280); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
 .st-total b { font-size: 16px; }
 .st-total.pos b { color: #15803d; } .st-total.neg b { color: #b91c1c; }
+.st-total.pos { border-color: rgba(22,163,74,.35); }
+.st-total.neg { border-color: rgba(220,38,38,.35); }
+.st-net { border-width: 2px; }
 .st-filter { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted, #6b7280); }
 .st-filter select {
   padding: 6px 10px; border: 1px solid var(--border, #e5e7eb); border-radius: 8px;
