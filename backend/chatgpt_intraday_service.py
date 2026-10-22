@@ -28,13 +28,13 @@ SOURCE = "ChatGPT Intraday — 20-param institutional"
 PARAMS = [
     ("market_structure", "Market Structure (BOS/CHOCH, HH/HL)", 10, None),
     ("options_flow", "Institutional Options Flow (Sweeps+Prem)", 10, ("live", "flow")),
-    ("order_flow", "Order Flow (CVD/Footprint/Delta)", 9, None),
+    ("order_flow", "Order Flow (Net Premium / Delta)", 9, ("enrich", "order_flow")),
     ("vwap_ema", "VWAP, Anchored VWAP & EMA", 9, ("live", "vwap_pos")),
     ("liquidity_sweeps", "Liquidity Sweeps / Stop Hunts", 8, None),
     ("rvol", "Relative Volume (RVOL) & Acceleration", 8, ("live", "rvol")),
     ("rel_strength", "Market & Sector Relative Strength", 7, ("live", "rel_strength")),
     ("absorption", "Absorption / Icebergs / Replenishment", 6, None),
-    ("gamma", "Gamma Exposure & Dealer Positioning", 6, ("live", "levels")),
+    ("gamma", "Gamma Exposure & Dealer Positioning", 6, ("either", "levels", "gamma")),
     ("volume_profile", "Volume Profile (POC/VAH/VAL)", 5, None),
     ("supply_demand", "Supply/Demand Zones & Fair Value Gaps", 4, None),
     ("orb", "Opening Range Breakout / Breakdown", 4, ("live", "orb")),
@@ -45,27 +45,47 @@ PARAMS = [
     ("volatility", "Volatility Expansion / Compression", 1, None),
     ("oi_change", "Options OI Changes & Positioning", 1, ("eq", "daily_oi_change")),
     ("intermarket", "Intermarket Confirmation", 1, ("live", "market")),
-    ("breadth_mtf", "Market Breadth & Multi-Timeframe", 1, None),
+    ("breadth_mtf", "Market Breadth (Tape)", 1, ("mkt", "breadth")),
 ]
 
 
-def _score(symbol: str, s: dict, eq: Optional[dict]) -> dict:
+def _score(symbol: str, s: dict, eq: Optional[dict], enrich: Optional[dict] = None) -> dict:
     live = {p.get("name"): p for p in (s.get("params") or [])}
     sig = (eq or {}).get("signals") or {}
+    enrich = enrich or {}
+    # Cheap market-wide breadth (shared, cached) -- used on board and detail.
+    try:
+        import intraday_enrich as ie
+        mkt = {"breadth": ie.market_breadth_bias()}
+    except Exception:  # noqa: BLE001
+        mkt = {}
+
+    def _live_bias(name) -> Optional[float]:
+        p = live.get(name)
+        if not p or not p.get("has_data"):
+            return None
+        mx, v = p.get("max"), p.get("value")
+        return cl._clamp(v / mx) if (mx and v is not None) else None
 
     def _bias(source) -> Optional[float]:
         if not source:
             return None
-        kind, name = source
+        kind = source[0]
         if kind == "live":
-            p = live.get(name)
-            if not p or not p.get("has_data"):
-                return None
-            mx, v = p.get("max"), p.get("value")
-            return cl._clamp(v / mx) if (mx and v is not None) else None
+            return _live_bias(source[1])
         if kind == "eq":
-            v = sig.get(name)
+            v = sig.get(source[1])
             return cl._clamp(v) if v is not None else None
+        if kind == "mkt":
+            v = mkt.get(source[1])
+            return cl._clamp(v) if v is not None else None
+        if kind == "enrich":          # per-name (detail only)
+            v = enrich.get(source[1])
+            return cl._clamp(v) if v is not None else None
+        if kind == "either":          # live source on the board, enrich overrides on detail
+            _, livename, enrichname = source
+            e = enrich.get(enrichname)
+            return cl._clamp(e) if e is not None else _live_bias(livename)
         return None
 
     params: list[dict] = []
@@ -117,7 +137,16 @@ def score_one(symbol: str, fetch: bool = False) -> Optional[dict]:
             eq = eq_svc.get_analysis(sym)
         except Exception:  # noqa: BLE001
             eq = None
-    return _score(sym, s, eq)
+    # Per-name GEX + net-premium flow only on the single-stock detail view
+    # (fetch=True); the board (fetch=False) stays light to respect the UW limit.
+    enrich = None
+    if fetch:
+        try:
+            import intraday_enrich as ie
+            enrich = ie.enrich(sym)
+        except Exception:  # noqa: BLE001
+            enrich = None
+    return _score(sym, s, eq, enrich)
 
 
 def board() -> dict:

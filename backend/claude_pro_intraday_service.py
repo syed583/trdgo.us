@@ -39,9 +39,17 @@ BLOCKS = {
 }
 
 
-def score_from_model(symbol: str, s: dict) -> dict:
-    """Re-bucket an intraday_model.score() result into the 7 blocks."""
+def score_from_model(symbol: str, s: dict, enrich: Optional[dict] = None) -> dict:
+    """Score the V2 8-factor model from an intraday_model.score() result. `enrich`
+    (per-name GEX from the detail view) overrides gamma_levels when present; the
+    cheap market-wide breadth is folded into market_context on board and detail."""
     pmap = {p.get("name"): p for p in (s.get("params") or [])}
+    enrich = enrich or {}
+    try:
+        import intraday_enrich as ie
+        breadth = ie.market_breadth_bias()
+    except Exception:  # noqa: BLE001
+        breadth = None
 
     def _bias(name: str) -> Optional[float]:
         p = pmap.get(name)
@@ -53,15 +61,14 @@ def score_from_model(symbol: str, s: dict) -> dict:
             return None
         return cl._clamp(v / mx)      # intraday_model values are signed, scaled to max
 
-    gates = s.get("gates") or {}
     params: list[dict] = []
     for key, (label, weight, members) in BLOCKS.items():
-        if key == "liquidity":
-            g = gates.get("G7_liquidity")
-            b = 1.0 if g is True else -1.0 if g is False else None
-        else:
-            vals = [x for x in (_bias(m) for m in members) if x is not None]
-            b = (sum(vals) / len(vals)) if vals else None
+        vals = [x for x in (_bias(m) for m in members) if x is not None]
+        if key == "market_context" and breadth is not None:
+            vals.append(breadth)                       # A: market-wide tape breadth
+        b = (sum(vals) / len(vals)) if vals else None
+        if key == "gamma_levels" and enrich.get("gamma") is not None:
+            b = cl._clamp(enrich["gamma"])             # B: real dealer GEX flip (detail)
         qb = cl._quant(b)
         params.append({"name": key, "label": label, "max": weight,
                        "points": round(cl._pts(weight, qb), 2), "bias": qb})
@@ -105,7 +112,15 @@ def score_one(symbol: str, fetch: bool = False) -> Optional[dict]:
             s = None
     if not s:
         return None
-    return score_from_model(symbol, s)
+    # Per-name GEX only on the single-stock detail view (fetch=True).
+    enrich = None
+    if fetch:
+        try:
+            import intraday_enrich as ie
+            enrich = ie.enrich(symbol)
+        except Exception:  # noqa: BLE001
+            enrich = None
+    return score_from_model(symbol, s, enrich)
 
 
 def board() -> dict:
