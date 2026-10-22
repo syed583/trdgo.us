@@ -143,20 +143,25 @@ export const KIMI_MODEL: DirModelCfg = {
 
 // Gemini -- 90-Day Earnings Model, 6 weighted categories.
 const GEMINI_PARAMS: { key: string; label: string }[] = [
-  { key: 'fundamental_momentum', label: 'Fundamentals' },
-  { key: 'derivatives_flow', label: 'Derivatives' },
-  { key: 'volatility_edge', label: 'Vol Edge' },
-  { key: 'technical_structure', label: 'Technical' },
-  { key: 'institutional', label: 'Institutional' },
-  { key: 'peer_readthrough', label: 'Peers' },
+  { key: 'eps_revision', label: 'EPS Rev' },
+  { key: 'revenue_revision', label: 'Rev Rev' },
+  { key: 'earnings_quality', label: 'Quality' },
+  { key: 'price_rs', label: 'Price/RS' },
+  { key: 'sector_market', label: 'Sect/Mkt' },
+  { key: 'options_flow', label: 'Options' },
+  { key: 'iv_crush', label: 'IV Crush' },
+  { key: 'forward_guidance', label: 'Guid' },
+  { key: 'guidance_hit_rate', label: 'Hit-rate' },
+  { key: 'short_squeeze', label: 'Squeeze' },
+  { key: 'insider_buyback', label: 'Insider' },
 ];
 
 export const GEMINI_MODEL: DirModelCfg = {
   base: '/gemini',
-  title: 'Gemini · 90-Day Earnings Model · 6 categories',
-  subtitle: 'Category scoring matrix: Fundamental Momentum 25, Derivatives & Flow 20, Volatility '
-    + 'Edge 15, Technical Structure 15, Institutional Footprint 15, Cross-Asset Read-through 10. '
-    + 'Each category averages its sub-components. 100 pts. Each box is a stock reporting soon.',
+  title: 'Gemini · Anas Engine v2 · 11 parameters · 100 pts',
+  subtitle: 'EPS rev 12, Revenue 8, Quality 8, Price/RS 12, Sector/Mkt 8, Options 14, IV crush 8, '
+    + 'Guidance 8, Hit-rate 8, Squeeze 6, Insider 8. STRONG BUY ≥68 · SPEC BUY 58–67 · NOISE 43–57 · '
+    + 'SPEC SHORT 33–42 · STRONG SHORT ≤32. Quality and hit-rate have no data feed yet (neutral).',
   params: GEMINI_PARAMS,
   scan: (d, s) => api2.geminiScan(d, s),
 };

@@ -1,4 +1,4 @@
-"""Gemini -- 90-Day US Market Earnings Model (6 weighted categories).
+"""Gemini -- Anas Engine v2 (11 parameters, 100 pts; bands 68/58/43/33/32).
 
 Category-level scoring matrix from the spec: each category is the average of its
 sub-components (each a normalised -1..+1 directional bias), then weighted:
@@ -22,15 +22,20 @@ import tab_settings as cfg
 import claude_last_service as cl
 import meta_service as mt   # _implied_vs_hist_bias
 
-SOURCE = "Gemini — 90-Day Earnings Model (6 categories)"
+SOURCE = "Gemini — Anas Engine v2 (11 params)"
 
 _LABEL = {
-    "fundamental_momentum": "Fundamental Momentum",
-    "derivatives_flow": "Derivatives & Flow",
-    "volatility_edge": "Volatility Edge",
-    "technical_structure": "Technical Structure",
-    "institutional": "Institutional Footprint",
-    "peer_readthrough": "Cross-Asset Read-through",
+    "eps_revision": "EPS Revision Momentum",
+    "revenue_revision": "Revenue Revisions & Beat Trend",
+    "earnings_quality": "Earnings Quality (Sloan)",
+    "price_rs": "Price Action & Rel. Strength",
+    "sector_market": "Sector & Market Regime",
+    "options_flow": "Options Flow & Gamma Skew",
+    "iv_crush": "IV Crush & Expected Move",
+    "forward_guidance": "Forward Guidance Score",
+    "guidance_hit_rate": "Guidance Hit-Rate History",
+    "short_squeeze": "Short Interest Squeeze",
+    "insider_buyback": "Insider / Buyback Shield",
 }
 _ORDER = list(_LABEL.keys())
 
@@ -43,17 +48,23 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
     row = row or {}
     W = cfg.GEMINI_WEIGHTS
 
-    # Each category = average of its normalised sub-components.
+    pa = sig.get("price_action", biases.get("price_action"))
+    # earnings_quality (Sloan) and guidance_hit_rate have no data feed yet -> neutral.
     raw: dict[str, Optional[float]] = {
-        "fundamental_momentum": cl._avg([biases.get("eps_estimates"), biases.get("guidance")]),
-        "derivatives_flow": cl._avg([sig.get("unusual_activity", biases.get("unusual_options")),
-                                     sig.get("options_flow", biases.get("options_positioning")),
-                                     sig.get("disparity", biases.get("disparity"))]),
-        "volatility_edge": mt._implied_vs_hist_bias(trade),
-        "technical_structure": cl._avg([sig.get("ema_trend"),
-                                        sig.get("price_action", biases.get("price_action"))]),
-        "institutional": cl._avg([biases.get("dark_pool"), sig.get("oi_positioning")]),
-        "peer_readthrough": biases.get("peer_readthrough"),
+        "eps_revision": biases.get("eps_estimates"),
+        "revenue_revision": biases.get("revenue_estimates"),
+        "earnings_quality": None,
+        "price_rs": cl._avg([pa, sig.get("ema_trend"),
+                             cl._rel_strength_bias(trade.get("spark"))]),
+        "sector_market": biases.get("sector_market"),
+        "options_flow": cl._avg([sig.get("unusual_activity", biases.get("unusual_options")),
+                                 sig.get("options_flow", biases.get("options_positioning")),
+                                 sig.get("disparity", biases.get("disparity"))]),
+        "iv_crush": mt._implied_vs_hist_bias(trade),
+        "forward_guidance": biases.get("guidance"),
+        "guidance_hit_rate": None,
+        "short_squeeze": cl._short_interest_bias(eq.get("short_interest"), pa),
+        "insider_buyback": sig.get("insider_activity", biases.get("short_insider")),
     }
 
     params: list[dict] = []
@@ -63,8 +74,24 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
                        "points": round(cl._pts(W[name], qb), 2), "bias": qb})
 
     score = round(sum(p["points"] for p in params), 1)
-    cut = cfg.V3_CUTOFFS
-    signal = "BUY" if score >= cut["buy"] else "SELL" if score <= cut["sell"] else "NEUTRAL"
+    cut = cfg.GEMINI_CUTOFFS
+    if score >= cut["strong_buy"]:
+        tier, signal = "STRONG BUY", "BUY"
+    elif score >= cut["buy"]:
+        tier, signal = "SPECULATIVE BUY", "BUY"
+    elif score <= cut["strong_sell"]:
+        tier, signal = "STRONG SHORT", "SELL"
+    elif score <= cut["sell"]:
+        tier, signal = "SPECULATIVE SHORT", "SELL"
+    else:
+        tier, signal = "NEUTRAL", "NEUTRAL"
+    # Speculative tiers need a gate (only enforced when the input has data):
+    # buy -> IV filter passes (implied move below realized); short -> quality scores 0.
+    bq = {p["name"]: p["bias"] for p in params}
+    if tier == "SPECULATIVE BUY" and bq.get("iv_crush") is not None and bq["iv_crush"] <= 0:
+        tier, signal = "NEUTRAL", "NEUTRAL"
+    if tier == "SPECULATIVE SHORT" and bq.get("earnings_quality") is not None             and bq["earnings_quality"] > -0.99:
+        tier, signal = "NEUTRAL", "NEUTRAL"
 
     covered = sum(p["max"] for p in params if p["bias"] is not None)
     pos_w = sum(p["max"] for p in params if (p["bias"] or 0) > 0.05)
@@ -89,8 +116,8 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
             "report_timing": row.get("time_label") or row.get("timing_label"),
             "prior_close": row.get("prior_close"), "market_cap": row.get("market_cap"),
             "sector": row.get("sector"),
-            "score": score, "signal": signal, "params": params,
-            "coverage": round(coverage * 100, 1), "agreement": round(agreement * 100, 1),
+            "score": score, "signal": signal, "tier": tier, "direction": tier,
+            "params": params, "coverage": round(coverage * 100, 1), "agreement": round(agreement * 100, 1),
             "low_confidence": low_conf}
 
 
