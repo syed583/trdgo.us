@@ -128,6 +128,43 @@ def _exit_reason(t, last: float, score: Optional[float], after_close: bool) -> O
     return None
 
 
+def _quote_price(symbol: str) -> Optional[float]:
+    """Live last price for a symbol, cached ~2 min. Used when a board gives no
+    current price (e.g. the pre-market fallback board used by ChatGPT/Claude Pro)."""
+    import swr
+    import unusualwhales_service as uw
+
+    def _q() -> Optional[float]:
+        q = uw.get_quote(symbol) or {}
+        v = q.get("price") or q.get("close") or q.get("last")
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    v = swr.serve(f"demo:px:{symbol}", _q, 120.0)
+    return v if isinstance(v, (int, float)) else None
+
+
+def _live_price(symbol: str, boards: dict, fallback: Optional[float] = None) -> Optional[float]:
+    """Best current price: any board's `now`, else a live quote, else fallback."""
+    for rows in boards.values():
+        r = rows.get(symbol)
+        if r and r.get("now") is not None:
+            return r["now"]
+    return _quote_price(symbol) or fallback
+
+
+def _with_levels(side: str, entry: float, sl, tp):
+    """Fill a default 1%/2% (2:1) stop and target when the board gives none, so
+    every trade can still exit on stop/target."""
+    if sl is None:
+        sl = round(entry * (0.99 if side == "LONG" else 1.01), 2)
+    if tp is None:
+        tp = round(entry * (1.02 if side == "LONG" else 0.98), 2)
+    return sl, tp
+
+
 def tick(force: bool = False) -> None:
     """Refresh open trades from the live boards and open new ones. Throttled."""
     global _last_tick
@@ -152,7 +189,9 @@ def tick(force: bool = False) -> None:
             open_trades = s.query(DemoTrade).filter_by(session_date=today, status="OPEN").all()
             for t in open_trades:
                 info = boards.get(t.strategy, {}).get(t.symbol) or {}
-                last = info.get("now") or t.last_price or t.entry_price
+                if t.stop is None or t.target is None:   # backfill levels on older rows
+                    t.stop, t.target = _with_levels(t.side, t.entry_price, t.stop, t.target)
+                last = info.get("now") or _live_price(t.symbol, boards, t.last_price or t.entry_price)
                 t.last_price = last
                 t.profit, t.profit_pct = _pnl(t.side, t.entry_price, last, t.shares)
                 reason = _exit_reason(t, last, info.get("score"), _exit_timed(t, et))
@@ -172,11 +211,14 @@ def tick(force: bool = False) -> None:
                         entry = info.get("entry")
                         if sig in ("BUY", "SELL") and entry and (strat, sym) not in have:
                             side = "LONG" if sig == "BUY" else "SHORT"
+                            sl, tp = _with_levels(side, entry, info.get("sl"), info.get("tp"))
+                            last0 = _live_price(sym, boards, entry)
+                            profit0, pct0 = _pnl(side, entry, last0, 100)
                             s.add(DemoTrade(strategy=strat, symbol=sym, side=side, shares=100,
                                             session_date=today, entry_price=entry,
-                                            stop=info.get("sl"), target=info.get("tp"),
-                                            score_at_entry=info.get("score"), last_price=entry,
-                                            profit=0.0, profit_pct=0.0, status="OPEN"))
+                                            stop=sl, target=tp,
+                                            score_at_entry=info.get("score"), last_price=last0,
+                                            profit=profit0, profit_pct=pct0, status="OPEN"))
                             have.add((strat, sym))
             s.commit()
         finally:
@@ -219,6 +261,8 @@ def blotter(strategy: str = "", date: str = "") -> dict:
             "status": r.status, "score_at_entry": r.score_at_entry,
             "exit_price": r.exit_price,
         } for r in rows]
+        # Winners at the top, losers at the bottom (open/flat in the middle).
+        out.sort(key=lambda x: (x["profit"] if x["profit"] is not None else 0.0), reverse=True)
         total = round(sum((x["profit"] or 0) for x in out), 2)
         wins = sum(1 for x in out if (x["profit"] or 0) > 0)
         closed = sum(1 for x in out if x["status"] != "OPEN")
