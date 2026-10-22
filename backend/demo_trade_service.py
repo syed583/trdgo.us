@@ -60,6 +60,31 @@ def _can_open(now: Optional[datetime] = None) -> bool:
     return n.weekday() < 5 and _EXT_OPEN <= n.time() < _EXT_CLOSE
 
 
+def has_open_trades() -> bool:
+    """True if any demo trade is still OPEN (or the database cannot be asked). A tick with
+    nothing open and no entries allowed would rebuild all six intraday boards for nothing."""
+    try:
+        ensure_schema()
+        import database
+        from models_demo_trades import DemoTrade
+        s = database.SessionLocal()
+        try:
+            return s.query(DemoTrade.id).filter_by(status="OPEN").first() is not None
+        finally:
+            s.close()
+    except Exception:  # noqa: BLE001 - fail safe: keep ticking
+        return True
+
+
+def should_tick(now: Optional[datetime] = None) -> bool:
+    """Tick while entries are allowed (04:00-20:00 ET weekdays); after that only to close
+    out trades that are still open."""
+    n = now or _et_now()
+    if _can_open(n):
+        return True
+    return _after_close(n) and has_open_trades()
+
+
 def _exit_timed(t, now: Optional[datetime] = None) -> bool:
     """Timed exit: a regular-session trade at/after the 4pm close, and any trade
     carried over from a previous trading day (closed on the next tick)."""

@@ -245,6 +245,20 @@ def register(key: str, fn: Callable[[], Any], fresh_for: float) -> None:
 def warm_once() -> None:
     """Refresh every recently used key that has gone stale, one at a time."""
     now = time.time()
+    # A key this process has not built yet is NOT automatically due: after a restart its
+    # last build may still be fresh in the shared DB tier. Read those timestamps first
+    # (one query) so boot does not re-fetch what is already fresh.
+    with _lock:
+        cold = [k for k in _fns if _values.get(k) is None and now - _asked.get(k, 0) < IDLE_AFTER]
+    if cold and db_cache is not None:
+        try:
+            stored = db_cache.get_many(cold)
+        except Exception:  # noqa: BLE001
+            stored = {}
+        with _lock:
+            for k, (at, value) in stored.items():
+                if value is not None and now - at < _fns[k][1]:
+                    _values.setdefault(k, (at, value))
     with _lock:
         due = [k for k, (_, fresh) in _fns.items()
                if now - _asked.get(k, 0) < IDLE_AFTER

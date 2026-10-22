@@ -787,6 +787,8 @@ def start_scanner(every: float = 300.0) -> None:
 
     def loop() -> None:
         _time.sleep(20)  # let the app settle before the first pass
+        import boot_guard
+        boot_guard.wait_until_due("trade-plan-scan", every)      # not again right after a restart
         while True:
             try:
                 import live_market_service as market
@@ -796,6 +798,7 @@ def start_scanner(every: float = 300.0) -> None:
                     evaluate_open()   # still close out anything that expired
             except Exception:  # noqa: BLE001
                 pass
+            boot_guard.mark("trade-plan-scan")
             _time.sleep(every)
 
     t = _threading.Thread(target=loop, name="trade-plan-scanner", daemon=True)

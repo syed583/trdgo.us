@@ -295,6 +295,25 @@ def _create_schema() -> None:
 
 
 @_bg
+def _log_boot_cost() -> None:
+    """Print how many Unusual Whales requests this process made in its first 5 minutes
+    (service log: 'boot-cost: ...'), so the cost of a restart can be read off, not guessed."""
+    import threading
+
+    def report() -> None:
+        try:
+            import unusualwhales_service as uw
+            print(f"boot-cost: {uw._spent['count']} Unusual Whales requests in the first 5 minutes "
+                  f"(every loop and page view in this process counts)", flush=True)
+        except Exception:  # noqa: BLE001
+            pass
+
+    t = threading.Timer(300.0, report)
+    t.daemon = True
+    t.start()
+
+
+@_bg
 def _start_edgar_watcher() -> None:
     """Watch EDGAR's live feed for filings by the companies on the board."""
     import edgar_live_service as live
@@ -351,6 +370,14 @@ def _start_slow_screen_warmer() -> None:
         # after a restart.)
         time.sleep(2)
 
+        import boot_guard
+        if boot_guard.recent("slow-screens", 6 * 3600):
+            # Restarted soon after the last build: the screens are rebuilt on demand
+            # (the first visitor refreshes a stale one) instead of re-fetching all of
+            # them at every boot.
+            swr.start_warmer()
+            return
+
         screens = (r.dashboard, r.market_pulse, r.flow_market_summary,
                    r.flow_market_tape, r.flow_market_unusual,
                    r.flow_market_intraday, r.flow_market_sectors,
@@ -382,6 +409,7 @@ def _start_slow_screen_warmer() -> None:
         # still warms everything in a few seconds without the 429s.
         with ThreadPoolExecutor(max_workers=3, thread_name_prefix="warm") as pool:
             list(pool.map(build, screens))
+        boot_guard.mark("slow-screens")
         swr.start_warmer()
 
     threading.Thread(target=warm, daemon=True, name="slow-screen-warmer").start()
@@ -431,7 +459,9 @@ def _capture_earnings_signals() -> None:
     import time
 
     def loop() -> None:
+        import boot_guard
         time.sleep(120)
+        boot_guard.wait_until_due("earnings-capture", 12 * 3600)
         while True:
             try:
                 import uw_earnings_calendar as uwcal
@@ -481,6 +511,7 @@ def _capture_earnings_signals() -> None:
                     pass
             except Exception:  # noqa: BLE001
                 pass
+            boot_guard.mark("earnings-capture")
             time.sleep(12 * 3600)
 
     threading.Thread(target=loop, name="earnings-signal-capture", daemon=True).start()
@@ -499,7 +530,7 @@ def _start_demo_trade_tracker() -> None:
         import demo_trade_service as dts
         while True:
             try:
-                if dts._can_open() or dts._after_close():
+                if dts.should_tick():
                     dts.tick(force=True)
             except Exception:  # noqa: BLE001
                 pass
@@ -518,10 +549,14 @@ def _warm_default_strip() -> None:
     on the existing background pool and never blocks startup or a request.
     """
     try:
+        import boot_guard
         from api_routes import DEFAULT_STRIP
         from live_score_service import warm_scores
 
+        if boot_guard.recent("default-strip", 3600):
+            return
         warm_scores(list(DEFAULT_STRIP))
+        boot_guard.mark("default-strip")
     except Exception:  # noqa: BLE001 - warming must never stop the server
         pass
 
@@ -542,7 +577,9 @@ def _start_snapshot_loop() -> None:
 
     def loop() -> None:
         import time
+        import boot_guard
 
+        boot_guard.wait_until_due("snapshots", 6 * 3600)
         while True:
             try:
                 from api_routes import DEFAULT_STRIP
@@ -570,6 +607,7 @@ def _start_snapshot_loop() -> None:
                 snap.fill_forward_returns()
             except Exception:  # noqa: BLE001 - never take down the server
                 pass
+            boot_guard.mark("snapshots")
             # Once a day is the cadence the record needs; the score itself is
             # cached far more tightly than this.
             time.sleep(6 * 3600)
@@ -601,7 +639,9 @@ def _start_calendar_sync() -> None:
     def loop() -> None:
         import time
         from datetime import date, timedelta
+        import boot_guard
 
+        boot_guard.wait_until_due("calendar-sync", 24 * 3600)
         while True:
             try:
                 import uw_earnings_feed as benzinga
@@ -630,6 +670,7 @@ def _start_calendar_sync() -> None:
                 del calendar
             except Exception:  # noqa: BLE001 - never take down the server
                 pass
+            boot_guard.mark("calendar-sync")
             time.sleep(24 * 3600)
 
     # Daemon, and started after a delay so the first sync does not compete
@@ -650,7 +691,9 @@ def _start_call_scorecard() -> None:
 
     def loop() -> None:
         import time
+        import boot_guard
 
+        boot_guard.wait_until_due("call-scorecard", 1800)
         while True:
             try:
                 import calls_service
@@ -658,6 +701,7 @@ def _start_call_scorecard() -> None:
                 calls_service.evaluate_pending()
             except Exception:  # noqa: BLE001 - never take down the server
                 pass
+            boot_guard.mark("call-scorecard")
             time.sleep(1800)
 
     threading.Timer(60.0, lambda: threading.Thread(
@@ -678,13 +722,16 @@ def _start_market_pulse_warmer() -> None:
 
     def loop() -> None:
         import time
+        import boot_guard
 
+        boot_guard.wait_until_due("market-pulse", 600)
         while True:
             try:
                 import live_market_service as market
                 import market_pulse_service as pulse
 
                 pulse.warm()
+                boot_guard.mark("market-pulse")
                 pause = market.session_ttl(
                     pulse.PULSE_TTL_OPEN, pulse.PULSE_TTL_CLOSED)
             except Exception:  # noqa: BLE001 - never take down the server
@@ -724,11 +771,15 @@ def _start_ai_trade_board() -> None:
         except Exception:  # noqa: BLE001
             pass
 
+        import boot_guard
+
+        boot_guard.wait_until_due("ai-trade-board", 600)      # rows were just reloaded from the DB
         while True:
             try:
                 import ai_trade_service as board
 
                 board.get_board(refresh=True)
+                boot_guard.mark("ai-trade-board")
                 # The scanner asks the service how long to wait: the rule
                 # depends on the market session and belongs with the scan,
                 # not here.
