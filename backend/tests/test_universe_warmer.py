@@ -94,3 +94,27 @@ def test_cached_none_is_repaired_by_a_direct_rebuild(monkeypatch):
     monkeypatch.setattr(swr, "_run", lambda k, fn: stored.setdefault(k, fn()))
     monkeypatch.setattr("time.sleep", lambda s: None)
     assert us.get(wait=30) == good and stored["universe:top1000"] == good
+
+
+def test_warm_one_forces_a_recompute_even_if_a_value_is_stored(monkeypatch):
+    import swr
+    import earnings_equity_service as eq
+    import earnings_trade_service as ets
+    calls = []
+    monkeypatch.setattr(eq, "get_analysis", lambda s: calls.append("eq") or {"params": [{"name": "x"}]})
+    monkeypatch.setattr(ets, "get_summary", lambda s, pf: calls.append("tr") or {"ok": 1})
+    store = {}
+    monkeypatch.setattr(swr, "_run", lambda k, fn: store.setdefault(k, fn()) if False else store.__setitem__(k, fn()) or store[k])
+    monkeypatch.setattr(swr, "peek", lambda k: store.get(k))
+    import gemini_service as gm
+    monkeypatch.setattr(gm, "hit_rate_bias", lambda *a, **k: None)
+    assert lw._warm_one("ZZZ") is True and calls == ["eq", "tr"]
+
+
+def test_force_ignores_a_loading_or_error_build(monkeypatch):
+    import swr
+    store = {}
+    monkeypatch.setattr(swr, "_run", lambda k, fn: store.__setitem__(k, fn()))
+    lw._force("k1", lambda: {"status": "LOADING"})
+    lw._force("k2", lambda: None)
+    assert store == {}

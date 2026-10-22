@@ -181,18 +181,32 @@ def _budget() -> dict:
             "blocked": b["blocked"], "blocked_for": b.get("blocked_for_seconds", 0)}
 
 
+def _force(key: str, fn) -> None:
+    """Recompute and store `key` NOW. swr.serve would hand back any stored value younger
+    than the cache window (48h) without recomputing, so a name that is 20-48h old would
+    never actually refresh; the warmer only gets here for names older than MAX_AGE (or
+    absent), so a real rebuild is exactly what is wanted. A failed/empty build keeps the
+    previous value."""
+    import swr
+    v = fn()
+    if isinstance(v, dict) and v.get("status") not in ("LOADING", "RATE_LIMITED", "BUDGET_EXHAUSTED",
+                                                       "PROVIDER_NOT_CONFIGURED", "ERROR", "BAD_REQUEST"):
+        swr._run(key, lambda: v)
+
+
 def _warm_one(sym: str) -> bool:
     import swr
-    import signal_history_service as sh
-    sh.warm_earnings([sym])
-    sh.warm_trade([sym])
+    import earnings_equity_service as eq
+    import earnings_trade_service as ets
+    _force(EQ.format(sym), lambda: eq.get_analysis(sym))
+    _force(TR.format(sym), lambda: ets.get_summary(sym, "default"))
     try:
         import gemini_service as gm
-        gm.hit_rate_bias(sym, None, fetch=True)        # Finnhub (not UW budget)
+        gm.hit_rate_bias(sym, None, fetch=True)        # Finnhub (not UW budget); cached 6h
     except Exception:  # noqa: BLE001
         pass
-    eq = swr.peek(EQ.format(sym))
-    return isinstance(eq, dict) and bool(eq.get("params")) and swr.peek(TR.format(sym)) is not None
+    eq_v = swr.peek(EQ.format(sym))
+    return isinstance(eq_v, dict) and bool(eq_v.get("params")) and swr.peek(TR.format(sym)) is not None
 
 
 # -------------------------------------------------------------------- run ---
