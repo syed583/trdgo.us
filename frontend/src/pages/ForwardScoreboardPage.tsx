@@ -107,6 +107,20 @@ export default function ForwardScoreboardPage() {
         <div className="fsb-stat"><span>Look-ahead / pub-violation</span><b>{(d.excluded?.lookahead ?? 0) + (d.excluded?.pub_violation ?? 0)}</b><small>both should be 0</small></div>
       </div>
 
+      {d.publication && (
+        <div className="fsb-note warn" style={{ marginBottom: 12 }}>
+          <b>Publication timestamp: {d.publication.classification}.</b> {d.publication.reason}
+          {' '}<i>Verified fact:</i> {d.publication.verified_fact}
+        </div>
+      )}
+      {d.consensus && (
+        <div className="fsb-note" style={{ marginBottom: 12 }}>
+          <b>Consensus ({d.consensus.events} priced events):</b> BUY {d.consensus.consensus_buy} ·
+          SELL {d.consensus.consensus_sell} · WAIT/tie {d.consensus.wait_tie} ·
+          conflicting votes {d.consensus.events_with_conflict}. {d.consensus.algorithm}
+        </div>
+      )}
+
       <h3 className="fsb-h">Prediction-level performance <small className="fsb-sub">(per model×event×timing — correlated, not a portfolio)</small></h3>
       <div style={{ overflowX: 'auto' }}>
         <table className="ma-tbl fsb-tbl">

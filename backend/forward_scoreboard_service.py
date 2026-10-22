@@ -62,9 +62,10 @@ def _bars(symbol: str) -> list[dict]:
 
 def _timing_key(report_timing: Optional[str]) -> str:
     t = (report_timing or "").strip().lower()
-    if t in ("post", "amc", "after", "aftermarket", "after_market", "after-hours"):
+    if t in ("post", "amc", "after", "aftermarket", "after_market", "after-hours",
+             "postmarket", "post-market", "post_market"):
         return "amc"
-    if t in ("pre", "bmo", "before", "premarket", "pre_market", "before-open"):
+    if t in ("pre", "bmo", "before", "premarket", "pre_market", "pre-market", "before-open"):
         return "bmo"
     return "unknown"
 
@@ -326,8 +327,46 @@ def scoreboard(model: Optional[str] = None, max_symbols: int = 120) -> dict:
     models_seen = sorted({x["model"] for x in all_trades})
     by_model = {m: _pair([x for x in all_trades if x["model"] == m]) for m in models_seen}
 
-    # --- event-independence (req 8) ---
+    # --- publication-timestamp classification (req: never call an assumed time
+    #     verified). The provider gives report_date + a premarket/postmarket
+    #     bucket only, so NO event has a verified publication instant. ---
     distinct_events = len({(t["symbol"], t["earnings_date"]) for t in all_trades})
+    publication = {
+        "classification": "TIMESTAMP_UNVERIFIED (all events)",
+        "verified_pre_publication": 0,
+        "verified_post_publication": 0,
+        "timestamp_unverified": distinct_events,
+        "assumed_times_et": {"amc (postmarket)": "16:00", "bmo (premarket)": "08:00",
+                             "unknown": "09:30"},
+        "reason": ("The earnings feed carries report_date + report_time "
+                   "(premarket/postmarket) + row updated_at/inserted_at, but NOT an "
+                   "actual announcement timestamp. The 16:00/08:00 ET times are "
+                   "ASSUMPTIONS, so no event can be VERIFIED pre/post publication."),
+        "verified_fact": ("Every included prediction has snapshot_date < report_date — "
+                          "a real calendar fact — so it was made on a prior session, "
+                          "before an AMC release (after that day's close) and before a "
+                          "BMO release (before that day's open)."),
+    }
+
+    # --- consensus over the priced directional predictions (req 2) ---
+    ev_votes: dict[tuple, dict] = defaultdict(lambda: {"BUY": 0, "SELL": 0})
+    for t in all_trades:
+        ev_votes[(t["symbol"], t["earnings_date"])][t["side"]] += 1
+    c_buy = c_sell = c_tie = c_conflict = 0
+    for v in ev_votes.values():
+        if v["BUY"] > 0 and v["SELL"] > 0:
+            c_conflict += 1
+        if v["BUY"] > v["SELL"]:
+            c_buy += 1
+        elif v["SELL"] > v["BUY"]:
+            c_sell += 1
+        else:
+            c_tie += 1
+    consensus = {"algorithm": ("One trade per (symbol, earnings_date). Consensus side = "
+                               "majority of the models' directional votes; a BUY/SELL tie "
+                               "is WAIT (no position). NEUTRAL votes do not count toward a side."),
+                 "events": len(ev_votes), "consensus_buy": c_buy, "consensus_sell": c_sell,
+                 "wait_tie": c_tie, "events_with_conflict": c_conflict}
     dedup_all = _dedup_events(all_trades)                         # one per event (consensus)
     dedup_t1 = _dedup_events(all_trades, timing=1)
 
@@ -358,9 +397,9 @@ def scoreboard(model: Optional[str] = None, max_symbols: int = 120) -> dict:
         "status": "OK", "source": SOURCE, "as_of": today.isoformat(),
         "model_filter": model,
         "provenance": {
-            "predictions": "RECORDED in model_predictions, captured BEFORE each announcement; "
-                           "verified predicted_at < actual publication instant (AMC after close, "
-                           "BMO before open), not just the calendar date.",
+            "predictions": "RECORDED in model_predictions, captured BEFORE each announcement. "
+                           "Pre-publication is a VERIFIED CALENDAR FACT (snapshot_date < report_date); "
+                           "the exact publication instant is UNVERIFIED (assumed 16:00/08:00 ET).",
             "executions": "SIMULATED on historical daily bars — not live orders.",
             "live_trades": 0,
             "independence": ("Each row = one model's call on one event at one timing. Several "
@@ -374,6 +413,8 @@ def scoreboard(model: Optional[str] = None, max_symbols: int = 120) -> dict:
                    "trades_per_event": round(len(all_trades) / distinct_events, 2) if distinct_events else None,
                    "symbols_priced": len(symbols), "symbols_capped_out": max(0, capped)},
         "excluded": skips_tot,
+        "publication": publication,
+        "consensus": consensus,
         "overall": overall,
         "by_entry_timing": by_timing,
         "by_side": by_side,

@@ -2603,7 +2603,7 @@ def earnings_forward_scoreboard(model: str = "", max_symbols: int = 80) -> dict:
     import forward_scoreboard_service as fsb
     import threading
 
-    key = f"fwdsb2:{model or 'all'}:{max_symbols}"
+    key = f"fwdsb3:{model or 'all'}:{max_symbols}"
     cached = swr.peek(key)
     if cached is not None:
         return cached
