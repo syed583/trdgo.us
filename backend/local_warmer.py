@@ -146,7 +146,7 @@ def _budget() -> dict:
     else:
         limit, used = DAILY_LIMIT, _state.get("calls_day", 0)
     return {"used_by_this_app": used, "app_budget": limit, "app_left": max(0, limit - used),
-            "blocked": b["blocked"]}
+            "blocked": b["blocked"], "blocked_for": b.get("blocked_for_seconds", 0)}
 
 
 def _warm_one(sym: str) -> bool:
@@ -173,9 +173,6 @@ def run() -> int:
     ages = warm_ages(queue)
     total = len(queue)
     cost_hist: list[int] = []
-    _state.update(status="RUNNING", total=total, priority_total=n_priority, done=0, priority_done=0,
-                  skipped_fresh=0, failed=0, calls_used_run=0, current=None,
-                  started_at=time.time(), paused_until=None, namespace=db_cache.namespace())
     prev = load_state()                                   # resume today's call count after a restart
     if prev.get("day_id") == day_id():
         _state["day_id"], _state["calls_day"] = prev["day_id"], prev.get("calls_day", 0)
@@ -183,6 +180,9 @@ def run() -> int:
         # Fresh day: start from WARM_START_USED (calls already spent today by other
         # processes -- earlier warm-ups, health checks -- that this counter cannot see).
         _state["day_id"], _state["calls_day"] = day_id(), int(os.environ.get("WARM_START_USED") or 0)
+    _state.update(status="RUNNING", total=total, priority_total=n_priority, done=0, priority_done=0,
+                  skipped_fresh=0, failed=0, calls_used_run=0, current=None,
+                  started_at=time.time(), paused_until=None, namespace=db_cache.namespace())
     save_state()
     print(f"warming {total} names ({n_priority} reporting within 7 days first); reserve={RESERVE}", flush=True)
 
@@ -197,7 +197,12 @@ def run() -> int:
             continue
         est = max(25, int(max(cost_hist[-20:] or [25]) * 1.3))
         b = _budget()
-        if b["blocked"] or b["app_left"] - RESERVE < est:
+        if b["blocked"]:                                      # a short provider rate-limit block, NOT the daily cap
+            _state.update(status="RATE_LIMITED", current=None)
+            time.sleep(min(120, max(5, b["blocked_for"] + 2)))
+            _state["status"] = "RUNNING"
+            continue
+        if b["app_left"] - RESERVE < est:
             until = next_reset_epoch()
             _state.update(status="PAUSED_BUDGET", paused_until=until, current=None,
                           calls_today=b["used_by_this_app"], calls_limit=b["app_budget"])
@@ -206,7 +211,7 @@ def run() -> int:
                   f"pausing until {datetime.fromtimestamp(until):%Y-%m-%d %H:%M}", flush=True)
             while time.time() < until:                        # sleeps through the reset, then re-checks
                 time.sleep(min(300, max(5, until - time.time())))
-                if not _budget()["blocked"] and _budget()["app_left"] - RESERVE >= est:
+                if _budget()["app_left"] - RESERVE >= est:
                     break
             _state.update(status="RUNNING", paused_until=None)
             continue
