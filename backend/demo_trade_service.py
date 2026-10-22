@@ -189,7 +189,10 @@ def tick(force: bool = False) -> None:
 
 def blotter(strategy: str = "", date: str = "") -> dict:
     ensure_schema()
-    tick()  # keep the live P&L fresh on each view (throttled)
+    # Refresh in the background so the page loads instantly from the DB rather
+    # than blocking on the 6-board tick (slow on a cold cache). The next refresh
+    # picks up the updated P&L. (The background tracker also ticks every 60s.)
+    threading.Thread(target=lambda: tick(), daemon=True).start()
     import database
     from models_demo_trades import DemoTrade
     et = _et_now()
