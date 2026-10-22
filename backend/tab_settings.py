@@ -22,21 +22,27 @@ from __future__ import annotations
 # Owner override: the Implied-Move PARAMETER was removed from scoring (the IM
 # gate below still runs). The remaining 13 directional params are rescaled from
 # the spec's 96 up to 100 (proportional rounding, ranking preserved).
+# Claude = "Pre-Earnings Direction Model v2 (Trade Go US)" — 12 parameters / 100 pts.
+# Revised from Anas v1 for trades 1-2 days before the result: Forward Guidance
+# (post-result) dropped; Historical Earnings Reaction (8) and Big Fund Positions
+# (3) added -> sums to exactly 100. Bands BUY > 70 / SELL < 50 (CLAUDE_CUTOFFS).
 V3_WEIGHTS: dict[str, int] = {
-    "eps_rev_dir": 13,             # 1  analyst EPS revision direction (30/90d)
-    "options_flow": 11,            # 2  net bullish vs bearish premium, last 5 sessions
-    "unusual_skew": 9,             # 3  unusual call/put prints + 25-delta skew
-    "prior_guidance": 9,           # 4  last 4 quarters: beat + raised guide
-    "hist_price_reaction": 8,      # 5  direction of next-day move, last 8 reports
-    "price_action": 8,             # 6  daily structure (HH/HL vs LH/LL, 20-day hi/lo)
-    "ema_trend": 7,                # 7  20/50/200 EMA stack
-    "peers": 7,                    # 8  same-sector peers already reported
-    "disparity": 6,                # 9  call/put volume ratio vs its 20-day average
-    "realized_vs_implied": 6,      # 10 did the pre-result straddle lean match the move
-    "insider": 6,                  # 11 open-market insider buys/sells (not 10b5-1)
-    "short_interest": 5,           # 12 short %float + days-to-cover, read with price
-    "dark_pool": 5,                # 13 block prints vs VWAP, confirmation only
-}                                  # sum = 100 (implied_move dropped from scoring)
+    "options_combined":  19,   # Options Flow + Unusual Activity + Put/Call Skew
+    "eps_estimates":     15,   # EPS Estimates & Revisions
+    "price_action_rs":   15,   # Price Action & Relative Strength
+    "revenue_estimates": 10,   # Revenue Estimates & Revisions
+    "sector_market":     10,   # Sector & Market Regime
+    "hist_reaction":      8,   # Historical Earnings Reaction (last 8 quarters)
+    "peer_readthrough":   7,   # Peer Earnings Read-through
+    "implied_vs_realized": 5,  # Implied vs Realized Move Factor
+    "big_fund":           3,   # Big Fund Positions (BlackRock/Vanguard add/reduce)
+    "dark_pool":          3,   # Dark Pool Confirmation
+    "short_insider":      3,   # Short Interest & Insider Activity
+    "calendar_timing":    2,   # Earnings Calendar & Timing
+}                              # sum = 100
+
+# Claude v2 bands: BUY > 70, SELL < 50, 50-70 NEUTRAL. (Grok/Meta keep V3_CUTOFFS.)
+CLAUDE_CUTOFFS: dict[str, float] = {"buy": 70.0, "sell": 50.0}
 # Implied-Move parameter (#14) points by IM ratio = implied move % / hist avg move %
 # (spec 3b). Expressed as a long-side bias fed to the 5-step scale.
 V3_IM_POINTS = [  # (ratio_below, bias)  -- first match wins; last is the >=1.5 case

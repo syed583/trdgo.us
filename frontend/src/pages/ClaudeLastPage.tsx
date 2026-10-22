@@ -13,20 +13,20 @@ import './tab-scan.css';
 // / NEUTRAL yellow), two-sided and SELL-capable, with a confidence flag.
 
 // v2 spec: 14 parameters (Pre_Earnings_Model_v2.pdf §2), in table order.
+// Claude = Pre-Earnings Direction Model v2 (12 parameters / 100 pts).
 const PARAMS: { key: string; label: string }[] = [
-  { key: 'eps_rev_dir', label: 'EPS' },
-  { key: 'options_flow', label: 'Flow' },
-  { key: 'unusual_skew', label: 'Unusual' },
-  { key: 'prior_guidance', label: 'Guid' },
-  { key: 'hist_price_reaction', label: 'Hist' },
-  { key: 'price_action', label: 'Price' },
-  { key: 'ema_trend', label: 'EMA' },
-  { key: 'peers', label: 'Peers' },
-  { key: 'disparity', label: 'Disp' },
-  { key: 'realized_vs_implied', label: 'R/I' },
-  { key: 'insider', label: 'Insider' },
-  { key: 'short_interest', label: 'Short' },
-  { key: 'dark_pool', label: 'Dark' },
+  { key: 'options_combined', label: 'Options 19' },
+  { key: 'eps_estimates', label: 'EPS 15' },
+  { key: 'price_action_rs', label: 'Price/RS 15' },
+  { key: 'revenue_estimates', label: 'Rev 10' },
+  { key: 'sector_market', label: 'Sector 10' },
+  { key: 'hist_reaction', label: 'Hist Rx 8' },
+  { key: 'peer_readthrough', label: 'Peers 7' },
+  { key: 'implied_vs_realized', label: 'Impl/Real 5' },
+  { key: 'big_fund', label: 'Big Fund 3' },
+  { key: 'dark_pool', label: 'Dark Pool 3' },
+  { key: 'short_insider', label: 'Short/Insider 3' },
+  { key: 'calendar_timing', label: 'Calendar 2' },
 ];
 
 // Grok -- 9 research-strength factors.
@@ -52,9 +52,11 @@ export type DirModelCfg = {
 
 const CLAUDE_NEW_MODEL = (pz: boolean): DirModelCfg => ({
   base: '/claude-last',
-  title: `${pz ? 'Claude New +0' : 'Claude New'} · Direction v2 · 13-param`,
-  subtitle: 'Two-sided, SELL-capable pre-earnings direction (13 parameters, 100 pts, + '
-    + 'Implied-Move gate). Each box is a stock reporting soon, coloured by its signal.',
+  title: 'Claude · Pre-Earnings Direction v2 · 12 parameters · 100 pts',
+  subtitle: '12-parameter / 100-point model (Trade Go US v2, for trades 1–2 days before the result): '
+    + 'Options Flow+Unusual+Skew 19, EPS 15, Price Action & RS 15, Revenue 10, Sector & Market 10, '
+    + 'Historical Earnings Reaction 8, Peers 7, Implied-vs-Realized 5, Big Fund 3, Dark Pool 3, '
+    + 'Short/Insider 3, Calendar 2. Bands: BUY > 70 · NEUTRAL 50–70 · SELL < 50 (+ Implied-Move gate).',
   params: PARAMS,
   scan: (d, s) => api2.claudeLastScan(d, s),
 });

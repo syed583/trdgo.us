@@ -24,23 +24,23 @@ from typing import Optional
 
 import tab_settings as cfg
 
-SOURCE = "Claude Last — Direction v2 (13-param, 100pt)"
+SOURCE = "Claude — Pre-Earnings Direction v2 (12-param, 100pt)"
 
 # Spec table order (Pre_Earnings_Model_v2.pdf §2).
+# Pre-Earnings Direction Model v2 (Trade Go US) — 12 parameters / 100 pts.
 _LABEL = {
-    "eps_rev_dir": "EPS Revisions & Direction",
-    "options_flow": "Options Flow (premium)",
-    "unusual_skew": "Unusual Call/Put Skew",
-    "prior_guidance": "Prior Guidance / Beat History",
-    "hist_price_reaction": "Historical Price Reaction",
-    "price_action": "Price Action (structure)",
-    "ema_trend": "EMA Trend (20/50/200)",
-    "peers": "Peer Read-through",
-    "disparity": "Options Disparity (C/P ratio)",
-    "realized_vs_implied": "Realized vs Implied History",
-    "insider": "Insider Activity",
-    "short_interest": "Short Interest",
-    "dark_pool": "Dark Pool (confirmation)",
+    "options_combined":   "Options Flow + Unusual + Put/Call Skew",
+    "eps_estimates":      "EPS Estimates & Revisions",
+    "price_action_rs":    "Price Action & Relative Strength",
+    "revenue_estimates":  "Revenue Estimates & Revisions",
+    "sector_market":      "Sector & Market Regime",
+    "hist_reaction":      "Historical Earnings Reaction",
+    "peer_readthrough":   "Peer Earnings Read-through",
+    "implied_vs_realized": "Implied vs Realized Move",
+    "big_fund":           "Big Fund Positions",
+    "dark_pool":          "Dark Pool Confirmation",
+    "short_insider":      "Short Interest & Insider Activity",
+    "calendar_timing":    "Earnings Calendar & Timing",
 }
 # Param order for a stable UI breakdown. Implied Move is no longer a scoring
 # parameter (removed by owner); it still drives the gate via _implied_move_eval.
@@ -237,27 +237,25 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
     if insider_b is None:
         insider_b = biases.get("short_insider")   # fallback for un-refreshed caches
 
-    # The 13 directional parameters (everything except Implied Move), each read
-    # from the best available source and snapped to the spec's 5-step scale.
+    # The 12 v2 parameters (dark_pool handled separately below as confirmation).
+    # options_lean = average of the available options signals (flow + unusual +
+    # put/call skew), used both for the combined options factor and the
+    # implied-vs-realized validation.
+    options_lean = _avg([flow_bias,
+                         sig.get("unusual_activity", biases.get("unusual_options")),
+                         sig.get("disparity", biases.get("disparity"))])
     raw: dict[str, Optional[float]] = {
-        "eps_rev_dir": biases.get("eps_estimates"),
-        "options_flow": flow_bias,
-        "unusual_skew": sig.get("unusual_activity", biases.get("unusual_options")),
-        "prior_guidance": biases.get("guidance"),
-        "hist_price_reaction": _hist_reaction_bias(trade.get("historical_moves")),
-        "price_action": pa_bias,
-        "ema_trend": sig.get("ema_trend"),
-        "peers": biases.get("peer_readthrough"),
-        "disparity": sig.get("disparity", biases.get("disparity")),
-        # #10 realized-vs-implied: validate today's options lean against the
-        # realized-move history (see _realized_vs_implied_bias). options_lean =
-        # average of the available options signals (flow + unusual + disparity).
-        "realized_vs_implied": _realized_vs_implied_bias(
-            trade.get("historical_moves"),
-            _avg([flow_bias, sig.get("unusual_activity", biases.get("unusual_options")),
-                  sig.get("disparity", biases.get("disparity"))])),
-        "insider": insider_b,
-        "short_interest": _short_interest_bias(eq.get("short_interest"), pa_bias),
+        "options_combined":   options_lean,
+        "eps_estimates":      biases.get("eps_estimates"),
+        "price_action_rs":    pa_bias,
+        "revenue_estimates":  biases.get("revenue_estimates"),
+        "sector_market":      biases.get("sector_market"),
+        "hist_reaction":      _hist_reaction_bias(trade.get("historical_moves")),
+        "peer_readthrough":   biases.get("peer_readthrough"),
+        "implied_vs_realized": _realized_vs_implied_bias(trade.get("historical_moves"), options_lean),
+        "big_fund":           sig.get("funding_activity"),   # institutional add/reduce
+        "short_insider":      _avg([_short_interest_bias(eq.get("short_interest"), pa_bias), insider_b]),
+        "calendar_timing":    None,                          # no directional bias -> neutral
     }
 
     params: list[dict] = []
@@ -285,9 +283,9 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
     score = round(sum(p["points"] for p in params), 1)
     side = 1 if score >= 50 else -1
     im = _implied_move_eval(trade, side, trade.get("spark"))
-    cut = cfg.V3_CUTOFFS
-    # Bands: BUY >= 55, SELL <= 45, else NEUTRAL (inclusive at the cutoffs).
-    raw_signal = "BUY" if score >= cut["buy"] else "SELL" if score <= cut["sell"] else "NEUTRAL"
+    cut = cfg.CLAUDE_CUTOFFS
+    # v2 bands: BUY > 70, SELL < 50, 50-70 NEUTRAL (no trade).
+    raw_signal = "BUY" if score > cut["buy"] else "SELL" if score < cut["sell"] else "NEUTRAL"
     # Implied-Move gate (spec §3c / §5e): a NO-TRADE gate blocks the signal.
     signal = "NEUTRAL" if (raw_signal != "NEUTRAL" and im.get("gate") == "no_trade") else raw_signal
 
