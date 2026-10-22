@@ -118,3 +118,19 @@ def test_force_ignores_a_loading_or_error_build(monkeypatch):
     lw._force("k1", lambda: {"status": "LOADING"})
     lw._force("k2", lambda: None)
     assert store == {}
+
+
+def test_sync_counter_counts_all_in_process_traffic_and_handles_day_rollover(monkeypatch):
+    import unusualwhales_service as uw
+    monkeypatch.setattr(lw, "_seen", {"day": None, "n": 0})
+    monkeypatch.setattr(lw, "_state", {"day_id": lw.day_id(), "calls_day": 100})
+    monkeypatch.setitem(uw._spent, "day", "D1")
+    monkeypatch.setitem(uw._spent, "count", 50)
+    lw.sync_counter()                                    # first sample adds nothing
+    assert lw._state["calls_day"] == 100
+    uw._spent["count"] = 80                              # 30 more calls, from anywhere in the process
+    lw.sync_counter()
+    assert lw._state["calls_day"] == 130
+    uw._spent["day"], uw._spent["count"] = "D2", 12      # provider day rolled over: counter restarted
+    lw.sync_counter()
+    assert lw._state["calls_day"] == 142

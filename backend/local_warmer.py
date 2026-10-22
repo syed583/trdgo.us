@@ -153,6 +153,27 @@ def warm_ages(symbols: list[str]) -> dict[str, float]:
     return out
 
 
+_seen: dict = {"day": None, "n": 0}
+
+
+def sync_counter() -> None:
+    """Fold EVERY Unusual Whales request made inside this process (the warmer, the other
+    background loops, page views) into the persisted daily count. The provider sends no
+    daily-usage headers here, so this is the only guard; counting just the warmer's own
+    batches missed everything else and let the day run past the cap."""
+    import unusualwhales_service as uw
+    day, cur = uw._spent["day"], uw._spent["count"]
+    if _seen["day"] is None:                       # first sample: nothing to add yet
+        _seen.update(day=day, n=cur)
+        return
+    delta = (cur - _seen["n"]) if day == _seen["day"] else cur   # a new counting day began
+    _seen.update(day=day, n=cur)
+    if _state.get("day_id") != day_id():
+        _state["day_id"], _state["calls_day"] = day_id(), 0
+    _state["calls_day"] = _state.get("calls_day", 0) + max(0, delta)
+    _state["calls_used_run"] = _state.get("calls_used_run", 0) + max(0, delta)
+
+
 def _calls() -> int:
     import unusualwhales_service as uw
     return int(uw._metrics.get("net_calls", 0))
@@ -230,7 +251,9 @@ def _run_once() -> int:
     print(f"warming {total} names ({n_priority} reporting within 7 days first); reserve={RESERVE}", flush=True)
 
     i = 0
+    sync_counter()
     while i < total:
+        sync_counter()
         sym = queue[i]
         if sym in ages and ages[sym] < MAX_AGE:               # already warm (restart / resume)
             _state["done"] += 1
@@ -254,6 +277,7 @@ def _run_once() -> int:
                   f"pausing until {datetime.fromtimestamp(until):%Y-%m-%d %H:%M}", flush=True)
             while time.time() < until:                        # sleeps through the reset, then re-checks
                 time.sleep(min(300, max(5, until - time.time())))
+                sync_counter()
                 if _budget()["app_left"] - RESERVE >= est:
                     break
             _state.update(status="RUNNING", paused_until=None)
@@ -284,8 +308,7 @@ def _run_once() -> int:
         spent = max(0, _calls() - before)
         per = max(1, spent // len(batch))
         cost_hist.extend([per] * len(batch))
-        _state["calls_used_run"] += spent
-        _state["calls_day"] = _state.get("calls_day", 0) + spent
+        sync_counter()                                        # all in-process traffic, not just this batch
         for x in batch:
             _state["done"] += 1
             _state["priority_done"] += 1 if i < n_priority else 0
