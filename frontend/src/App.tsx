@@ -22,6 +22,7 @@ const SignalHistoryPage = lazy(() => import('./pages/SignalHistoryPage'));
 const EarningsSignalHistoryPage = lazy(() => import('./pages/EarningsSignalHistoryPage'));
 const ForwardScoreboardPage = lazy(() => import('./pages/ForwardScoreboardPage'));
 const HistoricalBacktestPage = lazy(() => import('./pages/HistoricalBacktestPage'));
+const PostEarningsForwardPage = lazy(() => import('./pages/PostEarningsForwardPage'));
 const EarningsEquityPage = lazy(() => import('./pages/EarningsEquityPage'));
 const EarningsOptionsPage = lazy(() => import('./pages/EarningsOptionsPage'));
 const EarningsTradePage = lazy(() => import('./pages/EarningsTradePage'));
@@ -353,6 +354,7 @@ function Shell() {
           <Route path="/earnings-signals" element={<EarningsSignalHistoryPage ctx={ctx} />} />
           <Route path="/forward-scoreboard" element={<ForwardScoreboardPage />} />
           <Route path="/historical-backtest" element={<HistoricalBacktestPage />} />
+          <Route path="/post-earnings-forward" element={<PostEarningsForwardPage />} />
           {/* Old split routes now point at the combined grid. */}
           <Route path="/earnings-stock-history"
             element={<Navigate to={`/earnings-signals${location.search}`} replace />} />

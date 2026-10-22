@@ -711,6 +711,8 @@ export const api2 = {
     request<any>(`/api/earnings/forward-scoreboard${model ? `?model=${encodeURIComponent(model)}` : ''}`, s),
   historicalBacktest: (s?: AbortSignal) =>
     request<any>('/api/earnings/historical-backtest', s),
+  postEarningsDashboard: (s?: AbortSignal) =>
+    request<any>('/api/post-earnings/dashboard', s),
   tabBScan: (days = 15, s?: AbortSignal) =>
     request<any>(`/api/tab-b/scan?days=${days}`, s),
   unusualActivityScan: (s?: AbortSignal) =>

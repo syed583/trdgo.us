@@ -2589,6 +2589,23 @@ def earnings_trade(symbol: str, profile: str = "default") -> dict:
                      market.session_ttl(120, 1800))
 
 
+@router.get("/post-earnings/dashboard")
+def post_earnings_dashboard() -> dict:
+    """Dev-only Post-Earnings AI forward-validation summary (read-only)."""
+    import post_earnings_service as pe
+    return pe.dashboard()
+
+
+@router.get("/post-earnings/capture")
+def post_earnings_capture(days: int = 20) -> dict:
+    """Dev-only MANUAL trigger: record recent earnings events + generate
+    experimental snapshots. Not auto-scheduled; no live trading, no orders."""
+    import post_earnings_service as pe
+    rec = pe.record_events(days=days)
+    cap = pe.capture_signals()
+    return {"record": rec, "capture": cap, "dashboard": pe.dashboard()}
+
+
 _htbt_computing: set = set()
 
 
