@@ -767,6 +767,24 @@ def all_models_scan(days: int = 15) -> dict:
     return res
 
 
+@router.get("/warm/progress")
+def warm_progress() -> dict:
+    """Progress of the local cache warmer (development machines): names done / total,
+    priority names, and Unusual Whales calls used. Disabled in production."""
+    import db_cache
+    if db_cache.namespace() == "":
+        return {"status": "DISABLED", "detail": "The cache warmer only runs on development machines."}
+    import local_warmer as lw
+    st = lw.load_state()
+    if st.get("day_id") == lw.day_id():
+        st["calls_today"] = st.get("calls_day", 0)
+    else:
+        st["calls_today"] = 0                      # a new counting day has begun
+    st["calls_limit"] = lw.DAILY_LIMIT
+    st["reserve"] = lw.RESERVE
+    return st
+
+
 @router.get("/model-accuracy/scoreboard")
 def model_accuracy_scoreboard() -> dict:
     """Read-only accuracy scoreboard for the earnings models: per-model hit-rate

@@ -23,6 +23,7 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 
 import tab_settings as cfg
+import universe_service
 
 SOURCE = "Claude — Pre-Earnings Direction v2 (12-param, 100pt)"
 
@@ -444,6 +445,7 @@ def scan(days: int = 15) -> dict:
     import uw_earnings_calendar as cal
 
     rows = (cal.calendar(days=days) or {}).get("rows") or []
+    rows = universe_service.restrict(rows)      # top-1000 liquid names only
     seen: set[str] = set()
     uniq: list[dict] = []
     for r in rows:

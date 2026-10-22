@@ -24,6 +24,7 @@ from datetime import date, datetime
 from typing import Optional
 
 import tab_settings as cfg
+import universe_service
 import claude_last_service as cl   # reuse _quant / _pts / _f / helpers
 
 SOURCE = "Grok — Pre-Earnings Direction (9 factors)"
@@ -248,6 +249,7 @@ def scan(days: int = 15) -> dict:
     import uw_earnings_calendar as calmod
 
     rows = (calmod.calendar(days=days) or {}).get("rows") or []
+    rows = universe_service.restrict(rows)      # top-1000 liquid names only
     seen: set[str] = set()
     uniq: list[dict] = []
     for r in rows:

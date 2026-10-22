@@ -71,3 +71,9 @@
 .am-cons-dir.b { color: #15803d; }
 .am-cons-dir.s { color: #b91c1c; }
 .am-cons-dir.n { color: #9ca3af; }
+
+.am-warm { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; font-size: 12px; padding: 7px 12px;
+  margin: 0 0 10px; border: 1px solid var(--border, #e5e7eb); border-radius: 8px; background: var(--panel-2, rgba(148,163,184,.1)); }
+.am-warm b { font-weight: 700; }
+.am-warm-st { font-style: normal; font-weight: 700; color: var(--green, #16a34a); }
+.am-warm-st.paused_budget { color: var(--amber, #d97706); }

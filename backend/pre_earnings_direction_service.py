@@ -29,6 +29,7 @@ import os
 import threading
 
 import tab_settings as cfg
+import universe_service
 import claude_last_service as _cl
 
 SOURCE = "Pre-Earnings Direction (v2)"
@@ -205,6 +206,7 @@ def scan(days: int = 15) -> dict:
     import uw_earnings_calendar as cal
 
     rows = (cal.calendar(days=days) or {}).get("rows") or []
+    rows = universe_service.restrict(rows)      # top-1000 liquid names only
     seen: set[str] = set()
     uniq: list[dict] = []
     for r in rows:

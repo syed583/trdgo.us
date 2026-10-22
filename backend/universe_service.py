@@ -1,0 +1,81 @@
+"""Tradable universe: the top 1,000 US common stocks by average daily DOLLAR volume.
+
+Dollar volume = 30-day average share volume x last close, from the Unusual Whales
+stock screener (common stock only; paged 500 rows at a time, a handful of calls).
+The ranked list is cached for 24h in the SWR/DB cache (environment-namespaced, so
+local and production each hold their own) and is what every earnings tab, the
+All-in-One sheet and the cache warmer restrict themselves to.
+
+`restrict()` fails OPEN: if the universe cannot be built (provider down, no key) the
+rows pass through unfiltered rather than emptying every tab.
+"""
+from __future__ import annotations
+
+from typing import Optional
+
+SOURCE = "Top-1000 US stocks by average daily dollar volume (Unusual Whales screener)"
+TOP_N = 1000
+_PAGES = 8                       # 8 x 500 rows covers every optionable common stock we rank
+_KEY = "universe:top1000"
+_TTL = 24 * 3600.0
+
+
+def _dollar_volume(r: dict) -> float:
+    try:
+        return float(r.get("avg30_volume") or 0) * float(r.get("close") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def build() -> Optional[dict]:
+    import unusualwhales_service as uw
+    rows: list[dict] = []
+    for off in range(_PAGES):
+        out = uw.get("/api/screener/stocks",
+                     {"limit": 500, "offset": off, "issue_types[]": "Common Stock"})
+        page = uw._rows(out) if out.get("status") == "OK" else []
+        if not page:
+            break
+        rows.extend(page)
+        if len(page) < 500:
+            break
+    best: dict[str, dict] = {}
+    for r in rows:
+        t = (r.get("ticker") or "").upper().strip()
+        dv = _dollar_volume(r)
+        if t and dv > 0 and (t not in best or dv > best[t]["dollar_volume"]):
+            best[t] = {"ticker": t, "dollar_volume": round(dv), "close": r.get("close"),
+                       "marketcap": r.get("marketcap")}
+    ranked = sorted(best.values(), key=lambda x: x["dollar_volume"], reverse=True)[:TOP_N]
+    if len(ranked) < 100:                          # a failed/partial fetch is not a universe
+        return None
+    for i, x in enumerate(ranked, 1):
+        x["rank"] = i
+    return {"source": SOURCE, "count": len(ranked), "rows": ranked,
+            "min_dollar_volume": ranked[-1]["dollar_volume"]}
+
+
+def get() -> Optional[dict]:
+    import swr
+    v = swr.serve(_KEY, build, _TTL)
+    return v if isinstance(v, dict) and v.get("rows") else None
+
+
+def peek() -> Optional[dict]:
+    """The cached universe without building it (None if not built yet)."""
+    import swr
+    v = swr.peek(_KEY)
+    return v if isinstance(v, dict) and v.get("rows") else None
+
+
+def symbols() -> Optional[set[str]]:
+    u = get()
+    return {r["ticker"] for r in u["rows"]} if u else None
+
+
+def restrict(rows: list[dict], key: str = "symbol") -> list[dict]:
+    """Keep only rows whose symbol is in the universe (all rows if it is unavailable)."""
+    syms = symbols()
+    if not syms:
+        return rows
+    return [r for r in rows if (r.get(key) or "").upper() in syms]

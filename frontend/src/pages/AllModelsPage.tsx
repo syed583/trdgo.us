@@ -37,6 +37,7 @@ export default function AllModelsPage({ ctx }: { ctx: PageContext }) {
   const [sortDir, setSortDir] = useState<1 | -1>(1);
 
   const resp = useApi<any>((s) => api2.allModelsScan(days, s), [days], { refreshMs: 120_000 });
+  const warm = useApi<any>((s) => api2.warmProgress(s), [], { refreshMs: 15_000 });
   const models: [string, string][] = resp.data?.models || [];
   const modelStats: Record<string, any> = resp.data?.model_stats || {};
   const rows: any[] = resp.data?.rows || [];
@@ -89,6 +90,18 @@ export default function AllModelsPage({ ctx }: { ctx: PageContext }) {
           A ringed cell changed since the last scan.
           Click a column header to sort; click a ticker for its detail.</p>
       </div>
+
+      {warm.data && warm.data.status && !['DISABLED', 'NOT_STARTED', 'UNKNOWN'].includes(warm.data.status) && (
+        <div className="am-warm" title="Local cache warmer: top-1,000 most liquid US stocks">
+          <b>Cache warm-up</b>
+          <span>{warm.data.done ?? 0} / {warm.data.total ?? 0} names</span>
+          <span>priority (next 7d) {warm.data.priority_done ?? 0} / {warm.data.priority_total ?? 0}</span>
+          <span>API calls: {warm.data.calls_used_run ?? 0} this run · {warm.data.calls_today ?? 0} / {warm.data.calls_limit ?? 0} today</span>
+          <em className={`am-warm-st ${String(warm.data.status).toLowerCase()}`}>
+            {warm.data.status === 'PAUSED_BUDGET' ? 'paused — daily limit, resumes after reset'
+              : String(warm.data.status).toLowerCase()}</em>
+        </div>
+      )}
 
       <div className="cn-toolbar">
         <label>Window
