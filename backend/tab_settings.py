@@ -111,22 +111,14 @@ CHATGPT_THRESHOLDS: dict[str, float] = {"strong_buy": 80.0, "buy": 65.0,
 # 55/45 bands stay meaningful (relative weights unchanged). Adds price-target /
 # rating changes, relative strength vs sector (replaces EMA) and a SPY+VIX market
 # regime. Same 5-step scale and BUY>=55 / SELL<=45 bands as the other models.
-KIMI_WEIGHTS: dict[str, float] = {
-    "eps_rev": 13.7,          # EPS + revenue estimate revisions (12)
-    "guidance": 9.1,          # guidance / beat-raise history (8)
-    "price_target": 5.7,      # price target & rating changes (5, new)
-    "peers": 5.7,             # peer read-through (5)
-    "em_vs_hist": 9.1,        # expected move vs historical (8, new)
-    "unusual_flow": 9.1,      # unusual flow -- sweeps/blocks (8)
-    "skew_oi": 6.8,           # skew + OI changes merged (6)
-    "drift": 9.1,             # pre-earnings drift / price structure (8)
-    "rel_strength": 6.8,      # relative strength vs sector (6, replaces EMA)
-    "hist_reaction": 6.8,     # historical earnings reaction pattern (6)
-    "spy_vix": 6.8,           # SPY trend + VIX regime (6, new)
-    "short_interest": 4.5,    # short interest change + days-to-cover (4)
-    "insider": 3.4,           # insider open-market buys (3)
-    "dark_pool": 3.4,         # dark pool (3)
-}                             # sum = 100.0
+_KIMI_RAW = {                 # Anas v1 review spec (sums to 90) -> rescaled x100/90
+    "eps": 12, "revenue": 6, "guidance": 10, "options": 20,
+    "price_rs": 12, "hist_reaction": 7, "peers": 6, "sector_market": 8,
+    "short_interest": 3, "insider": 1, "dark_pool": 2, "timing": 3,
+}
+KIMI_WEIGHTS: dict[str, float] = {k: round(v * 100.0 / 90.0, 2) for k, v in _KIMI_RAW.items()}
+# Kimi 5-tier bands: >=65 strong bull, 58-64 bull, 43-57 noise, 36-42 bear, <=35 strong bear.
+KIMI_CUTOFFS: dict[str, float] = {"strong_buy": 65.0, "buy": 58.0, "sell": 42.0, "strong_sell": 35.0}
 
 # --- Gemini: 90-Day US Earnings Model (6 weighted categories) -----------------
 # Category-level weighting from the spec; each category is the average of its

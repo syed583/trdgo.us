@@ -1,4 +1,4 @@
-"""Kimi -- Pre-Earnings Direction (14 factors, category-grouped).
+"""Kimi -- Pre-Earnings Direction (12 factors, Anas v1 review spec).
 
 From the owner's CSV, grouped Fundamentals / Options / Price-Volume / Context /
 Confirmation. Adds price-target & rating changes, relative strength vs sector
@@ -20,23 +20,27 @@ import claude_last_service as cl
 import meta_service as mt   # _implied_vs_hist_bias
 import grok_service as gk   # _analyst_bias (Finnhub) as a rating-change proxy
 
-SOURCE = "Kimi — Pre-Earnings Direction (14 factors)"
+SOURCE = "Kimi — Pre-Earnings Direction (12 factors, Anas v1 review)"
 
 _LABEL = {
-    "eps_rev": "EPS + Revenue Revisions",
-    "guidance": "Guidance / Beat-Raise History",
-    "price_target": "Price Target & Rating Changes",
+    "eps": "EPS Estimate Revisions",
+    "revenue": "Revenue Estimate Revisions",
+    "guidance": "Guidance & Analyst Actions",
+    "options": "Options Complex (flow + skew + IV)",
+    "price_rs": "Price Action & Relative Strength",
+    "hist_reaction": "Historical Earnings Reaction",
     "peers": "Peer Read-through",
-    "em_vs_hist": "Expected Move vs Historical",
-    "unusual_flow": "Unusual Flow (sweeps/blocks)",
-    "skew_oi": "Skew + OI Changes",
-    "drift": "Pre-earnings Drift / Structure",
-    "rel_strength": "Relative Strength vs Sector",
-    "hist_reaction": "Historical Reaction Pattern",
-    "spy_vix": "SPY Trend + VIX Regime",
-    "short_interest": "Short Interest Change",
+    "sector_market": "Sector & Market Regime",
+    "short_interest": "Short Interest (chg + DTC)",
     "insider": "Insider (open-market buys)",
-    "dark_pool": "Dark Pool",
+    "dark_pool": "Dark Pool Confirmation",
+    "timing": "Earnings Timing & Calendar",
+}
+# Fixed confirmation buckets (>=3 aligned, options must not oppose).
+_BUCKETS = {
+    "estimates": ["eps", "revenue"], "guidance": ["guidance"], "options": ["options"],
+    "price": ["price_rs", "hist_reaction"], "context": ["peers", "sector_market"],
+    "ownership": ["short_interest", "insider", "dark_pool"],
 }
 _ORDER = list(_LABEL.keys())
 
@@ -80,22 +84,23 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
         mkt = market_bias()
 
     pa = sig.get("price_action", biases.get("price_action"))
+    opt_lean = cl._avg([sig.get("disparity", biases.get("disparity")),
+                        sig.get("oi_positioning"),
+                        sig.get("unusual_activity", biases.get("unusual_options"))])
     raw: dict[str, Optional[float]] = {
-        "eps_rev": cl._avg([biases.get("eps_estimates"), biases.get("revenue_estimates")]),
-        "guidance": biases.get("guidance"),
-        "price_target": (gk._analyst_bias(symbol) if with_analyst else None),
-        "peers": biases.get("peer_readthrough"),
-        "em_vs_hist": mt._implied_vs_hist_bias(trade),
-        "unusual_flow": sig.get("unusual_activity", biases.get("unusual_options")),
-        "skew_oi": cl._avg([sig.get("disparity", biases.get("disparity")),
-                            sig.get("oi_positioning")]),
-        "drift": pa,
-        "rel_strength": cl._rel_strength_bias(trade.get("spark")),
+        "eps": biases.get("eps_estimates"),
+        "revenue": biases.get("revenue_estimates"),
+        "guidance": cl._avg([biases.get("guidance"),
+                             gk._analyst_bias(symbol) if with_analyst else None]),
+        "options": opt_lean,
+        "price_rs": cl._avg([pa, cl._rel_strength_bias(trade.get("spark"))]),
         "hist_reaction": cl._hist_reaction_bias(trade.get("historical_moves")),
-        "spy_vix": mkt,
+        "peers": biases.get("peer_readthrough"),
+        "sector_market": cl._avg([biases.get("sector_market"), mkt]),
         "short_interest": cl._short_interest_bias(eq.get("short_interest"), pa),
         "insider": sig.get("insider_activity", biases.get("short_insider")),
         "dark_pool": biases.get("dark_pool"),
+        "timing": None,
     }
 
     params: list[dict] = []
@@ -105,8 +110,30 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
                        "points": round(cl._pts(W[name], qb), 2), "bias": qb})
 
     score = round(sum(p["points"] for p in params), 1)
-    cut = cfg.V3_CUTOFFS
-    signal = "BUY" if score >= cut["buy"] else "SELL" if score <= cut["sell"] else "NEUTRAL"
+    cut = cfg.KIMI_CUTOFFS
+    if score >= cut["strong_buy"]:
+        tier, raw_signal = "STRONG BUY", "BUY"
+    elif score >= cut["buy"]:
+        tier, raw_signal = "BUY", "BUY"
+    elif score <= cut["strong_sell"]:
+        tier, raw_signal = "STRONG SELL", "SELL"
+    elif score <= cut["sell"]:
+        tier, raw_signal = "SELL", "SELL"
+    else:
+        tier, raw_signal = "NEUTRAL", "NEUTRAL"
+    # Bucket rule: >=3 of 6 buckets aligned and the options bucket not against.
+    bq = {p["name"]: p["bias"] for p in params}
+    side_dir = 1 if raw_signal == "BUY" else -1
+    aligned = 0
+    for names in _BUCKETS.values():
+        vals = [bq[n] for n in names if bq.get(n) is not None]
+        if vals and (sum(vals) / len(vals)) * side_dir > 0.05:
+            aligned += 1
+    opt_b = bq.get("options")
+    opt_against = opt_b is not None and opt_b * side_dir < -0.05
+    signal = raw_signal
+    if raw_signal != "NEUTRAL" and (aligned < 3 or opt_against):
+        signal, tier = "NEUTRAL", "NEUTRAL"
 
     covered = sum(p["max"] for p in params if p["bias"] is not None)
     pos_w = sum(p["max"] for p in params if (p["bias"] or 0) > 0.05)
@@ -131,7 +158,8 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
             "report_timing": row.get("time_label") or row.get("timing_label"),
             "prior_close": row.get("prior_close"), "market_cap": row.get("market_cap"),
             "sector": row.get("sector"),
-            "score": score, "signal": signal, "params": params,
+            "score": score, "signal": signal, "raw_signal": raw_signal, "tier": tier,
+            "direction": tier, "buckets_aligned": aligned, "params": params,
             "coverage": round(coverage * 100, 1), "agreement": round(agreement * 100, 1),
             "low_confidence": low_conf}
 
