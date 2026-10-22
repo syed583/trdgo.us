@@ -28,24 +28,27 @@ import claude_last_service as cl   # reuse _quant / _pts / _f / helpers
 
 SOURCE = "Grok — Pre-Earnings Direction (9 factors)"
 
+# Grok = "Anas Earnings Prediction Model v1" — 11 parameters / 100 pts.
 _LABEL = {
-    "eps_revisions": "EPS Revisions",
-    "prior_beat_history": "Prior Beat History",
-    "options_skew_flow": "Options Skew / Flow",
-    "realized_vs_implied": "Realized vs Implied Move",
-    "peer_readthrough": "Peer Read-through",
-    "short_interest": "Short Interest Changes",
-    "analyst_dispersion": "Analyst Dispersion",
-    "premarket_momentum": "Pre-earnings Momentum",
-    "dark_pool_insiders": "Dark Pool / Insiders",
+    "eps_estimates":      "EPS Estimates & Revisions",
+    "price_action_rs":    "Price Action & Relative Strength",
+    "options_combined":   "Options Flow + Unusual + Put/Call Skew",
+    "revenue_estimates":  "Revenue Estimates & Revisions",
+    "sector_market":      "Sector & Market Regime",
+    "forward_guidance":   "Forward Guidance & Analyst Outlook",
+    "peer_readthrough":   "Peer Earnings Read-through",
+    "implied_vs_realized": "Implied vs Realized Move",
+    "dark_pool":          "Dark Pool Confirmation",
+    "short_insider":      "Short Interest & Insider Activity",
+    "calendar_timing":    "Earnings Calendar & Timing",
 }
 _ORDER = list(_LABEL.keys())
 _STRENGTH = {
-    "eps_revisions": "High", "prior_beat_history": "Moderate-High",
-    "options_skew_flow": "Moderate", "realized_vs_implied": "Moderate",
-    "peer_readthrough": "Moderate", "short_interest": "Moderate",
-    "analyst_dispersion": "Moderate", "premarket_momentum": "Low-Moderate",
-    "dark_pool_insiders": "Low",
+    "eps_estimates": "High", "price_action_rs": "High", "options_combined": "High",
+    "revenue_estimates": "Moderate", "sector_market": "Moderate",
+    "forward_guidance": "Moderate", "peer_readthrough": "Moderate",
+    "implied_vs_realized": "Low-Moderate", "dark_pool": "Low",
+    "short_insider": "Low", "calendar_timing": "Low",
 }
 
 
@@ -146,15 +149,17 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
     insider_b = sig.get("insider_activity", biases.get("short_insider"))
 
     raw: dict[str, Optional[float]] = {
-        "eps_revisions": biases.get("eps_estimates"),
-        "prior_beat_history": biases.get("guidance"),
-        "options_skew_flow": options_lean,
-        "realized_vs_implied": cl._realized_vs_implied_bias(trade.get("historical_moves"), options_lean),
-        "peer_readthrough": biases.get("peer_readthrough"),
-        "short_interest": cl._short_interest_bias(eq.get("short_interest"), pa_bias),
-        "analyst_dispersion": (_analyst_bias(symbol) if with_analyst else None),
-        "premarket_momentum": _momentum_bias(trade.get("spark")),
-        "dark_pool_insiders": cl._avg([biases.get("dark_pool"), insider_b]),
+        "eps_estimates":      biases.get("eps_estimates"),
+        "price_action_rs":    pa_bias,
+        "options_combined":   options_lean,   # flow + unusual + skew, merged
+        "revenue_estimates":  biases.get("revenue_estimates"),
+        "sector_market":      biases.get("sector_market"),
+        "forward_guidance":   biases.get("guidance"),
+        "peer_readthrough":   biases.get("peer_readthrough"),
+        "implied_vs_realized": cl._realized_vs_implied_bias(trade.get("historical_moves"), options_lean),
+        "dark_pool":          biases.get("dark_pool"),
+        "short_insider":      cl._avg([cl._short_interest_bias(eq.get("short_interest"), pa_bias), insider_b]),
+        "calendar_timing":    None,            # no directional bias available -> neutral
     }
 
     params: list[dict] = []

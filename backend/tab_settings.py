@@ -59,17 +59,24 @@ V3_CONFIDENCE: dict[str, float] = {"min_coverage": 0.50, "min_agreement": 0.55}
 # Weights set by each factor's evidence strength (the owner's research table):
 # High / Moderate-High / Moderate / Low-Moderate / Low. Sum = 100. Same all-
 # positive 5-step scale and BUY>=55 / SELL<=45 bands as Claude New.
-GROK_WEIGHTS: dict[str, int] = {
-    "eps_revisions": 18,         # High
-    "prior_beat_history": 15,    # Moderate-High
-    "options_skew_flow": 12,     # Moderate
-    "realized_vs_implied": 11,   # Moderate
-    "peer_readthrough": 11,      # Moderate (timing dependent)
-    "short_interest": 10,        # Moderate
-    "analyst_dispersion": 10,    # Moderate
-    "premarket_momentum": 8,     # Low-Moderate
-    "dark_pool_insiders": 5,     # Low
-}                                # sum = 100
+# Grok = "Anas Earnings Prediction Model v1" (11 parameters). The spec's raw
+# weights sum to 97 (EPS 15, Price/RS 15, Options-combined 19, Revenue 10,
+# Sector 10, Guidance 8, Peers 7, Dark Pool 3, Short/Insider 3, Impl-vs-Real 5,
+# Calendar 2). Rescaled x100/97 so the total is 100 and the 55/45 bands stay
+# centred at 50 (same approach as Kimi's 88->100). Relative weights unchanged.
+GROK_WEIGHTS: dict[str, float] = {
+    "eps_estimates":     15.46,   # EPS Estimates & Revisions (15)
+    "price_action_rs":   15.46,   # Price Action & Relative Strength (15)
+    "options_combined":  19.59,   # Options Flow + Unusual + Put/Call Skew (19)
+    "revenue_estimates": 10.31,   # Revenue Estimates & Revisions (10)
+    "sector_market":     10.31,   # Sector & Market Regime (10)
+    "forward_guidance":   8.25,   # Forward Guidance & Analyst Outlook (8)
+    "peer_readthrough":   7.22,   # Peer Earnings Read-through (7)
+    "implied_vs_realized": 5.15,  # Implied vs Realized Move Factor (5)
+    "dark_pool":          3.09,   # Dark Pool Confirmation (3)
+    "short_insider":      3.09,   # Short Interest & Insider Activity (3)
+    "calendar_timing":    2.06,   # Earnings Calendar & Timing (2)
+}                                 # sum = 100.0 (97 rescaled x100/97)
 
 # --- ChatGPT: US Pre-Earnings Direction Model V1 (16 features / 100 pts) -------
 # TRDGO.ai spec. Directional score 0-100 from 16 normalised (-1..+1) features;

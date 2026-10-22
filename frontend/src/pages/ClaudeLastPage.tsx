@@ -31,15 +31,17 @@ const PARAMS: { key: string; label: string }[] = [
 
 // Grok -- 9 research-strength factors.
 const GROK_PARAMS: { key: string; label: string }[] = [
-  { key: 'eps_revisions', label: 'EPS' },
-  { key: 'prior_beat_history', label: 'Beat Hist' },
-  { key: 'options_skew_flow', label: 'Skew/Flow' },
-  { key: 'realized_vs_implied', label: 'R/I Move' },
-  { key: 'peer_readthrough', label: 'Peers' },
-  { key: 'short_interest', label: 'Short' },
-  { key: 'analyst_dispersion', label: 'Dispersion' },
-  { key: 'premarket_momentum', label: 'Momentum' },
-  { key: 'dark_pool_insiders', label: 'Dark/Insider' },
+  { key: 'eps_estimates', label: 'EPS 15' },
+  { key: 'price_action_rs', label: 'Price/RS 15' },
+  { key: 'options_combined', label: 'Options 19' },
+  { key: 'revenue_estimates', label: 'Rev 10' },
+  { key: 'sector_market', label: 'Sector 10' },
+  { key: 'forward_guidance', label: 'Guid 8' },
+  { key: 'peer_readthrough', label: 'Peers 7' },
+  { key: 'implied_vs_realized', label: 'Impl/Real 5' },
+  { key: 'dark_pool', label: 'Dark Pool 3' },
+  { key: 'short_insider', label: 'Short/Insider 3' },
+  { key: 'calendar_timing', label: 'Calendar 2' },
 ];
 
 export type DirModelCfg = {
@@ -205,10 +207,11 @@ export const GROK_INTRADAY_MODEL: DirModelCfg = {
 
 export const GROK_MODEL: DirModelCfg = {
   base: '/grok',
-  title: 'Grok · Pre-Earnings Direction · 9 factors',
-  subtitle: 'Direction from 9 research-strength factors (EPS revisions, beat history, skew/flow, '
-    + 'realized-vs-implied, peers, short interest, analyst dispersion, momentum, dark pool/insiders), '
-    + 'weighted by evidence strength. 100 pts. Each box is a stock reporting soon, coloured by its signal.',
+  title: 'Grok · Anas Earnings Model v1 · 11 parameters · 100 pts',
+  subtitle: '11-parameter / 100-point model: EPS 15, Price Action & RS 15, Options Flow+Unusual+Skew 19, '
+    + 'Revenue 10, Sector & Market 10, Guidance 8, Peers 7, Implied-vs-Realized 5, Dark Pool 3, '
+    + 'Short/Insider 3, Calendar 2 (source summed 97, rescaled to 100). Bands: Buy ≥ 55 · Neutral 46–54 · '
+    + 'Sell ≤ 45. Each box is a stock reporting soon, coloured by its signal.',
   params: GROK_PARAMS,
   scan: (d, s) => api2.grokScan(d, s),
 };
