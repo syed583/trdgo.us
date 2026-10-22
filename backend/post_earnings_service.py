@@ -168,7 +168,7 @@ def _read_live(symbol: str, eps_surprise: Optional[float]) -> dict:
 
     tf5 = {"vwap_pos": bias("vwap_pos"), "ema": bias("ema_trend"),
            "momentum": bias("rsi"), "rvol": bias("rvol")}
-    tf15 = {"trend": cl._avg(bias("ema_trend"), bias("rel_strength"))}   # proxy (true 15m MISSING)
+    tf15 = {"trend": cl._avg([bias("ema_trend"), bias("rel_strength")])}   # proxy (true 15m MISSING)
     return {"coverage_pct": s.get("coverage_pct"), "reaction": bias("gap"),
             "tf5": tf5, "tf15": tf15, "eps_surprise_pct": eps_surprise,
             "market": bias("market"), "missing": missing,
@@ -270,7 +270,7 @@ def capture_signals() -> dict:
                  "entry": "Next 5m close after signal (hypothetical).",
                  "stop": f"1.5 x ATR14 ({round(1.5*atr,2) if atr else 'n/a'})",
                  "tgt": f"2.0 x ATR14 ({round(2.0*atr,2) if atr else 'n/a'})",
-                 "hz": "Session close (next-open fallback)", "alloc": 0.05,
+                 "hz": "session_close", "alloc": 0.05,
                  "reason": sig["reason"]})
             made += 1
             db.commit()
