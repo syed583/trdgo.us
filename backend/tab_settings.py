@@ -340,3 +340,9 @@ MIN_COVERAGE_PCT: float = 70.0
 # justifies a weight: every multiplier is 1.0 and the parameter is not scored.
 TIMING_SCORED: bool = False
 TIMING_MULT: dict[str, float] = {"bmo": 1.0, "amc": 1.0, "tue_thu": 1.0, "mon_fri": 1.0}
+
+
+# Earnings analysis (earn:equity / earn:trade) freshness. The budgeted cache warmer
+# refreshes each name about once a day; a long TTL means page views never trigger a
+# paid recompute in between (a stale value is served while the warmer catches up).
+EARN_CACHE_TTL: float = 48 * 3600.0

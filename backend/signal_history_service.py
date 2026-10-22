@@ -10,6 +10,7 @@ said, so a day with no snapshot shows blank rather than a guess.
 
 from __future__ import annotations
 
+import tab_settings as _ts
 from typing import Optional
 
 SOURCE = "Trdgo model"
@@ -383,7 +384,7 @@ def warm_earnings(symbols: list[str]) -> None:
                 # guidance / history that don't move intraday, so re-warming the
                 # whole upcoming universe a few times a day stays well within the
                 # UW daily budget while keeping every card coloured.
-                swr.serve(f"earn:equity:{sym}", lambda: eq.get_analysis(sym), 21600.0)
+                swr.serve(f"earn:equity:{sym}", lambda: eq.get_analysis(sym), _ts.EARN_CACHE_TTL)
             except Exception:  # noqa: BLE001
                 pass
 
@@ -416,7 +417,7 @@ def warm_trade(symbols: list[str], profile: str = "default") -> None:
                 # recomputes the ~1/12 that actually went stale -- self-pacing the
                 # work across the day, well within the UW daily budget.
                 swr.serve(f"earn:trade:{pf}:{sym}",
-                          lambda sym=sym: ets.get_summary(sym, pf), 21600.0)
+                          lambda sym=sym: ets.get_summary(sym, pf), _ts.EARN_CACHE_TTL)
             except Exception:  # noqa: BLE001
                 pass
 

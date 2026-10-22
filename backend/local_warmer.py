@@ -1,20 +1,24 @@
-"""Local cache warmer for the top-1000 liquid US stocks (development machines only).
+"""Budgeted cache warmer for the top-1000 liquid US stocks.
 
-    python local_warmer.py            # warm, pausing/resuming around the daily API limit
-    python local_warmer.py --status   # print the saved progress and exit
+Two modes, chosen by the environment (db_cache.namespace()):
 
-* Universe: universe_service (top 1,000 by average daily dollar volume).
-* Order: names reporting earnings in the next 7 days first (soonest first), then the
-  rest of the 1,000 by liquidity rank.
-* Budget: before every name it reads the provider's own daily counter. It never spends
-  into the reserve (WARM_RESERVE, default 2,000 calls, left for live use and for
-  production, which shares the same key). When the day's allowance is used it sleeps
-  until the provider's reset (8 pm US Eastern) and resumes by itself.
-* Persistence: results land in the environment-namespaced DB cache, so they survive
-  restarts; a name already warm (< 24h old) is skipped, so a restart resumes where it
-  left off. Progress is saved to the `local_warm_state` table and served at
-  GET /api/warm/progress.
-* Refuses to run when APP_ENV=production.
+  development (APP_ENV != production)   python local_warmer.py   (one-shot; --status)
+      queue  : names reporting in the next 7 days first, then the rest of the 1,000
+      budget : 15,000 calls/day, 2,000 kept in reserve
+      refresh: a name warmed < 24h ago is skipped
+
+  production (APP_ENV=production)       started by main.py, runs 24/7 as a thread
+      queue  : universe names reporting within the next 10 TRADING days, soonest first
+      budget : 13,000 calls/day TOTAL (provider's own counter when it sends one),
+               1,500 kept in reserve for live requests and the capture job
+      refresh: every name is re-warmed once a day (older than 20h); when the day's
+               allowance is spent it sleeps until the 8 pm US Eastern reset
+
+Common: universe_service ranks the top 1,000 by average daily dollar volume; results land
+in the environment-namespaced DB cache (so they survive restarts); before each batch the
+daily budget is checked, never spending into the reserve; progress is saved to the
+`local_warm_state` table (row 1 = development, row 2 = production) and served at
+GET /api/warm/progress.
 """
 from __future__ import annotations
 
@@ -28,10 +32,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-RESERVE = int(os.environ.get("WARM_RESERVE") or 2000)
+def is_production() -> bool:
+    import db_cache
+    return db_cache.namespace() == ""
+
+
+RESERVE = int(os.environ.get("WARM_RESERVE") or (1500 if is_production() else 2000))
 WORKERS = int(os.environ.get("WARM_WORKERS") or 3)
-DAILY_LIMIT = int(os.environ.get("WARM_DAILY_LIMIT") or 15000)   # Unusual Whales plan: 15,000 calls/day
-MAX_AGE = 24 * 3600.0
+DAILY_LIMIT = int(os.environ.get("WARM_DAILY_LIMIT") or (13000 if is_production() else 15000))   # plan: 15,000/day
+MAX_AGE = (20 if is_production() else 24) * 3600.0          # refresh cadence
 EQ = "earn:equity:{}"
 TR = "earn:trade:default:{}"
 
@@ -45,6 +54,10 @@ def _ensure_table(db) -> None:
                     "id INTEGER PRIMARY KEY, state TEXT NOT NULL, updated_at DOUBLE PRECISION NOT NULL)"))
 
 
+def _row_id() -> int:
+    return 2 if is_production() else 1
+
+
 def save_state() -> None:
     from sqlalchemy import text
     from database import SessionLocal
@@ -52,9 +65,9 @@ def save_state() -> None:
     db = SessionLocal()
     try:
         _ensure_table(db)
-        db.execute(text("INSERT INTO local_warm_state (id, state, updated_at) VALUES (1, :s, :t) "
+        db.execute(text("INSERT INTO local_warm_state (id, state, updated_at) VALUES (:i, :s, :t) "
                         "ON CONFLICT (id) DO UPDATE SET state = :s, updated_at = :t"),
-                   {"s": json.dumps(_state, default=str), "t": _state["updated_at"]})
+                   {"i": _row_id(), "s": json.dumps(_state, default=str), "t": _state["updated_at"]})
         db.commit()
     except Exception:  # noqa: BLE001 - progress is best effort
         db.rollback()
@@ -68,7 +81,7 @@ def load_state() -> dict:
     db = SessionLocal()
     try:
         _ensure_table(db)
-        row = db.execute(text("SELECT state FROM local_warm_state WHERE id = 1")).first()
+        row = db.execute(text("SELECT state FROM local_warm_state WHERE id = :i"), {"i": _row_id()}).first()
         db.commit()
         return json.loads(row[0]) if row else {"status": "NOT_STARTED"}
     except Exception:  # noqa: BLE001
@@ -90,8 +103,22 @@ def next_reset_epoch(now: datetime | None = None) -> float:
     return reset.timestamp()
 
 
+def trading_days_window(n: int = 10, start: "datetime | None" = None) -> int:
+    """Calendar days from today that cover the next `n` trading days (weekends skipped)."""
+    d = (start or datetime.now()).date()
+    seen = cal_days = 0
+    while seen < n:
+        d += timedelta(days=1)
+        cal_days += 1
+        if d.weekday() < 5:
+            seen += 1
+    return cal_days
+
+
 def build_queue() -> tuple[list[str], int]:
-    """(ordered symbols, number of priority names reporting in the next 7 days)."""
+    """(ordered symbols, number of priority names).
+    Production: universe names reporting within the next 10 trading days, soonest first
+    (all of them are 'priority'). Development: next 7 days first, then the rest of the 1,000."""
     import universe_service as us
     import uw_earnings_calendar as cal
     u = us.get()
@@ -100,12 +127,15 @@ def build_queue() -> tuple[list[str], int]:
     ranked = [r["ticker"] for r in u["rows"]]
     inuni = set(ranked)
     soon: list[str] = []
-    rows = sorted((cal.calendar(days=7) or {}).get("rows") or [], key=lambda r: str(r.get("date") or ""))
+    window = trading_days_window(10) if is_production() else 7
+    rows = sorted((cal.calendar(days=window) or {}).get("rows") or [], key=lambda r: str(r.get("date") or ""))
     for r in rows:
-        s = (r.get("symbol") or "").upper()
-        if s in inuni and s not in soon:
-            soon.append(s)
-    rest = [s for s in ranked if s not in set(soon)]
+        s_ = (r.get("symbol") or "").upper()
+        if s_ in inuni and s_ not in soon:
+            soon.append(s_)
+    if is_production():
+        return soon, len(soon)
+    rest = [x for x in ranked if x not in set(soon)]
     return soon + rest, len(soon)
 
 
@@ -144,7 +174,7 @@ def _budget() -> dict:
     if _state.get("day_id") != day_id():                  # a new counting day began
         _state["day_id"], _state["calls_day"] = day_id(), 0
     if b.get("daily_limit_known"):
-        limit, used = b["app_budget"], b["used_by_this_app"]
+        limit, used = min(b["app_budget"], DAILY_LIMIT), b["used_by_this_app"]
     else:
         limit, used = DAILY_LIMIT, _state.get("calls_day", 0)
     return {"used_by_this_app": used, "app_budget": limit, "app_left": max(0, limit - used),
@@ -166,11 +196,8 @@ def _warm_one(sym: str) -> bool:
 
 
 # -------------------------------------------------------------------- run ---
-def run() -> int:
+def _run_once() -> int:
     import db_cache
-    if db_cache.namespace() == "":
-        print("refusing to run: APP_ENV=production (this warmer is for development machines)")
-        return 2
     queue, n_priority = build_queue()
     ages = warm_ages(queue)
     total = len(queue)
@@ -262,6 +289,26 @@ def run() -> int:
     save_state()
     print("done", _state, flush=True)
     return 0
+
+
+def run(forever: bool = False) -> int:
+    """One pass (development) or an endless daily cycle (production)."""
+    if not forever:
+        return _run_once()
+    while True:                                   # production: never let the warmer die
+        try:
+            _run_once()
+            time.sleep(900)                       # queue empty -> look again in 15 min (new day, new calendar)
+        except Exception as e:  # noqa: BLE001
+            print(f"warmer error: {type(e).__name__}: {e}", flush=True)
+            _state.update(status="ERROR", error=f"{type(e).__name__}: {e}")
+            time.sleep(300)
+
+
+def start_background() -> None:
+    """Start the endless warmer on a daemon thread (production server only)."""
+    import threading
+    threading.Thread(target=lambda: run(forever=True), name="budgeted-cache-warmer", daemon=True).start()
 
 
 if __name__ == "__main__":

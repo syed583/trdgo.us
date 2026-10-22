@@ -9,6 +9,7 @@ data from an unavailable provider.
 
 from __future__ import annotations
 
+import tab_settings as _ts
 import swr
 import time
 import input_validation as validate
@@ -349,7 +350,7 @@ def claude_last_detail(symbol: str) -> dict:
     sym = symbol.upper()
 
     eq = swr.serve(f"earn:equity:{sym}",
-                   lambda: eq_svc.get_analysis(sym), 21600.0)
+                   lambda: eq_svc.get_analysis(sym), _ts.EARN_CACHE_TTL)
     if not eq or not eq.get("params"):
         return {"status": "NO_DATA", "symbol": sym}
     # Older cached equity entries predate the v3.1 raw-signal / short-interest
@@ -416,7 +417,7 @@ def grok_detail(symbol: str) -> dict:
     import earnings_equity_service as eq_svc
 
     sym = symbol.upper()
-    eq = swr.serve(f"earn:equity:{sym}", lambda: eq_svc.get_analysis(sym), 21600.0)
+    eq = swr.serve(f"earn:equity:{sym}", lambda: eq_svc.get_analysis(sym), _ts.EARN_CACHE_TTL)
     if not eq or not eq.get("params"):
         return {"status": "NO_DATA", "symbol": sym}
     if "signals" not in eq:
@@ -769,11 +770,8 @@ def all_models_scan(days: int = 15) -> dict:
 
 @router.get("/warm/progress")
 def warm_progress() -> dict:
-    """Progress of the local cache warmer (development machines): names done / total,
-    priority names, and Unusual Whales calls used. Disabled in production."""
-    import db_cache
-    if db_cache.namespace() == "":
-        return {"status": "DISABLED", "detail": "The cache warmer only runs on development machines."}
+    """Progress of the budgeted cache warmer (this environment's own row): names done /
+    total, priority names, and Unusual Whales calls used against the daily cap."""
     import local_warmer as lw
     st = lw.load_state()
     if st.get("day_id") == lw.day_id():
@@ -840,7 +838,7 @@ def claude_pro_detail(symbol: str) -> dict:
     import earnings_equity_service as eq_svc
 
     sym = symbol.upper()
-    eq = swr.serve(f"earn:equity:{sym}", lambda: eq_svc.get_analysis(sym), 21600.0)
+    eq = swr.serve(f"earn:equity:{sym}", lambda: eq_svc.get_analysis(sym), _ts.EARN_CACHE_TTL)
     if not eq or not eq.get("params"):
         return {"status": "NO_DATA", "symbol": sym}
     if "signals" not in eq:
@@ -902,7 +900,7 @@ def gemini_detail(symbol: str) -> dict:
     import earnings_equity_service as eq_svc
 
     sym = symbol.upper()
-    eq = swr.serve(f"earn:equity:{sym}", lambda: eq_svc.get_analysis(sym), 21600.0)
+    eq = swr.serve(f"earn:equity:{sym}", lambda: eq_svc.get_analysis(sym), _ts.EARN_CACHE_TTL)
     if not eq or not eq.get("params"):
         return {"status": "NO_DATA", "symbol": sym}
     if "signals" not in eq:
@@ -964,7 +962,7 @@ def kimi_detail(symbol: str) -> dict:
     import earnings_equity_service as eq_svc
 
     sym = symbol.upper()
-    eq = swr.serve(f"earn:equity:{sym}", lambda: eq_svc.get_analysis(sym), 21600.0)
+    eq = swr.serve(f"earn:equity:{sym}", lambda: eq_svc.get_analysis(sym), _ts.EARN_CACHE_TTL)
     if not eq or not eq.get("params"):
         return {"status": "NO_DATA", "symbol": sym}
     if "signals" not in eq:
@@ -1027,7 +1025,7 @@ def chatgpt_detail(symbol: str) -> dict:
     import earnings_equity_service as eq_svc
 
     sym = symbol.upper()
-    eq = swr.serve(f"earn:equity:{sym}", lambda: eq_svc.get_analysis(sym), 21600.0)
+    eq = swr.serve(f"earn:equity:{sym}", lambda: eq_svc.get_analysis(sym), _ts.EARN_CACHE_TTL)
     if not eq or not eq.get("params"):
         return {"status": "NO_DATA", "symbol": sym}
     if "signals" not in eq:
@@ -1089,7 +1087,7 @@ def meta_detail(symbol: str) -> dict:
     import earnings_equity_service as eq_svc
 
     sym = symbol.upper()
-    eq = swr.serve(f"earn:equity:{sym}", lambda: eq_svc.get_analysis(sym), 21600.0)
+    eq = swr.serve(f"earn:equity:{sym}", lambda: eq_svc.get_analysis(sym), _ts.EARN_CACHE_TTL)
     if not eq or not eq.get("params"):
         return {"status": "NO_DATA", "symbol": sym}
     if "signals" not in eq:

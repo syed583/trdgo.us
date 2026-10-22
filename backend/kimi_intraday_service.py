@@ -14,6 +14,7 @@ equity signals so the whole universe scores in one pass with no extra calls.
 """
 from __future__ import annotations
 
+import tab_settings as _ts
 from datetime import date, datetime
 from typing import Optional
 
@@ -106,7 +107,7 @@ def _eq_cached(symbol: str) -> Optional[dict]:
     if v and v.get("params") and "signals" in v:
         return v
     import earnings_equity_service as eq_svc
-    return swr.serve(f"earn:equity:{symbol}", lambda: eq_svc.get_analysis(symbol), 21600.0)
+    return swr.serve(f"earn:equity:{symbol}", lambda: eq_svc.get_analysis(symbol), _ts.EARN_CACHE_TTL)
 
 
 def _price_atr(symbol: str):

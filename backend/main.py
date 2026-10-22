@@ -407,32 +407,17 @@ def _warm_earnings_universe() -> None:
     import threading
     import time
 
-    def loop() -> None:
-        time.sleep(25)
-        while True:
-            try:
-                import uw_earnings_calendar as uwcal
-                import signal_history_service as sh
-                # Match the list's window (UpcomingEarnings fetches 21 days).
-                # The whole visible set is kept warm; the long cache in
-                # warm_earnings keeps re-warming within the UW daily budget.
-                rows = (uwcal.calendar(days=21) or {}).get("rows") or []
-                syms = sorted({r.get("symbol", "").upper()
-                               for r in rows if r.get("symbol")})
-                # Color the cards (earn:equity decision)...
-                sh.warm_earnings(syms)
-                # ...and pre-build each card's detail (earn:trade) so a click
-                # returns instantly instead of paying a cold ~multi-engine build
-                # that can exceed the first-request wait and show "No analysis".
-                sh.warm_trade(syms)
-                # The "Claude +-" (plusminus) list is derived from this default
-                # entry in the risk-batch, so it needs no separate warm pass; the
-                # detail view computes on click.
-            except Exception:  # noqa: BLE001
-                pass
-            time.sleep(1800)
-
-    threading.Thread(target=loop, name="earnings-warmer", daemon=True).start()
+    # Production only: the budgeted warmer (local_warmer) refreshes the top-1000 liquid
+    # names reporting in the next 10 trading days once a day, within 13,000 Unusual
+    # Whales calls/day. It replaces the old unbounded "re-warm every 30 minutes" loop.
+    # Development machines never start it automatically (warm by hand if wanted).
+    import os
+    if (os.environ.get("APP_ENV") or "").strip().lower() == "production":
+        def start() -> None:
+            time.sleep(25)
+            import local_warmer
+            local_warmer.start_background()
+        threading.Thread(target=start, name="warmer-boot", daemon=True).start()
 
 
 @_bg
@@ -452,7 +437,8 @@ def _capture_earnings_signals() -> None:
                 import uw_earnings_calendar as uwcal
                 import earnings_signal_history_service as esh
                 import signal_history_service as sh
-                rows = (uwcal.calendar(days=21) or {}).get("rows") or []
+                import universe_service as _us
+                rows = _us.restrict((uwcal.calendar(days=14) or {}).get("rows") or [])   # ~10 trading days
                 syms = sorted({r.get("symbol", "").upper()
                                for r in rows if r.get("symbol")})
                 # Make sure every stock's earnings decision is cached BEFORE the
@@ -460,7 +446,8 @@ def _capture_earnings_signals() -> None:
                 # the few the warmer happened to finish first. Otherwise most
                 # stocks get no baseline and never show a session-over-session
                 # change. warm_earnings is cheap when the 6h cache is already warm.
-                sh.warm_earnings(syms)
+                # (No paid warm_earnings here: the budgeted warmer owns refreshes, and
+                # re-warming from this job could push the day past its call cap.)
                 # Pre-warm the analyst (Finnhub recommendation) cache for the
                 # calendar names so the All Models matrix serves grok/chatgpt
                 # analyst_dispersion from cache instead of per-name live calls.
