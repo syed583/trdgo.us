@@ -74,3 +74,23 @@ def test_get_does_not_block_without_wait(monkeypatch):
     import swr
     monkeypatch.setattr(swr, "serve", lambda k, fn, ttl: {"status": "LOADING"})
     assert us.get() is None
+
+
+def test_build_raises_instead_of_returning_none(monkeypatch):
+    import unusualwhales_service as uw
+    import pytest
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    monkeypatch.setattr(uw, "get", lambda p, params=None: {"status": "RATE_LIMITED", "data": None})
+    with pytest.raises(RuntimeError):
+        us.build()
+
+
+def test_cached_none_is_repaired_by_a_direct_rebuild(monkeypatch):
+    import swr
+    good = {"rows": [{"ticker": "AAPL"}], "count": 1}
+    stored = {}
+    monkeypatch.setattr(swr, "serve", lambda k, fn, ttl: None)          # the poisoned-cache behaviour
+    monkeypatch.setattr(us, "build", lambda: good)
+    monkeypatch.setattr(swr, "_run", lambda k, fn: stored.setdefault(k, fn()))
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    assert us.get(wait=30) == good and stored["universe:top1000"] == good
