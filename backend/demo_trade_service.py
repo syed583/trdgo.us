@@ -196,8 +196,14 @@ def tick(force: bool = False) -> None:
                 t.profit, t.profit_pct = _pnl(t.side, t.entry_price, last, t.shares)
                 reason = _exit_reason(t, last, info.get("score"), _exit_timed(t, et))
                 if reason:
+                    # Close AT the level that was hit (clean fill), then freeze:
+                    # a closed trade is never touched again by later ticks.
+                    exit_px = (t.target if reason == "TARGET"
+                               else t.stop if reason == "STOP" else last)
+                    t.exit_price = exit_px
+                    t.last_price = exit_px
+                    t.profit, t.profit_pct = _pnl(t.side, t.entry_price, exit_px, t.shares)
                     t.status = reason
-                    t.exit_price = last
                     from models_demo_trades import _utcnow
                     t.exit_time = _utcnow()
 
