@@ -62,4 +62,27 @@
   .st-newtag, .st-new td { animation: none; }
   .st-new td { background: rgba(37,99,235,.12); }
 }
+/* Loud "new trade — take it" banner above the table. */
+.st-alert {
+  margin: 0 0 14px; padding: 10px 14px; border-radius: 10px;
+  border: 2px solid rgba(37,99,235,.55); background: rgba(37,99,235,.08);
+  animation: st-rowblink 1.1s ease-in-out infinite;
+}
+.st-alert-h { font-weight: 800; font-size: 13px; letter-spacing: .03em; color: #1d4ed8; }
+.st-alert-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.st-alert-chip {
+  font-size: 13px; padding: 4px 10px; border-radius: 8px; font-weight: 600;
+  background: var(--card, #fff); border: 1px solid var(--border, #e5e7eb);
+}
+.st-alert-chip.long { border-left: 4px solid #15803d; }
+.st-alert-chip.short { border-left: 4px solid #b91c1c; }
+.st-alert-chip b { font-size: 14px; }
+.st-alert-sub { color: var(--muted, #6b7280); font-weight: 400; font-size: 11.5px; }
+.st-take.takenow {
+  background: #1d4ed8; color: #fff; font-weight: 800; letter-spacing: .03em;
+  animation: st-blink 1s steps(2, start) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .st-alert, .st-take.takenow { animation: none; }
+}
 .st-note { color: var(--muted, #9ca3af); font-size: 11.5px; margin-top: 12px; }

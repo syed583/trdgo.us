@@ -107,7 +107,7 @@ export default function StrategyTradesPage() {
         if (r.status === 'OPEN') {
           fresh.push(r.id);
           exits.push({ ok: r.side === 'LONG', text:
-            `New ${r.side === 'LONG' ? 'buy' : 'sell'} signal, ${spell(r.symbol)}, ${shortStrat(r.strategy_label)}` });
+            `New ${r.side === 'LONG' ? 'buy' : 'sell'} trade, take it now. ${spell(r.symbol)}, ${shortStrat(r.strategy_label)}, entry ${Math.round((r.entry_price ?? 0) * 100) / 100}` });
         }
       } else if (prev === 'OPEN' && CLOSED.has(r.status)) {   // just closed
         const win = (r.profit ?? 0) >= 0;
@@ -149,6 +149,8 @@ export default function StrategyTradesPage() {
     });
   }, [rows, newIds]);
 
+  const freshRows = view.filter((r) => newIds.has(r.id));
+
   return (
     <div className="page st-wrap">
       <div className="ts-head">
@@ -179,6 +181,20 @@ export default function StrategyTradesPage() {
         {d && <span className="ma-n">{needle ? `${rows.length} of ${d.count}` : d.count} trades · {d.open} open · {d.wins} winners
           {d.date ? ` · ${d.date}` : ''}{d.after_close ? ' · market closed' : d.rth ? ' · live' : ''}</span>}
       </div>
+
+      {freshRows.length > 0 && (
+        <div className="st-alert">
+          <span className="st-alert-h">🔔 NEW — TAKE THE TRADE</span>
+          <div className="st-alert-list">
+            {freshRows.map((r) => (
+              <span className={`st-alert-chip ${r.side === 'LONG' ? 'long' : 'short'}`} key={r.id}>
+                <b>{r.symbol}</b> {r.side === 'LONG' ? 'BUY' : 'SELL'} @ {px(r.entry_price)}
+                <span className="st-alert-sub"> · SL {px(r.stop)} · TP {px(r.target)} · {shortStrat(r.strategy_label)}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {q.initialLoading ? (
         <div className="es-empty"><Loader2 size={18} className="spin" /> Loading trades…</div>
@@ -217,9 +233,11 @@ export default function StrategyTradesPage() {
                     <td className={win ? 'pos' : loss ? 'neg' : ''}>{signed(r.profit_pct, '%')}</td>
                     <td className="ma-n">{px(r.stop)}</td>
                     <td className="ma-n">{px(r.target)}</td>
-                    <td className="l">{ew
-                      ? <span className={`st-take ${ew.cls}`} title={ew.tip}>{ew.label}</span>
-                      : <span className="ma-n">—</span>}</td>
+                    <td className="l">{fresh && r.status === 'OPEN'
+                      ? <span className="st-take takenow" title="Brand-new signal — enter now at the entry price.">⚡ TAKE NOW</span>
+                      : ew
+                        ? <span className={`st-take ${ew.cls}`} title={ew.tip}>{ew.label}</span>
+                        : <span className="ma-n">—</span>}</td>
                     <td className="l"><span className={`st-stat ${r.status}`}>{STATUS_LABEL[r.status] || r.status}</span></td>
                   </tr>
                 );
