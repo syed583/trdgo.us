@@ -24,12 +24,30 @@ const SETUP = (s: number | null) =>
 const SETUP_COLOR = (s: number | null) =>
   s == null ? 'var(--text-mute)' : s >= 65 ? 'var(--green)'
     : s <= 35 ? 'var(--red)' : 'var(--amber)';
-// A parameter's points shown with no minus: a bearish contribution reads 0
-// (display only -- the real score still uses the true signed points).
-function clampPts(w: any): string {
+// A parameter's TRUE signed contribution (bias x weight): bearish factors show
+// as negative so conflicting/negative evidence is preserved, not hidden as 0.
+function fmtPts(w: any): string {
   if (w?.available === false) return 'no data';
-  const p = Math.max(0, Number(w?.points) || 0);
+  const p = Number(w?.points) || 0;
   return `${p > 0 ? '+' : ''}${p.toFixed(1)} of ${w?.weight ?? 0}`;
+}
+
+// Reconcile the per-factor points to the headline. The equity engine's score is
+// NOT the raw sum of points: it is centred at 50 and normalised by the covered
+// (non-missing) weight -> score = 50 + (net signed points / covered weight) * 50.
+// This recomputes that from the shown rows so the breakdown matches the gauge.
+function recon(why: any[]): { net: number; covered: number; possible: number; missing: number; score: number | null; coverage: number } {
+  let net = 0, covered = 0, possible = 0, missing = 0;
+  for (const w of why || []) {
+    const wt = Number(w?.weight) || 0;
+    possible += wt;
+    if (w?.available === false) { missing += wt; continue; }
+    covered += wt;
+    net += Number(w?.points) || 0;
+  }
+  const score = covered ? Math.max(0, Math.min(100, 50 + (net / covered) * 50)) : null;
+  const coverage = possible ? (covered / possible) * 100 : 0;
+  return { net, covered, possible, missing, score, coverage };
 }
 const DEC_TONE: Record<string, string> = {
   BUY: 'buy', 'STRONG BUY': 'buy', SELL: 'sell', 'STRONG SELL': 'sell',
@@ -476,7 +494,7 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
                           <div>
                             <div className="ets-why-t">
                               <b>{w.label}</b>
-                              <em>{clampPts(w)}</em>
+                              <em className={(Number(w?.points) || 0) < 0 ? 'neg' : ''}>{fmtPts(w)}</em>
                             </div>
                             {w.detail && <div className="ets-why-d">{w.detail}</div>}
                           </div>
@@ -485,10 +503,23 @@ export default function EarningsTradePage({ ctx, base = '/earnings-trade', profi
                       {!(sd?.why || []).length && (
                         <div className="ets-why-d">No parameter detail available.</div>
                       )}
+                      {(() => {
+                        const rc = recon(sd?.why);
+                        if (!rc.covered) return null;
+                        return (
+                          <div className="ets-why-calc">
+                            Net evidence <b>{rc.net > 0 ? '+' : ''}{rc.net.toFixed(1)}</b> pts ÷ {rc.covered.toFixed(0)} covered
+                            → 50 + ({rc.net.toFixed(1)} ÷ {rc.covered.toFixed(0)}) × 50 = <b>{rc.score != null ? Math.round(rc.score) : '--'}</b>/100
+                            · coverage {rc.coverage.toFixed(0)}%{rc.missing > 0 ? ` · ${rc.missing.toFixed(0)} pts missing (not scored)` : ''}
+                          </div>
+                        );
+                      })()}
                     </div>
                   ))}
-                  <div className="ets-note">Every parameter the engine scored,
-                    strongest mover first. The score is the sum of their points.</div>
+                  <div className="ets-note">Each row shows its <b>true signed</b> contribution
+                    (bias × weight); bearish factors are negative. The score is <b>not</b> the raw
+                    sum — it is centred at 50 and normalised by the covered weight:
+                    score = 50 + (net ÷ covered) × 50. Missing factors are excluded, not scored as 0.</div>
                 </div>
               )}
             </div>

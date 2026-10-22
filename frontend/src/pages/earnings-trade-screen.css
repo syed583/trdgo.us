@@ -131,6 +131,10 @@
 .ets-why-t { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
 .ets-why-t b { font-size: 12px; font-weight: 650; color: var(--text); }
 .ets-why-t em { font-style: normal; font-size: 11px; color: var(--text-mute); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ets-why-t em.neg { color: var(--red); }
+.ets-why-calc { font-size: 11px; color: var(--text-dim); margin-top: 8px; padding-top: 8px;
+  border-top: 1px dashed var(--border); line-height: 1.5; font-variant-numeric: tabular-nums; }
+.ets-why-calc b { color: var(--text); }
 .ets-why-d { font-size: 11px; color: var(--text-dim); line-height: 1.45; margin-top: 1px; }
 
 /* forecast -- forward-looking analyst estimates */
