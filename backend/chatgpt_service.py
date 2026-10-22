@@ -25,23 +25,20 @@ import grok_service as gk   # reuse _analyst_bias (Finnhub, cached)
 SOURCE = "ChatGPT — US Pre-Earnings Direction V1"
 MODEL_VERSION = "chatgpt-dir-v1"
 
+# 12-parameter / 100-point model (owner spec). Each maps to a warmed equity bias.
 _LABEL = {
-    "eps_revisions": "EPS Revisions",
-    "revenue_revisions": "Revenue Revisions",
-    "forward_guidance": "Forward Guidance",
-    "prior_history": "Prior Earnings/Guidance History",
-    "net_premium_flow": "Net Options Premium Flow",
-    "unusual_options": "Unusual Options Activity",
-    "skew_disparity": "Options Skew / Disparity",
-    "hist_reactions": "Historical Earnings Reactions",
-    "price_action_rs": "Price Action / Relative Strength",
-    "peer_readthrough": "Peer Read-through",
-    "analyst_dispersion": "Analyst Estimate Dispersion",
-    "short_interest": "Short Interest",
-    "institutional": "Institutional / Fund Activity",
-    "insider": "Insider Activity",
-    "implied_vs_realized": "Implied vs Realized Move",
-    "ema_trend": "EMA Trend Confirmation",
+    "eps_estimates":     "EPS Estimates & Revisions",
+    "revenue_estimates": "Revenue Estimates & Revisions",
+    "price_action_rs":   "Price Action & Relative Strength",
+    "options_flow_oi":   "Options Flow & Open Interest Positioning",
+    "sector_market":     "Sector & Market Regime",
+    "forward_guidance":  "Forward Guidance & Analyst Outlook",
+    "peer_readthrough":  "Peer Earnings Read-through",
+    "unusual_options":   "Unusual Options Activity",
+    "disparity_skew":    "Options Disparity & Put/Call Skew",
+    "dark_pool":         "Dark Pool Confirmation",
+    "short_insider":     "Short Interest & Insider Activity",
+    "calendar_timing":   "Earnings Calendar & Timing",
 }
 _ORDER = list(_LABEL.keys())
 
@@ -55,23 +52,21 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
     W = cfg.CHATGPT_WEIGHTS
 
     pa = sig.get("price_action", biases.get("price_action"))
+    # 12 spec parameters, each read from the already-warmed equity biases/signals.
+    # "Earnings Calendar & Timing" has no directional bias -> left neutral (missing).
     raw: dict[str, Optional[float]] = {
-        "eps_revisions": biases.get("eps_estimates"),
-        "revenue_revisions": biases.get("revenue_estimates"),
-        "forward_guidance": biases.get("guidance"),
-        "prior_history": sig.get("earnings_results"),
-        "net_premium_flow": sig.get("options_flow", biases.get("options_positioning")),
-        "unusual_options": sig.get("unusual_activity", biases.get("unusual_options")),
-        "skew_disparity": sig.get("disparity", biases.get("disparity")),
-        "hist_reactions": cl._hist_reaction_bias(trade.get("historical_moves")),
-        "price_action_rs": pa,
-        "peer_readthrough": biases.get("peer_readthrough"),
-        "analyst_dispersion": (gk._analyst_bias(symbol) if with_analyst else None),
-        "short_interest": cl._short_interest_bias(eq.get("short_interest"), pa),
-        "institutional": sig.get("funding_activity"),
-        "insider": sig.get("insider_activity", biases.get("short_insider")),
-        "implied_vs_realized": mt._implied_vs_hist_bias(trade),
-        "ema_trend": sig.get("ema_trend"),
+        "eps_estimates":     biases.get("eps_estimates"),
+        "revenue_estimates": biases.get("revenue_estimates"),
+        "price_action_rs":   pa,
+        "options_flow_oi":   sig.get("options_flow", biases.get("options_positioning")),
+        "sector_market":     biases.get("sector_market"),
+        "forward_guidance":  biases.get("guidance"),
+        "peer_readthrough":  biases.get("peer_readthrough"),
+        "unusual_options":   sig.get("unusual_activity", biases.get("unusual_options")),
+        "disparity_skew":    sig.get("disparity", biases.get("disparity")),
+        "dark_pool":         biases.get("dark_pool"),
+        "short_insider":     biases.get("short_insider"),
+        "calendar_timing":   None,
     }
 
     params: list[dict] = []
@@ -82,14 +77,20 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
 
     score = round(sum(p["points"] for p in params), 1)
     th = cfg.CHATGPT_THRESHOLDS
-    # Spec vocabulary: BULLISH / NEUTRAL / BEARISH. Keep BUY/SELL on `signal` so
-    # the shared list UI colours the card; `direction` is the spec label.
-    if score >= th["bullish"]:
-        signal, direction = "BUY", "BULLISH"
-    elif score <= th["bearish"]:
-        signal, direction = "SELL", "BEARISH"
+    # 5-tier spec bands. `tier`/`direction` carry the full label (STRONG BUY ...),
+    # while `signal` stays a 3-way BUY/SELL/NEUTRAL so the shared list UI colours
+    # the card and downstream recording (model_predictions) still accepts it.
+    if score >= th["strong_buy"]:
+        tier, signal = "STRONG BUY", "BUY"
+    elif score >= th["buy"]:
+        tier, signal = "BUY", "BUY"
+    elif score >= th["neutral"]:
+        tier, signal = "NEUTRAL", "NEUTRAL"
+    elif score >= th["sell"]:
+        tier, signal = "SELL", "SELL"
     else:
-        signal, direction = "NEUTRAL", "NEUTRAL"
+        tier, signal = "STRONG SELL", "SELL"
+    direction = tier
 
     covered = sum(p["max"] for p in params if p["bias"] is not None)
     pos_w = sum(p["max"] for p in params if (p["bias"] or 0) > 0.05)
@@ -118,7 +119,7 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
             "report_timing": row.get("time_label") or row.get("timing_label"),
             "prior_close": row.get("prior_close"), "market_cap": row.get("market_cap"),
             "sector": row.get("sector"),
-            "score": score, "signal": signal, "direction": direction, "params": params,
+            "score": score, "signal": signal, "tier": tier, "direction": direction, "params": params,
             "coverage": round(coverage * 100, 1), "agreement": round(agreement * 100, 1),
             "uncertainty": uncertainty, "probability_raw": prob_raw, "calibrated": False,
             "model_version": MODEL_VERSION, "low_confidence": low_conf}

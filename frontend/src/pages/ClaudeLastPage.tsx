@@ -82,33 +82,29 @@ export const META_MODEL: DirModelCfg = {
   scan: (d, s) => api2.metaScan(d, s),
 };
 
-// ChatGPT -- US Pre-Earnings Direction V1 (16 features).
+// ChatGPT -- 12-parameter / 100-point pre-earnings model (owner spec).
 const CHATGPT_PARAMS: { key: string; label: string }[] = [
-  { key: 'eps_revisions', label: 'EPS' },
-  { key: 'revenue_revisions', label: 'Rev' },
-  { key: 'forward_guidance', label: 'Guid' },
-  { key: 'prior_history', label: 'History' },
-  { key: 'net_premium_flow', label: 'Flow' },
-  { key: 'unusual_options', label: 'Unusual' },
-  { key: 'skew_disparity', label: 'Skew' },
-  { key: 'hist_reactions', label: 'Hist Rx' },
-  { key: 'price_action_rs', label: 'Price/RS' },
-  { key: 'peer_readthrough', label: 'Peers' },
-  { key: 'analyst_dispersion', label: 'Dispersion' },
-  { key: 'short_interest', label: 'Short' },
-  { key: 'institutional', label: 'Instit' },
-  { key: 'insider', label: 'Insider' },
-  { key: 'implied_vs_realized', label: 'IV/RV' },
-  { key: 'ema_trend', label: 'EMA' },
+  { key: 'eps_estimates', label: 'EPS 16' },
+  { key: 'revenue_estimates', label: 'Rev 10' },
+  { key: 'price_action_rs', label: 'Price/RS 16' },
+  { key: 'options_flow_oi', label: 'Flow/OI 15' },
+  { key: 'sector_market', label: 'Sector 10' },
+  { key: 'forward_guidance', label: 'Guid 8' },
+  { key: 'peer_readthrough', label: 'Peers 7' },
+  { key: 'unusual_options', label: 'Unusual 5' },
+  { key: 'disparity_skew', label: 'Skew 5' },
+  { key: 'dark_pool', label: 'Dark Pool 3' },
+  { key: 'short_insider', label: 'Short/Insider 3' },
+  { key: 'calendar_timing', label: 'Calendar 2' },
 ];
 
 export const CHATGPT_MODEL: DirModelCfg = {
   base: '/chatgpt',
-  title: 'ChatGPT · US Pre-Earnings Direction V1 · 16 features',
-  subtitle: 'Directional prediction (BULLISH / NEUTRAL / BEARISH) from 16 normalised features: '
-    + 'EPS & revenue revisions, guidance, prior history, premium flow, unusual options, skew, '
-    + 'historical reactions, price/RS, peers, dispersion, short interest, institutional, insider, '
-    + 'implied-vs-realized and EMA trend. 100 pts. Each box is a stock reporting soon.',
+  title: 'ChatGPT · Pre-Earnings Direction · 12 parameters · 100 pts',
+  subtitle: '12-parameter / 100-point model: EPS 16, Revenue 10, Price Action & RS 16, '
+    + 'Options Flow & OI 15, Sector & Market 10, Guidance 8, Peers 7, Unusual 5, Disparity/Skew 5, '
+    + 'Dark Pool 3, Short/Insider 3, Calendar 2. Bands: 80+ STRONG BUY · 65–79 BUY · 40–64 NEUTRAL · '
+    + '21–39 SELL · 0–20 STRONG SELL.',
   params: CHATGPT_PARAMS,
   scan: (d, s) => api2.chatgptScan(d, s),
 };
@@ -356,9 +352,10 @@ export default function ClaudeLastPage({ ctx, base, pz = false, model }:
                         <>
                           <div className="cn-status-top">
                             <span className="cn-status-h">
-                              {(r.raw_signal || r.signal) === 'BUY' ? 'BUY — long into earnings'
-                                : (r.raw_signal || r.signal) === 'SELL' ? 'SELL — short into earnings'
-                                  : 'NEUTRAL — check the Straddle Scanner'}
+                              {r.tier ? r.tier
+                                : (r.raw_signal || r.signal) === 'BUY' ? 'BUY — long into earnings'
+                                  : (r.raw_signal || r.signal) === 'SELL' ? 'SELL — short into earnings'
+                                    : 'NEUTRAL — check the Straddle Scanner'}
                             </span>
                             <span className="cn-status-score">Score {r.score}/100</span>
                           </div>

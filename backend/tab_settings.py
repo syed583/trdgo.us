@@ -76,24 +76,22 @@ GROK_WEIGHTS: dict[str, int] = {
 # BULLISH / NEUTRAL / BEARISH by configurable thresholds. Reads the warmed equity
 # signals + trade cache (analyst dispersion is detail-only via Finnhub).
 CHATGPT_WEIGHTS: dict[str, int] = {
-    "eps_revisions": 12,
-    "revenue_revisions": 9,
-    "forward_guidance": 10,
-    "prior_history": 6,
-    "net_premium_flow": 9,
-    "unusual_options": 7,
-    "skew_disparity": 5,
-    "hist_reactions": 8,
-    "price_action_rs": 8,
-    "peer_readthrough": 6,
-    "analyst_dispersion": 5,
-    "short_interest": 4,
-    "institutional": 3,
-    "insider": 2,
-    "implied_vs_realized": 4,
-    "ema_trend": 2,
+    "eps_estimates":     16,   # EPS Estimates & Revisions
+    "revenue_estimates": 10,   # Revenue Estimates & Revisions
+    "price_action_rs":   16,   # Price Action & Relative Strength
+    "options_flow_oi":   15,   # Options Flow & Open Interest Positioning
+    "sector_market":     10,   # Sector & Market Regime
+    "forward_guidance":   8,   # Forward Guidance & Analyst Outlook
+    "peer_readthrough":   7,   # Peer Earnings Read-through
+    "unusual_options":    5,   # Unusual Options Activity
+    "disparity_skew":     5,   # Options Disparity & Put/Call Skew
+    "dark_pool":          3,   # Dark Pool Confirmation
+    "short_insider":      3,   # Short Interest & Insider Activity
+    "calendar_timing":    2,   # Earnings Calendar & Timing
 }                                # sum = 100
-CHATGPT_THRESHOLDS: dict[str, float] = {"bullish": 55.0, "bearish": 45.0}
+# 5-tier bands: 80-100 STRONG BUY / 65-79 BUY / 40-64 NEUTRAL / 21-39 SELL / 0-20 STRONG SELL
+CHATGPT_THRESHOLDS: dict[str, float] = {"strong_buy": 80.0, "buy": 65.0,
+                                        "neutral": 40.0, "sell": 21.0}
 
 # --- Kimi: Pre-Earnings Direction (14 factors, category-grouped) --------------
 # From the owner's CSV (weights summed to 88); rescaled x100/88 to 100 so the
