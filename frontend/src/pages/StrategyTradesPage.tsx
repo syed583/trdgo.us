@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Loader2, Receipt } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Loader2, Receipt, Volume2, VolumeX } from 'lucide-react';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import './model-accuracy.css';
@@ -21,6 +21,36 @@ const px = (n: number | null | undefined) =>
 const STATUS_LABEL: Record<string, string> = {
   OPEN: 'Open', STOP: 'Stopped', TARGET: 'Target', TIMED_EXIT: 'Timed Exit', SCORE_EXIT: 'Score Exit',
 };
+const CLOSED = new Set(['STOP', 'TARGET', 'TIMED_EXIT', 'SCORE_EXIT']);
+const NEW_BLINK_MS = 45_000;   // how long a just-opened trade blinks / stays pinned on top
+
+// --- page-only audio alerts (voice + a short beep). Built lazily on first
+// enable so it starts from a user gesture (browsers block autoplay otherwise). ---
+let _audio: AudioContext | null = null;
+function _beep(ok: boolean) {
+  try {
+    _audio = _audio || new (window.AudioContext || (window as any).webkitAudioContext)();
+    const ctx = _audio;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type = 'sine';
+    o.frequency.value = ok ? 880 : 300;        // high chime for a win, low tone for a loss
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.5);
+    o.start(); o.stop(ctx.currentTime + 0.52);
+  } catch { /* no audio available */ }
+}
+function _say(text: string) {
+  try {
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.0; u.volume = 1.0;
+    window.speechSynthesis.speak(u);       // queue, do not cancel: multiple events read in turn
+  } catch { /* no speech available */ }
+}
+// Spell a ticker so TTS reads the letters ("A A P L"), not a mangled word.
+const spell = (s?: string) => (s || '').toUpperCase().split('').join(' ');
+const shortStrat = (s?: string) => (s || '').replace(' Intraday', '');
 
 /**
  * For an OPEN trade, how much of the move from entry to target is already gone?
@@ -42,6 +72,9 @@ function entryWindow(r: any): { label: string; cls: string; tip: string } | null
 export default function StrategyTradesPage() {
   const [strategy, setStrategy] = useState('all');
   const [symQ, setSymQ] = useState('');
+  const [sound, setSound] = useState(() => {
+    try { return localStorage.getItem('st-sound') === '1'; } catch { return false; }
+  });
   const q = useApi<any>((s) => api2.strategyTrades(strategy, '', s), [strategy], { refreshMs: 15_000 });
   const d = q.data;
   const allRows: any[] = d?.rows || [];
@@ -49,6 +82,72 @@ export default function StrategyTradesPage() {
   const rows: any[] = needle ? allRows.filter((r) => (r.symbol || '').toUpperCase().includes(needle)) : allRows;
   const strategies: any[] = d?.strategies || [];
   const total = d?.total_profit ?? 0;
+
+  // Track what we've seen so we can detect NEW trades and OPEN->closed transitions.
+  const seenRef = useRef<Map<number, string>>(new Map());
+  const initedRef = useRef(false);
+  const soundRef = useRef(sound);
+  soundRef.current = sound;
+  const [newIds, setNewIds] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    if (!d || !Array.isArray(d.rows)) return;
+    const seen = seenRef.current;
+    const all: any[] = d.rows;
+    if (!initedRef.current) {               // first load: seed baseline, never announce
+      all.forEach((r) => seen.set(r.id, r.status));
+      initedRef.current = true;
+      return;
+    }
+    const fresh: number[] = [];
+    const exits: { ok: boolean; text: string }[] = [];
+    for (const r of all) {
+      const prev = seen.get(r.id);
+      if (prev === undefined) {             // a brand-new trade row
+        if (r.status === 'OPEN') {
+          fresh.push(r.id);
+          exits.push({ ok: r.side === 'LONG', text:
+            `New ${r.side === 'LONG' ? 'buy' : 'sell'} signal, ${spell(r.symbol)}, ${shortStrat(r.strategy_label)}` });
+        }
+      } else if (prev === 'OPEN' && CLOSED.has(r.status)) {   // just closed
+        const win = (r.profit ?? 0) >= 0;
+        const what = r.status === 'TARGET' ? 'hit target' : r.status === 'STOP' ? 'stopped out'
+          : r.status === 'SCORE_EXIT' ? 'exited on signal drop' : 'closed at end of day';
+        exits.push({ ok: win, text:
+          `${spell(r.symbol)} ${shortStrat(r.strategy_label)} ${what}, ${win ? 'profit' : 'loss'} ${Math.abs(Math.round(r.profit ?? 0))} dollars` });
+      }
+      seen.set(r.id, r.status);
+    }
+    if (fresh.length) {
+      setNewIds((cur) => {
+        const nx = new Set(cur); fresh.forEach((id) => nx.add(id)); return nx;
+      });
+      fresh.forEach((id) => setTimeout(() =>
+        setNewIds((cur) => { const nx = new Set(cur); nx.delete(id); return nx; }), NEW_BLINK_MS));
+    }
+    if (soundRef.current && exits.length) {
+      // a short beep (win/loss tone), then speak the events in turn
+      _beep(exits.some((e) => e.ok));
+      exits.slice(0, 4).forEach((e) => _say(e.text));
+    }
+  }, [d]);
+
+  function toggleSound() {
+    const on = !sound;
+    setSound(on);
+    try { localStorage.setItem('st-sound', on ? '1' : '0'); } catch { /* ignore */ }
+    if (on) { _beep(true); _say('Trade alerts on'); }   // first gesture unlocks audio
+  }
+
+  // New trades pinned to the top (and blinking); then the backend's profit sort.
+  const view = useMemo(() => {
+    const isNew = (r: any) => newIds.has(r.id);
+    return [...rows].sort((a, b) => {
+      const na = isNew(a) ? 1 : 0, nb = isNew(b) ? 1 : 0;
+      if (na !== nb) return nb - na;
+      return (b.profit ?? 0) - (a.profit ?? 0);
+    });
+  }, [rows, newIds]);
 
   return (
     <div className="page st-wrap">
@@ -73,6 +172,10 @@ export default function StrategyTradesPage() {
             placeholder="e.g. AAPL" spellCheck={false} />
           {symQ && <button className="st-clear" onClick={() => setSymQ('')} title="Clear">×</button>}
         </label>
+        <button className={`st-snd ${sound ? 'on' : ''}`} onClick={toggleSound}
+          title={sound ? 'Trade voice alerts on — click to mute' : 'Turn on voice alerts for new trades & stop/target'}>
+          {sound ? <Volume2 size={14} /> : <VolumeX size={14} />} {sound ? 'Alerts on' : 'Alerts off'}
+        </button>
         {d && <span className="ma-n">{needle ? `${rows.length} of ${d.count}` : d.count} trades · {d.open} open · {d.wins} winners
           {d.date ? ` · ${d.date}` : ''}{d.after_close ? ' · market closed' : d.rth ? ' · live' : ''}</span>}
       </div>
@@ -94,16 +197,17 @@ export default function StrategyTradesPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => {
+              {view.map((r) => {
                 const win = (r.profit ?? 0) > 0;
                 const loss = (r.profit ?? 0) < 0;
                 const ew = entryWindow(r);
+                const fresh = newIds.has(r.id);
                 return (
-                  <tr key={r.id} className={win ? 'st-win' : loss ? 'st-loss' : ''}>
+                  <tr key={r.id} className={`${fresh ? 'st-new' : ''} ${win ? 'st-win' : loss ? 'st-loss' : ''}`}>
                     <td className="l">{r.entry_time}</td>
                     <td className="l"><span className={`st-ls ${r.side === 'LONG' ? 'long' : 'short'}`}>
                       {r.side === 'LONG' ? 'Long' : 'Short'}</span></td>
-                    <td className="l"><b>{r.symbol}</b></td>
+                    <td className="l"><b>{r.symbol}</b>{fresh && <span className="st-newtag">NEW</span>}</td>
                     <td className="l ma-n">{r.strategy_label?.replace(' Intraday', '')}</td>
                     <td>{r.shares}</td>
                     <td>{px(r.entry_price)}</td>
@@ -130,7 +234,9 @@ export default function StrategyTradesPage() {
         <br /><b>Take Now?</b> tells you whether an OPEN signal is still worth entering mid‑move:
         <span className="st-take good">Good entry</span> = price still at/near entry (best);
         <span className="st-take ok">Still OK</span> = part of the move gone, reward still beats risk;
-        <span className="st-take late">Late — wait</span> = most of the move to target is gone, wait for a pullback or skip.</div>
+        <span className="st-take late">Late — wait</span> = most of the move to target is gone, wait for a pullback or skip.
+        <br />Turn on <b>Alerts</b> to pin & blink each new trade at the top and hear a spoken call-out when a
+        trade opens or hits its stop / target (this page only; your browser must allow sound).</div>
     </div>
   );
 }
