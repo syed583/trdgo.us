@@ -219,19 +219,22 @@ GEMINI_INTRADAY_WEIGHTS: dict[str, int] = {
 # Adds Implied-vs-Historical move, IV Rank and Gamma/OI concentration to the
 # direction factors. All read from the warmed equity signals + trade cache, so
 # the list scan stays fast. Same 5-step scale and BUY>=55 / SELL<=45 bands.
-META_WEIGHTS: dict[str, int] = {
-    "eps_revisions": 13,
-    "implied_vs_hist": 13,       # NEW -- implied move vs historical avg move
-    "options_flow": 11,
-    "iv_rank": 11,               # NEW -- IV level signal (engine implied_volatility)
-    "unusual_skew": 9,
-    "prior_guidance": 9,
-    "revenue_revisions": 9,      # NEW -- revenue estimate revisions / whisper
-    "hist_reaction": 8,
-    "gamma_oi": 8,               # NEW -- gamma / OI concentration (oi_positioning)
-    "peers": 7,
-    "short_interest": 2,
-}                                # sum = 100
+# Meta = owner's 11-parameter / 100-point model (same spec as Grok "Anas v1").
+# Spec weights sum to 97; rescaled x100/97 to 100 so the 55/45 bands stay centred
+# at 50 (relative weights unchanged). Calendar & Timing has no directional bias.
+META_WEIGHTS: dict[str, float] = {
+    "eps_estimates":     15.46,   # EPS Estimates & Revisions (15)
+    "price_action_rs":   15.46,   # Price Action & Relative Strength (15)
+    "options_combined":  19.59,   # Options Flow + Unusual + Put/Call Skew (19)
+    "revenue_estimates": 10.31,   # Revenue Estimates & Revisions (10)
+    "sector_market":     10.31,   # Sector & Market Regime (10)
+    "forward_guidance":   8.25,   # Forward Guidance & Analyst Outlook (8)
+    "peer_readthrough":   7.22,   # Peer Earnings Read-through (7)
+    "implied_vs_realized": 5.15,  # Implied vs Realized Move Factor (5)
+    "dark_pool":          3.09,   # Dark Pool Confirmation (3)
+    "short_insider":      3.09,   # Short Interest & Insider Activity (3)
+    "calendar_timing":    2.06,   # Earnings Calendar & Timing (2)
+}                                 # sum = 100.0 (97 rescaled x100/97)
 
 # --- Tab B: Short Straddle Scanner (banded, 100 pts) ------------------------
 TAB_B_WEIGHTS: dict[str, int] = {

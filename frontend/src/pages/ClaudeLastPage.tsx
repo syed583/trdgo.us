@@ -61,25 +61,26 @@ const CLAUDE_NEW_MODEL = (pz: boolean): DirModelCfg => ({
 
 // Meta -- owner's 11-factor / 100-pt model.
 const META_PARAMS: { key: string; label: string }[] = [
-  { key: 'eps_revisions', label: 'EPS' },
-  { key: 'implied_vs_hist', label: 'IM/Hist' },
-  { key: 'options_flow', label: 'Flow' },
-  { key: 'iv_rank', label: 'IV Rank' },
-  { key: 'unusual_skew', label: 'Unusual' },
-  { key: 'prior_guidance', label: 'Guid' },
-  { key: 'revenue_revisions', label: 'Rev' },
-  { key: 'hist_reaction', label: 'Hist' },
-  { key: 'gamma_oi', label: 'Gamma/OI' },
-  { key: 'peers', label: 'Peers' },
-  { key: 'short_interest', label: 'Short' },
+  { key: 'eps_estimates', label: 'EPS 15' },
+  { key: 'price_action_rs', label: 'Price/RS 15' },
+  { key: 'options_combined', label: 'Options 19' },
+  { key: 'revenue_estimates', label: 'Rev 10' },
+  { key: 'sector_market', label: 'Sector 10' },
+  { key: 'forward_guidance', label: 'Guid 8' },
+  { key: 'peer_readthrough', label: 'Peers 7' },
+  { key: 'implied_vs_realized', label: 'Impl/Real 5' },
+  { key: 'dark_pool', label: 'Dark Pool 3' },
+  { key: 'short_insider', label: 'Short/Insider 3' },
+  { key: 'calendar_timing', label: 'Calendar 2' },
 ];
 
 export const META_MODEL: DirModelCfg = {
   base: '/meta',
-  title: 'Meta · Pre-Earnings Direction · 11 factors',
-  subtitle: 'Direction from 11 factors incl. implied-vs-historical move, IV rank and gamma/OI '
-    + 'concentration, plus EPS/revenue revisions, flow, skew, guidance, history, peers and short '
-    + 'interest. 100 pts. Each box is a stock reporting soon, coloured by its signal.',
+  title: 'Meta · Anas Earnings Model v1 · 11 parameters · 100 pts',
+  subtitle: '11-parameter / 100-point model: EPS 15, Price Action & RS 15, Options Flow+Unusual+Skew 19, '
+    + 'Revenue 10, Sector & Market 10, Guidance 8, Peers 7, Implied-vs-Realized 5, Dark Pool 3, '
+    + 'Short/Insider 3, Calendar 2 (source summed 97, rescaled to 100). Bands: Buy ≥ 55 · Neutral 46–54 · '
+    + 'Sell ≤ 45. Each box is a stock reporting soon, coloured by its signal.',
   params: META_PARAMS,
   scan: (d, s) => api2.metaScan(d, s),
 };

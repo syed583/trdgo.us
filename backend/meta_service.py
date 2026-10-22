@@ -32,18 +32,19 @@ import claude_last_service as cl
 
 SOURCE = "Meta — Pre-Earnings Direction (11 factors)"
 
+# Meta = owner's 11-parameter / 100-pt model (same spec as Grok "Anas v1").
 _LABEL = {
-    "eps_revisions": "EPS Revisions",
-    "implied_vs_hist": "Implied Move vs Historical",
-    "options_flow": "Options Flow",
-    "iv_rank": "IV Rank",
-    "unusual_skew": "Unusual Skew",
-    "prior_guidance": "Prior Guidance / Beat",
-    "revenue_revisions": "Revenue Revisions / Whisper",
-    "hist_reaction": "Historical Price Reaction",
-    "gamma_oi": "Gamma / OI Concentration",
-    "peers": "Peer Read-through",
-    "short_interest": "Short Interest",
+    "eps_estimates":      "EPS Estimates & Revisions",
+    "price_action_rs":    "Price Action & Relative Strength",
+    "options_combined":   "Options Flow + Unusual + Put/Call Skew",
+    "revenue_estimates":  "Revenue Estimates & Revisions",
+    "sector_market":      "Sector & Market Regime",
+    "forward_guidance":   "Forward Guidance & Analyst Outlook",
+    "peer_readthrough":   "Peer Earnings Read-through",
+    "implied_vs_realized": "Implied vs Realized Move",
+    "dark_pool":          "Dark Pool Confirmation",
+    "short_insider":      "Short Interest & Insider Activity",
+    "calendar_timing":    "Earnings Calendar & Timing",
 }
 _ORDER = list(_LABEL.keys())
 
@@ -79,18 +80,22 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
     W = cfg.META_WEIGHTS
 
     pa_bias = sig.get("price_action", biases.get("price_action"))
+    options_lean = cl._avg([sig.get("options_flow", biases.get("options_positioning")),
+                            sig.get("unusual_activity", biases.get("unusual_options")),
+                            sig.get("disparity", biases.get("disparity"))])
+    insider_b = sig.get("insider_activity", biases.get("short_insider"))
     raw: dict[str, Optional[float]] = {
-        "eps_revisions": biases.get("eps_estimates"),
-        "implied_vs_hist": _implied_vs_hist_bias(trade),
-        "options_flow": sig.get("options_flow", biases.get("options_positioning")),
-        "iv_rank": sig.get("implied_volatility"),
-        "unusual_skew": sig.get("unusual_activity", biases.get("unusual_options")),
-        "prior_guidance": biases.get("guidance"),
-        "revenue_revisions": biases.get("revenue_estimates"),
-        "hist_reaction": cl._hist_reaction_bias(trade.get("historical_moves")),
-        "gamma_oi": sig.get("oi_positioning"),
-        "peers": biases.get("peer_readthrough"),
-        "short_interest": cl._short_interest_bias(eq.get("short_interest"), pa_bias),
+        "eps_estimates":      biases.get("eps_estimates"),
+        "price_action_rs":    pa_bias,
+        "options_combined":   options_lean,   # flow + unusual + skew, merged
+        "revenue_estimates":  biases.get("revenue_estimates"),
+        "sector_market":      biases.get("sector_market"),
+        "forward_guidance":   biases.get("guidance"),
+        "peer_readthrough":   biases.get("peer_readthrough"),
+        "implied_vs_realized": _implied_vs_hist_bias(trade),
+        "dark_pool":          biases.get("dark_pool"),
+        "short_insider":      cl._avg([cl._short_interest_bias(eq.get("short_interest"), pa_bias), insider_b]),
+        "calendar_timing":    None,            # no directional bias available -> neutral
     }
 
     params: list[dict] = []
