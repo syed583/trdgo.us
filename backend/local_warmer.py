@@ -22,12 +22,14 @@ import json
 import os
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 RESERVE = int(os.environ.get("WARM_RESERVE") or 2000)
+WORKERS = int(os.environ.get("WARM_WORKERS") or 3)
 DAILY_LIMIT = int(os.environ.get("WARM_DAILY_LIMIT") or 15000)   # Unusual Whales plan: 15,000 calls/day
 MAX_AGE = 24 * 3600.0
 EQ = "earn:equity:{}"
@@ -215,29 +217,47 @@ def run() -> int:
                     break
             _state.update(status="RUNNING", paused_until=None)
             continue
+        # Warm a small batch in parallel (the provider client paces and caps in-flight
+        # requests itself, so this only overlaps the waiting). Budget is checked per batch.
+        batch: list[str] = []
+        for k in range(i, min(total, i + WORKERS)):
+            if queue[k] in ages and ages[queue[k]] < MAX_AGE:
+                break                                         # leave fresh names to the skip branch
+            batch.append(queue[k])
+        batch = batch or [sym]
+        if len(batch) > 1 and _budget()["app_left"] - RESERVE < est * len(batch):
+            batch = batch[:1]
         before = _calls()
-        _state["current"] = sym
-        ok = False
-        try:
-            ok = _warm_one(sym)
-        except Exception as e:  # noqa: BLE001
-            print(f"  {sym}: {type(e).__name__}: {e}", flush=True)
+        _state["current"] = ",".join(batch)
+        results: dict[str, bool] = {}
+
+        def _one(x: str) -> None:
+            try:
+                results[x] = _warm_one(x)
+            except Exception as e:  # noqa: BLE001
+                results[x] = False
+                print(f"  {x}: {type(e).__name__}: {e}", flush=True)
+
+        with ThreadPoolExecutor(max_workers=len(batch)) as pool:
+            list(pool.map(_one, batch))
         spent = max(0, _calls() - before)
-        cost_hist.append(spent)
+        per = max(1, spent // len(batch))
+        cost_hist.extend([per] * len(batch))
         _state["calls_used_run"] += spent
         _state["calls_day"] = _state.get("calls_day", 0) + spent
-        _state["done"] += 1
-        _state["priority_done"] += 1 if i < n_priority else 0
-        if not ok:
-            _state["failed"] += 1
+        for x in batch:
+            _state["done"] += 1
+            _state["priority_done"] += 1 if i < n_priority else 0
+            if not results.get(x):
+                _state["failed"] += 1
+            i += 1
         b = _budget()
         _state.update(calls_today=b["used_by_this_app"], calls_limit=b["app_budget"],
                       avg_calls_per_name=round(sum(cost_hist) / len(cost_hist), 1))
-        if _state["done"] % 5 == 0 or i < 3:
-            save_state()
-            print(f"  {_state['done']}/{total}  last {sym} ({spent} calls)  "
-                  f"today {b['used_by_this_app']}/{b['app_budget']}", flush=True)
-        i += 1
+        save_state()
+        print(f"  {_state['done']}/{total}  last {batch[-1]} ({spent} calls / {len(batch)})  "
+              f"today {b['used_by_this_app']}/{b['app_budget']}", flush=True)
+        continue
     _state.update(status="DONE", current=None)
     save_state()
     print("done", _state, flush=True)

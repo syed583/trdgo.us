@@ -33,6 +33,7 @@ export default function AllModelsPage({ ctx }: { ctx: PageContext }) {
   const [days, setDays] = useState(15);
   const [query, setQuery] = useState('');
   const [changedOnly, setChangedOnly] = useState(false);
+  const [scoredOnly, setScoredOnly] = useState(true);
   const [sortKey, setSortKey] = useState<string>('date');
   const [sortDir, setSortDir] = useState<1 | -1>(1);
 
@@ -54,6 +55,7 @@ export default function AllModelsPage({ ctx }: { ctx: PageContext }) {
     if (q) xs = xs.filter((r) => String(r.symbol).toUpperCase().includes(q)
       || String(r.company || '').toUpperCase().includes(q));
     if (changedOnly) xs = xs.filter((r) => r.changed);
+    if (scoredOnly) xs = xs.filter((r) => Object.values(r.cells || {}).some((c: any) => c.signal !== 'PENDING'));
     const cmp = (a: any, b: any) => {
       let av: any; let bv: any;
       if (sortKey === 'date') { av = a.date || '￿'; bv = b.date || '￿'; }
@@ -64,7 +66,7 @@ export default function AllModelsPage({ ctx }: { ctx: PageContext }) {
       return a.symbol < b.symbol ? -1 : 1;
     };
     return [...xs].sort(cmp);
-  }, [rows, query, changedOnly, sortKey, sortDir]);
+  }, [rows, query, changedOnly, scoredOnly, sortKey, sortDir]);
 
   const sortBy = (k: string) => {
     if (sortKey === k) setSortDir((d) => (d === 1 ? -1 : 1));
@@ -113,6 +115,10 @@ export default function AllModelsPage({ ctx }: { ctx: PageContext }) {
           <input value={query} placeholder="Filter ticker / company…" spellCheck={false}
             onChange={(e) => setQuery(e.target.value)} />
         </span>
+        <label className="am-check" title="Hide names no model has scored yet (cache still warming)">
+          <input type="checkbox" checked={scoredOnly} onChange={(e) => setScoredOnly(e.target.checked)} />
+          Scored only
+        </label>
         <label className="am-check">
           <input type="checkbox" checked={changedOnly} onChange={(e) => setChangedOnly(e.target.checked)} />
           Changed only
