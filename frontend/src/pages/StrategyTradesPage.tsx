@@ -22,11 +22,31 @@ const STATUS_LABEL: Record<string, string> = {
   OPEN: 'Open', STOP: 'Stopped', TARGET: 'Target', TIMED_EXIT: 'Timed Exit', SCORE_EXIT: 'Score Exit',
 };
 
+/**
+ * For an OPEN trade, how much of the move from entry to target is already gone?
+ * Tells you whether it's still worth taking "in the middle" or you've missed it.
+ * Works for long and short (target is below entry for a short, so the ratio
+ * stays positive as price moves the signal's way).
+ */
+function entryWindow(r: any): { label: string; cls: string; tip: string } | null {
+  if (r.status !== 'OPEN') return null;
+  const e = r.entry_price, t = r.target, last = r.last_price;
+  if (e == null || t == null || last == null || t === e) return { label: 'Take now', cls: 'good', tip: 'Fresh signal — enter near the entry price.' };
+  const prog = (last - e) / (t - e);           // 0 = at entry, 1 = at target
+  if (prog >= 1) return { label: 'Missed', cls: 'late', tip: 'Price already reached the target — skip, do not chase.' };
+  if (prog <= 0.15) return { label: 'Good entry', cls: 'good', tip: 'Still at/near the entry — best reward-to-risk. Take it now.' };
+  if (prog <= 0.55) return { label: 'Still OK', cls: 'ok', tip: 'Part of the move is gone but reward still beats risk. OK to enter, or wait for a pullback toward entry.' };
+  return { label: 'Late — wait', cls: 'late', tip: 'Most of the move to target is gone. Little reward left — wait for a pullback to entry or skip.' };
+}
+
 export default function StrategyTradesPage() {
   const [strategy, setStrategy] = useState('all');
+  const [symQ, setSymQ] = useState('');
   const q = useApi<any>((s) => api2.strategyTrades(strategy, '', s), [strategy], { refreshMs: 15_000 });
   const d = q.data;
-  const rows: any[] = d?.rows || [];
+  const allRows: any[] = d?.rows || [];
+  const needle = symQ.trim().toUpperCase();
+  const rows: any[] = needle ? allRows.filter((r) => (r.symbol || '').toUpperCase().includes(needle)) : allRows;
   const strategies: any[] = d?.strategies || [];
   const total = d?.total_profit ?? 0;
 
@@ -48,7 +68,12 @@ export default function StrategyTradesPage() {
             {strategies.map((s) => <option value={s.key} key={s.key}>{s.label}</option>)}
           </select>
         </label>
-        {d && <span className="ma-n">{d.count} trades · {d.open} open · {d.wins} winners
+        <label className="st-filter">Symbol
+          <input className="st-sym" value={symQ} onChange={(e) => setSymQ(e.target.value)}
+            placeholder="e.g. AAPL" spellCheck={false} />
+          {symQ && <button className="st-clear" onClick={() => setSymQ('')} title="Clear">×</button>}
+        </label>
+        {d && <span className="ma-n">{needle ? `${rows.length} of ${d.count}` : d.count} trades · {d.open} open · {d.wins} winners
           {d.date ? ` · ${d.date}` : ''}{d.after_close ? ' · market closed' : d.rth ? ' · live' : ''}</span>}
       </div>
 
@@ -64,13 +89,15 @@ export default function StrategyTradesPage() {
               <tr>
                 <th className="l">Entry Time</th><th className="l">L/S</th><th className="l">Symbol</th>
                 <th className="l">Strategy</th><th>Shares</th><th>Entry</th><th>Chg $</th><th>Last</th>
-                <th>Profit</th><th>Profit %</th><th>Stop</th><th>Target</th><th className="l">Status</th>
+                <th>Profit</th><th>Profit %</th><th>Stop</th><th>Target</th>
+                <th className="l">Take Now?</th><th className="l">Status</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => {
                 const win = (r.profit ?? 0) > 0;
                 const loss = (r.profit ?? 0) < 0;
+                const ew = entryWindow(r);
                 return (
                   <tr key={r.id} className={win ? 'st-win' : loss ? 'st-loss' : ''}>
                     <td className="l">{r.entry_time}</td>
@@ -86,6 +113,9 @@ export default function StrategyTradesPage() {
                     <td className={win ? 'pos' : loss ? 'neg' : ''}>{signed(r.profit_pct, '%')}</td>
                     <td className="ma-n">{px(r.stop)}</td>
                     <td className="ma-n">{px(r.target)}</td>
+                    <td className="l">{ew
+                      ? <span className={`st-take ${ew.cls}`} title={ew.tip}>{ew.label}</span>
+                      : <span className="ma-n">—</span>}</td>
                     <td className="l"><span className={`st-stat ${r.status}`}>{STATUS_LABEL[r.status] || r.status}</span></td>
                   </tr>
                 );
@@ -96,7 +126,11 @@ export default function StrategyTradesPage() {
       )}
       <div className="st-note">Live P&amp;L updates every ~15s. One trade per symbol per strategy per day,
         no re-entry. Entry/stop/target come from each model's ATR levels; a position closes on stop,
-        target, a 15‑point score drop, or the 4:00pm ET close (Timed Exit).</div>
+        target, a 15‑point score drop, or the 4:00pm ET close (Timed Exit).
+        <br /><b>Take Now?</b> tells you whether an OPEN signal is still worth entering mid‑move:
+        <span className="st-take good">Good entry</span> = price still at/near entry (best);
+        <span className="st-take ok">Still OK</span> = part of the move gone, reward still beats risk;
+        <span className="st-take late">Late — wait</span> = most of the move to target is gone, wait for a pullback or skip.</div>
     </div>
   );
 }
