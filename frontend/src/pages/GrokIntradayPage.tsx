@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, Zap, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Loader2, Zap, TrendingUp, TrendingDown, Minus, AlertTriangle } from 'lucide-react';
 import type { PageContext } from '../App';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
@@ -87,6 +87,7 @@ export default function GrokIntradayPage({ ctx, cfg = GROK_CFG }:
   const warming = d?.status === 'WARMING' || (b.initialLoading && !d);
   const neutral = [...(d?.neutral || [])].sort((a: any, b: any) =>
     String(a.symbol).localeCompare(String(b.symbol)));
+  const wait: any[] = d?.wait || [];
 
   const Stat = ({ icon, label, n, cls }: any) => (
     <div className={`im2-stat ${cls}`}>{icon}<div><div className="im2-stat-n">{n ?? '—'}</div>
@@ -112,6 +113,7 @@ export default function GrokIntradayPage({ ctx, cfg = GROK_CFG }:
           <Stat icon={<TrendingUp size={16} />} label="BUY-rated" n={counts.buy} cls="buy" />
           <Stat icon={<TrendingDown size={16} />} label="SELL-rated" n={counts.sell} cls="sell" />
           <Stat icon={<Minus size={16} />} label="NEUTRAL" n={counts.neutral} cls="noedge" />
+          <Stat icon={<AlertTriangle size={16} />} label="WAIT · LOW DATA" n={counts.wait ?? wait.length} cls="noedge" />
         </div>
 
         {warming ? (
@@ -128,6 +130,27 @@ export default function GrokIntradayPage({ ctx, cfg = GROK_CFG }:
                 <span key={r.symbol} className="im2-chip">{r.symbol} <em>{r.score}</em></span>)
                 : <span className="im2-note">—</span>}
             </div>
+            <h3 className="im2-h">WAIT · LOW DATA</h3>
+            <p className="im2-note">No signal and no new trade for these names: their data is stale or incomplete
+              (max age {d?.data_policy ? Math.round(d.data_policy.max_signal_age_s / 60) : '—'} min for inputs,
+              {' '}{d?.data_policy ? Math.round(d.data_policy.max_price_age_s / 60) : '—'} min for price,
+              {' '}at least {d?.data_policy ? Math.round(d.data_policy.min_coverage_ratio * 100) : '—'}% of the inputs the model can have).</p>
+            {wait.length ? (
+              <div className="im2-wrap">
+                <table className="im2-tbl">
+                  <thead><tr><th>Symbol</th><th>Why there is no signal</th><th>Missing inputs</th></tr></thead>
+                  <tbody>
+                    {wait.map((r: any) => (
+                      <tr key={r.symbol}>
+                        <td className="sym">{r.symbol}</td>
+                        <td>{(r.wait_reasons || []).join(' · ') || 'data unavailable'}</td>
+                        <td>{(r.missing || []).slice(0, 6).join(', ') || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : <span className="im2-note">None — every name has fresh, complete data.</span>}
             <p className="im2-foot">Short-term lean from options flow + technicals (10-signal Grok model).
               Entry = price, TP/SL from daily ATR (2:1). Read-only — not advice.</p>
           </>

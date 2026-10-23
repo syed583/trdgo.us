@@ -730,6 +730,8 @@ def _compute(symbol: str) -> dict:
 
     if market_stale and status == "OK":
         status = "MARKET_STALE"               # don't silently show NO EDGE
+    elif _stock_stale and status == "OK":
+        status = "STOCK_STALE"                # the stock's own 5-min bars are reused last-good data
 
     return {
         "symbol": symbol, "model": MODEL,
@@ -739,6 +741,7 @@ def _compute(symbol: str) -> dict:
         "gates": gates, "spy_above_vwap": spy_above,
         "vwap": round(vw, 2) if vw is not None else None,
         "atr": atr(symbol),
-        "market_stale": market_stale, "spy_status": spy_status, "bars_ok": bars_ok,
+        "market_stale": market_stale, "stock_stale": _stock_stale,
+        "spy_status": spy_status, "bars_ok": bars_ok,
         "params": ordered,
     }

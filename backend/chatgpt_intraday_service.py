@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import Optional
 
 import claude_last_service as cl
+import intraday_safety
 
 SOURCE = "ChatGPT Intraday — 20-param institutional"
 
@@ -47,6 +48,16 @@ PARAMS = [
     ("intermarket", "Intermarket Confirmation", 1, ("live", "market")),
     ("breadth_mtf", "Market Breadth (Tape)", 1, ("mkt", "breadth")),
 ]
+
+
+def _attainable_live() -> float:
+    """Weight of the parameters that HAVE a live data source on the board (the rest never have data)."""
+    return float(sum(w for _k, _l, w, src in PARAMS if src and src[0] in ("live", "eq", "mkt", "either")))
+
+
+def _attainable_equity() -> float:
+    return float(sum(w for k, _l, w, _s in PARAMS
+                     if _EQ_SRC.get(k) and (_EQ_SRC[k][0] or _EQ_SRC[k][1])))
 
 
 def _score(symbol: str, s: dict, eq: Optional[dict], enrich: Optional[dict] = None) -> dict:
@@ -112,6 +123,7 @@ def _score(symbol: str, s: dict, eq: Optional[dict], enrich: Optional[dict] = No
 
     return {"symbol": symbol, "score": score, "signal": signal, "params": params,
             "coverage": round(covered / 100.0 * 100, 1),
+            "coverage_attainable": _attainable_live() if not enrich else None,
             "entry": entry, "now": now, "tp": tp, "sl": sl, "spot": entry,
             "atr": round(atr, 2) if atr else None,
             "move_size": round(atr / spot * 100, 2) if (atr and spot) else None,
@@ -202,6 +214,7 @@ def _score_equity(symbol: str, eq: dict) -> dict:
     covered = sum(p["max"] for p in params if not p["no_data"])
     return {"symbol": symbol, "score": score, "signal": signal, "params": params,
             "coverage": round(covered / 100.0 * 100, 1),
+            "coverage_attainable": _attainable_equity(),
             "entry": None, "now": None, "tp": None, "sl": None,
             "model_status": "equity-fallback"}
 
@@ -211,13 +224,21 @@ def _equity_board() -> dict:
     from concurrent.futures import ThreadPoolExecutor
     import intraday_grok_service as gk        # reuse its equity cache + level math
     syms = [s.upper() for s in getattr(ats, "UNIVERSE", [])]
+    try:
+        import intraday_indicators as _ind
+        phase = _ind.market_phase()
+    except Exception:  # noqa: BLE001
+        phase = None
 
     def _one(s: str):
         try:
             eq = gk._eq_cached(s)
             if eq and eq.get("params"):
+                eq, sig_age, src = intraday_safety.effective_eq(s, eq)
                 r = _score_equity(s, eq)
                 gk._levels(r)                  # entry = live/last price, +-ATR stop/target
+                intraday_safety.gate(r, phase=phase, signals_age_s=sig_age,
+                                     price_age=intraday_safety.price_age_s(s), inputs_source=src)
                 return r
         except Exception:  # noqa: BLE001
             return None
@@ -228,18 +249,7 @@ def _equity_board() -> dict:
         for r in ex.map(_one, syms):
             if r:
                 rows.append(r)
-    buyers = sorted([r for r in rows if r["signal"] == "BUY"], key=lambda r: r["score"], reverse=True)
-    sellers = sorted([r for r in rows if r["signal"] == "SELL"], key=lambda r: r["score"])
-    neutral = [r for r in rows if r["signal"] == "NEUTRAL"]
-    try:
-        import intraday_indicators as ind
-        phase = ind.market_phase()
-    except Exception:  # noqa: BLE001
-        phase = None
-    return {"status": "OK", "source": SOURCE + " · closed-market (equity signals)",
-            "phase": phase, "buyers": buyers, "sellers": sellers, "neutral": neutral,
-            "counts": {"buy": len(buyers), "sell": len(sellers), "neutral": len(neutral)},
-            "universe": len(syms), "scored": len(rows)}
+    return intraday_safety.compose(rows, SOURCE + " · closed-market (equity signals)", len(syms), phase)
 
 
 def board() -> dict:
@@ -254,11 +264,21 @@ def board() -> dict:
         pass
     import ai_trade_service as ats
     syms = [s.upper() for s in getattr(ats, "UNIVERSE", [])]
+    try:
+        import intraday_indicators as _ind
+        phase = _ind.market_phase()
+    except Exception:  # noqa: BLE001
+        phase = None
     rows: list[dict] = []
     for sym in syms:
         try:
             r = score_one(sym)
             if r:
+                age = intraday_safety.age_s(f"im2:{sym}")      # how old is the live engine score?
+                intraday_safety.gate(r, phase=phase, signals_age_s=age, price_age=age,
+                                     model_status=r.get("model_status"),
+                                     inputs_label="live 5-minute engine score",
+                                     inputs_source="live engine (im2)")
                 rows.append(r)
         except Exception:  # noqa: BLE001
             pass
@@ -271,15 +291,4 @@ def board() -> dict:
             except Exception:  # noqa: BLE001
                 pass
         threading.Thread(target=_kick, daemon=True).start()
-    buyers = sorted([r for r in rows if r["signal"] == "BUY"], key=lambda r: r["score"], reverse=True)
-    sellers = sorted([r for r in rows if r["signal"] == "SELL"], key=lambda r: r["score"])
-    neutral = [r for r in rows if r["signal"] == "NEUTRAL"]
-    try:
-        import intraday_indicators as ind
-        phase = ind.market_phase()
-    except Exception:  # noqa: BLE001
-        phase = None
-    return {"status": "OK", "source": SOURCE, "phase": phase,
-            "buyers": buyers, "sellers": sellers, "neutral": neutral,
-            "counts": {"buy": len(buyers), "sell": len(sellers), "neutral": len(neutral)},
-            "universe": len(syms), "scored": len(rows)}
+    return intraday_safety.compose(rows, SOURCE, len(syms), phase)

@@ -120,14 +120,20 @@ def _board(spec: str) -> Optional[dict]:
 
 def _row_map(board: dict) -> dict[str, dict]:
     """symbol -> {signal, score, entry, now, sl, tp} across buyers/sellers/neutral."""
+    import intraday_safety
     out: dict[str, dict] = {}
-    for bucket in ("buyers", "sellers", "neutral"):
+    # "wait" rows (stale / incomplete data) stay in the map so OPEN trades keep being managed
+    # exactly as before (price, stop, target, score exit from the raw score); they just can
+    # never open a NEW trade (see `tradable`).
+    for bucket in ("buyers", "sellers", "neutral", "wait"):
         for r in (board.get(bucket) or []):
             s = (r.get("symbol") or "").upper()
             if s:
-                out[s] = {"signal": r.get("signal"), "score": r.get("score"),
+                score = r.get("score") if r.get("score") is not None else r.get("score_raw")
+                out[s] = {"signal": r.get("signal"), "score": score,
                           "entry": r.get("entry"), "now": r.get("now"),
-                          "sl": r.get("sl"), "tp": r.get("tp")}
+                          "sl": r.get("sl"), "tp": r.get("tp"),
+                          "tradable": intraday_safety.tradable(r)}
     return out
 
 
@@ -240,7 +246,9 @@ def tick(force: bool = False) -> None:
                     for sym, info in rows.items():
                         sig = info.get("signal")
                         entry = info.get("entry")
-                        if sig in ("BUY", "SELL") and entry and (strat, sym) not in have:
+                        # New entries only from rows whose data passed the freshness gate.
+                        if (sig in ("BUY", "SELL") and entry and info.get("tradable", False)
+                                and (strat, sym) not in have):
                             side = "LONG" if sig == "BUY" else "SHORT"
                             sl, tp = _with_levels(side, entry, info.get("sl"), info.get("tp"))
                             last0 = _live_price(sym, boards, entry)

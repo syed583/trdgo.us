@@ -66,12 +66,19 @@ def test_every_protected_table_is_rewritten_in_every_statement_form():
             assert not re.search(rf"(?<![A-Za-z0-9_]){t}(?![A-Za-z0-9_])", out), (t, f, out)
 
 
-# (ORM tables the test schema already created with real columns -- score_snapshots, trade_calls --
-# are covered by the pure rewrite test above; these four are created from scratch here.)
-@pytest.mark.parametrize("table", ["demo_trades", "model_predictions", "earnings_signal_snapshots", "ped_scores"])
+# (ORM-managed tables -- score_snapshots, trade_calls, demo_trades -- have real schemas other tests rely on;
+# they are covered by the pure rewrite test above and, for demo_trades, end-to-end by test_intraday_safety.
+# These three raw-SQL tables are created from scratch here.)
+@pytest.mark.parametrize("table", ["model_predictions", "earnings_signal_snapshots", "ped_scores"])
 def test_a_local_write_lands_in_the_twin_never_in_the_real_table(table):
     """Executes real statements through the app's engine: the real table must never appear."""
     from sqlalchemy import text
+    raw0 = d.engine.raw_connection()                        # did the twin already exist (real schema)?
+    try:
+        existed = raw0.cursor().execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (f"{table}_local",)).fetchone()
+    finally:
+        raw0.close()
     db = d.SessionLocal()
     try:
         db.execute(text(f"CREATE TABLE IF NOT EXISTS {table} (id INTEGER PRIMARY KEY, v TEXT)"))
@@ -91,6 +98,13 @@ def test_a_local_write_lands_in_the_twin_never_in_the_real_table(table):
             assert marker == 0, f"local code wrote into the real table {table}"
     finally:
         raw.close()
+        if not existed:                                     # leave no scratch table behind for other tests
+            raw1 = d.engine.raw_connection()
+            try:
+                raw1.cursor().execute(f"DROP TABLE IF EXISTS {table}_local")
+                raw1.commit()
+            finally:
+                raw1.close()
 
 
 def test_no_source_file_hardcodes_the_production_project():

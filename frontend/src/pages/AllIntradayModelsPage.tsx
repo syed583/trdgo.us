@@ -11,7 +11,7 @@ import './all-models.css';
 const tier = (sig?: string) =>
   sig === 'BUY' ? 'b' : sig === 'SELL' ? 's' : sig === 'NEUTRAL' ? 'n' : 'x';
 const letter = (sig?: string) =>
-  sig === 'BUY' ? 'B' : sig === 'SELL' ? 'S' : sig === 'NEUTRAL' ? '–' : '·';
+  sig === 'BUY' ? 'B' : sig === 'SELL' ? 'S' : sig === 'NEUTRAL' ? '–' : sig === 'WAIT' ? 'W' : '·';
 
 export default function AllIntradayModelsPage({ ctx }: { ctx: PageContext }) {
   void ctx;

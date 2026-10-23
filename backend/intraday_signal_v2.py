@@ -273,7 +273,10 @@ def _maybe_open(db, symbol: str, sess: str, sc: dict, now: datetime) -> Optional
     score = sc.get("score")
     price = sc.get("spot")
     # Only a fully gated BUY/SELL call is eligible, inside the new-signal window.
+    # A new entry (or one more confirmation) needs HEALTHY data: status OK means SPY and the
+    # stock's own 5-minute bars are live, not reused last-good bars (MARKET_STALE/STOCK_STALE).
     eligible = (call in ("BUY", "STRONG BUY", "SELL", "STRONG SELL")
+                and sc.get("status") == "OK"
                 and side in ("BUY", "SELL") and price is not None
                 and _NEW_START <= now.time() <= _NEW_END)
     pend = _pending(db, symbol, sess)

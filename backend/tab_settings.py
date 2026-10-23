@@ -346,3 +346,17 @@ TIMING_MULT: dict[str, float] = {"bmo": 1.0, "amc": 1.0, "tue_thu": 1.0, "mon_fr
 # refreshes each name about once a day; a long TTL means page views never trigger a
 # paid recompute in between (a stale value is served while the warmer catches up).
 EARN_CACHE_TTL: float = 48 * 3600.0
+
+
+# Intraday data-safety gate (intraday_safety.py): the six AI intraday boards show WAIT / LOW DATA
+# instead of a signal when their inputs are older than this for the current session phase, the
+# live price is stale, or too little of the model's weight has data. Symmetric for BUY and SELL.
+INTRADAY_SAFETY: dict = {
+    # seconds. rth: the live directional cache lives 120s and the live engine rescans ~every 3 min.
+    "max_signal_age_s": {"rth": 600.0, "post": 1800.0, "pre": 3600.0, "closed": 18 * 3600.0},
+    "max_price_age_s": 300.0,
+    # Coverage is judged against the weight the model can actually have on that path (some models
+    # have parameters with no data source at all), not against 100%.
+    "min_coverage_ratio": 0.75,
+    "min_coverage_floor_pct": 30.0,
+}
