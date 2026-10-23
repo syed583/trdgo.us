@@ -44,7 +44,7 @@ class Decision(NamedTuple):
 
 
 def _group(priority: int) -> str:
-    return "intraday" if priority in (pri.LIVE, pri.ESSENTIAL) else "other" if priority == pri.DASHBOARD else "warmer"
+    return {pri.LIVE: "live", pri.ESSENTIAL: "essential", pri.DASHBOARD: "other"}.get(priority, "warmer")
 
 
 class Controller:
@@ -82,8 +82,8 @@ class Controller:
 
     # -- state --------------------------------------------------------------------------
     def _fresh_state(self, day: str) -> dict:
-        return {"day": day, "modules": {}, "groups": {"intraday": 0, "other": 0, "warmer": 0},
-                "warmer_hour": {"hour": self._hour(), "calls": 0},
+        return {"day": day, "modules": {}, "groups": {"live": 0, "essential": 0, "other": 0, "warmer": 0},
+                "warmer_hour": {"hour": self._hour(), "calls": 0}, "module_hour": {},
                 "provider": None, "dashboard": None, "cooldown": {}, "denied": {}, "total_calls": 0}
 
     def _roll(self) -> None:
@@ -181,10 +181,15 @@ class Controller:
         if rem <= reserve:
             return Decision(False, f"only {rem} calls left: the emergency reserve ({reserve}) is kept "
                                    f"for the live intraday engine", "RESERVE")
-        if priority == pri.ESSENTIAL:
-            return Decision(True)
         g = self.state["groups"]
-        headroom = reserve + max(0, s["intraday_budget"] - g["intraday"])   # intraday keeps what it is owed
+        intraday_used = g["live"] + g["essential"]
+        if priority == pri.ESSENTIAL:
+            # Essential data may not eat the share the live engine is owed.
+            if g["essential"] >= s["essential_budget"]:
+                return Decision(False, "essential-data budget for today is used (the rest is kept for the "
+                                       "live engine)", "ESSENTIAL_BUDGET")
+            return Decision(True)
+        headroom = reserve + max(0, s["intraday_budget"] - intraday_used)   # intraday keeps what it is owed
         if rem - headroom <= 0:
             return Decision(False, "the remaining calls are protected for live intraday trading",
                             "YIELD_TO_INTRADAY")
@@ -242,6 +247,10 @@ class Controller:
             m["calls"] += 1
             self.state["total_calls"] += 1
             self.state["groups"][_group(priority)] += 1
+            mh = self.state["module_hour"].setdefault(module, {"hour": self._hour(), "calls": 0})
+            if mh["hour"] != self._hour():
+                mh["hour"], mh["calls"] = self._hour(), 0
+            mh["calls"] += 1
             if priority == pri.WARMER:
                 wh = self.state["warmer_hour"]
                 if wh["hour"] != self._hour():
@@ -258,6 +267,13 @@ class Controller:
             self._since_save += 1
             if self._since_save >= 25:
                 self._save()
+
+    def module_hour_calls(self, module: str) -> int:
+        """Requests this module has made in the current clock hour."""
+        with self._lock:
+            self._roll()
+            mh = self.state["module_hour"].get(module)
+            return mh["calls"] if mh and mh["hour"] == self._hour() else 0
 
     def record_busy(self, priority: int, module: str) -> None:
         with self._lock:
@@ -288,7 +304,11 @@ class Controller:
                 "used_total": used, "remaining": max(0, allow - used),
                 "local_calls": self.state["total_calls"],
                 "emergency_reserve": self.s["emergency_reserve"],
-                "budgets": {"intraday": {"budget": self.s["intraday_budget"], "used": g["intraday"]},
+                "budgets": {"intraday": {"budget": self.s["intraday_budget"], "used": g["live"] + g["essential"]},
+                            "live_engine": {"used": g["live"]},
+                            "essential": {"budget": self.s["essential_budget"], "used": g["essential"],
+                                          "feed_hour_cap": self.s["feed_hourly_cap"],
+                                          "feed_hour_used": self.module_hour_calls("ai_boards")},
                             "other": {"budget": self.s["other_budget"], "used": g["other"]},
                             "warmer": {"budget": self.s["warmer_budget"], "used": g["warmer"],
                                        "hour_cap": self.s["warmer_hourly_cap"],

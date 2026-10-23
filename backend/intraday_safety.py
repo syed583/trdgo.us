@@ -260,6 +260,11 @@ def gate(row: dict, *, phase: Optional[str], signals_age_s: Optional[float],
 # ----------------------------------------------------------------- boards ----
 def compose(rows: list[dict], source: str, universe: int, phase: Optional[str] = None) -> dict:
     """The standard board payload, plus a WAIT bucket. Symmetric for BUY and SELL."""
+    try:
+        import intraday_feed
+        intraday_feed.note_interest(rows)               # tells the shared feed which names matter most
+    except Exception:  # noqa: BLE001
+        pass
     buyers = sorted([r for r in rows if r.get("signal") == "BUY"], key=lambda r: r["score"], reverse=True)
     sellers = sorted([r for r in rows if r.get("signal") == "SELL"], key=lambda r: r["score"])
     neutral = [r for r in rows if r.get("signal") == "NEUTRAL"]

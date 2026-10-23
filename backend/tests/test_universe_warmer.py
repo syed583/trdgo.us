@@ -123,7 +123,7 @@ def test_production_mode_uses_the_production_state_row_and_daily_refresh_age():
 import uw_budget as _bud  # noqa: E402
 import uw_priority as _pri  # noqa: E402
 
-_S = {"daily_limit": 100, "emergency_reserve": 10, "intraday_budget": 60, "other_budget": 15,
+_S = {"daily_limit": 100, "emergency_reserve": 10, "intraday_budget": 60, "essential_budget": 40, "feed_hourly_cap": 700, "other_budget": 15,
       "warmer_budget": 20, "warmer_hourly_cap": 8, "reset_hour_et": 20,
       "dashboard_reading_max_age_s": 6 * 3600, "provider_headers_max_age_s": 600,
       "cooldown_429_s": {3: 120, 4: 900}}

@@ -157,7 +157,7 @@ def test_tagged_never_downgrades_a_stricter_caller():
 
 
 # ====================================================== the budget controller ======
-SETTINGS = {"daily_limit": 100, "emergency_reserve": 10, "intraday_budget": 60, "other_budget": 15,
+SETTINGS = {"daily_limit": 100, "emergency_reserve": 10, "intraday_budget": 60, "essential_budget": 40, "feed_hourly_cap": 700, "other_budget": 15,
             "warmer_budget": 20, "warmer_hourly_cap": 8, "reset_hour_et": 20,
             "dashboard_reading_max_age_s": 6 * 3600, "provider_headers_max_age_s": 600,
             "cooldown_429_s": {3: 120, 4: 900}}
@@ -453,3 +453,57 @@ def test_provider_daily_headers_feed_the_controller(client):
                                                               "x-uw-token-req-limit": "15000"}))
     uw.get("/api/stock/AAPL/flow-alerts")
     assert c.quota_state() == "VERIFIED_PROVIDER" and c.used_total() == 8123 and c.allowance() == 15000
+
+
+def test_essential_data_cannot_eat_the_share_the_live_engine_is_owed():
+    c, _ = ctl()
+    c.record_dashboard_usage(0)
+    spend(c, pri.ESSENTIAL, "ai_boards", SETTINGS["essential_budget"])      # the essential share is used up
+    d = c.admit(pri.ESSENTIAL, "ai_boards")
+    assert not d.ok and d.code == "ESSENTIAL_BUDGET"
+    assert c.admit(pri.LIVE, "intraday_engine").ok                         # the live engine is unaffected
+    snap = c.snapshot()["budgets"]
+    assert snap["essential"]["used"] == SETTINGS["essential_budget"] and snap["live_engine"]["used"] == 0
+
+
+def test_module_hourly_counters_roll_over_with_the_clock_hour():
+    c, clk = ctl()
+    spend(c, pri.ESSENTIAL, "ai_boards", 5)
+    assert c.module_hour_calls("ai_boards") == 5
+    clk.t += 3600
+    assert c.module_hour_calls("ai_boards") == 0
+
+
+def test_live_requests_keep_flowing_through_the_real_client_while_the_warmer_floods_it(client, monkeypatch):
+    """End to end through uw.get(): 60 warmer requests are in flight while live requests arrive."""
+    uw, c, opener = client
+    c.record_dashboard_usage(0)                                           # quota verified: the warmer may run
+    uw._OPENER = FakeOpener(lambda r: (time.sleep(0.03), FakeResp({"data": [1]}))[1])
+    results = {"live": [], "warm": []}
+    lat = {"live": [], "warm": []}
+    lock = threading.Lock()
+
+    def request(kind, i):
+        prio, mod = (pri.LIVE, "intraday_engine") if kind == "live" else (pri.WARMER, "warmer")
+        t0 = time.monotonic()
+        with pri.use(prio, mod):
+            out = uw.get(f"/api/stock/S{i}/ohlc/5m" if kind == "live" else f"/api/stock/W{i}/ohlc/5m")
+        with lock:
+            results[kind].append(out["status"])
+            lat[kind].append(time.monotonic() - t0)
+
+    ts_ = [threading.Thread(target=request, args=("warm", i), daemon=True) for i in range(60)]
+    for t in ts_:
+        t.start()
+    time.sleep(0.05)
+    for i in range(15):
+        t = threading.Thread(target=request, args=("live", i), daemon=True)
+        t.start()
+        ts_.append(t)
+        time.sleep(0.02)
+    for t in ts_:
+        t.join(30)
+    assert results["live"].count("OK") == 15                              # every live request was served
+    assert max(lat["live"]) < 0.6                                         # ... promptly, not behind the warmer
+    assert results["warm"].count("OK") + results["warm"].count("BUSY") + \
+        results["warm"].count("BUDGET_THROTTLED") == 60                   # the warmer was served or told no -- cleanly

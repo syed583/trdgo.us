@@ -371,7 +371,9 @@ INTRADAY_SAFETY: dict = {
 UW_BUDGET: dict = {
     "daily_limit": 15000,          # the plan's allowance (from the plan; the API sends no daily header)
     "emergency_reserve": 1000,     # the last calls belong to the live intraday engine only
-    "intraday_budget": 9000,       # priorities 1+2: live engine, options flow, the six AI boards
+    "intraday_budget": 9000,       # priorities 1+2 together: the live engine, essential market data, the six boards
+    "essential_budget": 4500,      # priority 2 alone: the rest of intraday_budget is kept for the live engine (1)
+    "feed_hourly_cap": 700,        # the six boards' shared feed (module "ai_boards") per clock hour
     "other_budget": 2000,          # priority 3: everything else a page asks for
     "warmer_budget": 3000,         # priority 4: historical warming, per provider day
     "warmer_hourly_cap": 400,      # priority 4: and never more than this in any clock hour

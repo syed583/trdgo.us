@@ -75,7 +75,10 @@ def compute_fast(symbol: str) -> Optional[dict]:
         bench = (market._fallback_bars("SPY", "1 Y") or ([], None))[0]
     data["technicals"] = calculate_technicals(bars) if bars else None
     data["price_action"] = pa.score_price_action(pa.analyse(bars, bench or None)) if bars else {}
-    out = {s["name"]: s["bias"] for s in dss.build_signals(data)
+    # build_signals() yields Signal objects; score_direction() turns them into the dict form the
+    # rest of the app reads (name / bias / available) -- exactly what get_directional_score serves.
+    scored = dss.score_direction(dss.build_signals(data))
+    out = {s["name"]: s["bias"] for s in scored.get("signals", [])
            if s.get("name") in FAST_SIGNALS and s.get("available") and s.get("bias") is not None}
     if len(out) < MIN_FAST_COVERAGE * len(FAST_SIGNALS):
         return None                                     # a thin answer is not a refresh
@@ -100,20 +103,49 @@ def refresh_after(phase: Optional[str]) -> float:
     return 0.7 * live
 
 
+_INTEREST_KEY = "intrafeed:interest"
+
+
+def note_interest(rows: list) -> None:
+    """Boards report how far each name is from neutral; the feed refreshes the interesting names first."""
+    import swr
+    cur = dict(swr.peek(_INTEREST_KEY) or {})
+    for r in rows:
+        sc = r.get("score") if r.get("score") is not None else r.get("score_raw")
+        if sc is not None and r.get("symbol"):
+            cur[r["symbol"]] = abs(float(sc) - 50.0)
+    swr._values[_INTEREST_KEY] = (time.time(), cur)
+
+
+def interest() -> dict:
+    import swr
+    v = swr.peek(_INTEREST_KEY)
+    return v if isinstance(v, dict) else {}
+
+
 def feed_cycle(symbols: list[str], phase: Optional[str], max_symbols: int = 6,
                now: Optional[float] = None, compute=compute_fast) -> dict:
-    """Refresh the stalest due symbols, permitted by the shared budget. Returns what happened."""
+    """Refresh the due symbols the shared budget permits.
+
+    There is not enough API budget to keep every name inside its options-flow limit all day, so the
+    order matters: names that hold a signal or lean hardest from neutral first, then the stalest.
+    Stops at the hourly cap for this feed and whenever the budget says no."""
     now = time.time() if now is None else now
     ctl = uw_budget.get()
+    cap = float(cfg.UW_BUDGET.get("feed_hourly_cap", 700))
+    hot = interest()
     due = []
     for s in symbols:
         v = read(s)
         age = (now - v["ts"]) if v else float("inf")
         if age >= refresh_after(phase):
-            due.append((age, s))
-    due.sort(reverse=True)                              # stalest first
+            due.append((hot.get(s, 0.0), age, s))
+    due.sort(reverse=True)                              # interesting first, then stalest
     done, skipped, failed = [], [], []
-    for _age, s in due[:max_symbols]:
+    for _i, _age, s in due[:max_symbols]:
+        if ctl.module_hour_calls("ai_boards") >= cap:
+            skipped.append((s, "FEED_HOURLY_CAP"))
+            break
         d = ctl.peek(pri.ESSENTIAL)
         if not d.ok:
             skipped.append((s, d.code))

@@ -74,9 +74,10 @@ def _row_cells(sym: str, s: dict, eq: Optional[dict], trade: Optional[dict],
         phase = _ind.market_phase()
     except Exception:  # noqa: BLE001
         phase = None
-    limit = safety.max_signal_age(phase)
+    import tab_settings as _cfg
     im_age = safety.age_s(f"im2:{sym}")
-    live_ok = s.get("status") in (None, "OK") and im_age is not None and im_age <= limit
+    live_ok = (s.get("status") in (None, "OK") and im_age is not None
+               and im_age <= _cfg.INTRADAY_FRESHNESS["engine_score"][1])
 
     # Live-engine models (re-bucket the im2 score).
     cells["claude_pro"] = safe(lambda: cpi.score_from_model(sym, s)) if live_ok else _cell(safety.WAIT, None)
@@ -88,8 +89,8 @@ def _row_cells(sym: str, s: dict, eq: Optional[dict], trade: Optional[dict],
         import intraday_grok_service as ig
         import meta_intraday_service as mi
         import gemini_intraday_service as gin
-        eq_eff, eq_age, _src = safety.effective_eq(sym, eq)
-        if eq_age is not None and eq_age <= limit:
+        eq_eff, _eq_age, _src = safety.effective_eq(sym, eq, phase)
+        if not eq_eff["_meta"]["missing_critical"]:          # every critical input fresh for its own kind of data
             cells["grok"] = safe(lambda: ig.score_one(sym, eq_eff, None, {}))
             cells["meta"] = safe(lambda: mi.score_one(sym, eq_eff, None, {}))
             cells["gemini"] = safe(lambda: gin.score_one(sym, eq_eff, trade, {}))

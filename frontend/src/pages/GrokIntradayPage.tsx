@@ -12,6 +12,33 @@ import '../components/intraday-v2.css';
 const money = (v: any) => (v == null ? '—' : `$${Number(v).toFixed(2)}`);
 const callClass = (c: string) => (c === 'BUY' ? 'im2-buy' : c === 'SELL' ? 'im2-sell' : 'im2-noedge');
 
+const ageText = (sec?: number | null) => {
+  if (sec == null) return '—';
+  if (sec < 90) return `${Math.round(sec)}s`;
+  if (sec < 5400) return `${Math.round(sec / 60)} min`;
+  return `${(sec / 3600).toFixed(1)} h`;
+};
+
+// LIVE / DELAYED / STALE / MISSING -- from the age of the data itself, never from an HTTP 200.
+// Times are shown in Dubai time (GST, UTC+4), as sent by the server.
+function DataChip({ h }: { h?: any }) {
+  if (!h) return <span className="im2-data missing">—</span>;
+  const tip = [
+    `Signal generated: ${h.signal_generated_dubai ?? '—'}`,
+    `Latest market data: ${h.market_data_dubai ?? '—'}  (age ${ageText(h.data_age_s)})`,
+    `API health: ${h.api_health ?? '—'}`,
+    `Timeframe: ${h.timeframe ?? '—'}`,
+    `Missing critical: ${(h.missing_critical || []).join(', ') || 'none'}`,
+    `New entries: ${h.eligible_for_new_entries ? 'eligible' : 'NOT eligible'}`,
+  ].join('\n');
+  return (
+    <span className={`im2-data ${String(h.status || 'missing').toLowerCase()}`} title={tip}>
+      {h.status ?? 'MISSING'}
+      <em>{ageText(h.data_age_s)}</em>
+    </span>
+  );
+}
+
 function SignalTable({ rows, side, base }: { rows: any[]; side: 'BUY' | 'SELL'; base: string }) {
   const nav = useNavigate();
   if (!rows.length) {
@@ -26,7 +53,7 @@ function SignalTable({ rows, side, base }: { rows: any[]; side: 'BUY' | 'SELL'; 
         <thead>
           <tr>
             <th>Symbol</th><th>Call</th><th className="n">Score</th><th className="n">Entry</th>
-            <th className="n">Now</th><th className="n">TP</th><th className="n">SL</th>
+            <th className="n">Now</th><th className="n">TP</th><th className="n">SL</th><th>Data</th>
           </tr>
         </thead>
         <tbody>
@@ -39,6 +66,7 @@ function SignalTable({ rows, side, base }: { rows: any[]; side: 'BUY' | 'SELL'; 
               <td className="n">{money(r.now)}</td>
               <td className="n">{money(r.tp)}</td>
               <td className="n">{money(r.sl)}</td>
+              <td><DataChip h={r.health} /></td>
             </tr>
           ))}
         </tbody>
@@ -131,18 +159,21 @@ export default function GrokIntradayPage({ ctx, cfg = GROK_CFG }:
                 : <span className="im2-note">—</span>}
             </div>
             <h3 className="im2-h">WAIT · LOW DATA</h3>
-            <p className="im2-note">No signal and no new trade for these names: their data is stale or incomplete
-              (max age {d?.data_policy ? Math.round(d.data_policy.max_signal_age_s / 60) : '—'} min for inputs,
-              {' '}{d?.data_policy ? Math.round(d.data_policy.max_price_age_s / 60) : '—'} min for price,
-              {' '}at least {d?.data_policy ? Math.round(d.data_policy.min_coverage_ratio * 100) : '—'}% of the inputs the model can have).</p>
+            <p className="im2-note">No signal and no new trade for these names: a critical input (options flow,
+              price action, live price) is stale or missing. Each input is judged by its own limit — price
+              ≤ {d?.data_policy ? Math.round(d.data_policy.max_price_age_s / 60) : '—'} min, options flow
+              ≤ {d?.data_policy?.freshness_s?.options_flow ? Math.round(d.data_policy.freshness_s.options_flow[1] / 60) : '—'} min,
+              earnings data ≤ {d?.data_policy?.freshness_s?.earnings_fundamentals ? Math.round(d.data_policy.freshness_s.earnings_fundamentals[1] / 3600) : '—'} h
+              (looser outside the regular session). Times are Dubai time (GST).</p>
             {wait.length ? (
               <div className="im2-wrap">
                 <table className="im2-tbl">
-                  <thead><tr><th>Symbol</th><th>Why there is no signal</th><th>Missing inputs</th></tr></thead>
+                  <thead><tr><th>Symbol</th><th>Data</th><th>Why there is no signal</th><th>Missing inputs</th></tr></thead>
                   <tbody>
                     {wait.map((r: any) => (
                       <tr key={r.symbol}>
                         <td className="sym">{r.symbol}</td>
+                        <td><DataChip h={r.health} /></td>
                         <td>{(r.wait_reasons || []).join(' · ') || 'data unavailable'}</td>
                         <td>{(r.missing || []).slice(0, 6).join(', ') || '—'}</td>
                       </tr>

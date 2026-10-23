@@ -111,7 +111,7 @@ def test_feed_cycle_refreshes_stalest_first_within_its_cap_and_skips_fresh_symbo
 
 def test_feed_cycle_stops_when_the_shared_budget_says_no():
     calls = []
-    c = bud.Controller({"daily_limit": 100, "emergency_reserve": 10, "intraday_budget": 60, "other_budget": 15,
+    c = bud.Controller({"daily_limit": 100, "emergency_reserve": 10, "intraday_budget": 60, "essential_budget": 40, "feed_hourly_cap": 700, "other_budget": 15,
                         "warmer_budget": 20, "warmer_hourly_cap": 8, "reset_hour_et": 20,
                         "dashboard_reading_max_age_s": 6 * 3600, "provider_headers_max_age_s": 600,
                         "cooldown_429_s": {3: 120, 4: 900}}, persist=False)
@@ -139,14 +139,16 @@ def test_compute_fast_uses_the_same_signal_functions_and_rejects_thin_answers(mo
     monkeypatch.setattr(odflow, "daily_oi_change", lambda s: {})
     monkeypatch.setattr(disparity_service, "get_disparity", lambda s: {})
     monkeypatch.setattr(market, "_fallback_bars", lambda s, d: ([], None))
-    seen = []
-    monkeypatch.setattr(dss, "build_signals", lambda data: seen.append(data) or [
-        {"name": n, "bias": 0.4, "available": True} for n in feed.FAST_SIGNALS[:2]] + [
-        {"name": "event_radar", "bias": 0.9, "available": True}])
-    assert feed.compute_fast("AAA") is None                                 # 2 of 13 fast signals: too thin
-    monkeypatch.setattr(dss, "build_signals", lambda data: [
-        {"name": n, "bias": 0.4, "available": True} for n in feed.FAST_SIGNALS] + [
-        {"name": "event_radar", "bias": 0.9, "available": True}])
+    objs = object()                                         # build_signals returns Signal OBJECTS, not dicts
+    monkeypatch.setattr(dss, "build_signals", lambda data: objs)
+    thin = {"signals": [{"name": n, "bias": 0.4, "available": True} for n in feed.FAST_SIGNALS[:2]]
+            + [{"name": "event_radar", "bias": 0.9, "available": True}]}
+    monkeypatch.setattr(dss, "score_direction", lambda sigs: thin if sigs is objs else {})
+    assert feed.compute_fast("AAA") is None                 # 2 of 13 fast signals: too thin to store
+    full = {"signals": [{"name": n, "bias": 0.4, "available": True} for n in feed.FAST_SIGNALS]
+            + [{"name": "event_radar", "bias": 0.9, "available": True},
+               {"name": "ema_trend", "bias": None, "available": False}]}
+    monkeypatch.setattr(dss, "score_direction", lambda sigs: full)
     got = feed.compute_fast("AAA")
     assert set(got["signals"]) == set(feed.FAST_SIGNALS) and "event_radar" not in got["signals"]
 
@@ -163,6 +165,7 @@ def test_the_feed_runs_at_essential_priority(monkeypatch):
     monkeypatch.setattr(disparity_service, "get_disparity", lambda s: {})
     monkeypatch.setattr(market, "_fallback_bars", lambda s, d: ([], None))
     monkeypatch.setattr(dss, "build_signals", lambda data: [])
+    monkeypatch.setattr(dss, "score_direction", lambda sigs: {"signals": []})
     feed.compute_fast("AAA")
     assert seen == [(pri.ESSENTIAL, "ai_boards")]
 
@@ -315,7 +318,7 @@ def test_timestamps_are_shown_in_dubai_time():
 def test_the_running_service_picks_up_a_dashboard_reading_and_the_pause_switch(monkeypatch):
     import db_cache
     clk = [1_760_000_000.0]
-    c = bud.Controller({"daily_limit": 100, "emergency_reserve": 10, "intraday_budget": 60, "other_budget": 15,
+    c = bud.Controller({"daily_limit": 100, "emergency_reserve": 10, "intraday_budget": 60, "essential_budget": 40, "feed_hourly_cap": 700, "other_budget": 15,
                         "warmer_budget": 20, "warmer_hourly_cap": 8, "reset_hour_et": 20,
                         "dashboard_reading_max_age_s": 6 * 3600, "provider_headers_max_age_s": 600,
                         "cooldown_429_s": {3: 120, 4: 900}}, now=lambda: clk[0], persist=True)
@@ -332,3 +335,27 @@ def test_the_running_service_picks_up_a_dashboard_reading_and_the_pause_switch(m
     store["uwbudget:control"] = (clk[0], {"paused": False})
     c.state["dashboard"] = None
     assert c.admit(pri.WARMER, "warmer").code == "UNVERIFIED_QUOTA"        # a previous day's reading is ignored
+
+
+def test_feed_stops_at_its_hourly_cap(monkeypatch):
+    c = bud.reset_for_tests(bud.Controller(persist=False))
+    monkeypatch.setitem(cfg.UW_BUDGET, "feed_hourly_cap", 3)
+    for _ in range(3):
+        c.record_call(pri.ESSENTIAL, "ai_boards", "ok")
+    calls = []
+    out = feed.feed_cycle(["A", "B"], "rth", now=NOW, compute=lambda s: calls.append(s))
+    assert calls == [] and out["skipped"] == [("A", "FEED_HOURLY_CAP")] or out["skipped"][0][1] == "FEED_HOURLY_CAP"
+
+
+def test_names_far_from_neutral_are_refreshed_before_stale_boring_ones():
+    put_feed("BORING", FAST_ALL, age_s=5000)                               # the stalest ...
+    put_feed("HOT", FAST_ALL, age_s=800)                                    # ... but this one holds a lean
+    put_feed("WARM", FAST_ALL, age_s=900)
+    feed.note_interest([{"symbol": "HOT", "score": 82.0}, {"symbol": "WARM", "score": 61.0},
+                        {"symbol": "BORING", "score": 50.4},
+                        {"symbol": "WAITING", "score": None, "score_raw": 20.0}])   # a WAIT row still counts
+    order = []
+    bud.reset_for_tests(bud.Controller(persist=False))
+    feed.feed_cycle(["BORING", "HOT", "WARM", "WAITING"], "rth", now=NOW, max_symbols=4,
+                    compute=lambda s: order.append(s) or None)
+    assert order[:3] == ["HOT", "WAITING", "WARM"]                          # by distance from 50, then staleness

@@ -88,3 +88,19 @@
   border-radius: 9px; padding: 9px 13px; margin-bottom: 10px; }
 :root:not([data-theme="light"]) .im2-phase, :root[data-theme="dark"] .im2-phase {
   color: #fcd34d; background: #3a2a0d; border-color: #5a4212; }
+
+
+/* data health chips: LIVE / DELAYED / STALE / MISSING (age of the data, not an HTTP status) */
+.im2-data { display: inline-flex; align-items: baseline; gap: 5px; font-size: 10.5px; font-weight: 700;
+  padding: 1px 7px; border-radius: 6px; letter-spacing: .03em; cursor: help; }
+.im2-data em { font-style: normal; font-weight: 600; opacity: .75; }
+.im2-data.live { color: #15803d; background: rgba(22,163,74,.14); }
+.im2-data.delayed { color: #b45309; background: rgba(217,119,6,.16); }
+.im2-data.stale { color: #b91c1c; background: rgba(220,38,38,.14); }
+.im2-data.missing { color: #64748b; background: rgba(148,163,184,.2); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .im2-data.live { color: #4ade80; }
+  :root:not([data-theme="light"]) .im2-data.delayed { color: #fbbf24; }
+  :root:not([data-theme="light"]) .im2-data.stale { color: #f87171; }
+  :root:not([data-theme="light"]) .im2-data.missing { color: #94a3b8; }
+}
