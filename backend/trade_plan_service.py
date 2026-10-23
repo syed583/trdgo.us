@@ -788,6 +788,8 @@ def start_scanner(every: float = 300.0) -> None:
     def loop() -> None:
         _time.sleep(20)  # let the app settle before the first pass
         import boot_guard
+        import uw_priority
+        uw_priority.set_thread_default(uw_priority.DASHBOARD, "trade_plan_scanner")
         boot_guard.wait_until_due("trade-plan-scan", every)      # not again right after a restart
         while True:
             try:

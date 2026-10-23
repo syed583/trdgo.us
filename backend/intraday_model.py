@@ -18,6 +18,8 @@ signal engine layer (intraday_signal_v2) which wraps this scorer with state.
 """
 from __future__ import annotations
 
+import uw_priority as _uwp
+
 from typing import Optional
 
 import intraday_indicators as ind
@@ -627,6 +629,7 @@ def _liquidity_from_candles(candles, spot, today, min_price, min_avgvol) -> Opti
     return avg >= min_avgvol
 
 
+@_uwp.tagged(_uwp.LIVE, "intraday_engine")
 def score(symbol: str) -> dict:
     """The one shared v2 scorer. Pure function of (symbol, now ET); cached ~45s
     so both screens read the same numbers in the same minute."""

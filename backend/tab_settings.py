@@ -360,3 +360,61 @@ INTRADAY_SAFETY: dict = {
     "min_coverage_ratio": 0.75,
     "min_coverage_floor_pct": 30.0,
 }
+
+
+# ---------------------------------------------------------------------------------------------
+# Unusual Whales API budget and priority (uw_budget.py / uw_priority.py)
+# ---------------------------------------------------------------------------------------------
+# Every number here is a CONFIGURATION, not a measurement. Verify the real allowance on the
+# provider dashboard and record the day's usage with `python uw_budget_cli.py usage N`; until a
+# reading (or provider headers) verifies the quota the historical warmer stays paused.
+UW_BUDGET: dict = {
+    "daily_limit": 15000,          # the plan's allowance (from the plan; the API sends no daily header)
+    "emergency_reserve": 1000,     # the last calls belong to the live intraday engine only
+    "intraday_budget": 9000,       # priorities 1+2: live engine, options flow, the six AI boards
+    "other_budget": 2000,          # priority 3: everything else a page asks for
+    "warmer_budget": 3000,         # priority 4: historical warming, per provider day
+    "warmer_hourly_cap": 400,      # priority 4: and never more than this in any clock hour
+    "reset_hour_et": 20,           # the provider day resets at 8 pm US Eastern
+    "dashboard_reading_max_age_s": 6 * 3600,   # how long a typed-in dashboard reading is trusted
+    "provider_headers_max_age_s": 600,
+    "cooldown_429_s": {3: 120, 4: 900},        # after a 429: dashboards wait 2 min, the warmer 15 min
+}
+
+# One request answered for every module: identical requests inside these windows (seconds) share one
+# provider call, whoever asks. Live prices are barely reused; slow data is held long on purpose.
+UW_MEMO_TTL_S: dict = {
+    "quote": 10.0, "bars_intraday": 20.0, "bars_daily": 600.0,
+    "options_flow": 30.0, "options_volume": 60.0, "options_positioning": 120.0,
+    "earnings_fundamentals": 6 * 3600.0, "ownership_insider": 12 * 3600.0, "news": 300.0,
+}
+
+# Freshness the intraday boards need, BY KIND OF DATA: (live seconds, maximum seconds for a new entry).
+# "live" = fresh enough to call the data LIVE; beyond "max" the input is STALE and may not support an
+# entry. Slow data (earnings, ownership) is deliberately NOT held to a 10-minute rule.
+INTRADAY_FRESHNESS: dict = {
+    "price_volume": (120.0, 300.0),
+    "engine_score": (180.0, 360.0),      # the live 5-minute engine's per-name score (rescanned every ~3 min)
+    "options_flow": (600.0, 1200.0),
+    "market_breadth": (600.0, 1200.0),
+    "options_positioning": (1800.0, 3600.0),
+    "price_action_daily": (900.0, 1800.0),
+    "daily_oi": (6 * 3600.0, 12 * 3600.0),
+    "earnings_fundamentals": (24 * 3600.0, 48 * 3600.0),
+    "ownership_insider": (3 * 86400.0, 7 * 86400.0),
+}
+
+# Which kind of data each directional signal rests on.
+SIGNAL_DATA_TYPE: dict = {
+    "options_flow": "options_flow", "unusual_activity": "options_flow", "volume_pcr": "options_flow",
+    "flow_by_expiry": "options_flow",
+    "key_levels": "options_positioning", "oi_positioning": "options_positioning",
+    "implied_volatility": "options_positioning", "expected_move": "options_positioning",
+    "disparity": "options_positioning",
+    "daily_oi_change": "daily_oi",
+    "ema_trend": "price_action_daily", "rsi": "price_action_daily", "price_action": "price_action_daily",
+    "event_radar": "earnings_fundamentals", "earnings_results": "earnings_fundamentals",
+    "dividend_trend": "earnings_fundamentals", "merger_activity": "earnings_fundamentals",
+    "funding_activity": "earnings_fundamentals",
+    "insider_activity": "ownership_insider", "fund_flows": "ownership_insider",
+}

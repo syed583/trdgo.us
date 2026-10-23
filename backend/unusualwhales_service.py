@@ -49,6 +49,9 @@ from typing import Any, Optional
 from dotenv import load_dotenv
 
 from live_market_service import cache
+import uw_budget as _uwb
+import uw_freshness as _uwf
+import uw_priority as _uwp
 
 load_dotenv()
 
@@ -138,7 +141,37 @@ MAX_PACE = 1.5
 # dispatcher (and the 429 backoff) still widen the gap the moment a real
 # per-minute cap starts to bite, so this stays safe on a tighter token.
 MAX_INFLIGHT = 8
-_inflight = threading.BoundedSemaphore(MAX_INFLIGHT)
+
+
+_ESSENTIAL_TYPES = {"quote", "bars_intraday", "options_flow", "options_volume",
+                    "options_positioning"}
+
+
+class _FairSlot:
+    """Context manager over the shared PriorityGate: a slot for the CALLER's priority class.
+    Raises uw_priority.Busy if the queue is full or the class's maximum wait elapses."""
+
+    def __init__(self) -> None:
+        import uw_priority
+        self.gate = uw_priority.PriorityGate({"slots": MAX_INFLIGHT})
+        self._tl = threading.local()
+
+    def __enter__(self):
+        import uw_priority
+        prio = uw_priority.current()[0]
+        self.gate.acquire(prio)
+        stack = getattr(self._tl, "stack", None)
+        if stack is None:
+            stack = self._tl.stack = []
+        stack.append(prio)
+        return self
+
+    def __exit__(self, *exc):
+        self.gate.release(self._tl.stack.pop())
+        return False
+
+
+_inflight = _FairSlot()
 
 # Single-flight: when many users open the same symbol at once and the cache is
 # cold, without this every one of them fires the same request -- a burst that
@@ -347,6 +380,11 @@ def _note_limits(headers) -> None:
         if value is not None:
             _limits["daily_limit"] = value
             break
+    if _limits.get("daily_count") is not None:
+        try:
+            _uwb.get().note_provider(_limits["daily_count"], _limits.get("daily_limit"))
+        except Exception:  # noqa: BLE001
+            pass
     # Proactive per-minute backoff: when almost nothing is left this minute,
     # wait out the window the header reports (it is in milliseconds) rather than
     # firing into a 429.
@@ -412,7 +450,7 @@ def _spend() -> bool:
     return True
 
 
-def get(path: str, params: Optional[dict] = None) -> dict:
+def _get_impl(path: str, params: Optional[dict] = None) -> dict:
     """
     One call to their API, with the limits they publish respected.
 
@@ -433,12 +471,6 @@ def get(path: str, params: Optional[dict] = None) -> dict:
                 "retry_in": round(_blocked_until - time.time()),
                 "source": SOURCE}
 
-    if not _spend():
-        return {"status": "BUDGET_EXHAUSTED", "data": None,
-                "detail": (f"This app's own daily ceiling of {APP_DAILY_BUDGET} "
-                           "Unusual Whales requests is spent."),
-                "source": SOURCE}
-
     if any(bad in path for bad in ("?", "#", "..", "//")) or not path.startswith("/"):
         # A well-formed path is built from validated segments. Anything with a
         # query, a fragment, a parent-directory hop or a doubled slash was not
@@ -447,6 +479,23 @@ def get(path: str, params: Optional[dict] = None) -> dict:
         _last_status = "BAD_REQUEST"
         return {"status": "BAD_REQUEST", "data": None,
                 "detail": "Malformed request path.", "source": SOURCE}
+
+    # Admission by priority and shared budget (uw_budget): a refusal is a clean "no data" answer, never
+    # a silent stall, and it is counted against the module that asked.
+    prio, module, tracker = _uwp.current()
+    if not _uwp.is_explicit() and _uwf.classify(path) in _ESSENTIAL_TYPES:
+        prio, module = _uwp.ESSENTIAL, "market_data"      # prices, options flow and positioning: essential
+    decision = _uwb.get().admit(prio, module)
+    if not decision.ok:
+        if tracker is not None:
+            tracker.denied += 1
+        return {"status": "BUDGET_EXHAUSTED" if decision.code == "EXHAUSTED" else "BUDGET_THROTTLED",
+                "data": None, "detail": decision.reason, "code": decision.code, "source": SOURCE}
+    if not _spend():
+        return {"status": "BUDGET_EXHAUSTED", "data": None,
+                "detail": (f"This app's own daily ceiling of {APP_DAILY_BUDGET} "
+                           "Unusual Whales requests is spent."),
+                "source": SOURCE}
 
     query = urllib.parse.urlencode(
         {k: v for k, v in (params or {}).items() if v not in (None, "")},
@@ -478,10 +527,14 @@ def get(path: str, params: Optional[dict] = None) -> dict:
                 _metrics["last_path"] = path
                 _metrics["last_latency_ms"] = round(lat)
                 _metrics["last_at"] = time.time()
+                _uwb.get().record_call(prio, module, "ok")
                 break
             except urllib.error.HTTPError as exc:
                 key = str(exc.code)
                 _metrics["errors_by"][key] = _metrics["errors_by"].get(key, 0) + 1
+                _uwb.get().record_call(prio, module, "429" if exc.code == 429 else "error")
+                if tracker is not None:
+                    tracker.errors += 1
                 if exc.code == 429 and _attempt == 0:
                     time.sleep(min(
                         _seconds(getattr(exc, "headers", {}).get("Retry-After"))
@@ -498,6 +551,10 @@ def get(path: str, params: Optional[dict] = None) -> dict:
                     _metrics["last_error"] = f"{path} → HTTP {exc.code}"
                 return _http_error(exc)
             except Exception as exc:  # noqa: BLE001
+                _uwb.get().record_call(
+                    prio, module, "timeout" if isinstance(exc, (TimeoutError, OSError)) else "error")
+                if tracker is not None:
+                    tracker.errors += 1
                 _metrics["errors_by"]["net"] = _metrics["errors_by"].get("net", 0) + 1
                 _metrics["net_errors"] += 1
                 _metrics["err_times"].append(time.time())
@@ -511,6 +568,80 @@ def get(path: str, params: Optional[dict] = None) -> dict:
     # itself. Both are handed back the same way so callers never branch.
     data = body.get("data") if isinstance(body, dict) and "data" in body else body
     return {"status": "OK", "data": data, "source": SOURCE}
+
+
+# --- request-level reuse: one provider call for every module that asks ------------------------------
+_memo: dict = {}
+_memo_lock = threading.Lock()
+_MEMO_MAX = 4000
+_req_flights: dict = {}
+_req_flights_lock = threading.Lock()
+
+
+def _req_key(path: str, params: Optional[dict]) -> str:
+    items = sorted((str(k), str(v)) for k, v in (params or {}).items() if v not in (None, ""))
+    return path + "?" + "&".join(f"{k}={v}" for k, v in items)
+
+
+class _Flight:
+    def __init__(self) -> None:
+        self.event = threading.Event()
+        self.result: Optional[dict] = None
+
+
+def get(path: str, params: Optional[dict] = None) -> dict:
+    """
+    One call to Unusual Whales, shared and prioritised.
+
+      1. an identical request answered recently (window by kind of data, uw_freshness) is reused;
+      2. an identical request already on the wire is waited for, not repeated;
+      3. otherwise it is admitted by priority/budget (uw_budget) and sent through the fair gate.
+
+    A queue that is full or a wait that runs out comes back as {"status": "BUSY"} -- never a hang.
+    """
+    key = _req_key(path, params)
+    ttl = _uwf.memo_ttl(path)
+    now = time.time()
+    if ttl > 0:
+        with _memo_lock:
+            hit = _memo.get(key)
+        if hit and now - hit[0] < ttl:
+            _metrics["memo_hits"] = _metrics.get("memo_hits", 0) + 1
+            return hit[1]
+    with _req_flights_lock:
+        flight = _req_flights.get(key)
+        leader = flight is None
+        if leader:
+            flight = _req_flights[key] = _Flight()
+    if not leader:
+        if flight.event.wait(timeout=35.0) and flight.result is not None:
+            _metrics["dedup_hits"] = _metrics.get("dedup_hits", 0) + 1
+            return flight.result
+        # the leader failed or took too long: make our own request below
+    try:
+        try:
+            out = _get_impl(path, params)
+        except _uwp.Busy as busy:
+            prio, module, _t = _uwp.current()
+            _uwb.get().record_busy(prio, module)
+            if _t is not None:
+                _t.busy += 1
+            _metrics["busy"] = _metrics.get("busy", 0) + 1
+            out = {"status": "BUSY", "data": None, "detail": busy.reason, "source": SOURCE}
+    finally:
+        if leader:
+            with _req_flights_lock:
+                _req_flights.pop(key, None)
+    if leader:
+        flight.result = out
+        flight.event.set()
+    if ttl > 0 and out.get("status") == "OK":
+        with _memo_lock:
+            if len(_memo) >= _MEMO_MAX:
+                for k in sorted(_memo, key=lambda k: _memo[k][0])[: _MEMO_MAX // 4]:
+                    _memo.pop(k, None)
+            _memo[key] = (time.time(), out)
+    return out
 
 
 def _http_error(exc) -> dict:

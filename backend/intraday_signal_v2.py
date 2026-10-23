@@ -19,6 +19,8 @@ the Analysis page just displays the same score read-only.
 """
 from __future__ import annotations
 
+import uw_priority as _uwp
+
 from datetime import datetime, time, timezone
 from typing import Optional
 
@@ -148,6 +150,7 @@ def _pl_pct(side: str, entry: float, price: float) -> float:
 # --------------------------------------------------------------------------- #
 #  The per-ticker step (called by the TODAY board scan)
 # --------------------------------------------------------------------------- #
+@_uwp.tagged(_uwp.LIVE, "intraday_engine")
 def step(symbol: str, sc: Optional[dict] = None, now: Optional[datetime] = None) -> Optional[dict]:
     """Advance one ticker's intraday signal using the current v2 score. Returns
     the current open/closed row as a dict (or None if nothing tracked). Writes to
@@ -456,6 +459,7 @@ def universe() -> list[str]:
         return []
 
 
+@_uwp.tagged(_uwp.LIVE, "intraday_engine")
 def scan_once(now: Optional[datetime] = None) -> dict:
     """Score + step every universe name once (one scan cycle), then compose the
     Today board. This is what drives confirmations and exits -- call it on a

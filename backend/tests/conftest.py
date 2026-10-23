@@ -105,3 +105,19 @@ def _no_access_gate(monkeypatch):
     except Exception:  # noqa: BLE001
         pass
     yield
+
+
+@pytest.fixture(autouse=True)
+def _isolate_uw_client_state():
+    """Each test starts with an empty request memo, no in-flight requests and a fresh, unpersisted
+    budget controller -- the client reuses identical requests across modules (by design), and that
+    must never leak from one test into the next."""
+    try:
+        import unusualwhales_service as uw
+        import uw_budget
+        uw._memo.clear()
+        uw._req_flights.clear()
+        uw_budget.reset_for_tests()
+    except Exception:  # noqa: BLE001
+        pass
+    yield

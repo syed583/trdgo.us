@@ -1,23 +1,25 @@
-"""Budgeted cache warmer for the top-1000 liquid US stocks.
+"""Budgeted cache warmer for the top-1000 liquid US stocks (priority 4: it yields to everything).
 
 Two modes, chosen by the environment (db_cache.namespace()):
 
   development (APP_ENV != production)   python local_warmer.py   (one-shot; --status)
       queue  : names reporting in the next 7 days first, then the rest of the 1,000
-      budget : 15,000 calls/day, 2,000 kept in reserve
-      refresh: a name warmed < 24h ago is skipped
-
   production (APP_ENV=production)       started by main.py, runs 24/7 as a thread
       queue  : universe names reporting within the next 10 TRADING days, soonest first
-      budget : 13,000 calls/day TOTAL (provider's own counter when it sends one),
-               1,500 kept in reserve for live requests and the capture job
-      refresh: every name is re-warmed once a day (older than 20h); when the day's
-               allowance is spent it sleeps until the 8 pm US Eastern reset
 
-Common: universe_service ranks the top 1,000 by average daily dollar volume; results land
-in the environment-namespaced DB cache (so they survive restarts); before each batch the
-daily budget is checked, never spending into the reserve; progress is saved to the
-`local_warm_state` table (row 1 = development, row 2 = production) and served at
+Whether it may run is decided ONLY by the shared API budget controller (uw_budget):
+
+  * the provider quota must be VERIFIED (provider headers, or a dashboard reading recorded with
+    uw_budget_cli.py) -- a local counter that merely reset is not enough;
+  * it never takes the budget live intraday trading is owed (priority 1 and 2 keep their share
+    plus the emergency reserve);
+  * its own daily budget and hourly cap (tab_settings.UW_BUDGET);
+  * a 429 puts it into a cool-down.
+
+Each of its requests is also admitted individually (priority 4 in the client's fair gate); a
+refresh during which any request was refused is DISCARDED rather than stored half-built, and
+retried later. Names already warm (< 20 h production / 24 h development) are skipped.
+Progress is saved to `local_warm_state` (row 1 = development, row 2 = production) and served at
 GET /api/warm/progress.
 """
 from __future__ import annotations
@@ -32,14 +34,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import uw_budget
+import uw_priority as pri
+
 def is_production() -> bool:
     import db_cache
     return db_cache.namespace() == ""
 
 
-RESERVE = int(os.environ.get("WARM_RESERVE") or (1500 if is_production() else 2000))
 WORKERS = int(os.environ.get("WARM_WORKERS") or 3)
-DAILY_LIMIT = int(os.environ.get("WARM_DAILY_LIMIT") or (13000 if is_production() else 15000))   # plan: 15,000/day
 MAX_AGE = (20 if is_production() else 24) * 3600.0          # refresh cadence
 EQ = "earn:equity:{}"
 TR = "earn:trade:default:{}"
@@ -92,6 +95,13 @@ def load_state() -> dict:
 
 
 # ----------------------------------------------------------------- helpers --
+def day_id(now: "datetime | None" = None) -> str:
+    """The provider's counting day: it resets at 8 pm US Eastern, not midnight."""
+    from zoneinfo import ZoneInfo
+    now = (now or datetime.now(ZoneInfo("America/New_York"))).astimezone(ZoneInfo("America/New_York"))
+    return (now + timedelta(hours=4)).date().isoformat()
+
+
 def next_reset_epoch(now: datetime | None = None) -> float:
     """Next 8:00 pm US Eastern (when the provider's daily counter resets)."""
     from zoneinfo import ZoneInfo
@@ -153,74 +163,35 @@ def warm_ages(symbols: list[str]) -> dict[str, float]:
     return out
 
 
-_seen: dict = {"day": None, "n": 0}
+def _force(key: str, fn, tracker) -> bool:
+    """Recompute and store `key` NOW. swr.serve would hand back any stored value younger than the
+    cache window (48h) without recomputing, so a name that is 20-48h old would never actually
+    refresh; the warmer only gets here for names older than MAX_AGE (or absent).
 
-
-def sync_counter() -> None:
-    """Fold EVERY Unusual Whales request made inside this process (the warmer, the other
-    background loops, page views) into the persisted daily count. The provider sends no
-    daily-usage headers here, so this is the only guard; counting just the warmer's own
-    batches missed everything else and let the day run past the cap."""
-    import unusualwhales_service as uw
-    day, cur = uw._spent["day"], uw._spent["count"]
-    if _seen["day"] is None:                       # first sample: nothing to add yet
-        _seen.update(day=day, n=cur)
-        return
-    delta = (cur - _seen["n"]) if day == _seen["day"] else cur   # a new counting day began
-    _seen.update(day=day, n=cur)
-    if _state.get("day_id") != day_id():
-        _state["day_id"], _state["calls_day"] = day_id(), 0
-    _state["calls_day"] = _state.get("calls_day", 0) + max(0, delta)
-    _state["calls_used_run"] = _state.get("calls_used_run", 0) + max(0, delta)
-
-
-def _calls() -> int:
-    import unusualwhales_service as uw
-    return int(uw._metrics.get("net_calls", 0))
-
-
-def day_id(now: datetime | None = None) -> str:
-    """The provider's counting day: it resets at 8 pm US Eastern, not midnight."""
-    from zoneinfo import ZoneInfo
-    now = (now or datetime.now(ZoneInfo("America/New_York"))).astimezone(ZoneInfo("America/New_York"))
-    return (now + timedelta(hours=4)).date().isoformat()
-
-
-def _budget() -> dict:
-    """Calls used / left today. Uses the provider's own daily headers when it sends
-    them; otherwise this warmer's own persisted per-day counter against the 15,000
-    plan limit (the app's default ceiling of 10,000,000 is meaningless here)."""
-    import unusualwhales_service as uw
-    b = uw.budget()
-    if _state.get("day_id") != day_id():                  # a new counting day began
-        _state["day_id"], _state["calls_day"] = day_id(), 0
-    if b.get("daily_limit_known"):
-        limit, used = min(b["app_budget"], DAILY_LIMIT), b["used_by_this_app"]
-    else:
-        limit, used = DAILY_LIMIT, _state.get("calls_day", 0)
-    return {"used_by_this_app": used, "app_budget": limit, "app_left": max(0, limit - used),
-            "blocked": b["blocked"], "blocked_for": b.get("blocked_for_seconds", 0)}
-
-
-def _force(key: str, fn) -> None:
-    """Recompute and store `key` NOW. swr.serve would hand back any stored value younger
-    than the cache window (48h) without recomputing, so a name that is 20-48h old would
-    never actually refresh; the warmer only gets here for names older than MAX_AGE (or
-    absent), so a real rebuild is exactly what is wanted. A failed/empty build keeps the
-    previous value."""
-    import swr
+    A build during which the shared budget REFUSED any request (or the gate was busy) is partial: it
+    is discarded, never stored as if it were good. Returns False in that case."""
     v = fn()
+    if tracker.denied or tracker.busy:
+        return False
     if isinstance(v, dict) and v.get("status") not in ("LOADING", "RATE_LIMITED", "BUDGET_EXHAUSTED",
-                                                       "PROVIDER_NOT_CONFIGURED", "ERROR", "BAD_REQUEST"):
+                                                       "BUDGET_THROTTLED", "BUSY", "PROVIDER_NOT_CONFIGURED",
+                                                       "ERROR", "BAD_REQUEST"):
+        import swr
         swr._run(key, lambda: v)
+    return True
 
 
-def _warm_one(sym: str) -> bool:
+def _warm_one(sym: str):
+    """True = refreshed; False = failed; None = the budget/gate refused part of it (retry later)."""
     import swr
     import earnings_equity_service as eq
     import earnings_trade_service as ets
-    _force(EQ.format(sym), lambda: eq.get_analysis(sym))
-    _force(TR.format(sym), lambda: ets.get_summary(sym, "default"))
+    tracker = pri.Tracker()
+    with pri.use(pri.WARMER, "warmer", tracker):               # lowest priority: yields to everything
+        a = _force(EQ.format(sym), lambda: eq.get_analysis(sym), tracker)
+        b = _force(TR.format(sym), lambda: ets.get_summary(sym, "default"), tracker)
+    if not (a and b):
+        return None
     try:
         import gemini_service as gm
         gm.hit_rate_bias(sym, None, fetch=True)        # Finnhub (not UW budget); cached 6h
@@ -233,27 +204,19 @@ def _warm_one(sym: str) -> bool:
 # -------------------------------------------------------------------- run ---
 def _run_once() -> int:
     import db_cache
+    ctl = uw_budget.get()
     queue, n_priority = build_queue()
     ages = warm_ages(queue)
     total = len(queue)
-    cost_hist: list[int] = []
-    prev = load_state()                                   # resume today's call count after a restart
-    if prev.get("day_id") == day_id():
-        _state["day_id"], _state["calls_day"] = prev["day_id"], prev.get("calls_day", 0)
-    else:
-        # Fresh day: start from WARM_START_USED (calls already spent today by other
-        # processes -- earlier warm-ups, health checks -- that this counter cannot see).
-        _state["day_id"], _state["calls_day"] = day_id(), int(os.environ.get("WARM_START_USED") or 0)
     _state.update(status="RUNNING", total=total, priority_total=n_priority, done=0, priority_done=0,
-                  skipped_fresh=0, failed=0, calls_used_run=0, current=None,
+                  skipped_fresh=0, failed=0, deferred=0, current=None, pause_reason=None,
                   started_at=time.time(), paused_until=None, namespace=db_cache.namespace())
     save_state()
-    print(f"warming {total} names ({n_priority} reporting within 7 days first); reserve={RESERVE}", flush=True)
+    print(f"warming {total} names ({n_priority} reporting soon first)", flush=True)
 
     i = 0
-    sync_counter()
+    last_reason = None
     while i < total:
-        sync_counter()
         sym = queue[i]
         if sym in ages and ages[sym] < MAX_AGE:               # already warm (restart / resume)
             _state["done"] += 1
@@ -261,40 +224,32 @@ def _run_once() -> int:
             _state["priority_done"] += 1 if i < n_priority else 0
             i += 1
             continue
-        est = max(25, int(max(cost_hist[-20:] or [25]) * 1.3))
-        b = _budget()
-        if b["blocked"]:                                      # a short provider rate-limit block, NOT the daily cap
-            _state.update(status="RATE_LIMITED", current=None)
-            time.sleep(min(120, max(5, b["blocked_for"] + 2)))
-            _state["status"] = "RUNNING"
-            continue
-        if b["app_left"] - RESERVE < est:
-            until = next_reset_epoch()
-            _state.update(status="PAUSED_BUDGET", paused_until=until, current=None,
-                          calls_today=b["used_by_this_app"], calls_limit=b["app_budget"])
+        # The shared budget decides. It yields to live intraday trading, needs a VERIFIED provider
+        # quota, honours the warmer's daily and hourly budgets, and cools down after a 429.
+        ok, reason, wait = ctl.warmer_gate()
+        if not ok:
+            snap = ctl.snapshot()
+            _state.update(status="PAUSED", pause_reason=reason, paused_until=time.time() + wait,
+                          current=None, quota_state=snap["quota_state"],
+                          calls_today=snap["budgets"]["warmer"]["used"],
+                          calls_limit=snap["budgets"]["warmer"]["budget"], api_remaining=snap["remaining"])
             save_state()
-            print(f"budget: {b['used_by_this_app']}/{b['app_budget']} used (reserve {RESERVE}); "
-                  f"pausing until {datetime.fromtimestamp(until):%Y-%m-%d %H:%M}", flush=True)
-            while time.time() < until:                        # sleeps through the reset, then re-checks
-                time.sleep(min(300, max(5, until - time.time())))
-                sync_counter()
-                if _budget()["app_left"] - RESERVE >= est:
-                    break
-            _state.update(status="RUNNING", paused_until=None)
+            if reason != last_reason:
+                print(f"warmer paused: {reason} (re-checking every {min(wait, 300):.0f}s)", flush=True)
+                last_reason = reason
+            time.sleep(min(wait, 300))
             continue
-        # Warm a small batch in parallel (the provider client paces and caps in-flight
-        # requests itself, so this only overlaps the waiting). Budget is checked per batch.
+        last_reason = None
+        _state.update(status="RUNNING", pause_reason=None, paused_until=None)
+        # A small batch in parallel; the client's fair gate caps what the warmer may hold on the wire.
         batch: list[str] = []
         for k in range(i, min(total, i + WORKERS)):
             if queue[k] in ages and ages[queue[k]] < MAX_AGE:
                 break                                         # leave fresh names to the skip branch
             batch.append(queue[k])
         batch = batch or [sym]
-        if len(batch) > 1 and _budget()["app_left"] - RESERVE < est * len(batch):
-            batch = batch[:1]
-        before = _calls()
         _state["current"] = ",".join(batch)
-        results: dict[str, bool] = {}
+        results: dict[str, object] = {}
 
         def _one(x: str) -> None:
             try:
@@ -305,23 +260,25 @@ def _run_once() -> int:
 
         with ThreadPoolExecutor(max_workers=len(batch)) as pool:
             list(pool.map(_one, batch))
-        spent = max(0, _calls() - before)
-        per = max(1, spent // len(batch))
-        cost_hist.extend([per] * len(batch))
-        sync_counter()                                        # all in-process traffic, not just this batch
-        for x in batch:
+        advanced = 0
+        for x in batch:                                       # a refused (None) name stays in the queue
+            if results.get(x) is None:
+                _state["deferred"] += 1
+                break
             _state["done"] += 1
             _state["priority_done"] += 1 if i < n_priority else 0
             if not results.get(x):
                 _state["failed"] += 1
             i += 1
-        b = _budget()
-        _state.update(calls_today=b["used_by_this_app"], calls_limit=b["app_budget"],
-                      avg_calls_per_name=round(sum(cost_hist) / len(cost_hist), 1))
+            advanced += 1
+        snap = ctl.snapshot()
+        _state.update(calls_today=snap["budgets"]["warmer"]["used"], calls_limit=snap["budgets"]["warmer"]["budget"],
+                      api_remaining=snap["remaining"], quota_state=snap["quota_state"])
         save_state()
-        print(f"  {_state['done']}/{total}  last {batch[-1]} ({spent} calls / {len(batch)})  "
-              f"today {b['used_by_this_app']}/{b['app_budget']}", flush=True)
-        continue
+        print(f"  {_state['done']}/{total}  last {batch[-1]}  warmer calls today "
+              f"{snap['budgets']['warmer']['used']}/{snap['budgets']['warmer']['budget']}", flush=True)
+        if advanced == 0:
+            time.sleep(5)                                     # nothing moved: do not spin on a refusal
     _state.update(status="DONE", current=None)
     save_state()
     print("done", _state, flush=True)
@@ -330,6 +287,7 @@ def _run_once() -> int:
 
 def run(forever: bool = False) -> int:
     """One pass (development) or an endless daily cycle (production)."""
+    pri.set_thread_default(pri.WARMER, "warmer")              # everything this thread does is priority 4
     if not forever:
         return _run_once()
     while True:                                   # production: never let the warmer die

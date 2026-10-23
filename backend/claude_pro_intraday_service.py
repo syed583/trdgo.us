@@ -15,6 +15,8 @@ BUY>=55 / NEUTRAL / SELL<=45.
 """
 from __future__ import annotations
 
+import uw_priority as _uwp
+
 from typing import Optional
 
 import claude_last_service as cl
@@ -201,7 +203,8 @@ def _equity_board() -> dict:
                 r = _score_equity(s, eq)
                 gk._levels(r)                  # entry = live/last price, +-ATR stop/target
                 intraday_safety.gate(r, phase=phase, signals_age_s=sig_age,
-                                     price_age=intraday_safety.price_age_s(s), inputs_source=src)
+                                     price_age=intraday_safety.price_age_s(s), inputs_source=src,
+                                     meta=eq.get("_meta"))
                 return r
         except Exception:  # noqa: BLE001
             return None
@@ -215,6 +218,7 @@ def _equity_board() -> dict:
     return intraday_safety.compose(rows, SOURCE + " · closed-market (equity signals)", len(syms), phase)
 
 
+@_uwp.tagged(_uwp.ESSENTIAL, "ai_boards")
 def board() -> dict:
     """Live board over the liquid universe. Reads Trdgo Stock's live per-name
     scores (im2:{sym}); if too few are cached, kicks a Trdgo Stock scan so the

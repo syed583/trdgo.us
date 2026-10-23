@@ -443,7 +443,9 @@ def _warm_earnings_universe() -> None:
     if (os.environ.get("APP_ENV") or "").strip().lower() == "production":
         def start() -> None:
             time.sleep(25)
+            import intraday_feed
             import local_warmer
+            intraday_feed.start_background()        # fresh time-sensitive inputs for the six AI boards
             local_warmer.start_background()
         threading.Thread(target=start, name="warmer-boot", daemon=True).start()
 
@@ -461,6 +463,8 @@ def _capture_earnings_signals() -> None:
     def loop() -> None:
         import boot_guard
         time.sleep(120)
+        import uw_priority
+        uw_priority.set_thread_default(uw_priority.WARMER, "earnings_capture")
         boot_guard.wait_until_due("earnings-capture", 12 * 3600)
         while True:
             try:
@@ -528,6 +532,8 @@ def _start_demo_trade_tracker() -> None:
 
     def loop() -> None:
         import demo_trade_service as dts
+        import uw_priority
+        uw_priority.set_thread_default(uw_priority.ESSENTIAL, "paper_trade_tracker")   # priority 2
         while True:
             try:
                 if dts.should_tick():
@@ -579,6 +585,8 @@ def _start_snapshot_loop() -> None:
         import time
         import boot_guard
 
+        import uw_priority
+        uw_priority.set_thread_default(uw_priority.WARMER, "snapshots")
         boot_guard.wait_until_due("snapshots", 6 * 3600)
         while True:
             try:
@@ -641,6 +649,8 @@ def _start_calendar_sync() -> None:
         from datetime import date, timedelta
         import boot_guard
 
+        import uw_priority
+        uw_priority.set_thread_default(uw_priority.WARMER, "calendar_sync")
         boot_guard.wait_until_due("calendar-sync", 24 * 3600)
         while True:
             try:
@@ -693,6 +703,8 @@ def _start_call_scorecard() -> None:
         import time
         import boot_guard
 
+        import uw_priority
+        uw_priority.set_thread_default(uw_priority.WARMER, "call_scorecard")
         boot_guard.wait_until_due("call-scorecard", 1800)
         while True:
             try:
@@ -724,6 +736,8 @@ def _start_market_pulse_warmer() -> None:
         import time
         import boot_guard
 
+        import uw_priority
+        uw_priority.set_thread_default(uw_priority.DASHBOARD, "market_pulse")
         boot_guard.wait_until_due("market-pulse", 600)
         while True:
             try:
@@ -772,6 +786,8 @@ def _start_ai_trade_board() -> None:
             pass
 
         import boot_guard
+        import uw_priority
+        uw_priority.set_thread_default(uw_priority.LIVE, "intraday_engine")   # priority 1
 
         boot_guard.wait_until_due("ai-trade-board", 600)      # rows were just reloaded from the DB
         while True:

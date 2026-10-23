@@ -14,6 +14,8 @@ equity signals so the whole universe scores in one pass with no extra calls.
 """
 from __future__ import annotations
 
+import uw_priority as _uwp
+
 import tab_settings as _ts
 from datetime import date, datetime
 from typing import Optional
@@ -146,6 +148,7 @@ def _levels(r: dict) -> None:
         r["tp"] = round(price + sgn * 1.0 * atr, 2)
 
 
+@_uwp.tagged(_uwp.ESSENTIAL, "ai_boards")
 def board() -> dict:
     """Live board over the liquid universe (same ~38 names as Trdgo Stock), scored
     with the Kimi 10-signal model. Top Buyers / Top Sellers / Neutral by score."""
@@ -166,7 +169,8 @@ def board() -> dict:
                 r = score_one(s, eq, None, {"symbol": s})
                 _levels(r)
                 intraday_safety.gate(r, phase=phase, signals_age_s=sig_age,
-                                     price_age=intraday_safety.price_age_s(s), inputs_source=src)
+                                     price_age=intraday_safety.price_age_s(s), inputs_source=src,
+                                     meta=eq.get("_meta"))
                 return r
         except Exception:  # noqa: BLE001
             return None

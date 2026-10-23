@@ -13,6 +13,8 @@ signals; reuses Grok Intraday's board plumbing (cache + entry/TP/SL levels).
 """
 from __future__ import annotations
 
+import uw_priority as _uwp
+
 from datetime import date, datetime
 from typing import Optional
 
@@ -94,6 +96,7 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
             "low_confidence": low_conf}
 
 
+@_uwp.tagged(_uwp.ESSENTIAL, "ai_boards")
 def board() -> dict:
     """Live board over the liquid universe, scored with the 7-signal model."""
     import ai_trade_service as ats
@@ -113,7 +116,8 @@ def board() -> dict:
                 r = score_one(s, eq, None, {"symbol": s})
                 ig._levels(r)
                 intraday_safety.gate(r, phase=phase, signals_age_s=sig_age,
-                                     price_age=intraday_safety.price_age_s(s), inputs_source=src)
+                                     price_age=intraday_safety.price_age_s(s), inputs_source=src,
+                                     meta=eq.get("_meta"))
                 return r
         except Exception:  # noqa: BLE001
             return None

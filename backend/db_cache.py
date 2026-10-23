@@ -157,6 +157,13 @@ def _write(key: str, value: Any, when: float) -> None:
         db.close()
 
 
+def put_sync(key: str, value: Any) -> None:
+    """Write ``key`` and wait for it (a CLI must not exit before its write lands)."""
+    if _disabled():
+        return
+    _write(namespace() + key, value, time.time())
+
+
 def put(key: str, value: Any) -> None:
     """Persist a good answer for ``key``, off the caller's thread."""
     if _disabled():

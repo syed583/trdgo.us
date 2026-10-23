@@ -29,8 +29,13 @@ NAMES = ["eps_estimates", "revenue_estimates", "guidance", "price_action", "opti
          "short_insider", "historical_reaction"]
 
 
+import tab_settings as _cfg
+SIGNAL_NAMES = sorted(set(_cfg.SIGNAL_DATA_TYPE) | {"event_radar", "insider_activity", "oi_positioning"})
+
+
 def eq(bias):
-    return {"params": [{"name": n, "bias": bias} for n in NAMES], "signals": AllSame(bias)}
+    return {"params": [{"name": n, "bias": bias} for n in NAMES],
+            "signals": {n: bias for n in SIGNAL_NAMES}}
 
 
 # ----------------------------------------------------------------- pure gate ---
@@ -84,25 +89,31 @@ def test_buy_and_sell_are_treated_identically():
         assert b["data"]["ok"] == s["data"]["ok"]
 
 
-def test_age_limits_follow_the_session_phase():
-    assert safety.max_signal_age("rth") == 600.0
-    assert safety.max_signal_age("closed") == 18 * 3600.0
-    ok = safety.gate(row(), phase="closed", signals_age_s=2 * 3600, price_age=FRESH)
-    assert ok["signal"] == "BUY"                               # fine overnight ...
-    bad = safety.gate(row(), phase="rth", signals_age_s=2 * 3600, price_age=FRESH)
-    assert bad["signal"] == "WAIT"                             # ... not in the regular session
+def test_market_data_limits_relax_outside_the_regular_session(monkeypatch):
+    monkeypatch.setattr(safety, "live_signals", lambda s: None)
+    monkeypatch.setattr(safety, "age_s", lambda key: 2 * 3600.0)           # a 2-hour-old snapshot
+    for phase, expect_wait in (("rth", True), ("closed", False)):
+        e, age, src = safety.effective_eq("AAA", eq(0.9), phase=phase)
+        r = safety.gate(row(), phase=phase, signals_age_s=age, price_age=FRESH, meta=e["_meta"])
+        assert (r["signal"] == "WAIT") is expect_wait, phase
 
 
-def test_effective_eq_prefers_a_fresher_live_reading(monkeypatch):
-    monkeypatch.setattr(safety, "age_s", lambda k: 7200.0)     # snapshot is 2 h old
-    live = {f"s{i}": 0.5 for i in range(10)}
-    monkeypatch.setattr(safety, "live_signals", lambda s: (live, 45.0))
-    base = {"params": [{"name": "x"}], "signals": {f"s{i}": 0.1 for i in range(10)}}
-    e, age, src = safety.effective_eq("AAA", base)
-    assert age == 45.0 and src == "live directional" and e["signals"]["s0"] == 0.5
-    monkeypatch.setattr(safety, "live_signals", lambda s: ({"only": 1.0}, 45.0))   # too sparse to trust
-    e, age, src = safety.effective_eq("AAA", base)
-    assert age == 7200.0 and src == "earnings snapshot"
+def test_the_live_engine_score_is_judged_by_its_own_age_not_the_session_phase():
+    ok = safety.gate(row(), phase="rth", signals_age_s=120.0, price_age=FRESH)
+    assert ok["signal"] == "BUY"
+    for phase in ("rth", "closed"):
+        bad = safety.gate(row(), phase=phase, signals_age_s=2 * 3600, price_age=FRESH)
+        assert bad["signal"] == "WAIT"
+
+
+def test_effective_eq_takes_the_newest_reading_of_each_signal(monkeypatch):
+    monkeypatch.setattr(safety, "age_s", lambda k: 7200.0)                # snapshot is 2 h old
+    monkeypatch.setattr(safety, "live_signals", lambda s: ({"options_flow": 0.5, "rsi": 0.4}, 45.0))
+    base = {"params": [{"name": "x"}], "signals": {"options_flow": 0.1, "rsi": 0.1, "event_radar": 0.2}}
+    e, age, src = safety.effective_eq("AAA", base, phase="rth")
+    assert e["signals"]["options_flow"] == 0.5 and e["_meta"]["meta"]["options_flow"]["source"] == "live directional"
+    assert e["signals"]["event_radar"] == 0.2                              # slow signal: 2 h is fine for earnings data
+    assert e["_meta"]["meta"]["event_radar"]["source"] == "earnings snapshot"
 
 
 def test_compose_has_a_wait_bucket_and_counts():
@@ -181,7 +192,7 @@ def test_equity_boards_missing_price_or_signals_give_wait(monkeypatch, name_idx)
         monkeypatch.setattr(mod, "_eq_cached", lambda s: sparse)
     out = board()
     assert out["counts"]["buy"] == 0 and out["counts"]["sell"] == 0 and out["counts"]["wait"] == 2
-    assert any("inputs have data" in " ".join(r["wait_reasons"]) for r in out["wait"])   # low coverage named
+    assert any("critical input" in " ".join(r["wait_reasons"]) for r in out["wait"])     # what is missing is named
 
 
 def _im2(status="OK", bias=+1.0):

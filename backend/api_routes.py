@@ -770,17 +770,32 @@ def all_models_scan(days: int = 15) -> dict:
 
 @router.get("/warm/progress")
 def warm_progress() -> dict:
-    """Progress of the budgeted cache warmer (this environment's own row): names done /
-    total, priority names, and Unusual Whales calls used against the daily cap."""
+    """Progress of the budgeted cache warmer (this environment's own row) and why it is running or
+    paused: names done / total, the warmer's own API calls against its budget, the quota state."""
     import local_warmer as lw
+    import uw_budget
     st = lw.load_state()
-    if st.get("day_id") == lw.day_id():
-        st["calls_today"] = st.get("calls_day", 0)
-    else:
-        st["calls_today"] = 0                      # a new counting day has begun
-    st["calls_limit"] = lw.DAILY_LIMIT
-    st["reserve"] = lw.RESERVE
+    snap = uw_budget.get().snapshot()
+    st["calls_today"] = snap["budgets"]["warmer"]["used"]
+    st["calls_limit"] = snap["budgets"]["warmer"]["budget"]
+    st["quota_state"] = snap["quota_state"]
+    st["api_remaining"] = snap["remaining"]
+    st["warmer_gate"] = snap["warmer_gate"]
     return st
+
+
+@router.get("/uw/budget")
+def uw_budget_status() -> dict:
+    """The shared Unusual Whales budget: allowance, how usage is verified, usage per module and per
+    priority group, failures / 429s, queues, and why the warmer is or is not running."""
+    import uw_budget
+    import unusualwhales_service as uw
+    out = uw_budget.get().snapshot()
+    out["queues"] = uw._inflight.gate.queue_depth()
+    out["gate"] = {str(k): v for k, v in uw._inflight.gate.stats.items()}
+    out["reuse"] = {"memo_hits": uw._metrics.get("memo_hits", 0), "dedup_hits": uw._metrics.get("dedup_hits", 0),
+                    "network_calls": uw._metrics.get("net_calls", 0), "busy": uw._metrics.get("busy", 0)}
+    return out
 
 
 @router.get("/model-accuracy/scoreboard")
