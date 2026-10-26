@@ -5,10 +5,12 @@
     python uw_budget_cli.py resume-warmer
     python uw_budget_cli.py status           what has been recorded (live numbers: GET /api/uw/budget)
 
-Why `usage` matters: this app cannot see requests made by other machines, scripts or sessions that use
-the same key. The provider dashboard is the authoritative count. Until a reading from the CURRENT
-provider day (it resets at 8 pm US Eastern) is recorded -- or the provider sends daily headers -- the
-warmer stays paused. Live intraday trading is never held up by an unverified quota.
+The Unusual Whales plan has UNLIMITED daily requests (dashboard + provider support, 2026-10-23), so with
+`tab_settings.UW_BUDGET["plan_unlimited"]` set (the default) NO reading is needed: the warmer is not held
+back for an unverified quota. `usage` is then informational (it feeds the usage figures on /api/uw/budget).
+It is still required, and the warmer stays paused until it is recorded, only if `plan_unlimited` is switched
+off for a plan that does have a daily cap. The provider day resets at 8 pm US Eastern.
+Live intraday trading is never held up by quota uncertainty.
 
 The reading is stored in the shared cache of THIS environment (production on the server, a separate
 namespace on a development machine) and the running service picks it up within 30 seconds.

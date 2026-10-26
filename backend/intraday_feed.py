@@ -34,6 +34,7 @@ FAST_SIGNALS = ("options_flow", "unusual_activity", "volume_pcr", "oi_positionin
                 "ema_trend", "rsi", "price_action")
 MIN_FAST_COVERAGE = 0.5            # a refresh that produced under half the fast signals is not stored
 KEY = "intrafeed:{}"
+SLOW_KEY = "intrafeed:slow:{}"
 
 PHASE_SCALE = {"rth": 1.0, "post": 3.0, "pre": 6.0, "closed": 36.0}
 _SLOW_TYPES = {"earnings_fundamentals", "ownership_insider"}      # not scaled by session phase
@@ -46,33 +47,109 @@ CRITICAL_GROUPS = {
 
 
 # ----------------------------------------------------------------- limits -----
-def limits_for(signal: str, phase: Optional[str]) -> tuple[float, float]:
-    """(live seconds, maximum seconds) for one signal in this session phase."""
-    typ = cfg.SIGNAL_DATA_TYPE.get(signal, "options_positioning")
+def limits_for_type(typ: str, phase: Optional[str]) -> tuple[float, float]:
     live, mx = cfg.INTRADAY_FRESHNESS[typ]
     k = 1.0 if typ in _SLOW_TYPES else PHASE_SCALE.get(phase or "rth", 1.0)
     return live * k, mx * k
 
 
+def limits_for(signal: str, phase: Optional[str]) -> tuple[float, float]:
+    """(live seconds, maximum seconds) for one signal in this session phase."""
+    return limits_for_type(cfg.SIGNAL_DATA_TYPE.get(signal, "options_positioning"), phase)
+
+
+# Data groups the feed refreshes independently, and the freshness type that governs each.
+_GROUP_TYPE = {"flow": "options_flow", "price": "price_action_daily",
+               "positioning": "options_positioning", "daily_oi": "daily_oi"}
+_TYPE_GROUP = {v: k for k, v in _GROUP_TYPE.items()}
+
+
+def group_of(signal: str) -> str:
+    return _TYPE_GROUP.get(cfg.SIGNAL_DATA_TYPE.get(signal, "options_positioning"), "positioning")
+
+
 # ------------------------------------------------------------------- feed -----
-def compute_fast(symbol: str) -> Optional[dict]:
-    """One refresh of the time-sensitive signals for one symbol (this DOES call the API)."""
+def _slow_due(rec: Optional[dict], group: str, phase: Optional[str], now: float) -> bool:
+    """Is this slow group's held reading old enough to refetch? (the split keeps it until then)"""
+    if not rec or rec.get("ts") is None or not cfg.INTRADAY_FEED.get("split", True):
+        return True
+    live, _mx = limits_for_type(_GROUP_TYPE[group], phase)
+    return (now - float(rec["ts"])) >= float(cfg.INTRADAY_FEED["slow_refresh_fraction"]) * live
+
+
+def compute_fast(symbol: str, now: Optional[float] = None, phase: Optional[str] = None) -> Optional[dict]:
+    """One refresh of the time-sensitive signals for one symbol (this DOES call the API).
+
+    Options flow and live price action are fetched every time. Dealer positioning + IV history and the
+    daily open-interest change are slower-moving: they are refetched only when their held copy nears its
+    own freshness limit, and the signals built from them are stamped with THAT copy's age (``group_ts``),
+    never with the time of this cycle. A slow fetch that fails keeps the old copy (and its old age)."""
     import directional_score_service as dss
     import disparity_service
     import live_market_service as market
     import live_options_analytics as options
+    import live_options_service as svc
     import price_action_service as pa
+    import swr
     import uw_flow_service as odflow
     from technical_service import calculate_technicals
 
     symbol = symbol.upper()
+    now = time.time() if now is None else now
+    if phase is None:
+        try:
+            import intraday_indicators as ind
+            phase = ind.market_phase()
+        except Exception:  # noqa: BLE001
+            phase = None
+    held = swr.peek(SLOW_KEY.format(symbol))
+    held = dict(held) if isinstance(held, dict) else {}
+    frac = float(cfg.INTRADAY_FEED["slow_refresh_fraction"])
     data: dict = {}
+    import unusualwhales_service as uw
+    flow_up = float(cfg.INTRADAY_FEED["flow_upstream_cache_s"])
+    slow_up = float(cfg.INTRADAY_FEED["slow_upstream_cache_s"])
     with pri.use(pri.ESSENTIAL, "ai_boards"):
-        data["overview"] = options.get_overview(symbol) or {}
-        data["oi"] = odflow.daily_oi_change(symbol) or {}
-        data["disparity"] = disparity_service.get_disparity(symbol) or {}
+        # -- dealer positioning + IV history: slow
+        pos = held.get("pos")
+        if _slow_due(pos, "positioning", phase, now):
+            ivkey = f"ivhist:{symbol}"
+            live_pos, _ = limits_for_type("options_positioning", phase)
+            iv_age = market.cache.age(ivkey)
+            if iv_age is not None and iv_age >= frac * live_pos:
+                market.cache.drop(ivkey)                      # the 1 h IV cache is older than we may use
+            with uw.cap_cache_age(slow_up):                   # so the timestamp below is true
+                iv = svc.get_iv_history(symbol)
+                dp = options.get_dealer_positioning(symbol)
+            iv_ok = bool(iv) and iv.get("status") != "DATA_UNAVAILABLE"
+            dp_ok = bool(dp) and dp.get("status") == "OK"
+            if iv_ok and dp_ok:
+                iv_ts = now - float(market.cache.age(ivkey) or 0.0)
+                pos = {"iv": iv, "dp": dp, "ts": min(now, iv_ts)}
+                held["pos"] = pos
+            # else: keep the previous copy (if any) and its old timestamp -- it ages out honestly
+        oi = held.get("oi")
+        if _slow_due(oi, "daily_oi", phase, now):
+            with uw.cap_cache_age(slow_up):
+                fresh_oi = odflow.daily_oi_change(symbol) or {}
+            if fresh_oi:
+                oi = {"data": fresh_oi, "ts": now}
+                held["oi"] = oi
+        split = cfg.INTRADAY_FEED.get("split", True)
+        with uw.cap_cache_age(flow_up):                       # chain / tape / quote: nothing older than this
+            overview = options.get_overview(
+                symbol,
+                iv_history=(pos["iv"] if pos else {}) if split else None,
+                positioning=(pos["dp"] if pos else {"status": "NO_DATA"}) if split else None,
+            ) or {}
+            data["overview"] = overview
+            data["oi"] = (oi or {}).get("data") or {}
+            data["disparity"] = disparity_service.get_disparity(symbol, overview=overview) or {}
+        # Daily history is end-of-day (static); its last candle is replaced by the live quote (<= 30 s old),
+        # so these are NOT capped to the flow window -- that would refetch a year of bars every cycle.
         bars = (market._fallback_bars(symbol, "1 Y") or ([], None))[0]
         bench = (market._fallback_bars("SPY", "1 Y") or ([], None))[0]
+    swr._values[SLOW_KEY.format(symbol)] = (now, held)
     data["technicals"] = calculate_technicals(bars) if bars else None
     data["price_action"] = pa.score_price_action(pa.analyse(bars, bench or None)) if bars else {}
     # build_signals() yields Signal objects; score_direction() turns them into the dict form the
@@ -82,7 +159,12 @@ def compute_fast(symbol: str) -> Optional[dict]:
            if s.get("name") in FAST_SIGNALS and s.get("available") and s.get("bias") is not None}
     if len(out) < MIN_FAST_COVERAGE * len(FAST_SIGNALS):
         return None                                     # a thin answer is not a refresh
-    return {"symbol": symbol, "signals": out, "ts": time.time()}
+    # The flow / price groups come from the tape and quote caches (<= flow_upstream_cache_s old).
+    fresh_ts = now - flow_up
+    group_ts = {"flow": fresh_ts, "price": fresh_ts,
+                "positioning": float(pos["ts"]) - slow_up if pos else None,
+                "daily_oi": float(oi["ts"]) - slow_up if oi else None}
+    return {"symbol": symbol, "signals": out, "ts": now, "group_ts": group_ts}
 
 
 def store(symbol: str, value: dict) -> None:
@@ -182,7 +264,9 @@ def effective_inputs(symbol: str, snapshot: Optional[dict], snapshot_age_s: Opti
     for n in names:
         cands = []                                      # (build time, value, source): newest wins
         if n in FAST_SIGNALS and feed and n in feed["signals"]:
-            cands.append((feed["ts"], feed["signals"][n], "intraday feed"))
+            gts = (feed.get("group_ts") or {}).get(group_of(n), feed["ts"] if not feed.get("group_ts") else None)
+            if gts is not None:                         # a group with no timestamp has no usable reading
+                cands.append((gts, feed["signals"][n], "intraday feed"))
         if live_age is not None and n in live_sig:
             cands.append((now - live_age, live_sig[n], "live directional"))
         if n in snap_sig and snapshot_age_s is not None:
@@ -225,7 +309,11 @@ def start_background(interval_s: float = 60.0) -> None:
                 phase = ind.market_phase()
                 # Outside the session nothing moves; a slow trickle keeps the morning ready.
                 per_cycle = 6 if phase in ("rth", "pre", "post") else 1
-                feed_cycle([s.upper() for s in getattr(ats, "UNIVERSE", [])], phase, max_symbols=per_cycle)
+                syms = [s.upper() for s in getattr(ats, "UNIVERSE", [])]
+                feed_cycle(syms, phase, max_symbols=per_cycle)
+                # Closed 15-minute candles (one request per symbol per closed candle) for the confirmation.
+                import intraday_15m
+                intraday_15m.cycle(syms, phase)
             except Exception:  # noqa: BLE001 - the feeder must never die
                 pass
             time.sleep(interval_s)

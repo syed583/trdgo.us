@@ -507,3 +507,75 @@ def test_live_requests_keep_flowing_through_the_real_client_while_the_warmer_flo
     assert max(lat["live"]) < 0.6                                         # ... promptly, not behind the warmer
     assert results["warm"].count("OK") + results["warm"].count("BUSY") + \
         results["warm"].count("BUDGET_THROTTLED") == 60                   # the warmer was served or told no -- cleanly
+
+
+def test_a_wider_limit_already_held_answers_a_narrower_one_for_the_unusual_feed(client):
+    uw, c, opener = client
+    rows = [{"i": i} for i in range(200)]
+    opener.behaviour = lambda r: FakeResp({"data": rows[: int(r.full_url.split("limit=")[1].split("&")[0])]})
+    wide = uw.get("/api/option-activity/unusual", {"ticker_symbol": "AAPL", "min_premium": 50000, "limit": 200})
+    narrow = uw.get("/api/option-activity/unusual", {"ticker_symbol": "AAPL", "min_premium": 50000, "limit": 60})
+    assert len(wide["data"]) == 200 and narrow["data"] == rows[:60] and len(opener.calls) == 1
+    # the other way round, or another symbol / filter, is a genuinely different question
+    uw.get("/api/option-activity/unusual", {"ticker_symbol": "AAPL", "min_premium": 50000, "limit": 500})
+    uw.get("/api/option-activity/unusual", {"ticker_symbol": "MSFT", "min_premium": 50000, "limit": 60})
+    uw.get("/api/option-activity/unusual", {"ticker_symbol": "AAPL", "min_premium": 10000, "limit": 60})
+    assert len(opener.calls) == 4
+
+
+def test_limit_reuse_is_not_applied_to_candles_where_limit_means_the_newest_n(client):
+    uw, c, opener = client
+    uw.get("/api/stock/AAPL/ohlc/1d", {"limit": 200})
+    uw.get("/api/stock/AAPL/ohlc/1d", {"limit": 60})
+    assert len(opener.calls) == 2
+
+
+def test_a_cache_age_cap_forces_a_refetch_of_what_is_cached_or_memoised(client):
+    uw, c, opener = client
+    uw.cache.clear()
+    uw._cached("uw:ivrank:AAA", "/api/stock/AAA/iv-rank", ttl=300.0)
+    uw._cached("uw:ivrank:AAA", "/api/stock/AAA/iv-rank", ttl=300.0)
+    assert len(opener.calls) == 1                                  # held by the cache layer (and the memo)
+    with uw.cap_cache_age(0.0):
+        uw._cached("uw:ivrank:AAA", "/api/stock/AAA/iv-rank", ttl=300.0)
+    assert len(opener.calls) == 2                                  # nothing older than 0 s: fetched again
+    uw._cached("uw:ivrank:AAA", "/api/stock/AAA/iv-rank", ttl=300.0)
+    assert len(opener.calls) == 2                                  # outside the block the normal windows apply
+
+
+def test_the_cache_cap_does_not_force_refetches_of_daily_history_but_does_for_everything_else(client):
+    uw, c, opener = client
+    uw.cache.clear()
+    uw._cached("uw:ohlc:AAA:1d:90:", "/api/stock/AAA/ohlc/1d", {"limit": 90}, ttl=21600.0)
+    with uw.cap_cache_age(0.0):
+        uw._cached("uw:ohlc:AAA:1d:90:", "/api/stock/AAA/ohlc/1d", {"limit": 90}, ttl=21600.0)
+        uw.get("/api/stock/AAA/ohlc/1d", {"limit": 90})
+    assert len(opener.calls) == 1                                   # daily history: still served from cache / memo
+    with uw.cap_cache_age(0.0):
+        uw.get("/api/stock/AAA/quote")
+        uw.get("/api/stock/AAA/quote")
+    assert len(opener.calls) == 3                                   # a quote is refetched every time under the cap
+
+
+def test_options_volume_with_a_narrower_limit_is_answered_by_a_wider_one_held(client):
+    uw, c, opener = client
+    rows = [{"date": f"2026-10-{20 - i:02d}"} for i in range(25)]
+    opener.behaviour = lambda r: FakeResp({"data": rows[: int(r.full_url.split("limit=")[1].split("&")[0])]})
+    wide = uw.get("/api/stock/AAA/options-volume", {"limit": 25})
+    one = uw.get("/api/stock/AAA/options-volume", {"limit": 1})
+    assert len(wide["data"]) == 25 and one["data"] == rows[:1] and len(opener.calls) == 1
+
+
+def test_every_limit_of_one_stocks_unusual_tape_shares_one_request_and_gets_identical_rows(client):
+    uw, c, opener = client
+    uw.cache.clear()
+    rows = [{"i": i} for i in range(200)]
+    opener.behaviour = lambda r: FakeResp({"data": rows[: int(r.full_url.split("limit=")[1].split("&")[0])]})
+    a = uw.unusual_activity("AAA", limit=100)                      # the live engine
+    b = uw.unusual_activity("AAA", limit=60)                       # Disparity
+    d = uw.unusual_activity("AAA", limit=200)                      # the flow panels
+    assert a["data"] == rows[:100] and b["data"] == rows[:60] and d["data"] == rows
+    assert len(opener.calls) == 1 and "limit=200" in opener.calls[0]
+    uw.unusual_activity("BBB", limit=100)                          # another stock is another request
+    uw.unusual_activity("", limit=100)                             # the market-wide scan keeps its own
+    assert len(opener.calls) == 3

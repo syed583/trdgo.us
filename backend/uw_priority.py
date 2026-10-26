@@ -124,6 +124,10 @@ DEFAULTS = {
     "class_cap": {LIVE: 8, ESSENTIAL: 7, DASHBOARD: 4, WARMER: 2},
     "queue_limit": {LIVE: 400, ESSENTIAL: 400, DASHBOARD: 200, WARMER: 40},
     "max_wait_s": {LIVE: 60.0, ESSENTIAL: 45.0, DASHBOARD: 30.0, WARMER: 10.0},
+    # P3+P4 together may hold at most this many slots (None: all but two, never fewer than one), so the
+    # live engine and essential data always have room on the wire.
+    "low_cap": None,
+    "brake_hold_s": 60.0,                              # the adaptive brake lasts this long per step
     "aging_s": 10.0,                                   # a waiter moves up one level per 10 s ...
     "floor": {LIVE: 1, ESSENTIAL: 1, DASHBOARD: 2, WARMER: 3},   # ... but never past its floor
 }
@@ -141,6 +145,29 @@ class PriorityGate:
         self.inflight = 0
         self.by_class = {p: 0 for p in NAMES}
         self.stats = {p: {"granted": 0, "busy": 0, "wait_total_s": 0.0, "max_wait_s": 0.0} for p in NAMES}
+        self._brake = 0                          # slots taken away after the provider said "too many at once"
+        self._brake_until = 0.0
+        self.peak_inflight = 0
+
+    # -- the adaptive brake: another consumer of the token (another machine) is using some of the slots --
+    def brake(self, steps: int = 1) -> int:
+        """The provider answered `concurrent_limit_exceeded`: take ``steps`` slots away for a while
+        (never below one). Each ``brake_hold_s`` without another refusal gives one back."""
+        with self._cond:
+            self._brake = min(max(0, self.cfg["slots"] - 1), self._brake + max(1, steps))
+            self._brake_until = self._clock() + self.cfg["brake_hold_s"]
+            return self._brake
+
+    def effective_slots(self, now: Optional[float] = None) -> int:
+        now = self._clock() if now is None else now
+        if self._brake and now >= self._brake_until:
+            self._brake -= 1
+            self._brake_until = now + self.cfg["brake_hold_s"]
+        return max(1, self.cfg["slots"] - self._brake)
+
+    def _low_cap(self) -> int:
+        c = self.cfg["low_cap"]
+        return int(c) if c is not None else max(1, self.cfg["slots"] - 2)
 
     # -- internals (call with the lock held) --
     def _eff(self, w: list, now: float) -> int:
@@ -148,7 +175,9 @@ class PriorityGate:
         return max(self.cfg["floor"][w[0]], w[0] - int(waited / self.cfg["aging_s"]))
 
     def _runnable(self, w: list, now: float) -> bool:
-        if self.inflight >= self.cfg["slots"] or self.by_class[w[0]] >= self.cfg["class_cap"][w[0]]:
+        if self.inflight >= self.effective_slots(now) or self.by_class[w[0]] >= self.cfg["class_cap"][w[0]]:
+            return False
+        if w[0] in (DASHBOARD, WARMER) and self.by_class[DASHBOARD] + self.by_class[WARMER] >= self._low_cap():
             return False
         mine = (self._eff(w, now), w[1])
         for o in self._waiting:
@@ -181,6 +210,7 @@ class PriorityGate:
                     now = self._clock()
                     if self._runnable(w, now):
                         self.inflight += 1
+                        self.peak_inflight = max(self.peak_inflight, self.inflight)
                         self.by_class[prio] += 1
                         st = self.stats[prio]
                         st["granted"] += 1

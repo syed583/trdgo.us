@@ -128,10 +128,12 @@ def _ensure() -> bool:
 
 
 def _open_row(db, symbol: str, sess: str):
+    """The open signal for ``symbol`` -- whatever session it was opened in. A signal stays open (and keeps being
+    managed) until a rule closes it; a change of date is not a rule. ``sess`` is kept for callers that pass it."""
     from sqlalchemy import text
     return db.execute(text(
-        "SELECT * FROM intraday_sig_v2 WHERE symbol=:s AND session_date=:d"
-        " AND is_open=TRUE ORDER BY id DESC LIMIT 1"), {"s": symbol, "d": sess}).mappings().first()
+        "SELECT * FROM intraday_sig_v2 WHERE symbol=:s AND is_open=TRUE ORDER BY id DESC LIMIT 1"),
+        {"s": symbol}).mappings().first()
 
 
 def _pending(db, symbol: str, sess: str):
@@ -190,6 +192,8 @@ def _manage_open(db, row: dict, sc: dict, now: datetime) -> dict:
     score = sc.get("score")
     if price is None:
         return _row_public(row)
+    if sc.get("stock_stale"):                  # the stock's own bars are old: no executable price, no exit booked
+        return _row_public(row)
     entry = row["entry"]
     atr = row["atr"] or 0.0
     best = row["best_price"] or entry
@@ -234,17 +238,25 @@ def _manage_open(db, row: dict, sc: dict, now: datetime) -> dict:
             exit_reason = "SCORE_DROP"
         elif side == "SELL" and score > _SELL_EXIT_ABOVE:
             exit_reason = "SCORE_DROP"
-    # EOD
-    if not exit_reason and now.time() >= _EOD:
-        exit_reason = "EOD"
+    # EOD: five minutes before the session's close on a TRADING day (15:55 ET; 12:55 on an early-close day) -- never
+    # on a weekend or an exchange holiday, and never because the date changed.
+    if not exit_reason:
+        import market_calendar
+        if market_calendar.is_trading_day(now.date()) and now.time() >= market_calendar.eod_time(now.date()):
+            exit_reason = "EOD"
 
     if exit_reason:
-        db.execute(text(
+        # Guarded by "still open": if another scan already closed this signal nothing is written, so there is no
+        # second close, no second change-log row and no overwritten exit price.
+        res = db.execute(text(
             "UPDATE intraday_sig_v2 SET is_open=FALSE, state='CLOSED', was_state=:ws,"
             " now_price=:p, exit_price=:p, sl=:sl, best_price=:b, be_moved=:be,"
-            " score_now=:sn, status_ts=:ts, exit_reason=:er WHERE id=:id"),
+            " score_now=:sn, status_ts=:ts, exit_reason=:er WHERE id=:id AND is_open=TRUE"),
             {"ws": row["state"], "p": price, "sl": cur_sl, "b": best, "be": be_moved,
              "sn": score, "ts": now, "er": exit_reason, "id": row["id"]})
+        if getattr(res, "rowcount", 1) == 0:
+            cur = db.execute(text("SELECT * FROM intraday_sig_v2 WHERE id=:id"), {"id": row["id"]}).mappings().first()
+            return _row_public(dict(cur) if cur else row)
         _change(db, row["symbol"], row["session_date"], now, row["state"], "CLOSED",
                 _pl_pct(side, entry, price))
         row.update({"is_open": False, "state": "CLOSED", "was_state": row["state"],
@@ -255,12 +267,15 @@ def _manage_open(db, row: dict, sc: dict, now: datetime) -> dict:
     # still open: possibly upgrade/downgrade the state badge (BUY <-> STRONG BUY)
     new_state = _state_for(side, score)
     changed = new_state != row["state"]
-    db.execute(text(
+    res = db.execute(text(
         "UPDATE intraday_sig_v2 SET now_price=:p, sl=:sl, best_price=:b, be_moved=:be,"
         " score_now=:sn, state=:st" + (", status_ts=:ts" if changed else "") +
-        " WHERE id=:id"),
+        " WHERE id=:id AND is_open=TRUE"),
         {"p": price, "sl": cur_sl, "b": best, "be": be_moved, "sn": score,
          "st": new_state, "ts": now, "id": row["id"]})
+    if getattr(res, "rowcount", 1) == 0:                  # closed meanwhile by another scan: do not touch it
+        cur = db.execute(text("SELECT * FROM intraday_sig_v2 WHERE id=:id"), {"id": row["id"]}).mappings().first()
+        return _row_public(dict(cur) if cur else row)
     if changed:
         _change(db, row["symbol"], row["session_date"], now, row["state"], new_state,
                 _pl_pct(side, entry, price))
@@ -282,6 +297,10 @@ def _maybe_open(db, symbol: str, sess: str, sc: dict, now: datetime) -> Optional
                 and sc.get("status") == "OK"
                 and side in ("BUY", "SELL") and price is not None
                 and _NEW_START <= now.time() <= _NEW_END)
+    if eligible:
+        import intraday_15m
+        if not intraday_15m.entry_check(symbol, side, ind.market_phase(now))["allowed"]:
+            eligible = False                       # the 15-minute candles do not confirm this side (no switch)
     pend = _pending(db, symbol, sess)
     if not eligible:
         if pend:                                   # lost the setup -> reset confirmation
@@ -306,7 +325,13 @@ def _maybe_open(db, symbol: str, sess: str, sc: dict, now: datetime) -> Optional
                {"c": new_count, "ts": now, "s": symbol, "d": sess})
     if new_count < _CONFIRM_SCANS:
         return None
-    # Confirmed -> issue the signal.
+    # Confirmed -> issue the signal, but only if the 15-minute confirmation STILL holds and entries are not
+    # locked, read fresh at this very moment (minutes may have passed since the first scan).
+    import intraday_15m
+    if not intraday_15m.entry_check(symbol, side, ind.market_phase(now), execution=True)["allowed"]:
+        db.execute(text("DELETE FROM intraday_sig_v2_pending WHERE symbol=:s AND session_date=:d"),
+                   {"s": symbol, "d": sess})
+        return None
     atr = sc.get("atr") or _atr(symbol) or 0.0
     if side == "BUY":
         tp = price + _TP_ATR * atr if atr else None
@@ -371,6 +396,7 @@ def _row_public(row: dict) -> dict:
         "score_in": row.get("score_in"), "score_now": row.get("score_now"),
         "signal_ts": _iso(row.get("signal_ts")), "status_ts": _iso(row.get("status_ts")),
         "exit_reason": row.get("exit_reason"), "was_state": row.get("was_state"),
+        "session": str(row.get("session_date")) if row.get("session_date") else None,
     }
 
 
@@ -405,9 +431,15 @@ def log_rows(session_date: Optional[str] = None, limit: int = 300) -> list[dict]
         rows = db.execute(text(
             "SELECT * FROM intraday_sig_v2 WHERE session_date=:d ORDER BY"
             " is_open DESC, status_ts DESC LIMIT :n"), {"d": sess, "n": limit}).mappings().all()
+        if sess == _session():                                # still-open signals from EARLIER sessions, first
+            carried = db.execute(text(
+                "SELECT * FROM intraday_sig_v2 WHERE is_open=TRUE AND session_date<:d ORDER BY session_date, id"),
+                {"d": sess}).mappings().all()
+            rows = list(carried) + list(rows)
         out = []
         for r in rows:
             pub = _row_public(dict(r))
+            pub["carried"] = bool(r["is_open"] and str(r["session_date"]) < sess)
             pub["held_min"] = round(_minutes(r["signal_ts"],
                                     r["status_ts"].astimezone(_ET) if r["status_ts"] and not r["is_open"]
                                     else _now_et()), 1) if r["signal_ts"] else None
@@ -429,6 +461,10 @@ def summary(session_date: Optional[str] = None) -> dict:
         rows = db.execute(text(
             "SELECT side, entry, exit_price, is_open, exit_reason FROM intraday_sig_v2"
             " WHERE session_date=:d"), {"d": sess}).mappings().all()
+        carried_open = 0
+        if sess == _session():
+            carried_open = int(db.execute(text(
+                "SELECT COUNT(*) FROM intraday_sig_v2 WHERE is_open=TRUE AND session_date<:d"), {"d": sess}).scalar() or 0)
         issued = len(rows)
         closed = [r for r in rows if not r["is_open"] and r["entry"] and r["exit_price"]]
         wins = sum(1 for r in closed if _pl_pct(r["side"], r["entry"], r["exit_price"]) > 0)
@@ -440,7 +476,7 @@ def summary(session_date: Optional[str] = None) -> dict:
             by_reason[r["exit_reason"] or "?"] += 1
         return {
             "session": sess, "issued": issued, "closed": len(closed),
-            "open": issued - len(closed), "wins": wins, "losses": losses,
+            "open": issued - len(closed), "carried_open": carried_open, "wins": wins, "losses": losses,
             "win_rate": round(wins / len(closed) * 100, 1) if closed else None,
             "avg_pl_pct": round(sum(pls) / len(pls), 2) if pls else None,
             "by_exit_reason": by_reason,
@@ -459,43 +495,138 @@ def universe() -> list[str]:
         return []
 
 
+_last_scored: dict = {}            # symbol -> epoch of its last live rescore
+_last_score: dict = {}             # symbol -> its last display score (ranks the tiers)
+_cost = {"per_pass": None, "ctx": None}      # measured live requests: one rescore / one context refresh
+_last_ctx = [0.0]
+
+
+def _live_calls() -> int:
+    import uw_budget
+    return int(uw_budget.get().state["groups"]["live"])
+
+
+def _active_symbols(sess: str) -> set:
+    """Names with an open position or a confirmation in progress: they are always rescored."""
+    if not _ensure():
+        return set()
+    from sqlalchemy import text
+    db = _db()
+    try:
+        a = db.execute(text("SELECT symbol FROM intraday_sig_v2 WHERE is_open=TRUE")).all()   # any date
+        b = db.execute(text("SELECT symbol FROM intraday_sig_v2_pending WHERE session_date=:d"),
+                       {"d": sess}).all()
+        return {r[0] for r in a} | {r[0] for r in b}
+    except Exception:  # noqa: BLE001
+        return set()
+    finally:
+        db.close()
+
+
+def _hours_left(now: datetime) -> float:
+    end = now.replace(hour=16, minute=0, second=0, microsecond=0)
+    return max(0.0, (end - now).total_seconds() / 3600.0)
+
+
+def tier_plan(syms: list, now: datetime) -> Optional[dict]:
+    """The tier split for this pass, or None when tiering is off."""
+    t = cfg.INTRADAY_TIERS
+    if not t.get("enabled", True):
+        return None
+    import intraday_tiers as tiers
+    import uw_budget
+    snap = uw_budget.get().snapshot()
+    per_hour = tiers.hourly_budget(snap, _hours_left(now))
+    forced = _active_symbols(_session(now)) & set(syms)
+    ctx = (_cost["ctx"] or 0.0) * 3600.0 / float(t["hot_period_s" if forced else "warm_period_s"])   # context bars per scan
+    cost = _cost["per_pass"] or float(t["default_cost_per_pass"])
+    p = tiers.plan(tiers.rank(syms, _last_score), forced, max(0.0, per_hour - ctx), cost)
+    p["budget_per_hour"] = round(per_hour, 1)
+    p["cost_per_pass"] = round(cost, 2)
+    return p
+
+
+def _is_due(sym: str, tiers_: Optional[dict], ts: float) -> bool:
+    last = _last_scored.get(sym)
+    if last is None or tiers_ is None:
+        return True
+    import intraday_tiers as tiers
+    return ts - last >= tiers.period_for(sym, tiers_) - 5.0
+
+
 @_uwp.tagged(_uwp.LIVE, "intraday_engine")
 def scan_once(now: Optional[datetime] = None) -> dict:
-    """Score + step every universe name once (one scan cycle), then compose the
-    Today board. This is what drives confirmations and exits -- call it on a
-    cadence (the board endpoint warms it in the background)."""
+    """Score + step the universe names that are DUE this pass (tiered by how close they are to an
+    actionable signal), then compose the Today board. Names not due keep their last score on the board
+    -- the data-safety gate turns a score that has aged past its limit into WAIT. This is what drives
+    confirmations and exits -- call it on a cadence (the board endpoint warms it in the background)."""
+    import time as _t
     now = now or _now_et()
     syms = universe()
-    # Critical market data FIRST, every scan: SPY, QQQ and the sector ETFs the
-    # universe maps to (retry up to 2x, reuse last-good < 5 min). Doing this up
-    # front means every stock score reads them from the warm 30s cache.
+    # an open position is managed even if its symbol has left the universe since it was opened
+    syms = syms + [x for x in sorted(_active_symbols(_session(now))) if x not in syms]
+    ts = _t.time()
+    tiers_ = tier_plan(syms, now)
+    due = [s for s in syms if _is_due(s, tiers_, ts)]
+    # Critical market data FIRST, when any name is due: SPY, QQQ and the sector ETFs the universe maps
+    # to (retry up to 2x, reuse last-good < 5 min). Every stock score then reads them from the warm cache.
     spy_status = "missing"
     try:
         import intraday_inputs as ii
+        before = _live_calls()
         _, spy_stale = im.bars_meta("SPY", critical=True)
         spy_bars, _ = im.bars_meta("SPY", critical=True)
         spy_status = "ok" if (spy_bars and not spy_stale) else "stale" if spy_bars else "missing"
-        im.bars_meta("QQQ", critical=True)
-        etfs = {ii._TICKER_ETF.get(s.upper()) for s in syms}
-        for etf in {e for e in etfs if e}:
-            im.bars_meta(etf, critical=True)
+        if due or ts - _last_ctx[0] > 600:
+            im.bars_meta("QQQ", critical=True)
+            etfs = {ii._TICKER_ETF.get(s.upper()) for s in syms}
+            for etf in {e for e in etfs if e}:
+                im.bars_meta(etf, critical=True)
+            _last_ctx[0] = ts
+            spent = _live_calls() - before
+            if spent > 0:
+                _cost["ctx"] = float(spent)
     except Exception:  # noqa: BLE001
         pass
 
+    import swr
+    import intraday_tiers as tiers_mod
     rows = []
     for sym in syms:
         try:
-            sc = im.score(sym)
-            sig = step(sym, sc, now)
+            tier = None if tiers_ is None else tiers_mod.tier_of(sym, tiers_)
+            if sym in due:
+                c0 = _live_calls()
+                sc = im.score(sym)
+                spent = _live_calls() - c0
+                if spent > 0:
+                    prev = _cost["per_pass"]
+                    _cost["per_pass"] = min(40.0, float(spent) if prev is None else 0.8 * prev + 0.2 * spent)
+                _last_scored[sym] = _t.time()
+                sig = step(sym, sc, now)
+            else:
+                sc = dict(swr.peek(f"im2:{sym}") or {})      # last live score, kept for display
+                at = swr.held_at(f"im2:{sym}")
+                if at is None or _t.time() - at > float(cfg.INTRADAY_FRESHNESS["engine_score"][1]):
+                    sc["status"], sc["call"] = "STALE_SCORE", None     # too old to be a candidate at all
+                sig = None
+            if sc.get("score") is not None:
+                _last_score[sym] = sc.get("score")
             rows.append({
                 "symbol": sym, "score": sc.get("score"), "call": sc.get("call"),
                 "status": sc.get("status"), "coverage_pct": sc.get("coverage_pct"),
                 "side": sc.get("side"), "spot": sc.get("spot"),
-                "bars_ok": sc.get("bars_ok"), "signal": sig,
+                "bars_ok": sc.get("bars_ok"), "signal": sig, "live_tier": tier,
+                "rescored": sym in due,
             })
         except Exception:  # noqa: BLE001
             continue
-    return _compose(rows, now, spy_status)
+    out = _compose(rows, now, spy_status)
+    if tiers_ is not None:
+        out["tiers"] = {k: tiers_[k] for k in ("hot", "warm", "cold", "periods_s", "cost_per_hour",
+                                               "budget_per_hour", "cost_per_pass", "fits", "reliable")}
+        out["tiers"]["rescored_this_pass"] = len(due)
+    return out
 
 
 def _compose(rows: list[dict], now: datetime, spy_status: str = "ok") -> dict:

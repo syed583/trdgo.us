@@ -352,8 +352,7 @@ EARN_CACHE_TTL: float = 48 * 3600.0
 # instead of a signal when their inputs are older than this for the current session phase, the
 # live price is stale, or too little of the model's weight has data. Symmetric for BUY and SELL.
 INTRADAY_SAFETY: dict = {
-    # seconds. rth: the live directional cache lives 120s and the live engine rescans ~every 3 min.
-    "max_signal_age_s": {"rth": 600.0, "post": 1800.0, "pre": 3600.0, "closed": 18 * 3600.0},
+    # Per-signal limits live in INTRADAY_FRESHNESS; only the live price limit is generic.
     "max_price_age_s": 300.0,
     # Coverage is judged against the weight the model can actually have on that path (some models
     # have parameters with no data source at all), not against 100%.
@@ -369,18 +368,33 @@ INTRADAY_SAFETY: dict = {
 # provider dashboard and record the day's usage with `python uw_budget_cli.py usage N`; until a
 # reading (or provider headers) verifies the quota the historical warmer stays paused.
 UW_BUDGET: dict = {
-    "daily_limit": 15000,          # the plan's allowance (from the plan; the API sends no daily header)
+    # The plan has UNLIMITED daily requests (dashboard + provider support, 2026-10-23); the provider's only
+    # limit is 3 simultaneous requests per token. So these are SAFETY RAILS against a runaway loop, sized
+    # from measured need (full 38-name intraday coverage ~22k/day), not quotas. Starting values: calibrate
+    # against /api/uw/budget and the provider's 429 count after deployment.
+    "plan_unlimited": True,        # the plan has no daily cap (dashboard + support): no quota to verify, no warmer pause
+    "daily_limit": 1_000_000,      # a RUNAWAY ceiling far above any observed day (the busiest day seen: ~410k)
+    "yield_wait_s": 2.0,           # background work stands aside while live/essential requests wait this long (p95)
+    "yield_window_s": 60.0,        # ... measured over the last minute
+    "yield_min_samples": 5,
+    "module_hourly_runaway": 12000,   # no single dashboard / warmer module may make more than this in one hour
     "emergency_reserve": 1000,     # the last calls belong to the live intraday engine only
-    "intraday_budget": 9000,       # priorities 1+2 together: the live engine, essential market data, the six boards
-    "essential_budget": 4500,      # priority 2 alone: the rest of intraday_budget is kept for the live engine (1)
-    "feed_hourly_cap": 700,        # the six boards' shared feed (module "ai_boards") per clock hour
-    "other_budget": 2000,          # priority 3: everything else a page asks for
-    "warmer_budget": 3000,         # priority 4: historical warming, per provider day
-    "warmer_hourly_cap": 400,      # priority 4: and never more than this in any clock hour
-    "reset_hour_et": 20,           # the provider day resets at 8 pm US Eastern
+    "intraday_budget": 44000,      # priorities 1+2 together: live share + essential_budget
+    "essential_budget": 15000,     # priority 2 alone (needs ~6.5k): the rest of intraday_budget is the live engine's
+    "feed_hourly_cap": 2500,       # the six boards' shared feed (module "ai_boards") per clock hour (needs ~850)
+    "live_hard_cap": 30000,        # priority 1 HARD LIMIT per provider day = live share + reserve (needs ~12.6k)
+    "live_hourly_cap": 4000,       # priority 1 per clock hour (needs ~1.95k)
+    "candles15_hourly_cap": 400,   # the 15-minute candle refresh (module "candles_15m") per clock hour (needs ~160)
+    "other_budget": 100000,        # priority 3: everything else a page asks for
+    "other_session_hourly_cap": 6000,   # ...and at most this per hour while the market is open
+    "warmer_budget": 60000,        # priority 4: historical warming, per provider day
+    "warmer_hourly_cap": 400,      # ...at most this per hour while the market is open (live trading owns the connections)
+    "warmer_offsession_hourly_cap": 6000,   # ...and this per hour outside the session
+    "reset_hour_et": 20,           # the provider day resets at 8 pm US Eastern (confirmed by the dashboard)
     "dashboard_reading_max_age_s": 6 * 3600,   # how long a typed-in dashboard reading is trusted
     "provider_headers_max_age_s": 600,
-    "cooldown_429_s": {3: 120, 4: 900},        # after a 429: dashboards wait 2 min, the warmer 15 min
+    "cooldown_429_s": {3: 120, 4: 900},        # after a RATE 429: dashboards wait 2 min, the warmer 15 min
+    "cooldown_429c_s": {3: 15, 4: 60},         # after "too many at once": a short, transient pause
 }
 
 # One request answered for every module: identical requests inside these windows (seconds) share one
@@ -404,6 +418,52 @@ INTRADAY_FRESHNESS: dict = {
     "daily_oi": (6 * 3600.0, 12 * 3600.0),
     "earnings_fundamentals": (24 * 3600.0, 48 * 3600.0),
     "ownership_insider": (3 * 86400.0, 7 * 86400.0),
+}
+
+# Tiered live scanning (intraday_tiers.py). All names stay visible; the live engine's API budget goes to
+# the names closest to an actionable BUY / SELL first. Periods are how often a tier is rescored.
+INTRADAY_TIERS: dict = {
+    "enabled": True,
+    "hot_period_s": 180.0,          # open positions and pending confirmations only
+    "warm_period_s": 300.0,         # every other name the budget affords, strongest first (inside the 360 s engine-score limit)
+    "cold_period_s": 900.0,         # near-neutral names: they cannot be actionable without moving first
+    "cold_max_period_s": 1800.0,    # ...stretched to this, no further, when the budget cannot afford 15 minutes
+    "budget_safety": 0.9,           # plan for 90% of the hourly live budget, never all of it
+    "default_cost_per_pass": 6.0,   # live requests per rescore until the engine has measured its own
+    "min_hours_left": 0.5,
+}
+
+# Simulated execution of the paper trades (paper_fills.py). This is the ACCOUNTING of a simulated fill; it never
+# changes a signal, a score or the condition that closes a trade -- only the price a close is booked at.
+PAPER_EXECUTION: dict = {
+    "fill_model": "gap_aware",        # "level" = the old convention (always at the stop / target level), for comparison
+    "max_price_age_s": 300.0,         # a board price older than this is not an executable price
+    "max_unpriced_trading_days": 5,   # a due close with no reliable price this long is closed as NO_PRICE (no fill invented)
+}
+
+# 15-minute candle confirmation (intraday_15m.py). It never changes a score: it decides whether a
+# BUY / SELL that already passed every other gate may be shown as actionable.
+INTRADAY_15M: dict = {
+    "bar_minutes": 15,
+    "history_bars": 100,            # candles requested (~4 sessions): EMA / RSI warm-up
+    "min_bars": 22,                 # validated RTH closed bars needed for EMA21 (and RSI14)
+    "min_session_bars": 2,          # closed bars of TODAY's session needed (VWAP); the first bar closes 09:45 ET
+    "max_close_lag_s": 1200.0,      # the newest CLOSED bar may have ended at most this long ago (15 min + grace)
+    "recheck_after_close_s": 25.0,  # refetch this long after a bar boundary (the provider needs a moment)
+    "rsi_bull": 52.0, "rsi_bear": 48.0,
+    "ema_fast": 9, "ema_slow": 21, "rsi_period": 14,
+    "contiguous_bars": 6,           # the newest N closed bars of today must have no hole in them
+}
+
+# The shared feed (intraday_feed.py) refreshes each KIND of data on its own schedule: options flow and
+# live price action on every cycle, dealer positioning / IV history / disparity inputs only when they
+# are about to pass their own (longer) freshness limit, daily open-interest change even more rarely.
+# Every signal carries the timestamp of ITS data, never the time of the last feed cycle.
+INTRADAY_FEED: dict = {
+    "split": True,                   # False => every cycle refetches everything (the old behaviour)
+    "slow_refresh_fraction": 0.7,    # a slow group is refetched at this share of its "live" limit
+    "flow_upstream_cache_s": 60.0,   # the tape cache under the flow fetchers (TTL_TAPE): its worst-case age
+    "slow_upstream_cache_s": 120.0,  # the request memo under the positioning / OI fetchers: its worst-case age
 }
 
 # Which kind of data each directional signal rests on.

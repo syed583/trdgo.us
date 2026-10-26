@@ -23,18 +23,23 @@ const ageText = (sec?: number | null) => {
 // Times are shown in Dubai time (GST, UTC+4), as sent by the server.
 function DataChip({ h }: { h?: any }) {
   if (!h) return <span className="im2-data missing">—</span>;
+  const c15 = h.confirm15;
   const tip = [
     `Signal generated: ${h.signal_generated_dubai ?? '—'}`,
     `Latest market data: ${h.market_data_dubai ?? '—'}  (age ${ageText(h.data_age_s)})`,
     `API health: ${h.api_health ?? '—'}`,
     `Timeframe: ${h.timeframe ?? '—'}`,
     `Missing critical: ${(h.missing_critical || []).join(', ') || 'none'}`,
+    `15-minute candles: ${c15 ? `${c15.status}${c15.detail ? ' - ' + c15.detail : ''}` : 'n/a'}`,
     `New entries: ${h.eligible_for_new_entries ? 'eligible' : 'NOT eligible'}`,
   ].join('\n');
   return (
     <span className={`im2-data ${String(h.status || 'missing').toLowerCase()}`} title={tip}>
-      {h.status ?? 'MISSING'}
+      {h.api_unavailable ? 'API UNAVAILABLE' : (h.status ?? 'MISSING')}
       <em>{ageText(h.data_age_s)}</em>
+      {c15 && c15.applies !== false && (
+        <b className={c15.confirmed ? 'c15 ok' : 'c15 no'}>15m {c15.confirmed ? 'OK' : String(c15.status).toLowerCase()}</b>
+      )}
     </span>
   );
 }

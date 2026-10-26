@@ -116,8 +116,28 @@ def _isolate_uw_client_state():
         import unusualwhales_service as uw
         import uw_budget
         uw._memo.clear()
+        uw._memo_wide.clear()
         uw._req_flights.clear()
         uw_budget.reset_for_tests()
     except Exception:  # noqa: BLE001
         pass
     yield
+
+
+_REAL_ENTRY_GATE_MODULES = ("intraday_15m", "release_check", "release_workflow", "entry_guard", "entry_lock")
+
+
+@pytest.fixture(autouse=True)
+def _entry_gate_is_real_only_in_its_own_tests(request, monkeypatch):
+    """The 15-minute entry gate has NO switch in the product, so tests about something else (freshness, budgets,
+    wiring) stand in for it with a permissive stub; only the modules whose subject IS the gate run the real one."""
+    if any(k in request.module.__name__ for k in _REAL_ENTRY_GATE_MODULES):
+        return
+    import intraday_15m
+
+    def allowed(symbol, side, phase=None, *, execution=False, now=None):
+        c = {"applies": True, "status": "CONFIRMED", "confirmed": True, "side": side, "timeframe": "15m",
+             "detail": "test stub"}
+        return {"allowed": side in ("BUY", "SELL"), "status": "CONFIRMED", "reason": "", "confirm15": c}
+
+    monkeypatch.setattr(intraday_15m, "entry_check", allowed)

@@ -4,18 +4,23 @@ One controller for the whole process. Every real request is admitted (or refused
 priority class (uw_priority) and recorded against its module, so the live intraday engine
 can never be starved by dashboards or by the historical warmer.
 
-What counts as "used today", in order of authority:
+The provider plan has UNLIMITED daily requests (dashboard + provider support, 2026-10-23); its only limit is
+three simultaneous in-flight requests per token. So nothing here is a quota. With ``plan_unlimited`` set the
+quota state is "UNLIMITED" and the warmer needs no verification. What remains is protection:
 
-  1. the provider's own daily-count headers, when it sends them (VERIFIED_PROVIDER);
-  2. a reading you typed from the provider dashboard (uw_budget_cli.py usage N) plus the calls
-     this process has made since that reading (VERIFIED_DASHBOARD);
-  3. this process's own count only (UNVERIFIED). A local counter is NOT the provider's counter:
-     other machines, scripts and sessions share the key. While UNVERIFIED the warmer stays
-     paused; live trading is never blocked by uncertainty.
+  * the daily and hourly pools are RUNAWAY RAILS (a looping module cannot burn the day or the hour);
+  * background work (dashboards, the warmer) is held to small hourly caps while the market is open;
+  * background work YIELDS while live / essential requests are queueing (adaptive throttling);
+  * one module cannot exceed a per-hour runaway ceiling (priorities 3-4);
+  * a 429 cools the low priorities briefly (concurrency) or for longer (a real rate limit).
+
+The older verification modes (provider daily headers, a typed-in dashboard reading) are kept for a plan that
+does have a cap: set ``plan_unlimited`` False and an UNVERIFIED quota keeps the warmer paused again.
 
 Admission, per request (remaining = allowance - used):
 
-  P1 live intraday   allowed while remaining > 0
+  P1 live intraday   allowed while remaining > 0 and below its HARD limits (live_hard_cap per day,
+                     live_hourly_cap per hour): past them the boards say WAIT / API UNAVAILABLE
   P2 essential/boards allowed while remaining > emergency_reserve        (reserve belongs to P1)
   P3 dashboard       needs remaining > reserve + the intraday budget not yet spent, and its own
                      budget
@@ -73,6 +78,15 @@ class Controller:
     def _hour(self) -> int:
         return int(self._now() // 3600)
 
+    def in_session(self) -> bool:
+        """US regular session (09:30-16:00 ET, weekdays): when background work must stay small, because
+        the token's three simultaneous requests belong to the live engine and the boards."""
+        et = self._et()
+        if et.weekday() >= 5:
+            return False
+        minutes = et.hour * 60 + et.minute
+        return 9 * 60 + 30 <= minutes < 16 * 60
+
     def next_reset_epoch(self) -> float:
         et = self._et()
         reset = et.replace(hour=int(self.s["reset_hour_et"]), minute=0, second=0, microsecond=0)
@@ -84,6 +98,7 @@ class Controller:
     def _fresh_state(self, day: str) -> dict:
         return {"day": day, "modules": {}, "groups": {"live": 0, "essential": 0, "other": 0, "warmer": 0},
                 "warmer_hour": {"hour": self._hour(), "calls": 0}, "module_hour": {},
+                "other_hour": {"hour": self._hour(), "calls": 0}, "live_hour": {"hour": self._hour(), "calls": 0},
                 "provider": None, "dashboard": None, "cooldown": {}, "denied": {}, "total_calls": 0}
 
     def _roll(self) -> None:
@@ -118,6 +133,8 @@ class Controller:
     def quota_state(self) -> str:
         with self._lock:
             self._roll()
+            if self.s.get("plan_unlimited"):
+                return "UNLIMITED"
             p = self.state["provider"]
             if p and self._now() - p["at"] <= self.s["provider_headers_max_age_s"]:
                 return "VERIFIED_PROVIDER"
@@ -176,6 +193,18 @@ class Controller:
         if rem <= 0:
             return Decision(False, "daily allowance used up", "EXHAUSTED")
         if priority == pri.LIVE:
+            # The live engine is protected from everyone else, but it is not unlimited: a HARD limit per
+            # provider day (its share + the emergency reserve) and per clock hour, so a runaway scan loop
+            # can never burn the allowance. Past it the boards say WAIT / API UNAVAILABLE.
+            used_live = self.state["groups"]["live"]
+            hard = s.get("live_hard_cap", 10 ** 9)
+            if used_live >= hard:
+                return Decision(False, f"live-engine hard limit reached ({used_live} of {s['live_hard_cap']} "
+                                       f"calls today)", "LIVE_HARD_CAP")
+            lh = self.state.get("live_hour") or {}
+            if lh.get("hour") == self._hour() and lh.get("calls", 0) >= s.get("live_hourly_cap", 10 ** 9):
+                return Decision(False, f"live-engine hourly limit reached ({lh['calls']} of "
+                                       f"{s.get('live_hourly_cap')} calls this hour)", "LIVE_HOURLY_CAP")
             return Decision(True)
         reserve = s["emergency_reserve"]
         if rem <= reserve:
@@ -193,12 +222,21 @@ class Controller:
         if rem - headroom <= 0:
             return Decision(False, "the remaining calls are protected for live intraday trading",
                             "YIELD_TO_INTRADAY")
+        yl = self.live_wait_p95()
+        if yl is not None and yl > float(s.get("yield_wait_s", 1e9)):
+            return Decision(False, f"live / essential requests are waiting {yl:.1f}s for a connection: "
+                                   f"background work stands aside", "YIELD_TO_LIVE_QUEUE")
         cd = self.state["cooldown"].get(str(priority))
         if cd and self._now() < cd:
             return Decision(False, f"cooling down after a 429 for {int(cd - self._now())}s", "COOLDOWN_429")
         if priority == pri.DASHBOARD:
             if g["other"] >= s["other_budget"]:
                 return Decision(False, "dashboard budget for today is used", "OTHER_BUDGET")
+            cap = s.get("other_session_hourly_cap") if self.in_session() else None
+            oh = self.state.get("other_hour") or {}
+            if cap and oh.get("hour") == self._hour() and oh.get("calls", 0) >= cap:
+                return Decision(False, f"dashboards are limited to {cap} requests an hour while the market is "
+                                       f"open (the connections belong to live trading)", "OTHER_SESSION_CAP")
             return Decision(True)
         # warmer
         if self.paused_warmer:
@@ -209,13 +247,42 @@ class Controller:
         if g["warmer"] >= s["warmer_budget"]:
             return Decision(False, "warmer budget for today is used", "WARMER_BUDGET")
         wh = self.state["warmer_hour"]
-        if wh["hour"] == self._hour() and wh["calls"] >= s["warmer_hourly_cap"]:
-            return Decision(False, "warmer hourly cap reached", "HOURLY_CAP")
+        hourly = s["warmer_hourly_cap"] if self.in_session() else s.get("warmer_offsession_hourly_cap",
+                                                                         s["warmer_hourly_cap"])
+        if wh["hour"] == self._hour() and wh["calls"] >= hourly:
+            return Decision(False, "warmer hourly cap reached" +
+                            ("" if not self.in_session() else " (market open: warming stays small)"), "HOURLY_CAP")
         return Decision(True)
+
+    # -- adaptive throttling input ------------------------------------------------------------
+    def note_wait(self, priority: int, wait_s: float) -> None:
+        """How long a LIVE / ESSENTIAL request waited for a connection (the client reports it)."""
+        if priority not in (pri.LIVE, pri.ESSENTIAL):
+            return
+        with self._lock:
+            q = self.__dict__.setdefault("_waits", [])
+            now = self._now()
+            q.append((now, float(wait_s)))
+            cut = now - float(self.s.get("yield_window_s", 60.0))
+            while q and q[0][0] < cut:
+                q.pop(0)
+
+    def live_wait_p95(self) -> Optional[float]:
+        """p95 of the recent queue wait of live / essential requests (None with too few samples)."""
+        q = self.__dict__.get("_waits") or []
+        cut = self._now() - float(self.s.get("yield_window_s", 60.0))
+        xs = sorted(w for t, w in q if t >= cut)
+        if len(xs) < int(self.s.get("yield_min_samples", 5)):
+            return None
+        return xs[min(len(xs) - 1, int(len(xs) * 0.95))]
 
     def admit(self, priority: int, module: str) -> Decision:
         with self._lock:
             d = self._decide(priority)
+            cap = self.s.get("module_hourly_runaway")
+            if d.ok and cap and priority >= pri.DASHBOARD and self.module_hour_calls(module) >= cap:
+                d = Decision(False, f"module '{module}' made {cap} requests this hour: runaway guard",
+                             "RUNAWAY_MODULE")
             if not d.ok:
                 m = self._mod(module)
                 m["denied"] += 1
@@ -235,6 +302,7 @@ class Controller:
                 return True, "", 0.0
             wait = {"HOURLY_CAP": 3600 - (self._now() % 3600), "COOLDOWN_429": 120.0,
                     "UNVERIFIED_QUOTA": 300.0, "YIELD_TO_INTRADAY": 300.0, "PAUSED": 300.0,
+                    "YIELD_TO_LIVE_QUEUE": 20.0, "RUNAWAY_MODULE": 600.0,
                     "RESERVE": 300.0}.get(d.code, max(60.0, self.next_reset_epoch() - self._now()))
             return False, f"{d.code}: {d.reason}", float(min(wait, 3600.0))
 
@@ -251,6 +319,16 @@ class Controller:
             if mh["hour"] != self._hour():
                 mh["hour"], mh["calls"] = self._hour(), 0
             mh["calls"] += 1
+            if priority == pri.DASHBOARD:
+                oh = self.state.setdefault("other_hour", {"hour": self._hour(), "calls": 0})
+                if oh["hour"] != self._hour():
+                    oh["hour"], oh["calls"] = self._hour(), 0
+                oh["calls"] += 1
+            if priority == pri.LIVE:
+                lh = self.state.setdefault("live_hour", {"hour": self._hour(), "calls": 0})
+                if lh["hour"] != self._hour():
+                    lh["hour"], lh["calls"] = self._hour(), 0
+                lh["calls"] += 1
             if priority == pri.WARMER:
                 wh = self.state["warmer_hour"]
                 if wh["hour"] != self._hour():
@@ -258,15 +336,25 @@ class Controller:
                 wh["calls"] += 1
             if outcome != "ok":
                 m["failed"] += 1
-            if outcome == "429":
+            if outcome in ("429", "429c"):
                 m["r429"] += 1
-                for p, secs in self.s["cooldown_429_s"].items():
+                # "429c" = too many requests in flight at once: transient, so a short cool-down. A real
+                # rate 429 keeps the long one.
+                table = self.s.get("cooldown_429c_s", self.s["cooldown_429_s"]) if outcome == "429c"                     else self.s["cooldown_429_s"]
+                for p, secs in table.items():
                     self.state["cooldown"][str(p)] = self._now() + float(secs)
             elif outcome == "timeout":
                 m["timeouts"] += 1
             self._since_save += 1
             if self._since_save >= 25:
                 self._save()
+
+    def capacity(self, priority: int) -> dict:
+        """Can this priority class still get data right now? {'ok', 'code', 'reason'} -- no side effects.
+        The boards read it to say WAIT / API UNAVAILABLE instead of showing a signal built on nothing."""
+        with self._lock:
+            d = self._decide(priority)
+            return {"ok": d.ok, "code": d.code, "reason": d.reason}
 
     def module_hour_calls(self, module: str) -> int:
         """Requests this module has made in the current clock hour."""
@@ -305,7 +393,11 @@ class Controller:
                 "local_calls": self.state["total_calls"],
                 "emergency_reserve": self.s["emergency_reserve"],
                 "budgets": {"intraday": {"budget": self.s["intraday_budget"], "used": g["live"] + g["essential"]},
-                            "live_engine": {"used": g["live"]},
+                            "live_engine": {"used": g["live"], "hard_cap": self.s.get("live_hard_cap", 10 ** 9),
+                                            "hour_cap": self.s.get("live_hourly_cap", 10 ** 9),
+                                            "hour_used": (self.state.get("live_hour") or {}).get("calls", 0)
+                                            if (self.state.get("live_hour") or {}).get("hour") == self._hour() else 0,
+                                            "capacity": self._decide(pri.LIVE).code},
                             "essential": {"budget": self.s["essential_budget"], "used": g["essential"],
                                           "feed_hour_cap": self.s["feed_hourly_cap"],
                                           "feed_hour_used": self.module_hour_calls("ai_boards")},
@@ -318,6 +410,11 @@ class Controller:
                                                            key=lambda kv: -kv[1]["calls"])},
                 "denied": dict(self.state["denied"]),
                 "dashboard_reading": self.state["dashboard"], "provider_headers": self.state["provider"],
+                "plan": {"unlimited": bool(self.s.get("plan_unlimited")),
+                         "ceiling": self.s.get("daily_limit")},
+                "live_queue_wait_p95_s": self.live_wait_p95(),
+                "background_yielding": (self.live_wait_p95() or 0.0) > float(self.s.get("yield_wait_s", 1e9)),
+                "in_session": self.in_session(),
                 "api_health": self.api_health(), "warmer_paused": self.paused_warmer,
                 "warmer_gate": self.warmer_gate()[1] or "open",
                 "next_reset_epoch": self.next_reset_epoch(),

@@ -133,6 +133,14 @@ def bars_meta(symbol: str, critical: bool = False) -> tuple[list, bool]:
     return res.get("bars") or [], bool(res.get("stale"))
 
 
+def newest_bar_age_s(bars: list) -> Optional[float]:
+    """Seconds since the start of the newest candle (None if there is none)."""
+    norm = ind._norm(bars)
+    if not norm:
+        return None
+    return max(0.0, (ind.now_et() - norm[-1]["dt"]).total_seconds())
+
+
 def _bars(symbol: str, critical: bool = False) -> list:
     return bars_meta(symbol, critical)[0]
 
@@ -643,6 +651,16 @@ def _compute(symbol: str) -> dict:
     spy_bars, spy_stale = bars_meta("SPY", critical=True)
     bars_meta("QQQ", critical=True)       # warm QQQ (shared cache) up front
     bars, _stock_stale = bars_meta(symbol, critical=False)
+    # Fresh data is judged by the CANDLE's own time, not by when it was fetched: in the regular session
+    # the newest 5-minute candle must have started within one bucket plus the price/volume limit.
+    if ind.market_phase() == "rth":
+        lim = 300.0 + float(cfg.INTRADAY_FRESHNESS["price_volume"][1])
+        a = newest_bar_age_s(bars)
+        if bars and (a is None or a > lim):
+            _stock_stale = True
+        a = newest_bar_age_s(spy_bars)
+        if spy_bars and (a is None or a > lim):
+            spy_stale = True
     spot = ind.last_price(bars)
     spy_sess = ind.session_bars(spy_bars)
     spy_chg = ind.pct_change_today(spy_bars)

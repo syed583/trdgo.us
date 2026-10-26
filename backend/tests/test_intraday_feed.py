@@ -135,9 +135,9 @@ def test_compute_fast_uses_the_same_signal_functions_and_rejects_thin_answers(mo
     import live_market_service as market
     import live_options_analytics as options
     import uw_flow_service as odflow
-    monkeypatch.setattr(options, "get_overview", lambda s: {})
-    monkeypatch.setattr(odflow, "daily_oi_change", lambda s: {})
-    monkeypatch.setattr(disparity_service, "get_disparity", lambda s: {})
+    monkeypatch.setattr(options, "get_overview", lambda s, **k: {})
+    monkeypatch.setattr(odflow, "daily_oi_change", lambda s, **k: {})
+    monkeypatch.setattr(disparity_service, "get_disparity", lambda s, **k: {})
     monkeypatch.setattr(market, "_fallback_bars", lambda s, d: ([], None))
     objs = object()                                         # build_signals returns Signal OBJECTS, not dicts
     monkeypatch.setattr(dss, "build_signals", lambda data: objs)
@@ -160,9 +160,9 @@ def test_the_feed_runs_at_essential_priority(monkeypatch):
     import live_options_analytics as options
     import uw_flow_service as odflow
     seen = []
-    monkeypatch.setattr(options, "get_overview", lambda s: seen.append(pri.current()[:2]) or {})
-    monkeypatch.setattr(odflow, "daily_oi_change", lambda s: {})
-    monkeypatch.setattr(disparity_service, "get_disparity", lambda s: {})
+    monkeypatch.setattr(options, "get_overview", lambda s, **k: seen.append(pri.current()[:2]) or {})
+    monkeypatch.setattr(odflow, "daily_oi_change", lambda s, **k: {})
+    monkeypatch.setattr(disparity_service, "get_disparity", lambda s, **k: {})
     monkeypatch.setattr(market, "_fallback_bars", lambda s, d: ([], None))
     monkeypatch.setattr(dss, "build_signals", lambda data: [])
     monkeypatch.setattr(dss, "score_direction", lambda sigs: {"signals": []})
@@ -236,6 +236,8 @@ def test_six_boards_share_one_feed_and_make_no_api_calls_themselves(monkeypatch)
     import claude_pro_intraday_service as cp
     import intraday_grok_service as ig
     _prep(monkeypatch, +0.9, 40 * 3600.0, with_feed=True, phase="closed")
+    import intraday_signal_v2 as eng
+    monkeypatch.setattr(eng, "scan_once", lambda *a, **k: {})      # the live-path boards kick it in a thread: not under test
     monkeypatch.setattr(ig, "_eq_cached", ig._eq_cached)
     fetches = []
     import unusualwhales_service as uw
@@ -301,7 +303,7 @@ def test_health_statuses_delayed_and_missing(monkeypatch):
 def test_the_live_engine_path_reports_its_actual_timeframe():
     r = safety.gate(_row(), phase="rth", signals_age_s=40.0, price_age=40.0, model_status="OK")
     assert r["health"]["status"] == "LIVE" and "5-minute" in r["health"]["timeframe"]
-    assert "no 15-minute" in r["health"]["timeframe"]                        # never claims a 15-minute engine
+    assert "15-minute" in r["health"]["timeframe"]                           # confirmation, not a second score
     stale = safety.gate(_row(), phase="rth", signals_age_s=900.0, price_age=40.0, model_status="OK")
     assert stale["health"]["status"] == "STALE" and stale["signal"] == "WAIT"
     unhealthy = safety.gate(_row(), phase="rth", signals_age_s=40.0, price_age=40.0, model_status="MARKET_STALE")

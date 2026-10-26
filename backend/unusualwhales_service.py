@@ -36,8 +36,12 @@ retry.
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import json
 import os
+import random
+import re
 import threading
 import time
 import urllib.error
@@ -109,6 +113,7 @@ def _flow_live_ttl() -> float:
             else TTL_FLOW_LIVE_CLOSED)
 TTL_QUOTE = 30.0
 TTL_INTRADAY = 300.0
+_INTRADAY_CANDLE_TTL = {"1m": 20.0, "5m": 90.0, "15m": 20.0}
 TTL_DAILY = 6 * 3600.0     # earnings, dividends, fundamentals, ownership
 TTL_SETTLED = 30 * 24 * 3600.0   # a finished day cannot change
 
@@ -130,44 +135,91 @@ MIN_INTERVAL = 0.022
 # this one's, so screens never freeze waiting on the pacer.
 MAX_PACE = 1.5
 
-# The per-minute allowance is huge, but a 429 still fires on a *burst* -- too
-# many requests in flight at once. Several screens fan out in parallel (the
-# news desk alone opens a dozen), and if they all reach the API together they
-# trip that burst limit and the whole app pauses. This semaphore caps how many
-# requests are on the wire simultaneously, however many callers ask, so a
-# parallel screen is smoothed into a steady trickle instead of a spike.
-# Raised from 6: on an uncapped plan more requests can be on the wire at once,
-# which is what cuts the pacing wait a fanned-out screen sees. The adaptive
-# dispatcher (and the 429 backoff) still widen the gap the moment a real
-# per-minute cap starts to bite, so this stays safe on a tighter token.
-MAX_INFLIGHT = 8
+# THE REAL LIMIT (Unusual Whales support, 2026-10-23): there is no per-minute and no daily cap on this
+# plan; the only limit is THREE simultaneous in-flight REST requests per token, counted across every
+# machine and process that uses it. More than three at once is refused with a 429
+# ``concurrent_limit_exceeded``. So: three on the wire at most, per process (the priority gate) and per
+# machine (uw_slots, OS file locks); non-production machines default to ONE, because a development
+# server shares the production token's three. UW_MAX_INFLIGHT overrides, never above 3.
+PROVIDER_CONCURRENCY = 3
+
+
+def _max_inflight() -> int:
+    raw = os.environ.get("UW_MAX_INFLIGHT", "").strip()
+    if raw.isdigit():
+        return max(1, min(PROVIDER_CONCURRENCY, int(raw)))
+    return PROVIDER_CONCURRENCY if os.environ.get("APP_ENV", "").strip().lower() == "production" else 1
+
+
+MAX_INFLIGHT = _max_inflight()
 
 
 _ESSENTIAL_TYPES = {"quote", "bars_intraday", "options_flow", "options_volume",
                     "options_positioning"}
 
 
+def _gate_config(slots: int) -> dict:
+    """Class caps for a gate of ``slots``: live / essential may use them all; dashboards and the warmer
+    together at most all but two (never fewer than one), so priorities 1-2 always have room."""
+    low = max(1, slots - 2)
+    return {"slots": slots, "class_cap": {1: slots, 2: slots, 3: low, 4: max(1, min(low, 2))}}
+
+
+def _background_slots(slots: int) -> int:
+    """How many connections dashboards + the warmer may hold together right now.
+
+    While the market is open the connections belong to live trading and the boards: background work gets
+    what is left after two (one of three; NONE when production has been squeezed to two or fewer because
+    the token is shared). Outside the session it may use all but one. A non-production machine keeps one
+    so a developer's pages still load."""
+    production = os.environ.get("APP_ENV", "").strip().lower() == "production"
+    try:
+        in_session = _uwb.get().in_session()
+    except Exception:  # noqa: BLE001
+        in_session = True
+    if in_session:
+        return max(0 if production else 1, slots - 2)
+    return max(1, slots - 1)
+
+
 class _FairSlot:
-    """Context manager over the shared PriorityGate: a slot for the CALLER's priority class.
+    """Context manager: a slot for the CALLER's priority class from the shared PriorityGate (in-process
+    fairness and cap) AND one machine-wide lease (uw_slots: the same cap across every process).
     Raises uw_priority.Busy if the queue is full or the class's maximum wait elapses."""
 
     def __init__(self) -> None:
         import uw_priority
-        self.gate = uw_priority.PriorityGate({"slots": MAX_INFLIGHT})
+        import uw_slots
+        self.gate = uw_priority.PriorityGate(_gate_config(MAX_INFLIGHT))
+        self.machine = uw_slots.MachineSlots(MAX_INFLIGHT)
         self._tl = threading.local()
 
     def __enter__(self):
         import uw_priority
         prio = uw_priority.current()[0]
+        t0 = time.monotonic()
+        if prio in (uw_priority.DASHBOARD, uw_priority.WARMER):
+            self.gate.cfg["low_cap"] = _background_slots(self.gate.cfg["slots"])
         self.gate.acquire(prio)
+        handle = None
+        try:
+            wait = max(0.05, self.gate.cfg["max_wait_s"][prio] - (time.monotonic() - t0))
+            handle = self.machine.acquire(wait)
+            if handle is None:
+                raise uw_priority.Busy("no machine-wide slot free (another process holds all of them)")
+        except BaseException:
+            self.gate.release(prio)
+            raise
         stack = getattr(self._tl, "stack", None)
         if stack is None:
             stack = self._tl.stack = []
-        stack.append(prio)
+        stack.append((prio, handle))
         return self
 
     def __exit__(self, *exc):
-        self.gate.release(self._tl.stack.pop())
+        prio, handle = self._tl.stack.pop()
+        self.machine.release(handle)
+        self.gate.release(prio)
         return False
 
 
@@ -450,6 +502,49 @@ def _spend() -> bool:
     return True
 
 
+# How long a request may stay on the wire, by priority: live / essential data that is not back in ten
+# seconds is useless to trading AND holds one of the token's three connections.
+_TIMEOUTS = {1: 10.0, 2: 10.0, 3: 20.0, 4: 20.0}
+
+# How many tries a request of each priority class gets when the provider says "too many at once".
+_RETRIES = {1: 4, 2: 4, 3: 3, 4: 2}
+
+
+def _read_error_body(exc) -> bytes:
+    try:
+        return exc.read() or b""
+    except Exception:  # noqa: BLE001
+        return b""
+
+
+def _is_concurrency_429(raw: bytes) -> bool:
+    """A 429 that means "too many requests in flight at once" (concurrent_limit_exceeded), not a rate."""
+    return b"concurrent" in (raw or b"").lower()
+
+
+def _backoff(attempt: int, retry_after: Optional[float] = None, base: float = 0.4, cap: float = 4.0) -> float:
+    """Jittered exponential backoff: half the doubling step plus a random share of the other half, so
+    retries neither stampede nor fire immediately. ``Retry-After`` is a floor."""
+    step = min(cap, base * (2 ** attempt))
+    delay = step / 2.0 + random.uniform(0.0, step / 2.0)
+    return max(delay, retry_after or 0.0)
+
+
+_NO_DATA_MAX = 500
+_SYMBOL_SEG = re.compile(r"/(stock|insider|institution|shorts|darkpool|earnings|companies)/([A-Za-z0-9.\-]{1,12})(?=/|$)")
+
+
+def _note_404(path: str) -> None:
+    """Remember WHICH endpoint and ticker came back 404 (path pieces only, nothing sensitive), so the
+    client bug behind ~2,000 a day can be found. Bounded; the busiest are listed by metrics()."""
+    m = _SYMBOL_SEG.search(path or "")
+    template = _SYMBOL_SEG.sub(lambda g: f"/{g.group(1)}/{{T}}", path or "")
+    key = f"{template} | {m.group(2).upper() if m else '-'}"
+    book = _metrics.setdefault("no_data_by", {})
+    if key in book or len(book) < _NO_DATA_MAX:
+        book[key] = book.get(key, 0) + 1
+
+
 def _get_impl(path: str, params: Optional[dict] = None) -> dict:
     """
     One call to their API, with the limits they publish respected.
@@ -489,7 +584,7 @@ def _get_impl(path: str, params: Optional[dict] = None) -> dict:
     if not decision.ok:
         if tracker is not None:
             tracker.denied += 1
-        return {"status": "BUDGET_EXHAUSTED" if decision.code == "EXHAUSTED" else "BUDGET_THROTTLED",
+        return {"status": "BUDGET_EXHAUSTED" if decision.code in ("EXHAUSTED", "LIVE_HARD_CAP") else "BUDGET_THROTTLED",
                 "data": None, "detail": decision.reason, "code": decision.code, "source": SOURCE}
     if not _spend():
         return {"status": "BUDGET_EXHAUSTED", "data": None,
@@ -506,19 +601,24 @@ def _get_impl(path: str, params: Optional[dict] = None) -> dict:
                  "Accept": "application/json",
                  "User-Agent": "US-Stock-Reader/1.0"})
 
-    # Only MAX_INFLIGHT requests hold the wire at once; the rest wait here.
-    # Spacing is applied inside the gate so starts stay staggered too.
-    # One automatic retry on a 429: a short burst can brush the per-minute cap,
-    # and by the time a brief bounded wait passes the window has usually
-    # advanced, so the re-send succeeds and no error ever reaches the caller.
-    for _attempt in range(2):
+    # At most MAX_INFLIGHT requests hold the wire at once (per process by the gate, per machine by
+    # uw_slots); the rest wait here. A refusal for "too many at once" (a 429 concurrent_limit_exceeded)
+    # is transient: back off with jitter OUTSIDE the slot, never pause the whole app, and tell the gate to
+    # hold back a slot for a while in case another machine is using some of the token's three.
+    attempts = _RETRIES.get(prio, 2)
+    for _attempt in range(attempts):
+        retry_delay = None
         gate_start = time.time()
         with _inflight:
             _space_out()
             _metrics["wait"].append((time.time() - gate_start) * 1000.0)
+            try:
+                _uwb.get().note_wait(prio, time.time() - gate_start)      # lets background work yield
+            except Exception:  # noqa: BLE001
+                pass
             net_start = time.time()
             try:
-                with _OPENER.open(request, timeout=TIMEOUT) as response:
+                with _OPENER.open(request, timeout=_TIMEOUTS.get(prio, TIMEOUT)) as response:
                     _note_limits(response.headers)
                     body = json.loads(response.read().decode("utf-8", "ignore") or "{}")
                 lat = (time.time() - net_start) * 1000.0
@@ -532,36 +632,53 @@ def _get_impl(path: str, params: Optional[dict] = None) -> dict:
             except urllib.error.HTTPError as exc:
                 key = str(exc.code)
                 _metrics["errors_by"][key] = _metrics["errors_by"].get(key, 0) + 1
-                _uwb.get().record_call(prio, module, "429" if exc.code == 429 else "error")
+                raw = _read_error_body(exc)
+                concurrent = exc.code == 429 and _is_concurrency_429(raw)
+                _uwb.get().record_call(
+                    prio, module, ("429c" if concurrent else "429") if exc.code == 429 else "error")
                 if tracker is not None:
                     tracker.errors += 1
-                if exc.code == 429 and _attempt == 0:
-                    time.sleep(min(
-                        _seconds(getattr(exc, "headers", {}).get("Retry-After"))
-                        or 1.0, 2.0))
-                    continue
-                # A 404 means the provider has no data for this symbol/endpoint
-                # (a thin ticker with no dividends, insiders, etc.) -- an
-                # expected empty answer, not a pipeline failure.
-                if exc.code == 404:
-                    _metrics["no_data"] += 1
+                if concurrent:
+                    _metrics["concurrent_429"] = _metrics.get("concurrent_429", 0) + 1
+                    _metrics.setdefault("c429_times", deque(maxlen=200)).append(time.time())
+                    _inflight.gate.brake()
+                    if _attempt < attempts - 1:
+                        retry_delay = _backoff(_attempt, _seconds(getattr(exc, "headers", {}).get("Retry-After")))
+                    else:
+                        _last_status = "RATE_LIMITED"
+                        return {"status": "RATE_LIMITED", "data": None,
+                                "detail": "Unusual Whales: too many simultaneous requests (retried, still busy).",
+                                "retry_in": 1, "source": SOURCE}
+                elif exc.code == 429 and _attempt == 0:
+                    retry_delay = min(_seconds(getattr(exc, "headers", {}).get("Retry-After")) or 1.0, 2.0)
                 else:
-                    _metrics["net_errors"] += 1
-                    _metrics["err_times"].append(time.time())
-                    _metrics["last_error"] = f"{path} → HTTP {exc.code}"
-                return _http_error(exc)
+                    # A 404 means the provider has no data for this symbol/endpoint
+                    # (a thin ticker with no dividends, insiders, etc.) -- an
+                    # expected empty answer, not a pipeline failure.
+                    if exc.code == 404:
+                        _metrics["no_data"] += 1
+                        _note_404(path)
+                    else:
+                        _metrics["net_errors"] += 1
+                        _metrics["err_times"].append(time.time())
+                        _metrics["last_error"] = f"{path} → HTTP {exc.code}"
+                    return _http_error(exc, raw)
             except Exception as exc:  # noqa: BLE001
                 _uwb.get().record_call(
                     prio, module, "timeout" if isinstance(exc, (TimeoutError, OSError)) else "error")
                 if tracker is not None:
                     tracker.errors += 1
                 _metrics["errors_by"]["net"] = _metrics["errors_by"].get("net", 0) + 1
+                if isinstance(exc, (TimeoutError, OSError)):
+                    _metrics["timeouts"] = _metrics.get("timeouts", 0) + 1
                 _metrics["net_errors"] += 1
                 _metrics["err_times"].append(time.time())
                 _metrics["last_error"] = f"{path} → {type(exc).__name__}"
                 _last_status = "PROVIDER_OFFLINE"
                 return {"status": "PROVIDER_OFFLINE", "data": None,
                         "detail": type(exc).__name__, "source": SOURCE}
+        if retry_delay is not None:
+            time.sleep(retry_delay)                      # outside the slot: others keep flowing
 
     _last_status = "OK"
     # Their payloads put the answer under "data"; a few return the object
@@ -576,6 +693,25 @@ _memo_lock = threading.Lock()
 _MEMO_MAX = 4000
 _req_flights: dict = {}
 _req_flights_lock = threading.Lock()
+# Same request, different ``limit``: a wider answer already held covers a narrower question (the rows
+# are the same ordered list, only cut shorter). Only for endpoints whose ``limit`` is a plain cut of one
+# ordered list -- NOT candles, where ``limit`` means "the newest N" in a different row order per size.
+_memo_wide: dict = {}
+_LIMIT_PREFIX = re.compile(r"^/api/option-activity/unusual$|^/api/stock/[^/]+/options-volume$")
+
+
+def _limit_of(path: str, params: Optional[dict]) -> Optional[int]:
+    if not _LIMIT_PREFIX.match(path or "") or not params:
+        return None
+    try:
+        n = int(params.get("limit"))
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+
+def _wide_key(path: str, params: Optional[dict]) -> str:
+    return _req_key(path, {k: v for k, v in (params or {}).items() if k != "limit"})
 
 
 def _req_key(path: str, params: Optional[dict]) -> str:
@@ -601,6 +737,7 @@ def get(path: str, params: Optional[dict] = None) -> dict:
     """
     key = _req_key(path, params)
     ttl = _uwf.memo_ttl(path)
+    ttl = _capped(path, ttl)                   # the intraday feed asked for nothing older than this
     now = time.time()
     if ttl > 0:
         with _memo_lock:
@@ -608,6 +745,14 @@ def get(path: str, params: Optional[dict] = None) -> dict:
         if hit and now - hit[0] < ttl:
             _metrics["memo_hits"] = _metrics.get("memo_hits", 0) + 1
             return hit[1]
+    lim = _limit_of(path, params)
+    if ttl > 0 and lim is not None:
+        with _memo_lock:
+            wide = _memo_wide.get(_wide_key(path, params))
+        if wide and now - wide[0] < ttl and wide[1] >= lim and isinstance(wide[2].get("data"), list):
+            _metrics["memo_hits"] = _metrics.get("memo_hits", 0) + 1
+            _metrics["limit_prefix_hits"] = _metrics.get("limit_prefix_hits", 0) + 1
+            return dict(wide[2], data=wide[2]["data"][:lim])
     with _req_flights_lock:
         flight = _req_flights.get(key)
         leader = flight is None
@@ -641,14 +786,18 @@ def get(path: str, params: Optional[dict] = None) -> dict:
                 for k in sorted(_memo, key=lambda k: _memo[k][0])[: _MEMO_MAX // 4]:
                     _memo.pop(k, None)
             _memo[key] = (time.time(), out)
+            if lim is not None and isinstance(out.get("data"), list):
+                held = _memo_wide.get(_wide_key(path, params))
+                if not held or held[1] <= lim or time.time() - held[0] >= ttl:
+                    _memo_wide[_wide_key(path, params)] = (time.time(), lim, out)
     return out
 
 
-def _http_error(exc) -> dict:
+def _http_error(exc, raw: Optional[bytes] = None) -> dict:
     global _last_status
 
     try:
-        body = json.loads(exc.read().decode("utf-8", "ignore") or "{}")
+        body = json.loads((raw if raw is not None else exc.read()).decode("utf-8", "ignore") or "{}")
     except Exception:  # noqa: BLE001
         body = {}
     detail = str(body.get("message") or body.get("error") or f"HTTP {exc.code}")
@@ -680,8 +829,35 @@ def _http_error(exc) -> dict:
             "source": SOURCE}
 
 
+_cache_cap: contextvars.ContextVar = contextvars.ContextVar("uw_cache_cap", default=None)
+# Daily history does not change intraday and is not what the feed's timestamps claim to be fresh about
+# (the live candle comes from the quote), so the cap does not apply to it -- otherwise every helper that
+# happens to read a few daily bars inside a capped block refetched a year of history each cycle.
+_CAP_EXEMPT = re.compile(r"/ohlc/(1d|1w)$")
+
+
+def _capped(path: str, ttl: float) -> float:
+    cap = _cache_cap.get()
+    if cap is None or _CAP_EXEMPT.search(path or ""):
+        return ttl
+    return min(ttl, cap)
+
+
+@contextlib.contextmanager
+def cap_cache_age(seconds: float):
+    """Inside this block no cached answer older than ``seconds`` is served (it is refetched instead).
+    The intraday feed uses it so the timestamp it puts on a reading is true: without it a chain or tape
+    cached for five minutes (or a day, for slow data) would be stamped as if it had just been fetched."""
+    token = _cache_cap.set(float(seconds))
+    try:
+        yield
+    finally:
+        _cache_cap.reset(token)
+
+
 def _cached(key: str, path: str, params: Optional[dict] = None,
             ttl: float = TTL_DAILY) -> dict:
+    ttl = _capped(path, ttl)
     hit = cache.get(key, ttl)
     if hit:
         _metrics["cache_hits"] += 1
@@ -835,8 +1011,11 @@ def candles(symbol: str, size: str = "1d", limit: int = 300,
     if symbol in _INDEX_NO_OHLC:
         return {"status": "NO_DATA", "data": None,
                 "detail": f"{symbol} is an index; no stock OHLC.", "source": SOURCE}
+    # Intraday candles are held only briefly: a 5-minute TTL on 5-minute bars meant a "live" score could
+    # rest on bars up to five minutes old. Closed candles do not change, so what is re-read is the
+    # forming one; callers decide how often to ask.
     ttl = TTL_SETTLED if date else (
-        TTL_DAILY if size.endswith("d") else TTL_INTRADAY)
+        TTL_DAILY if size.endswith("d") else _INTRADAY_CANDLE_TTL.get(size, TTL_INTRADAY))
     return _cached(f"uw:ohlc:{symbol}:{size}:{limit}:{date}",
                    f"/api/stock/{symbol}/ohlc/{size}",
                    {"limit": limit, "date": date}, ttl=ttl)
@@ -968,6 +1147,9 @@ def market_flow_alerts(limit: int = 200, ticker: str = "") -> dict:
                    ttl=_flow_live_ttl())
 
 
+_UNUSUAL_CANON_LIMIT = 200
+
+
 def unusual_activity(symbol: str = "", min_premium: int = 50000,
                      limit: int = 200, date: str = "") -> dict:
     """
@@ -979,6 +1161,17 @@ def unusual_activity(symbol: str = "", min_premium: int = 50000,
     """
     symbol = (symbol or "").upper().strip()
     ttl = TTL_SETTLED if date else TTL_TAPE
+    if symbol and not date and 0 < limit < _UNUSUAL_CANON_LIMIT:
+        # One stock's tape is asked for with limits 60 (Disparity), 100 (the live engine) and 200 (the
+        # flow panels). The shorter answers are the first rows of the longest, so all three share ONE
+        # cached request (the widest) and are cut to size here -- identical rows, one provider call.
+        wide = _cached(f"uw:unusual:{symbol}:{min_premium}:{_UNUSUAL_CANON_LIMIT}:",
+                       "/api/option-activity/unusual",
+                       {"ticker_symbol": symbol, "min_premium": min_premium,
+                        "limit": _UNUSUAL_CANON_LIMIT, "date": "", "unusual": "true"}, ttl=ttl)
+        if wide.get("status") == "OK" and isinstance(wide.get("data"), list):
+            return dict(wide, data=wide["data"][:limit])
+        return wide
     return _cached(f"uw:unusual:{symbol}:{min_premium}:{limit}:{date}",
                    "/api/option-activity/unusual",
                    {"ticker_symbol": symbol, "min_premium": min_premium,
@@ -1414,10 +1607,13 @@ def metrics() -> dict:
         return round(sum(xs) / len(xs)) if xs else None
 
     def p95(xs):
+        return pct(xs, 0.95)
+
+    def pct(xs, q):
         if not xs:
             return None
         s = sorted(xs)
-        return round(s[min(len(s) - 1, int(len(s) * 0.95))])
+        return round(s[min(len(s) - 1, int(len(s) * q))])
 
     blocked = time.time() < _blocked_until
     avg_wait = avg(wait)
@@ -1447,6 +1643,9 @@ def metrics() -> dict:
         "last_error": _metrics["last_error"],
         "avg_latency_ms": avg(lat),
         "p95_latency_ms": p95(lat),
+        "p99_latency_ms": pct(lat, 0.99),
+        "p95_wait_ms": pct(wait, 0.95), "p99_wait_ms": pct(wait, 0.99),
+        "timeouts": _metrics.get("timeouts", 0),
         "last_latency_ms": _metrics["last_latency_ms"],
         "last_path": _metrics["last_path"],
         "last_age_seconds": (round(time.time() - _metrics["last_at"])
@@ -1458,6 +1657,16 @@ def metrics() -> dict:
         "last_status": _last_status,
         "provider_state": provider_state,
         "gate_state": gate_state,
+        # The provider's real limit is THREE simultaneous requests per token.
+        "concurrency": {
+            "limit": PROVIDER_CONCURRENCY, "this_process_slots": MAX_INFLIGHT,
+            "effective_slots": _inflight.gate.effective_slots(), "peak_in_flight": _inflight.gate.peak_inflight,
+            "concurrent_429": _metrics.get("concurrent_429", 0),
+            "machine_slots": dict(_inflight.machine.stats), "machine_slot_dir": _inflight.machine.dir,
+        },
+        # 404s by endpoint and ticker (busiest first): the pattern behind them, with nothing sensitive.
+        "no_data_top": sorted(((k, v) for k, v in (_metrics.get("no_data_by") or {}).items()),
+                              key=lambda kv: -kv[1])[:40],
     }
 
 

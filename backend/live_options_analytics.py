@@ -826,7 +826,11 @@ def _flow_provider_configured() -> bool:
     return odflow.configured()
 
 
-def get_overview(symbol: str) -> dict:
+def get_overview(symbol: str, iv_history: Optional[dict] = None,
+                 positioning: Optional[dict] = None) -> dict:
+    """The options overview. ``iv_history`` / ``positioning`` may be handed in by a caller that holds
+    them with their own timestamp (the intraday feed refreshes those slow parts on their own schedule);
+    when given they are used as they are and not fetched again."""
     symbol = symbol.upper()
 
     # The option chain is the slowest fetch on this page by a wide margin, and
@@ -850,8 +854,8 @@ def get_overview(symbol: str) -> dict:
 
     with ThreadPoolExecutor(max_workers=3,
                             thread_name_prefix="options") as pool:
-        iv_job = pool.submit(svc.get_iv_history, symbol)
-        positioning_job = pool.submit(get_dealer_positioning, symbol)
+        iv_job = None if iv_history is not None else pool.submit(svc.get_iv_history, symbol)
+        positioning_job = None if positioning is not None else pool.submit(get_dealer_positioning, symbol)
         od_flow_job = pool.submit(provider_flow)
 
         def settled(job, fallback, budget=None):
@@ -865,10 +869,12 @@ def get_overview(symbol: str) -> dict:
                 # One provider failing must not blank the whole screen.
                 return fallback
 
-        iv_history = settled(iv_job, {}, PROVIDER_BUDGET)
-        positioning = settled(positioning_job,
-                              {"status": "NO_DATA", "source": SOURCE_UW},
-                              PROVIDER_BUDGET)
+        if iv_job is not None:
+            iv_history = settled(iv_job, {}, PROVIDER_BUDGET)
+        if positioning_job is not None:
+            positioning = settled(positioning_job,
+                                  {"status": "NO_DATA", "source": SOURCE_UW},
+                                  PROVIDER_BUDGET)
         # The print scans are the heaviest thing here and share one provider
         # rate limit, so opening several symbols in a row queues them behind
         # each other. Capped, because a delayed tape is a supporting panel and

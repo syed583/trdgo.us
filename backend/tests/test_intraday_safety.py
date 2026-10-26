@@ -318,6 +318,7 @@ def _compute_with(monkeypatch, *, bias, spy_stale, stock_stale):
     P = lambda mx=10.0: {"value": bias * mx, "max": mx, "has_data": True}   # noqa: E731
     monkeypatch.setattr(im, "bars_meta", lambda sym, critical=False: (
         [{"o": 1, "c": 1}], spy_stale if critical else stock_stale))
+    monkeypatch.setattr(im, "newest_bar_age_s", lambda b: 30.0)          # candle-time freshness: see test_intraday_15m
     monkeypatch.setattr(im.ind, "last_price", lambda b: 100.0)
     monkeypatch.setattr(im.ind, "session_bars", lambda b: b)
     monkeypatch.setattr(im.ind, "pct_change_today", lambda b: 0.1)

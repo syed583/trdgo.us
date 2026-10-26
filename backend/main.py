@@ -59,6 +59,15 @@ def _startup(fn):
     return fn
 
 
+@_startup
+def _enforce_fifteen_minute_confirmation() -> None:
+    """The 15-minute confirmation has no switch; report loudly if anyone tries to configure around it."""
+    import intraday_15m
+    intraday_15m.assert_enforced()
+    intraday_15m.boot_self_check()              # a partly deployed build refuses every entry until it is fixed
+    intraday_15m.status()                       # remember which commit THIS process started with
+
+
 def _bg(fn):
     """
     Register a background warmer/scanner startup task -- unless DISABLE_WARMERS
@@ -436,8 +445,8 @@ def _warm_earnings_universe() -> None:
     import time
 
     # Production only: the budgeted warmer (local_warmer) refreshes the top-1000 liquid
-    # names reporting in the next 10 trading days once a day, within 13,000 Unusual
-    # Whales calls/day. It replaces the old unbounded "re-warm every 30 minutes" loop.
+    # names reporting in the next 10 trading days once a day, with background-work
+    # limits (market-hours caps, runaway guards). It replaces the old unbounded "re-warm every 30 minutes" loop.
     # Development machines never start it automatically (warm by hand if wanted).
     import os
     if (os.environ.get("APP_ENV") or "").strip().lower() == "production":
@@ -852,6 +861,23 @@ def api_root():
 # ---------------------------------------------------------
 # HEALTH CHECK
 # ---------------------------------------------------------
+
+@app.get("/safety")
+def safety_public() -> dict:
+    """Public, minimal, read-only: what the release tooling needs to confirm that the RUNNING build keeps the
+    mandatory 15-minute confirmation (it has no switch) before entries are unlocked. No credential, no host, no
+    data -- flags and a short commit only; the detailed view is /api/safety/status (signed-in users)."""
+    import intraday_15m
+    import release_check
+    st = intraday_15m.status()
+    build = st.get("build") or {}
+    return {"confirm15_required": st["confirm15_required"], "can_be_disabled": st["can_be_disabled"],
+            "static_checks": release_check.check(release_check.read_tree())["ok"],
+            "unsafe_build": st.get("unsafe_build"), "entry_locked": (st.get("entry_lock") or {}).get("locked"),
+            "commit": (build.get("commit") or "")[:12] or None, "uncommitted_changes": build.get("uncommitted_changes"),
+            "running_matches_tree": st.get("running_matches_tree"), "environment": st.get("environment"),
+            "database_dialect": (st.get("database") or {}).get("dialect")}
+
 
 @app.get("/health")
 def health_check():

@@ -19,9 +19,9 @@ const px = (n: number | null | undefined) =>
   n == null ? '—' : Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const STATUS_LABEL: Record<string, string> = {
-  OPEN: 'Open', STOP: 'Stopped', TARGET: 'Target', TIMED_EXIT: 'Timed Exit', SCORE_EXIT: 'Score Exit',
+  OPEN: 'Open', STOP: 'Stopped', TARGET: 'Target', TIMED_EXIT: 'Timed Exit', SCORE_EXIT: 'Score Exit', NO_PRICE: 'No price (closed unpriced)',
 };
-const CLOSED = new Set(['STOP', 'TARGET', 'TIMED_EXIT', 'SCORE_EXIT']);
+const CLOSED = new Set(['STOP', 'TARGET', 'TIMED_EXIT', 'SCORE_EXIT', 'NO_PRICE']);
 const FLASH_MS = 180_000;   // 3 min: how long an entry / target / stop stays pinned on top & blinking
 
 // --- page-only audio alerts (voice + a short beep). Built lazily on first
@@ -220,6 +220,38 @@ export default function StrategyTradesPage() {
         </div>
       )}
 
+      {(d?.carried_open?.length ?? 0) > 0 && (
+        <div className="st-alert" data-testid="carried-open">
+          <span className="st-alert-h">↪ {d.carried_open.length} position{d.carried_open.length === 1 ? '' : 's'} still open from earlier dates</span>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="ma-tbl st-tbl">
+              <thead>
+                <tr>
+                  <th className="l">Opened</th><th className="l">L/S</th><th className="l">Symbol</th>
+                  <th className="l">Strategy</th><th>Entry</th><th>Last</th><th>Profit</th><th>Stop</th><th>Target</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.carried_open.map((r: any) => (
+                  <tr key={r.id} className={(r.profit ?? 0) > 0 ? 'st-win' : (r.profit ?? 0) < 0 ? 'st-loss' : ''}>
+                    <td className="l">{r.opened_on}</td>
+                    <td className="l"><span className={`st-ls ${r.side === 'LONG' ? 'long' : 'short'}`}>{r.side === 'LONG' ? 'Long' : 'Short'}</span></td>
+                    <td className="l"><b>{r.symbol}</b></td>
+                    <td className="l ma-n">{r.strategy_label?.replace(' Intraday', '')}</td>
+                    <td>{px(r.entry_price)}</td>
+                    <td>{px(r.last_price)}</td>
+                    <td className={(r.profit ?? 0) > 0 ? 'pos' : (r.profit ?? 0) < 0 ? 'neg' : ''}><b>{money(r.profit)}</b></td>
+                    <td className="ma-n">{px(r.stop)}</td>
+                    <td className="ma-n">{px(r.target)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="ma-note">These stay tracked (stop, target, score exit, the next 4:00pm close) until a rule closes them. Their P&amp;L belongs to the date they were opened and is not in today's total.</div>
+        </div>
+      )}
+
       {q.initialLoading ? (
         <div className="es-empty"><Loader2 size={18} className="spin" /> Loading trades…</div>
       ) : rows.length === 0 ? (
@@ -275,7 +307,8 @@ export default function StrategyTradesPage() {
       )}
       <div className="st-note">Live P&amp;L updates every ~15s. One trade per symbol per strategy per day,
         no re-entry. Entry/stop/target come from each model's ATR levels; a position closes on stop,
-        target, a 15‑point score drop, or the 4:00pm ET close (Timed Exit).
+        target, a 15‑point score drop, or the first 4:00pm ET close of a trading day after it opened (Timed Exit).
+        An open position is never closed just because the date changed.
         <br /><b>Take Now?</b> tells you whether an OPEN signal is still worth entering mid‑move:
         <span className="st-take good">Good entry</span> = price still at/near entry (best);
         <span className="st-take ok">Still OK</span> = part of the move gone, reward still beats risk;

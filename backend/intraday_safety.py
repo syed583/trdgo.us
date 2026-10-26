@@ -96,11 +96,6 @@ def policy() -> dict:
     return cfg.INTRADAY_SAFETY
 
 
-def max_signal_age(phase: Optional[str]) -> float:
-    m = policy()["max_signal_age_s"]
-    return float(m.get(phase or "rth", m["rth"]))
-
-
 def missing_inputs(row: dict) -> list[str]:
     out: list[str] = []
     for p in row.get("params") or []:
@@ -128,6 +123,11 @@ def evaluate(row: dict, *, phase: Optional[str], signals_age_s: Optional[float],
     engine score's age is judged against the session-phase limit."""
     pol = policy()
     reasons: list[str] = []
+    cap = api_capacity(live_path=meta is None)
+    if not cap["ok"] and meta is None:
+        # The live 5-minute engine may not call the API any more today / this hour: it cannot refresh,
+        # so nothing built on it is tradable, whatever the cache still holds.
+        reasons.append(f"API UNAVAILABLE: {cap['reason']}")
     if meta is not None:
         import intraday_feed as feed
         for g in meta.get("missing_critical", []):
@@ -154,7 +154,19 @@ def evaluate(row: dict, *, phase: Optional[str], signals_age_s: Optional[float],
                        f"(needs {need:.0f}% of the {attainable:.0f}% this model can have)")
     if model_status not in (None, "OK"):
         reasons.append(f"live 5-minute engine status is {model_status}")
+    if reasons and not cap["ok"] and meta is not None:
+        reasons.append(f"API UNAVAILABLE: {cap['reason']} (the shared feed cannot refresh these inputs)")
     return {"ok": not reasons, "reasons": reasons, "missing": missing}
+
+
+def api_capacity(live_path: bool) -> dict:
+    """{'ok', 'code', 'reason'}: may the API class behind this board still be called right now?"""
+    import uw_budget
+    import uw_priority as pri
+    try:
+        return uw_budget.get().capacity(pri.LIVE if live_path else pri.ESSENTIAL)
+    except Exception:  # noqa: BLE001
+        return {"ok": True, "code": "OK", "reason": ""}
 
 
 def dubai(ts: Optional[float]) -> Optional[str]:
@@ -197,7 +209,7 @@ def health_block(row: dict, *, ok: bool, phase: Optional[str], meta: Optional[di
                 status = max(status, "MISSING", key=_RANK.get)
                 missing.append(g)
         timeframe = ("daily bars + today's live bar (EMA / RSI / price action); options flow and positioning "
-                     "snapshots; no intraday candle analysis")
+                     "snapshots; BUY / SELL confirmed by closed 15-minute candles")
     else:
         lim_live, lim_max = float(cfg.INTRADAY_FRESHNESS["engine_score"][0]), float(cfg.INTRADAY_FRESHNESS["engine_score"][1])
         if signals_age_s is None:
@@ -208,7 +220,7 @@ def health_block(row: dict, *, ok: bool, phase: Optional[str], meta: Optional[di
             status = "LIVE" if signals_age_s <= lim_live else "DELAYED" if signals_age_s <= lim_max else "STALE"
             if status == "STALE":
                 missing.append("live engine score")
-        timeframe = "5-minute bars (live engine); there is no 15-minute analysis"
+        timeframe = "5-minute bars (live engine); BUY / SELL confirmed by closed 15-minute candles"
     if row.get("now") is None or price_age is None:
         status = "MISSING"
         missing.append("live price")
@@ -219,10 +231,15 @@ def health_block(row: dict, *, ok: bool, phase: Optional[str], meta: Optional[di
         status = max(status, "DELAYED", key=_RANK.get)
     if model_status not in (None, "OK"):
         status = max(status, "STALE", key=_RANK.get)
+    cap = api_capacity(live_path=meta is None)
+    if not cap["ok"] and meta is None:
+        status = max(status, "STALE", key=_RANK.get)
+        missing.append("API capacity")
     if status == "LIVE" and api != "OK":
         status = "DELAYED"                              # data is recent but the API is not healthy
     newest = (now - min(freshest)) if freshest else None
-    return {"status": status, "api_health": api, "timeframe": timeframe, "phase": phase,
+    return {"status": status, "api_health": api, "api_unavailable": (not cap["ok"]) and meta is None,
+            "api_capacity": cap["code"], "timeframe": timeframe, "phase": phase,
             "signal_generated_at": now, "signal_generated_dubai": dubai(now),
             "market_data_at": newest, "market_data_dubai": dubai(newest),
             "data_age_s": None if not freshest else round(max(freshest)),
@@ -233,15 +250,29 @@ def gate(row: dict, *, phase: Optional[str], signals_age_s: Optional[float],
          price_age: Optional[float], model_status: Optional[str] = None,
          inputs_label: str = "signal inputs", inputs_source: str = "",
          meta: Optional[dict] = None) -> dict:
-    """Apply the gate to a scored row in place and return it."""
+    """Apply the gate to a scored row in place and return it.
+
+    Order: data freshness / coverage / API capacity first, then -- only for a BUY or SELL that survived
+    all of that -- the 15-minute candle confirmation. Neither changes the score."""
     ev = evaluate(row, phase=phase, signals_age_s=signals_age_s, price_age=price_age,
                   model_status=model_status, inputs_label=inputs_label, meta=meta)
+    sig, sym = row.get("signal"), row.get("symbol")
+    c15 = None
+    if sig in ("BUY", "SELL") and sym:
+        import intraday_15m
+        chk = intraday_15m.entry_check(sym, sig, phase)          # no switch: missing / stale / conflicting -> WAIT
+        c15 = chk["confirm15"]
+        if ev["ok"] and not chk["allowed"]:
+            ev = dict(ev, ok=False, reasons=ev["reasons"] + [chk["reason"]])
+    row["confirm15"] = c15
     row["data"] = {"signals_age_s": None if signals_age_s is None else round(signals_age_s),
                    "price_age_s": None if price_age is None else round(price_age),
                    "inputs": inputs_source or None, "phase": phase, "ok": ev["ok"],
                    "dropped_stale": (meta or {}).get("dropped") or []}
     row["health"] = health_block(row, ok=ev["ok"], phase=phase, meta=meta, signals_age_s=signals_age_s,
                                  price_age=price_age, model_status=model_status)
+    row["health"]["confirm15"] = None if c15 is None else {k: c15.get(k) for k in (
+        "status", "confirmed", "applies", "age_s", "last_bar_end_dubai", "detail")}
     if ev["ok"]:
         return row
     row["signal_raw"] = row.get("signal")            # kept for exit management / audit only
@@ -281,6 +312,13 @@ def compose(rows: list[dict], source: str, universe: int, phase: Optional[str] =
 
 
 def tradable(row: dict) -> bool:
-    """May a NEW entry be opened from this row? Used by the paper-trade tracker."""
-    return bool(row and not row.get("wait") and row.get("signal") in ("BUY", "SELL")
-                and (row.get("data") or {}).get("ok", True))
+    """May a NEW entry be opened from this row? Used by the paper-trade tracker.
+
+    Besides the row's own flags it asks the 15-minute gate DIRECTLY (a fresh cache read), so a row that was
+    built or cached earlier can never open a trade on a confirmation that has since gone stale or flipped."""
+    if not (row and not row.get("wait") and row.get("signal") in ("BUY", "SELL")
+            and (row.get("data") or {}).get("ok", True)):
+        return False
+    import intraday_15m
+    return bool(intraday_15m.entry_check(row.get("symbol") or "", row.get("signal"),
+                                         (row.get("data") or {}).get("phase"))["allowed"])

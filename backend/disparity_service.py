@@ -333,19 +333,21 @@ def _flow_against_price(rows: list, day_change_pct: Optional[float]) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def get_disparity(symbol: str, day_change_pct: Optional[float] = None) -> dict:
-    """Every reading, plus the two numbers that summarise them."""
+def get_disparity(symbol: str, day_change_pct: Optional[float] = None,
+                  overview: Optional[dict] = None) -> dict:
+    """Every reading, plus the two numbers that summarise them. ``overview`` may be passed by a caller
+    that already holds one (the intraday feed), so it is not fetched a second time."""
     import unusualwhales_service as uw
 
     symbol = (symbol or "").upper().strip()
     flow = uw.tape_rows(symbol, limit=60)
     rows = flow.get("rows") or []
 
-    overview = {}
     try:
-        import live_options_analytics as options
+        if overview is None:
+            import live_options_analytics as options
 
-        overview = options.get_overview(symbol) or {}
+            overview = options.get_overview(symbol) or {}
     except Exception as exc:  # noqa: BLE001 - the chain is optional here
         # Named, not swallowed. This imported live_options_service, which has
         # no get_overview -- the AttributeError landed here every time and

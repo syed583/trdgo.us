@@ -784,6 +784,31 @@ def warm_progress() -> dict:
     return st
 
 
+@router.get("/safety/status")
+def safety_status() -> dict:
+    """What a deploy or rollback check reads from the RUNNING build: the mandatory 15-minute confirmation (it has
+    no switch), the entry lock and which commit is running. A build that predates it has no such route (404) --
+    treat that as NOT safe to serve trading signals."""
+    import entry_lock
+    import intraday_15m
+    import release_check
+    out = intraday_15m.status()
+    out["static_checks"] = release_check.check(release_check.read_tree())["ok"]
+    out["entry_lock"] = {**out.get("entry_lock", {}), **{k: v for k, v in entry_lock.status().items()
+                                                         if k in ("installed", "reason", "updated_at", "triggers",
+                                                                  "open_positions")}}
+    return out
+
+
+@router.get("/uw/health")
+def uw_health_status() -> dict:
+    """Read-only Unusual Whales health: OK / DEGRADED / CRITICAL with the reasons, latency (avg / p95 / p99),
+    queue waits, 429s (and concurrency 429s), 404s, timeouts, blocked state and the connection picture.
+    Makes no provider request."""
+    import uw_health
+    return uw_health.summary()
+
+
 @router.get("/uw/budget")
 def uw_budget_status() -> dict:
     """The shared Unusual Whales budget: allowance, how usage is verified, usage per module and per

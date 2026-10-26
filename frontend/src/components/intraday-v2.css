@@ -94,6 +94,9 @@
 .im2-data { display: inline-flex; align-items: baseline; gap: 5px; font-size: 10.5px; font-weight: 700;
   padding: 1px 7px; border-radius: 6px; letter-spacing: .03em; cursor: help; }
 .im2-data em { font-style: normal; font-weight: 600; opacity: .75; }
+.im2-data b.c15 { font-weight: 700; font-size: 10px; padding: 0 4px; border-radius: 4px; }
+.im2-data b.c15.ok { color: #15803d; background: rgba(22,163,74,.18); }
+.im2-data b.c15.no { color: #b45309; background: rgba(217,119,6,.2); }
 .im2-data.live { color: #15803d; background: rgba(22,163,74,.14); }
 .im2-data.delayed { color: #b45309; background: rgba(217,119,6,.16); }
 .im2-data.stale { color: #b91c1c; background: rgba(220,38,38,.14); }
