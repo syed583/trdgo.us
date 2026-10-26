@@ -153,6 +153,7 @@ def _engine_scan(monkeypatch, bias):
     seed(bias=bias)
     pend = {"side": "BUY", "count": 1, "last_ts": datetime(2026, 10, 22, 10, 50, tzinfo=ET)}
     monkeypatch.setattr(eng, "_pending", lambda *a, **k: pend)
+    monkeypatch.setattr(eng, "_open_rows", lambda *a, **k: [])                   # this fake session cannot read rows
     monkeypatch.setattr(eng, "step_public_new", lambda *a, **k: {"state": "BUY"})
     monkeypatch.setattr(entry_lock, "is_locked", lambda *a, **k: False)
     sc = {"call": "BUY", "side": "BUY", "score": 72.0, "spot": 100.0, "atr": 2.0, "status": "OK"}
@@ -203,7 +204,7 @@ def lock_db():
     eng = create_engine("sqlite://")
     with eng.begin() as c:
         c.execute(text("CREATE TABLE demo_trades (id INTEGER PRIMARY KEY, status TEXT)"))
-        c.execute(text("CREATE TABLE intraday_sig_v2 (id INTEGER PRIMARY KEY, is_open BOOLEAN)"))
+        c.execute(text("CREATE TABLE intraday_sig_v2 (id INTEGER PRIMARY KEY, is_open BOOLEAN, session_date TEXT)"))
     return eng
 
 
@@ -234,7 +235,7 @@ def test_locking_for_a_rollback_refuses_while_a_position_is_open(lock_db):
     entry_lock.set_locked(False, "live", lock_db)
     with lock_db.begin() as c:
         c.execute(text("INSERT INTO demo_trades (status) VALUES ('OPEN')"))
-        c.execute(text("INSERT INTO intraday_sig_v2 (is_open) VALUES (1)"))
+        c.execute(text("INSERT INTO intraday_sig_v2 (is_open, session_date) VALUES (1, date('now'))"))
     r = entry_lock.set_locked(True, "rollback", lock_db, for_rollback=True)
     assert r["ok"] is False and r["open_positions"] == {"demo_trades": 1, "intraday_sig_v2": 1}
     assert entry_lock.is_locked(lock_db) is False                                  # nothing changed

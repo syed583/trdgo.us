@@ -153,6 +153,16 @@ def first_close_after(moment: datetime) -> datetime:
     return close_datetime(next_trading_day(day))
 
 
+def trading_days_back(d: date, n: int) -> date:
+    """The trading day ``n`` trading days before ``d`` (``d`` itself need not be one)."""
+    out, done = d, 0
+    while done < n:
+        out -= timedelta(days=1)
+        if is_trading_day(out):
+            done += 1
+    return out
+
+
 def extended_session_open(d: date) -> bool:
     return is_trading_day(d)
 

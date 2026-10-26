@@ -191,6 +191,7 @@ def test_carried_positions_on_postgres_close_once_and_are_never_blocked_by_the_l
         c.execute(text("DELETE FROM intraday_sig_v2_changes"))
 
     monday, tuesday = datetime(2026, 10, 19, 14, 0, tzinfo=ET), datetime(2026, 10, 20, 11, 0, tzinfo=ET)
+    monkeypatch.setattr(entry_lock, "_cutoff", lambda: "2026-10-19")      # "today" is Tuesday 2026-10-20 in this test
     entry_lock.set_locked(False, "seed", eng)
     with Session() as s:
         for sym in ("AAA", "BBB"):
@@ -241,7 +242,7 @@ def test_carried_positions_on_postgres_close_once_and_are_never_blocked_by_the_l
     scan = {"score": 72.0, "spot": 100.5, "status": "OK", "spy_above_vwap": None}
     assert sig.step("AAA", scan, tuesday)["is_open"] is True               # next morning: still open and managed
     with Session() as a, Session() as b:
-        row_a, row_b = dict(sig._open_row(a, "AAA", "x")), dict(sig._open_row(b, "AAA", "x"))
+        row_a, row_b = dict(sig._open_row(a, "AAA", "2026-10-20")), dict(sig._open_row(b, "AAA", "2026-10-20"))
         sig._manage_open(a, row_a, dict(scan, spot=98.0), tuesday.replace(hour=11, minute=1))
         a.commit()
         out = sig._manage_open(b, row_b, dict(scan, spot=97.0), tuesday.replace(hour=11, minute=2))
@@ -270,3 +271,46 @@ def test_carried_positions_on_postgres_close_once_and_are_never_blocked_by_the_l
     dts._last_tick = 0.0
     dts.tick(force=True)                                                  # the SHORT reaches its target while locked
     assert rt.rollback_prepare(engine=eng)["ok"] is True
+
+
+def test_duplicate_and_stale_signal_rows_on_postgres(pg, monkeypatch):
+    """Several open rows for one symbol, stale rows, the advisory lock and the operator expiry, on the real engine."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from sqlalchemy import text
+    from sqlalchemy.orm import sessionmaker
+
+    import entry_lock
+    import intraday_signal_v2 as sig
+
+    eng, schema = pg
+    Session = sessionmaker(bind=eng)
+    monkeypatch.setattr("database.SessionLocal", Session)
+    monkeypatch.setattr(sig, "_ready", False)
+    assert sig._ensure() is True
+    entry_lock.install(eng)
+    entry_lock.set_locked(False, "test", eng)
+    with eng.begin() as c:
+        c.execute(text("DELETE FROM intraday_sig_v2"))
+        for sym, d, side in (("DUP", "2026-10-20", "BUY"), ("DUP", "2026-10-21", "SELL"), ("OLD", "2026-10-16", "BUY")):
+            c.execute(text("INSERT INTO intraday_sig_v2 (symbol, session_date, state, side, is_open, entry, now_price, tp, sl, "
+                           "best_price, atr, score_in, score_now, signal_ts, status_ts) VALUES (:s, :d, :side, :side, TRUE, "
+                           "100, 100, 98, 101.5, 100, 2, 70, 70, now(), now())"), {"s": sym, "d": d, "side": side})
+    wed = datetime(2026, 10, 21, 11, 0, tzinfo=ZoneInfo("America/New_York"))
+    with Session() as s:
+        sig._lock_symbol(s, "DUP")                                          # a transaction-level advisory lock, any pooler
+        got = sig._open_rows(s, "DUP", wed)
+        assert [r["session_date"].isoformat() for r in got] == ["2026-10-20", "2026-10-21"]       # BOTH, oldest first
+        assert sig._open_rows(s, "OLD", wed) == []                                                # stale: outside the window
+        s.commit()
+    assert [r["symbol"] for r in sig.stale_open_rows(wed)] == ["OLD"]
+    assert sig.expire_stale(apply=False, now=wed)["would_expire"] == 1
+    done = sig.expire_stale(apply=True, now=wed)
+    assert done["applied"] is True and done["expired"] == 1
+    with eng.connect() as c:
+        r = c.execute(text("SELECT is_open, exit_reason, exit_price, entry, signal_ts IS NOT NULL FROM intraday_sig_v2 "
+                           "WHERE symbol='OLD'")).one()
+        assert (r[0], r[1], r[2], float(r[3]), r[4]) == (False, "EXPIRED", None, 100.0, True)      # kept, no P&L
+        assert c.execute(text("SELECT count(*) FROM intraday_sig_v2 WHERE symbol='DUP' AND is_open")).scalar() == 2
+    assert sig.expire_stale(apply=True, now=wed)["applied"] is False                                  # idempotent

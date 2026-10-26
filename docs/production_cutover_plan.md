@@ -112,3 +112,16 @@ scratch database first.
 The production `/api/uw/health` figures (latency, queue waits, 429s) and live 38-stock timing exist only after the new
 build runs against the real provider; the entry-lock behaviour on the production pooler is verified by the cut-over
 itself; Supabase backup coverage is the owner's dashboard read.
+
+## Stale live-signal rows found on production (2026-10-26)
+
+16 of the 17 open `intraday_sig_v2` rows are 4-10 days old and four symbols are open twice (old-build bug, see
+`docs/position_lifecycle.md`). The release does NOT close or change them. After the cut-over:
+
+1. They stay open and are reported as unresolved (`/api/...` live log `stale: true`, summary `stale_open`,
+   `entry_lock.py status` -> `stale_unresolved`). They do not block the cut-over, do not block new signals for their
+   symbols, and are not booked at any price.
+2. List them any time (read-only): `backend\.venv\Scripts\python.exe backend\intraday_signal_v2.py stale`.
+3. Only on the owner's explicit approval, expire them (kept, no P&L):
+   `... intraday_signal_v2.py expire-stale` (dry run first) then `... expire-stale --apply`. Save the dry-run output as the
+   before-snapshot.

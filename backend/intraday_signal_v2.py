@@ -127,13 +127,50 @@ def _ensure() -> bool:
         return False
 
 
-def _open_row(db, symbol: str, sess: str):
-    """The open signal for ``symbol`` -- whatever session it was opened in. A signal stays open (and keeps being
-    managed) until a rule closes it; a change of date is not a rule. ``sess`` is kept for callers that pass it."""
+def _stale_cutoff(ref=None) -> str:
+    """ISO date: an open row whose session is OLDER than this is stale (see tab_settings.INTRADAY_LIFECYCLE).
+    ``ref`` is the moment (datetime), the day (date / ISO string) the question is asked for; default now."""
+    import market_calendar
+    from datetime import date as _date
+    if ref is None:
+        today = _now_et().date()
+    elif isinstance(ref, datetime):
+        today = ref.date()
+    elif isinstance(ref, _date):
+        today = ref
+    else:
+        try:
+            today = _date.fromisoformat(str(ref)[:10])
+        except ValueError:                                  # an unreadable day: ask as of now
+            today = _now_et().date()
+    return market_calendar.trading_days_back(today, int(cfg.INTRADAY_LIFECYCLE["max_carry_trading_days"])).isoformat()
+
+
+def _open_rows(db, symbol: str, now=None) -> list:
+    """EVERY open signal of ``symbol`` that is still inside the carry window, oldest first -- whatever session it was
+    opened in. All of them are managed (a second open row for a symbol must never be left unmanaged)."""
     from sqlalchemy import text
-    return db.execute(text(
-        "SELECT * FROM intraday_sig_v2 WHERE symbol=:s AND is_open=TRUE ORDER BY id DESC LIMIT 1"),
-        {"s": symbol}).mappings().first()
+    return list(db.execute(text(
+        "SELECT * FROM intraday_sig_v2 WHERE symbol=:s AND is_open=TRUE AND session_date>=:c ORDER BY id ASC"),
+        {"s": symbol, "c": _stale_cutoff(now)}).mappings().all())
+
+
+def _open_row(db, symbol: str, sess: str):
+    """The newest open signal for ``symbol`` inside the carry window. A signal stays open (and keeps being managed)
+    until a rule closes it; a change of date is not a rule. ``sess`` is kept for callers that pass it."""
+    rows = _open_rows(db, symbol, sess)
+    return rows[-1] if rows else None
+
+
+def _lock_symbol(db, symbol: str) -> None:
+    """Serialise two processes working on one symbol (PostgreSQL transaction-level advisory lock: released at commit,
+    safe through the transaction pooler). SQLite is single-writer already."""
+    try:
+        if db.get_bind().dialect.name == "postgresql":
+            from sqlalchemy import text
+            db.execute(text("SELECT pg_advisory_xact_lock(hashtext(:k))"), {"k": "intraday_sig_v2:" + symbol})
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _pending(db, symbol: str, sess: str):
@@ -168,12 +205,14 @@ def step(symbol: str, sc: Optional[dict] = None, now: Optional[datetime] = None)
     from sqlalchemy import text
     db = _db()
     try:
-        row = _open_row(db, symbol, sess)
-        # ---- manage an open position ----
-        if row:
-            out = _manage_open(db, dict(row), sc, now)
+        _lock_symbol(db, symbol)
+        rows = _open_rows(db, symbol, now)
+        # ---- manage EVERY open position of the symbol (each by its own side, levels and entry) ----
+        if rows:
+            outs = [_manage_open(db, dict(r), sc, now) for r in rows]
             db.commit()
-            return out
+            still = [o for o in outs if o.get("is_open")]
+            return still[-1] if still else outs[-1]
         # ---- no open position: look for a new confirmed signal ----
         out = _maybe_open(db, symbol, sess, sc, now)
         db.commit()
@@ -339,6 +378,8 @@ def _maybe_open(db, symbol: str, sess: str, sc: dict, now: datetime) -> Optional
     else:
         tp = price - _TP_ATR * atr if atr else None
         sl = price + _SL_ATR * atr if atr else None
+    if _open_rows(db, symbol, now):                # another scan / process opened one meanwhile: never a second row
+        return None
     state = _state_for(side, score)
     db.execute(text(
         "INSERT INTO intraday_sig_v2 (symbol, session_date, state, side, is_open, entry,"
@@ -431,6 +472,7 @@ def log_rows(session_date: Optional[str] = None, limit: int = 300) -> list[dict]
         rows = db.execute(text(
             "SELECT * FROM intraday_sig_v2 WHERE session_date=:d ORDER BY"
             " is_open DESC, status_ts DESC LIMIT :n"), {"d": sess, "n": limit}).mappings().all()
+        cut = _stale_cutoff(sess)
         if sess == _session():                                # still-open signals from EARLIER sessions, first
             carried = db.execute(text(
                 "SELECT * FROM intraday_sig_v2 WHERE is_open=TRUE AND session_date<:d ORDER BY session_date, id"),
@@ -440,6 +482,7 @@ def log_rows(session_date: Optional[str] = None, limit: int = 300) -> list[dict]
         for r in rows:
             pub = _row_public(dict(r))
             pub["carried"] = bool(r["is_open"] and str(r["session_date"]) < sess)
+            pub["stale"] = bool(r["is_open"] and str(r["session_date"]) < cut)    # unresolved: older than the carry window
             pub["held_min"] = round(_minutes(r["signal_ts"],
                                     r["status_ts"].astimezone(_ET) if r["status_ts"] and not r["is_open"]
                                     else _now_et()), 1) if r["signal_ts"] else None
@@ -461,10 +504,14 @@ def summary(session_date: Optional[str] = None) -> dict:
         rows = db.execute(text(
             "SELECT side, entry, exit_price, is_open, exit_reason FROM intraday_sig_v2"
             " WHERE session_date=:d"), {"d": sess}).mappings().all()
-        carried_open = 0
+        carried_open = stale_open = 0
         if sess == _session():
+            cut = _stale_cutoff(sess)
             carried_open = int(db.execute(text(
-                "SELECT COUNT(*) FROM intraday_sig_v2 WHERE is_open=TRUE AND session_date<:d"), {"d": sess}).scalar() or 0)
+                "SELECT COUNT(*) FROM intraday_sig_v2 WHERE is_open=TRUE AND session_date<:d AND session_date>=:c"),
+                {"d": sess, "c": cut}).scalar() or 0)
+            stale_open = int(db.execute(text(
+                "SELECT COUNT(*) FROM intraday_sig_v2 WHERE is_open=TRUE AND session_date<:c"), {"c": cut}).scalar() or 0)
         issued = len(rows)
         closed = [r for r in rows if not r["is_open"] and r["entry"] and r["exit_price"]]
         wins = sum(1 for r in closed if _pl_pct(r["side"], r["entry"], r["exit_price"]) > 0)
@@ -476,7 +523,8 @@ def summary(session_date: Optional[str] = None) -> dict:
             by_reason[r["exit_reason"] or "?"] += 1
         return {
             "session": sess, "issued": issued, "closed": len(closed),
-            "open": issued - len(closed), "carried_open": carried_open, "wins": wins, "losses": losses,
+            "open": sum(1 for r in rows if r["is_open"]), "carried_open": carried_open, "stale_open": stale_open,
+            "expired": sum(1 for r in rows if r["exit_reason"] == "EXPIRED"), "wins": wins, "losses": losses,
             "win_rate": round(wins / len(closed) * 100, 1) if closed else None,
             "avg_pl_pct": round(sum(pls) / len(pls), 2) if pls else None,
             "by_exit_reason": by_reason,
@@ -513,7 +561,8 @@ def _active_symbols(sess: str) -> set:
     from sqlalchemy import text
     db = _db()
     try:
-        a = db.execute(text("SELECT symbol FROM intraday_sig_v2 WHERE is_open=TRUE")).all()   # any date
+        a = db.execute(text("SELECT symbol FROM intraday_sig_v2 WHERE is_open=TRUE AND session_date>=:c"),
+                       {"c": _stale_cutoff(sess)}).all()           # any date inside the carry window
         b = db.execute(text("SELECT symbol FROM intraday_sig_v2_pending WHERE session_date=:d"),
                        {"d": sess}).all()
         return {r[0] for r in a} | {r[0] for r in b}
@@ -674,3 +723,60 @@ def changes(session_date: Optional[str] = None, limit: int = 300) -> list[dict]:
         return []
     finally:
         db.close()
+
+
+# --------------------------------------------------------------------------- #
+#  Stale unresolved rows: reported always, expired only by an operator
+# --------------------------------------------------------------------------- #
+def stale_open_rows(now: Optional[datetime] = None) -> list[dict]:
+    """Open signals older than the carry window. Nothing manages or closes them automatically."""
+    if not _ensure():
+        return []
+    from sqlalchemy import text
+    db = _db()
+    try:
+        rows = db.execute(text(
+            "SELECT id, symbol, session_date, side, state, entry, signal_ts FROM intraday_sig_v2"
+            " WHERE is_open=TRUE AND session_date<:c ORDER BY session_date, id"), {"c": _stale_cutoff(now)}).mappings().all()
+        return [{**dict(r), "session_date": str(r["session_date"]), "signal_ts": _iso(r["signal_ts"])} for r in rows]
+    finally:
+        db.close()
+
+
+def expire_stale(apply: bool = False, now: Optional[datetime] = None) -> dict:
+    """Close every stale open signal as EXPIRED: no exit price, no P&L (so it enters no total and no win rate).
+    The row is KEPT -- entry, side, levels, timestamps and score are untouched; only is_open / state / exit_reason /
+    status_ts change. Dry run unless ``apply``. Idempotent: a row already closed is never touched again.
+    This is an OPERATOR action: the engine never calls it."""
+    rows = stale_open_rows(now)
+    if not apply or not rows:
+        return {"applied": False, "would_expire": len(rows), "rows": rows}
+    from sqlalchemy import text
+    now = now or _now_et()
+    db = _db()
+    done = 0
+    try:
+        for r in rows:
+            res = db.execute(text(
+                "UPDATE intraday_sig_v2 SET is_open=FALSE, was_state=state, state='CLOSED', exit_reason='EXPIRED',"
+                " status_ts=:ts WHERE id=:id AND is_open=TRUE AND session_date<:c"),
+                {"ts": now, "id": r["id"], "c": _stale_cutoff(now)})
+            done += int(getattr(res, "rowcount", 1) or 0)
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        raise
+    finally:
+        db.close()
+    return {"applied": True, "expired": done, "rows": rows}
+
+
+if __name__ == "__main__":                        # python backend\intraday_signal_v2.py expire-stale [--apply]
+    import json
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "expire-stale":
+        print(json.dumps(expire_stale(apply="--apply" in sys.argv), indent=1, default=str))
+    elif len(sys.argv) > 1 and sys.argv[1] == "stale":
+        print(json.dumps(stale_open_rows(), indent=1, default=str))
+    else:
+        print("usage: intraday_signal_v2.py stale | expire-stale [--apply]   (dry run unless --apply)")

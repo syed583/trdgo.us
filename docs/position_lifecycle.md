@@ -115,3 +115,26 @@ closed that day whatever day they opened), `gap_effect_total`, and per row `exit
 `exit_date`. `NO_PRICE` closes carry no profit and are excluded from totals and win rates. A past day's entry-date
 numbers can still change when a carried trade closes later; `realized_on_date` is the figure that never does.
 No historical-performance or backtest module reads these tables.
+
+## Duplicate and stale live-signal rows (`intraday_sig_v2`)
+
+Found on production 2026-10-26: 17 open rows, 16 of them 4-10 days old, and AMD / AMZN / NVDA / QCOM each open twice
+(different sessions, sometimes opposite sides). Cause: the old engine looked only for an open row of the CURRENT session,
+so a row left open overnight was never managed again and a new row for the same symbol could be opened next to it.
+
+Rules now (`tab_settings.INTRADAY_LIFECYCLE`, `max_carry_trading_days = 1`):
+
+* **Every open row of a symbol inside the carry window (today and the previous trading day) is managed** on every scan,
+  each by its own side, levels and entry (BUY and SELL symmetric), with the same guarded single close and one change-log
+  row per close. The board shows the newest open one.
+* **A second open row is never created by this build**: the scan holds a per-symbol PostgreSQL advisory lock
+  (transaction level, pooler-safe) and re-checks for an open row right before the INSERT.
+* **A row older than the window is STALE.** It is never managed, never closed automatically (no price a week later is a
+  fair exit, and booking one would rewrite past sessions' results), never rescored, and it does NOT block a new signal for
+  its symbol. It is reported: `summary()["stale_open"]`, `log_rows()[..]["stale"]`, `entry_lock.status()["stale_unresolved"]`.
+  The entry lock does not count stale rows as positions to protect (nothing can manage them), so they do not block a
+  cut-over.
+* **Expiring stale rows is an operator action, never automatic**:
+  `python backend\intraday_signal_v2.py stale` (list) and `python backend\intraday_signal_v2.py expire-stale` (dry run) /
+  `... expire-stale --apply`. An expired row is KEPT: entry, side, levels, timestamps and score are untouched; it only becomes
+  closed with `exit_reason = EXPIRED`, no exit price and no P&L, so it is in no total and no win rate. Idempotent.

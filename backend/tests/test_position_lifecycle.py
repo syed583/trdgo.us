@@ -441,7 +441,7 @@ def test_a_carried_signal_exits_on_its_rules_and_is_closed_and_logged_exactly_on
 def test_two_scans_racing_to_close_one_signal_write_one_close(sigdb, monkeypatch):
     sig_row(sigdb)
     with sigdb.Session() as a, sigdb.Session() as b:
-        row_a, row_b = dict(eng._open_row(a, "AAA", "x")), dict(eng._open_row(b, "AAA", "x"))
+        row_a, row_b = dict(eng._open_row(a, "AAA", "2026-10-20")), dict(eng._open_row(b, "AAA", "2026-10-20"))
         sc = {"score": 72.0, "spot": 98.0, "spy_above_vwap": None}
         eng._manage_open(a, row_a, sc, et(*TUE, 10))
         a.commit()
@@ -473,8 +473,9 @@ def test_carried_buy_and_sell_signals_exit_symmetrically(sigdb, side, entry, sl,
 
 
 def test_a_restart_recovers_open_signals_of_every_session_and_the_scan_covers_symbols_outside_the_universe(sigdb, monkeypatch):
-    sig_row(sigdb, "AAA", session="2026-10-19")
+    sig_row(sigdb, "AAA", session="2026-10-20")                                     # opened the day before: carried
     sig_row(sigdb, "ZZZ", session="2026-10-20")                                     # no longer in the universe
+    sig_row(sigdb, "OLD", session="2026-10-16")                                     # older than the carry window: stale
     assert eng._active_symbols("2026-10-21") == {"AAA", "ZZZ"}
     scored = []
     monkeypatch.setattr(eng, "universe", lambda: ["AAA", "BBB"])

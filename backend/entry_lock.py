@@ -31,8 +31,28 @@ from typing import Optional
 
 TABLE = "trade_entry_lock"
 GUARDED = ("demo_trades", "intraday_sig_v2")
+# A live signal still open from before the carry window is STALE: nothing manages or closes it (see
+# intraday_signal_v2.expire_stale), so it is reported (stale_unresolved) but does not count as a position to protect.
 _OPEN_SQL = {"demo_trades": "SELECT COUNT(*) FROM demo_trades WHERE status = 'OPEN'",
-             "intraday_sig_v2": "SELECT COUNT(*) FROM intraday_sig_v2 WHERE is_open = TRUE"}
+             "intraday_sig_v2": "SELECT COUNT(*) FROM intraday_sig_v2 WHERE is_open = TRUE AND session_date >= :cut"}
+_STALE_SQL = "SELECT COUNT(*) FROM intraday_sig_v2 WHERE is_open = TRUE AND session_date < :cut"
+
+
+def _cutoff() -> str:
+    import market_calendar
+    import tab_settings
+    from datetime import datetime as _dt
+    today = _dt.now(market_calendar.ET).date()
+    return market_calendar.trading_days_back(today, int(tab_settings.INTRADAY_LIFECYCLE["max_carry_trading_days"])).isoformat()
+
+
+def stale_unresolved(engine=None) -> int:
+    """Live signal rows still open from before the carry window (never managed, never closed automatically)."""
+    eng = _engine(engine)
+    with eng.connect() as conn:
+        if not _table_exists(conn, "intraday_sig_v2"):
+            return 0
+        return int(conn.execute(_text(_STALE_SQL), {"cut": _cutoff()}).scalar() or 0)
 _CACHE_S = 5.0
 _cache: dict = {"at": 0.0, "value": None}
 
@@ -104,7 +124,7 @@ def open_positions(engine=None) -> dict:
     with eng.connect() as conn:
         for t, sql in _OPEN_SQL.items():
             if _table_exists(conn, t):
-                out[t] = int(conn.execute(_text(sql)).scalar() or 0)
+                out[t] = int(conn.execute(_text(sql), {"cut": _cutoff()} if ":cut" in sql else {}).scalar() or 0)
     return out
 
 
@@ -145,6 +165,7 @@ def status(engine=None) -> dict:
                                           "AND name LIKE 'trade_entry_lock_guard_%'")).all()
                 out["triggers"] = {r[0].replace("trade_entry_lock_guard_", ""): True for r in rows}
         out["open_positions"] = open_positions(eng)
+        out["stale_unresolved"] = stale_unresolved(eng)
     except Exception as exc:  # noqa: BLE001
         out["error"] = f"{type(exc).__name__}: {exc}"[:200]
     return out

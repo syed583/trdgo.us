@@ -67,7 +67,7 @@ def book():
     eng = create_engine("sqlite://")
     with eng.begin() as c:
         c.execute(text("CREATE TABLE demo_trades (id INTEGER PRIMARY KEY, status TEXT)"))
-        c.execute(text("CREATE TABLE intraday_sig_v2 (id INTEGER PRIMARY KEY, is_open BOOLEAN)"))
+        c.execute(text("CREATE TABLE intraday_sig_v2 (id INTEGER PRIMARY KEY, is_open BOOLEAN, session_date TEXT)"))
     return eng
 
 
@@ -198,7 +198,7 @@ def test_a_lock_install_failure_leaves_the_service_stopped_not_running_unlocked(
     eng = create_engine("sqlite://")
     with eng.begin() as c:
         c.execute(text("CREATE TABLE demo_trades (id INTEGER PRIMARY KEY, status TEXT)"))
-        c.execute(text("CREATE TABLE intraday_sig_v2 (id INTEGER PRIMARY KEY, is_open BOOLEAN)"))
+        c.execute(text("CREATE TABLE intraday_sig_v2 (id INTEGER PRIMARY KEY, is_open BOOLEAN, session_date TEXT)"))
     calls = {"n": 0}
     real_install = entry_lock.install
 

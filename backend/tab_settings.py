@@ -441,6 +441,14 @@ PAPER_EXECUTION: dict = {
     "max_unpriced_trading_days": 5,   # a due close with no reliable price this long is closed as NO_PRICE (no fill invented)
 }
 
+# Life of a live signal row (intraday_signal_v2.py). A signal is a same-day idea; one that is still open from an earlier
+# session is "carried" and keeps being managed, but only for this many trading days back. An older open row is STALE:
+# it is never managed or closed automatically (no price a week later is a fair exit), it never blocks a new signal for
+# its symbol, it is reported as unresolved, and an operator can expire it on purpose (no P&L) -- see expire_stale().
+INTRADAY_LIFECYCLE: dict = {
+    "max_carry_trading_days": 1,      # today and the previous trading day are managed; older open rows are stale
+}
+
 # 15-minute candle confirmation (intraday_15m.py). It never changes a score: it decides whether a
 # BUY / SELL that already passed every other gate may be shown as actionable.
 INTRADAY_15M: dict = {
