@@ -7,8 +7,9 @@
     python release_tool.py rollback-prepare [--reason TEXT]
 
 Design (docs/release_and_rollback.md):
-  * A swap happens only while entries are impossible by time (weekend, or outside 04:00-20:00 ET) AND no position
-    is open. Both are checked here; there is no flag that skips them.
+  * A swap happens only while entries are impossible by time (weekend, or outside 04:00-20:00 ET) AND no PAPER POSITION
+    is open. Open live SIGNALS may be carried through a forward cut-over only if every one passes signal_recovery.py (the
+    new engine can recover and manage it); a rollback still needs an empty book. There is no flag that skips any of it.
   * The target is judged by release_check.py. A target that fails is refused.
   * The service is stopped, the entry lock installed (a first install starts LOCKED), the service started, and it
     must answer on /safety before anything else happens. A failure at any step leaves entries locked / the service
@@ -62,16 +63,29 @@ def preflight(repo: str, target: str, *, now: Optional[datetime] = None, engine=
     if ident.get("uncommitted_changes"):
         problems.append("the production checkout has uncommitted changes: " +
                         "identify them before deploying (they would block a fast-forward pull)")
+    signals: Optional[dict] = None
     try:
         open_pos = entry_lock.open_positions(engine)
-        if any(open_pos.values()):
-            problems.append(f"open positions exist: {open_pos}")
+        paper = int((open_pos or {}).get("demo_trades") or 0)
+        if paper:                                   # open PAPER POSITIONS must be zero: no exception, no flag
+            problems.append(f"open paper positions exist: {paper}")
     except Exception as exc:  # noqa: BLE001
         open_pos = None
         problems.append(f"could not read open positions ({type(exc).__name__}): refusing to proceed blind")
+    # Open live SIGNALS may be carried through a FORWARD cut-over, but only if the new engine can safely recover every one
+    # (signal_recovery.py). Any problem -- or a failure to read them -- blocks. Rollback is stricter (below).
+    try:
+        import signal_recovery
+        signals = signal_recovery.assess(engine, now=now)
+        if not signals["ok"]:
+            problems.append("open signals cannot be recovered safely: " + "; ".join(signals["problems"][:8]) +
+                            (f" (+{len(signals['problems']) - 8} more)" if len(signals["problems"]) > 8 else ""))
+    except Exception as exc:  # noqa: BLE001
+        signals = None
+        problems.append(f"could not validate the open signals ({type(exc).__name__}): refusing to proceed blind")
     return {"ok": not problems, "problems": problems, "window": why, "target": target,
             "running_commit_rollback_reference": ident.get("head"), "open_positions": open_pos,
-            "release_check": chk["ok"]}
+            "signals": signals, "release_check": chk["ok"]}
 
 
 # ------------------------------------------------------------ runtime verification ---
@@ -182,10 +196,14 @@ def cutover(repo: str, target: str, *, service: str = "USStockReader", url: str 
 
 # --------------------------------------------------------------------- rollback ---
 def rollback_prepare(*, reason: str = "rollback", engine=None) -> dict:
-    """Lock entries for a rollback to an older build. Refuses while any position is open (an older build cannot
-    manage exits through the lock trigger)."""
+    """Lock entries for a rollback to an older build. Refuses while ANY position or live signal inside the carry window
+    is open -- recoverable or not (an older build cannot manage them, and its blocked INSERT would also fail the
+    transaction that carries its exits). A forward cut-over is more permissive about signals; a rollback is not."""
     import entry_lock
-    return entry_lock.set_locked(True, reason, engine, for_rollback=True)
+    r = entry_lock.set_locked(True, reason, engine, for_rollback=True)
+    if not r.get("ok") and r.get("open_positions"):
+        r["why"] = "a rollback needs an empty book: open paper positions AND open live signals both block it"
+    return r
 
 
 def main(argv: list[str]) -> int:

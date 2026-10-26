@@ -144,7 +144,7 @@ def test_preflight_refuses_an_open_position_and_an_unreadable_database(server_re
     with book.begin() as c:
         c.execute(text("INSERT INTO demo_trades (status) VALUES ('OPEN')"))
     r = rt.preflight(str(server_repo), "HEAD", now=NIGHT, engine=book)
-    assert not r["ok"] and any("open positions" in p for p in r["problems"])
+    assert not r["ok"] and any("open paper positions" in p for p in r["problems"])
 
     class Broken:
         def connect(self):

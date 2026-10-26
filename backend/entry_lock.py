@@ -38,11 +38,11 @@ _OPEN_SQL = {"demo_trades": "SELECT COUNT(*) FROM demo_trades WHERE status = 'OP
 _STALE_SQL = "SELECT COUNT(*) FROM intraday_sig_v2 WHERE is_open = TRUE AND session_date < :cut"
 
 
-def _cutoff() -> str:
+def _cutoff(now=None) -> str:
     import market_calendar
     import tab_settings
     from datetime import datetime as _dt
-    today = _dt.now(market_calendar.ET).date()
+    today = (now or _dt.now(market_calendar.ET)).astimezone(market_calendar.ET).date()
     return market_calendar.trading_days_back(today, int(tab_settings.INTRADAY_LIFECYCLE["max_carry_trading_days"])).isoformat()
 
 

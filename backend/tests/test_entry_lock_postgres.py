@@ -314,3 +314,43 @@ def test_duplicate_and_stale_signal_rows_on_postgres(pg, monkeypatch):
         assert (r[0], r[1], r[2], float(r[3]), r[4]) == (False, "EXPIRED", None, 100.0, True)      # kept, no P&L
         assert c.execute(text("SELECT count(*) FROM intraday_sig_v2 WHERE symbol='DUP' AND is_open")).scalar() == 2
     assert sig.expire_stale(apply=True, now=wed)["applied"] is False                                  # idempotent
+
+
+def test_signal_recovery_assessment_on_postgres_types(pg, monkeypatch):
+    """The cut-over's signal validation on the real engine: DATE and TIMESTAMPTZ values, not text."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from sqlalchemy import text
+    from sqlalchemy.orm import sessionmaker
+
+    import entry_lock
+    import intraday_signal_v2 as sig
+    import signal_recovery as sr
+
+    eng, schema = pg
+    monkeypatch.setattr("database.SessionLocal", sessionmaker(bind=eng))
+    monkeypatch.setattr(sig, "_ready", False)
+    assert sig._ensure() is True
+    monkeypatch.setattr(entry_lock, "_cutoff", lambda now=None: "2026-10-20")
+    night = datetime(2026, 10, 20, 21, 0, tzinfo=ZoneInfo("America/New_York"))
+    ins = ("INSERT INTO intraday_sig_v2 (symbol, session_date, state, side, is_open, entry, now_price, tp, sl, best_price, atr, "
+           "score_in, score_now, signal_ts, status_ts) VALUES (:s, :d, :st, :sd, TRUE, 100, 100, :tp, :sl, 100, 2, 70, 70, "
+           "TIMESTAMPTZ '2026-10-20 15:19:00-04', TIMESTAMPTZ '2026-10-20 15:19:00-04')")
+    with eng.begin() as c:
+        c.execute(text("DELETE FROM intraday_sig_v2"))
+        c.execute(text(ins), {"s": "AAA", "d": "2026-10-20", "st": "BUY", "sd": "BUY", "tp": 102, "sl": 99})
+        c.execute(text(ins), {"s": "BBB", "d": "2026-10-20", "st": "SELL", "sd": "SELL", "tp": 98, "sl": 101})
+        c.execute(text(ins), {"s": "OLD", "d": "2026-10-16", "st": "BUY", "sd": "BUY", "tp": 102, "sl": 99})
+    r = sr.assess(eng, now=night)
+    assert r["ok"] is True, r["problems"]
+    assert (r["fresh"], r["stale"]) == (2, 1)                                                     # the old row is stale: reported only
+    with eng.begin() as c:
+        c.execute(text(ins), {"s": "AAA", "d": "2026-10-20", "st": "SELL", "sd": "SELL", "tp": 98, "sl": 101})   # opposite-side duplicate
+        c.execute(text(ins), {"s": "CCC", "d": "2026-10-20", "st": "BUY", "sd": "BUY", "tp": 99, "sl": 101})     # reversed levels
+    bad = sr.assess(eng, now=night)
+    assert bad["ok"] is False
+    txt = " ".join(bad["problems"])
+    assert "AAA has 2 open signals (opposite sides)" in txt and "CCC" in txt and "BUY levels are inconsistent" in txt
+    with eng.connect() as c:                                                                       # nothing was changed
+        assert c.execute(text("SELECT count(*) FROM intraday_sig_v2 WHERE is_open")).scalar() == 5

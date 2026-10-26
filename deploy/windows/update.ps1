@@ -42,8 +42,16 @@ $stage = Join-Path $env:TEMP ("trdgo-stage-" + $target.Substring(0, 12))
 if (Test-Path $stage) { git worktree remove --force $stage | Out-Null }
 git worktree add --detach $stage $target | Out-Null
 try {
+    # The staged copy has no .env, so it cannot find the database by itself: give the preflight the running site's
+    # database settings (only these two, for this one process; they are never printed) so it can READ the open positions
+    # and signals. Without them it refuses ("could not read open positions"), which is safe but would block every window.
+    foreach ($ln in @(Get-Content "$Root\backend\.env" -ErrorAction SilentlyContinue)) {
+        if ($ln -match '^\s*(DATABASE_URL|APP_ENV)\s*=\s*(.*)$') { Set-Item -Path ("Env:" + $Matches[1]) -Value $Matches[2].Trim().Trim('"').Trim("'") }
+    }
     & $python "$stage\backend\release_tool.py" preflight --repo $Root --target $target
-    if ($LASTEXITCODE -ne 0) {
+    $pre = $LASTEXITCODE
+    Remove-Item Env:DATABASE_URL, Env:APP_ENV -ErrorAction SilentlyContinue
+    if ($pre -ne 0) {
         Write-Host "Preflight refused the target -- nothing was changed." -ForegroundColor Red
         exit 1
     }

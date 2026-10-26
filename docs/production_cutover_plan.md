@@ -125,3 +125,33 @@ itself; Supabase backup coverage is the owner's dashboard read.
 3. Only on the owner's explicit approval, expire them (kept, no P&L):
    `... intraday_signal_v2.py expire-stale` (dry run first) then `... expire-stale --apply`. Save the dry-run output as the
    before-snapshot.
+
+## Update: open live signals no longer block a FORWARD cut-over (if every one is recoverable)
+
+The old engine stops scanning at about 15:30 ET, so it leaves late signals open every day (4 on 2026-10-26). Requiring a
+flat signal book would block every window. The rule is now:
+
+| Item | Rule |
+|---|---|
+| Open PAPER positions (`demo_trades`) | **must be zero** - unchanged, no exception, no flag |
+| Open live SIGNALS inside the carry window | allowed through a forward cut-over **only if every one passes** `signal_recovery.py` |
+| Stale signals (older than the window) | reported, never block, never closed automatically |
+| Rollback (`rollback-prepare`) | still needs an EMPTY book: paper positions and live signals both block it, recoverable or not |
+
+`signal_recovery.validate` checks, per open signal: the table has the columns the engine reads; state and side agree
+(BUY/STRONG BUY with BUY, SELL/STRONG SELL with SELL); the symbol is a US stock/ETF the engine can price (no index, no future,
+no malformed symbol); `session_date` is a real date inside the window and not in the future; `signal_ts` exists, is not in
+the future and falls on the session date (Eastern); `status_ts` is not before `signal_ts`; entry and best price are positive;
+tp/sl are on the correct side of the entry (BUY sl < entry < tp, SELL tp < entry < sl) and empty only when there is no ATR;
+and no symbol has more than one open signal (an opposite-side pair is named as such). One problem blocks the cut-over, and so
+does any failure to read the signals (fail closed). Nothing is written.
+
+After the cut-over the new engine manages every recovered signal by its own rules (stop, target, trailing stop, market flip,
+score drop, end-of-day 15:55 ET on a trading day): never closed because the date changed, never duplicated, closed once.
+Their exits book P&L into the session they were OPENED in (documented in docs/position_lifecycle.md).
+
+`update.ps1` now gives the staged preflight the running site's `DATABASE_URL` / `APP_ENV` (for that one process, never
+printed): the staged copy has no `.env` and would otherwise refuse with "could not read open positions".
+
+The VPS preflight script (`deploy/windows/vps_predeploy_preflight.ps1`) replaces "Book is flat" with two mandatory checks:
+"Paper positions are zero" and "Open signals recoverable" (the validator is embedded unchanged).

@@ -138,3 +138,12 @@ Rules now (`tab_settings.INTRADAY_LIFECYCLE`, `max_carry_trading_days = 1`):
   `python backend\intraday_signal_v2.py stale` (list) and `python backend\intraday_signal_v2.py expire-stale` (dry run) /
   `... expire-stale --apply`. An expired row is KEPT: entry, side, levels, timestamps and score are untouched; it only becomes
   closed with `exit_reason = EXPIRED`, no exit price and no P&L, so it is in no total and no win rate. Idempotent.
+
+## Forward cut-over with open signals (2026-10-27)
+
+A forward cut-over may carry open live signals if each one passes `signal_recovery.validate` (see
+docs/production_cutover_plan.md); open paper positions must still be zero and a rollback still needs an empty book. On the
+first scan after the cut-over every recovered signal inside the carry window is managed exactly as any carried signal:
+guarded single close, one change-log row, no duplicate, BUY and SELL symmetric. Tests: `tests/test_signal_recovery.py`
+(late-session signal, overnight and weekend carry, duplicate symbols, restarts, trailing-stop state, market flip, stale
+prices, the production shape).
