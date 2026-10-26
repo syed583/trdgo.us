@@ -85,8 +85,18 @@ if ($buildFailed -ne 0) {
 
 Write-Host "==> tests"
 Push-Location "$Root\backend"
-& $python -m pytest -q
+# The suite asserts DEVELOPMENT behaviour (that a non-production run never writes the real tables, that the dev backend has its
+# own signing key). The site's .env says APP_ENV=production and there is no .env.dev here, so as-is five of those tests fail on
+# the server and would stop every deployment. Run it as a development process: these variables exist for this one process only
+# (removed right after), and the suite never touches the production database (conftest forces a throw-away sqlite file; it
+# refuses to run at all if DATABASE_URL names the production project).
+$testDb = Join-Path $env:TEMP ("trdgo_test_" + [guid]::NewGuid().ToString("N") + ".db")
+$env:APP_ENV = "development"; $env:SESSION_SECRET = [guid]::NewGuid().ToString("N")
+$env:TEST_DATABASE_URL = "sqlite+pysqlite:///" + $testDb.Replace("\", "/")
+& $python -m pytest -q -p no:cacheprovider
 $failed = $LASTEXITCODE
+Remove-Item Env:APP_ENV, Env:SESSION_SECRET, Env:TEST_DATABASE_URL -ErrorAction SilentlyContinue
+Remove-Item $testDb -ErrorAction SilentlyContinue
 Pop-Location
 if ($failed -ne 0) {
     Write-Host "Tests failed -- the running service was left alone." -ForegroundColor Red

@@ -2,6 +2,7 @@
 # Set the -ReleaseCommit default below (the "inner" script's param block) to the approved release SHA first; until then the
 # "Release on remote" check fails closed. It writes only its own report files under C:udit-reports and changes nothing else
 # (see docs/production_cutover_plan.md). The signal validator it embeds is backend/signal_recovery.py, unchanged.
+# The working tree must be completely clean: the release tooling refuses ANY local change, tracked or untracked.
 $ReportDir = "C:\audit-reports"; $null = New-Item -ItemType Directory -Force -Path $ReportDir
 @'
 import json, os, sys
@@ -330,10 +331,9 @@ if ($remote -and $remote.StartsWith($ReleaseCommit)) { Add-R "PASS" "Release on 
 elseif ($remote) { Add-R "FAIL" "Release on remote" ("remote branch is " + ($remote -split "\s")[0] + ", not the approved " + $ReleaseCommit.Substring(0, 12)) $true }
 else { Add-R "NOT VERIFIED" "Release on remote" "ls-remote returned nothing (network or credentials)" $true }
 $dirty = @(git --no-optional-locks -C $Root status --porcelain 2>$null); $statusOk = ($LASTEXITCODE -eq 0)
-$other = @($dirty | Where-Object { $_ -notmatch '^( M|\?\?) (Data_Health_Check\.xlsx|backend/diag[\w]*\.py)$' })
 if (-not $head -or -not $statusOk) { Add-R "NOT VERIFIED" "Working tree" "git could not read the repository status" $true }
-elseif ($other.Count -eq 0) { Add-R "PASS" "Working tree" ("only the known local files (" + $dirty.Count + "): Data_Health_Check.xlsx and backend/diag*.py; no application code edited") $true }
-else { Add-R "FAIL" "Working tree" ("unexpected local changes: " + (($other | Select-Object -First 5) -join "; ")) $true }
+elseif ($dirty.Count -eq 0) { Add-R "PASS" "Working tree" "clean: no tracked change and no untracked file (the release tooling refuses ANY local change, and the running build would report it, which blocks the unlock)" $true }
+else { Add-R "FAIL" "Working tree" ("" + $dirty.Count + " local change(s) would block the cut-over and the unlock: " + (($dirty | Select-Object -First 8 | ForEach-Object { ("" + $_).Trim() }) -join "; ") + ". Put them aside (never delete): see the runbook, step 'clean tree'.") $true }
 
 # ---- service + API ---------------------------------------------------------------------------------------------
 $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue

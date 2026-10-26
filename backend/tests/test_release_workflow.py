@@ -394,3 +394,29 @@ def test_a_failure_inside_the_gate_refuses_the_entry_and_never_raises(monkeypatc
     monkeypatch.setattr(c15, "_entry_check", boom)
     out = c15.entry_check("AAA", "BUY", "rth", execution=True)
     assert out["allowed"] is False and out["status"] == "GATE_ERROR"
+
+
+def test_the_deploy_script_runs_the_suite_as_a_development_process_and_cleans_up_before_the_cutover():
+    """update.ps1 runs the whole suite on the server. The site's .env says APP_ENV=production and there is no .env.dev there, so
+    unmodified five isolation tests fail and every deployment would stop at the tests step (found by rehearsing the suite in a clean
+    checkout with a production-style .env). The script must run it as a development process and remove those variables
+    BEFORE the cut-over, which needs the real (production) settings."""
+    import pathlib
+    ps = (pathlib.Path(__file__).resolve().parents[2] / "deploy" / "windows" / "update.ps1").read_text(encoding="utf-8")
+    run = ps.index("-m pytest")
+    before = ps[max(0, run - 1800):run]
+    assert '$env:APP_ENV = "development"' in before and "$env:SESSION_SECRET" in before and "$env:TEST_DATABASE_URL" in before
+    after = ps[run:ps.rindex("release_tool.py cutover")]
+    assert "Remove-Item Env:APP_ENV" in after and "Env:SESSION_SECRET" in after and "Env:TEST_DATABASE_URL" in after
+    assert "-p no:cacheprovider" in ps[run:run + 80]                      # the test run leaves nothing in the checkout
+
+
+def test_the_preflight_and_backup_scripts_are_in_the_repository_and_parse_the_same_rules():
+    import pathlib
+    d = pathlib.Path(__file__).resolve().parents[2] / "deploy" / "windows"
+    pre = (d / "vps_predeploy_preflight.ps1").read_text(encoding="utf-8")
+    bak = (d / "take_predeploy_dump.ps1").read_text(encoding="utf-8")
+    assert "REPLACE_WITH_THE_APPROVED_RELEASE_SHA" in pre                    # fails closed until the SHA is set
+    assert "$dirty.Count -eq 0" in pre and "tracked or untracked" in pre     # a completely clean tree, as the release tooling requires
+    assert "port 5432" in bak.replace("PORT", "port") or '"5432"' in bak
+    assert "--schema=public" in bak and "pg_restore" in bak and "Get-FileHash" in bak
