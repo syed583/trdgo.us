@@ -94,7 +94,7 @@ _NEW_COLUMNS = {      # DemoTrade columns added by this workflow: name -> SQL ty
 
 
 _ALL_MODELS = lambda m: (m.DemoTrade, m.IntradaySnapshot, m.IntradaySignalEvent, m.IntradayDataException, m.ShadowTrade,   # noqa: E731
-                         m.IntradayShadowLog)
+                         m.IntradayShadowLog, m.IntradaySignalAudit)
 # The indexes V2 activation puts on demo_trades. Named after the table on purpose: in development every isolated table is renamed
 # to a "_local" twin by a text rewrite, and an index name that does not contain the table name would collide with production's.
 _ACTIVATION_INDEXES = (

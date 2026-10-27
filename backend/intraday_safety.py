@@ -263,8 +263,9 @@ def gate(row: dict, *, phase: Optional[str], signals_age_s: Optional[float],
                          inputs_source=inputs_source, meta=meta)
     ev = evaluate(row, phase=phase, signals_age_s=signals_age_s, price_age=price_age,
                   model_status=model_status, inputs_label=inputs_label, meta=meta)
-    if str(cfg.INTRADAY_WORKFLOW.get("mode", "legacy")).lower() == "shadow":
-        # Shadow mode: Legacy decides exactly as before; these extra keys only let the V2 shadow evaluation see the strategy's own
+    if (str(cfg.INTRADAY_WORKFLOW.get("mode", "legacy")).lower() == "shadow"
+            or str((getattr(cfg, "INTRADAY_VERIFICATION", None) or {}).get("mode", "off")).lower() == "audit"):
+        # Shadow mode / signal-verification audit: Legacy decides exactly as before; these extra keys only let the V2 shadow evaluation see the strategy's own
         # evidence and levels on rows Legacy withholds. They change no signal, score, level or decision.
         row["signal_meta"] = dict(((meta or {}).get("meta")) or {})
         row["gate_ts"] = time.time()

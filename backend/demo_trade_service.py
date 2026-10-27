@@ -207,7 +207,9 @@ def _row_map(board: dict) -> dict[str, dict]:
                           "price_age_s": (r.get("data") or {}).get("price_age_s"), "wait": bool(r.get("wait")),
                           "sl": r.get("sl"), "tp": r.get("tp"),
                           "tradable": intraday_safety.tradable(r), "data": r.get("data") or {}, "signal_raw": r.get("signal_raw"),
-                          "score_raw": r.get("score_raw"), "signal_meta": r.get("signal_meta")}
+                          "score_raw": r.get("score_raw"), "signal_meta": r.get("signal_meta"),
+                          "params": r.get("params"), "raw_levels": r.get("raw_levels"), "gate_ts": r.get("gate_ts"),
+                          "model_status": r.get("model_status")}
     return out
 
 
@@ -394,6 +396,13 @@ def tick(force: bool = False) -> None:
             s.commit()
         finally:
             s.close()
+        try:
+            import signal_verification as sv
+            if sv.enabled():                  # audit only, AFTER Legacy has committed: records, never blocks or changes a trade
+                _audit_signals(et, boards, have0, have)
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).exception("signal verification failed; trading is unaffected")
         if wf.shadow():                       # AFTER Legacy has committed, and unable to affect it: log Legacy, then V2 judges the same boards
             _shadow_log_legacy(et, boards, have0, have)
             try:
@@ -454,6 +463,37 @@ def _shadow_log_legacy(et, boards: dict, have0: set, have: set) -> None:
         s.rollback()
         import logging
         logging.getLogger(__name__).exception("shadow decision log failed; Legacy is unaffected")
+    finally:
+        s.close()
+
+
+def _audit_signals(et, boards: dict, have0: set, have: set) -> None:
+    """Signal-verification audit of every BUY / SELL board row, in its own session after Legacy's commit. Never raises."""
+    import database
+    import signal_verification as sv
+    from models_demo_trades import DemoTrade
+    s = database.SessionLocal()
+    try:
+        today = et.date()
+        results = []
+        for strat, rows in boards.items():
+            for sym, info in rows.items():
+                raw = info.get("signal_raw") or info.get("signal")
+                if raw not in ("BUY", "SELL"):
+                    continue
+                v = sv.verify(strat, dict(info, symbol=sym), now=et)
+                opened_id, held = None, (strat, sym) in have0
+                if (strat, sym) in have and not held:
+                    t = s.query(DemoTrade.id).filter_by(strategy=strat, symbol=sym, session_date=today).order_by(DemoTrade.id.desc()).first()
+                    opened_id = t[0] if t else None
+                results.append((v, sym, opened_id, held))
+        for v, sym, opened_id, held in results:
+            sv.record(s, v, now=et, symbol=sym, opened_id=opened_id, held=held)
+        s.commit()
+    except Exception:  # noqa: BLE001
+        s.rollback()
+        import logging
+        logging.getLogger(__name__).exception("signal verification audit failed; trading is unaffected")
     finally:
         s.close()
 

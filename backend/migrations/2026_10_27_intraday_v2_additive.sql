@@ -126,6 +126,31 @@ CREATE TABLE IF NOT EXISTS intraday_shadow_log (
 );
 CREATE INDEX IF NOT EXISTS ix_intraday_shadow_log_day ON intraday_shadow_log (trading_date, engine, strategy);
 
+CREATE TABLE IF NOT EXISTS intraday_signal_audit (
+	id SERIAL NOT NULL, 
+	ts TIMESTAMP WITH TIME ZONE NOT NULL, 
+	strategy VARCHAR(24) NOT NULL, 
+	symbol VARCHAR(16) NOT NULL, 
+	trading_date DATE NOT NULL, 
+	session_type VARCHAR(12) NOT NULL, 
+	direction VARCHAR(8) NOT NULL, 
+	score FLOAT, 
+	recomputed_score FLOAT, 
+	score_diff FLOAT, 
+	entry_price FLOAT, 
+	verdict VARCHAR(8) NOT NULL, 
+	data_status VARCHAR(16) NOT NULL, 
+	failed_checks TEXT, 
+	checks TEXT, 
+	breakdown TEXT, 
+	data TEXT, 
+	legacy_opened BOOLEAN, 
+	trade_id INTEGER, 
+	legacy_held BOOLEAN, 
+	PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS ix_intraday_signal_audit_day ON intraday_signal_audit (trading_date, strategy);
+
 COMMIT;
 
 -- ===== V2 ACTIVATION ONLY (mode = 'v2'; a separate approval; NOT needed for legacy or shadow mode) =====

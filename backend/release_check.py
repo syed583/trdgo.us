@@ -80,6 +80,9 @@ REQUIRED_WITH_WORKFLOW = [
     ("shadow mode writes only to the shadow book", "backend/intraday_workflow.py", r"m\.ShadowTrade if _SHADOW else m\.DemoTrade", False),
     ("Legacy runs before the shadow evaluation and cannot be changed by it", "backend/demo_trade_service.py",
      r"if wf\.shadow\(\):\s+# AFTER Legacy has committed", False),
+    ("signal verification ships off and has no enforcing mode", "backend/tab_settings.py", r'INTRADAY_VERIFICATION: dict = \{"mode": "off"', False),
+    ("signal verification is audit-only, after Legacy's commit", "backend/demo_trade_service.py",
+     r"if sv\.enabled\(\):\s+# audit only, AFTER Legacy has committed", False),
     ("the schema change has an additive-only part for every mode", "backend/demo_trade_service.py", r"wf\.migrate_additive\(engine\)", False),
     ("the unique-index migration runs only when V2 is the workflow", "backend/demo_trade_service.py", r"if wf\.active\(\):\s+wf\.migrate\(engine\)", False),
 ]

@@ -503,6 +503,11 @@ SIGNAL_DATA_TYPE: dict = {
 #            "v2"     = the session workflow. Switching it on in production needs the owner's explicit approval.
 INTRADAY_WORKFLOW: dict = {"mode": "legacy"}
 
+# Signal verification (signal_verification.py): independently re-derives each BUY / SELL's score from its parameters, weights
+# and the existing formula and judges the data behind it. "off" | "audit". AUDIT ONLY: it records the outcome and never blocks,
+# delays or changes a trade; there is deliberately no enforcing mode (adding one needs the owner's explicit approval).
+INTRADAY_VERIFICATION: dict = {"mode": "off", "score_tolerance": 0.05}
+
 # EVERY value below is a PROPOSED starting value, NOT a tested or approved production value. Where an existing system constant
 # already says the same thing it is reused and named. The workflow records the evidence needed to calibrate the rest (every
 # candidate signal, its quote, spread and coverage, accepted or rejected, is stored), so these can be tuned from data.

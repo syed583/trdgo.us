@@ -125,7 +125,7 @@ class Book:
     def __init__(self):
         self.engine = create_engine("sqlite://")
         m.Base.metadata.create_all(self.engine, tables=[getattr(m, n).__table__ for n in (
-            "DemoTrade", "IntradaySnapshot", "IntradaySignalEvent", "IntradayDataException", "ShadowTrade", "IntradayShadowLog")])
+            "DemoTrade", "IntradaySnapshot", "IntradaySignalEvent", "IntradayDataException", "ShadowTrade", "IntradayShadowLog", "IntradaySignalAudit")])
         self.Session = sessionmaker(bind=self.engine)
         self.boards: dict = {}
         self.quotes: dict = {}
@@ -220,6 +220,8 @@ def make_book(monkeypatch) -> Book:
     wf._last_recon_try.clear()
     import intraday_shadow as sh
     sh._last.clear()
+    import signal_verification
+    signal_verification._last.clear()
     import intraday_safety
     b.now = None
     mp_ = monkeypatch
