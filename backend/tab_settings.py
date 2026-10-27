@@ -498,6 +498,8 @@ SIGNAL_DATA_TYPE: dict = {
 # end-of-day close.
 #
 # ``mode``:  "legacy" = the behaviour of release 277f30f (unchanged code path, kept for comparison and rollback);
+#            "shadow" = Legacy stays the ONLY workflow that opens paper trades; V2 evaluates the same boards and writes only to its
+#                       own shadow tables (virtual book, decision log). Needs the owner's approval to switch on anywhere.
 #            "v2"     = the session workflow. Switching it on in production needs the owner's explicit approval.
 INTRADAY_WORKFLOW: dict = {"mode": "legacy"}
 
@@ -506,6 +508,11 @@ INTRADAY_WORKFLOW: dict = {"mode": "legacy"}
 # candidate signal, its quote, spread and coverage, accepted or rejected, is stored), so these can be tuned from data.
 INTRADAY_EXEC: dict = {
     "status": "PROPOSED - not approved for production",
+    # -- the regular-session opening rule (OFF until approved; with it off the behaviour is exactly the tested V2 default) --
+    #    enabled: no NEW V2 entry from no_entry_start up to no_entry_end (existing positions keep being managed), and from
+    #    no_entry_end on BOTH the 5-minute and the 15-minute readings must exist, be fresh and agree (a 15-minute warm-up,
+    #    a missing or an invalid reading refuses -- "subject to actual data availability" means: no data, no entry).
+    "opening_rule": {"enabled": False, "no_entry_start": "09:30", "no_entry_end": "10:00", "require_both_after_end": True},
     # -- coverage (judged on the parameters ELIGIBLE for this strategy in this session, not on 100) --
     "min_eligible_coverage_pct": MIN_COVERAGE_PCT,          # existing constant (70), also the live engine's COVERAGE_MIN
     "min_agreement": V3_CONFIDENCE["min_agreement"],       # existing constant (0.55): share of covered weight on the signal's side

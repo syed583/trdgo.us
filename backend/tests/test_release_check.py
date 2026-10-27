@@ -175,3 +175,36 @@ def test_the_status_route_reports_what_a_deploy_check_needs():
 def test_the_startup_guard_is_registered_in_the_app():
     import main
     assert any(getattr(f, "__name__", "") == "_enforce_fifteen_minute_confirmation" for f in main._startup_handlers)
+
+
+# ----------------------------------------------------------- intraday workflow v2 / shadow mode invariants ---------
+@pytest.mark.parametrize("path, fn, expect", [
+    ("backend/tab_settings.py", lambda t: t.replace('INTRADAY_WORKFLOW: dict = {"mode": "legacy"}', 'INTRADAY_WORKFLOW: dict = {"mode": "v2"}'),
+     "the shipped workflow mode is legacy (V2 / shadow are opt-in)"),
+    ("backend/tab_settings.py", lambda t: t.replace('"opening_rule": {"enabled": False', '"opening_rule": {"enabled": True'),
+     "the regular-session opening rule ships disabled"),
+    ("backend/intraday_workflow.py", lambda t: t.replace("if entry_locked():", "if False:"), "V2 honours the operator entry lock"),
+    ("backend/intraday_workflow.py", lambda t: t.replace("def _market_close(", "def _market_close_x("), "V2 closes every position at the official close"),
+    ("backend/intraday_workflow.py", lambda t: t.replace("status=PENDING_RECON, exit_price=None, profit=None", "status=PENDING_RECON, exit_price=0.0, profit=None"),
+     "a close with no valid price is PENDING_RECON, never an invented price"),
+    ("backend/intraday_workflow.py", lambda t: t.replace("m.ShadowTrade if _SHADOW else m.DemoTrade", "m.DemoTrade"),
+     "shadow mode writes only to the shadow book"),
+    ("backend/demo_trade_service.py", lambda t: t.replace("wf.migrate_additive(engine)", "pass"),
+     "the schema change has an additive-only part for every mode"),
+    ("backend/demo_trade_service.py", lambda t: t.replace("        if wf.active():\n            wf.migrate(engine)", "        if True:\n            wf.migrate(engine)"),
+     "the unique-index migration runs only when V2 is the workflow"),
+])
+def test_workflow_invariants_are_detected(path, fn, expect):
+    assert expect in failed(tree(**edited(path, fn)))
+
+
+def test_a_build_without_the_workflow_is_judged_by_the_safety_floor_only():
+    r = rc.check(tree(backend__intraday_workflow_py=None))
+    assert not any("V2" in c["check"] or "shadow" in c["check"] for c in r["checks"]) and r["ok"]
+
+
+def test_the_released_277f30f_remains_a_valid_rollback_target():
+    out = subprocess.run(["git", "cat-file", "-t", "277f30f"], capture_output=True, text=True, cwd=rc.ROOT)
+    if out.returncode != 0:
+        pytest.skip("277f30f is not in this clone")
+    assert rc.check(rc.read_rev("277f30f"))["ok"]

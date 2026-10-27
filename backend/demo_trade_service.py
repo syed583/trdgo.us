@@ -72,6 +72,10 @@ def has_open_trades() -> bool:
             if s.query(DemoTrade.id).filter_by(status="OPEN").first() is not None:
                 return True
             import intraday_workflow as wf
+            if wf.shadow():                                   # the virtual book must also be closed / reconciled at the bell
+                from models_demo_trades import ShadowTrade
+                if s.query(ShadowTrade.id).filter(ShadowTrade.status.in_(("OPEN", "PENDING_RECON"))).first() is not None:
+                    return True
             return wf.active() and s.query(DemoTrade.id).filter_by(status="PENDING_RECON").first() is not None
         finally:
             s.close()
@@ -168,8 +172,10 @@ def ensure_schema() -> None:
         from models_demo_trades import DemoTrade
         DemoTrade.__table__.create(bind=engine, checkfirst=True)
         import intraday_workflow as wf
+        # the ORM model names the evidence columns, so every mode needs them: additive and nullable (history untouched)
+        wf.migrate_additive(engine)
         if wf.active():
-            wf.migrate(engine)
+            wf.migrate(engine)                # the activation part (unique indexes) only when V2 is THE workflow
         _schema_ready = True
     except Exception:  # noqa: BLE001 - never hard-fail a page on a DB blip
         pass
@@ -200,7 +206,8 @@ def _row_map(board: dict) -> dict[str, dict]:
                           "entry": r.get("entry"), "now": r.get("now"),
                           "price_age_s": (r.get("data") or {}).get("price_age_s"), "wait": bool(r.get("wait")),
                           "sl": r.get("sl"), "tp": r.get("tp"),
-                          "tradable": intraday_safety.tradable(r)}
+                          "tradable": intraday_safety.tradable(r), "data": r.get("data") or {}, "signal_raw": r.get("signal_raw"),
+                          "score_raw": r.get("score_raw"), "signal_meta": r.get("signal_meta")}
     return out
 
 
@@ -353,6 +360,7 @@ def tick(force: bool = False) -> None:
                 # (no second close, no overwritten P&L, no refresh of a closed row).
                 s.execute(update(DemoTrade).where(DemoTrade.id == t.id, DemoTrade.status == "OPEN").values(**values))
 
+            have, have0 = set(), set()
             # open new trades for fresh BUY/SELL (one per strategy+symbol+day)
             if _can_open(et):
                 # One trade per strategy+symbol+day AND never a second position while one is still open from an
@@ -361,6 +369,7 @@ def tick(force: bool = False) -> None:
                         s.query(DemoTrade.strategy, DemoTrade.symbol).filter_by(session_date=today).all()}
                 have |= {(x.strategy, x.symbol) for x in
                          s.query(DemoTrade.strategy, DemoTrade.symbol).filter_by(status="OPEN").all()}
+                have0 = set(have)                  # (read only; used by the shadow-mode decision log)
                 for strat, rows in boards.items():
                     for sym, info in rows.items():
                         sig = info.get("signal")
@@ -385,11 +394,68 @@ def tick(force: bool = False) -> None:
             s.commit()
         finally:
             s.close()
+        if wf.shadow():                       # AFTER Legacy has committed, and unable to affect it: log Legacy, then V2 judges the same boards
+            _shadow_log_legacy(et, boards, have0, have)
+            try:
+                wf.run(et, MODELS, shadow=True)
+            except Exception:  # noqa: BLE001
+                import logging
+                logging.getLogger(__name__).exception("shadow V2 tick failed; Legacy is unaffected")
     except Exception:  # noqa: BLE001 - a failed tick is retried by the next one (nothing is half-written)
         import logging
         logging.getLogger(__name__).exception("paper-trade tick failed; the next tick retries")
     finally:
         _tick_lock.release()
+
+
+def _shadow_log_legacy(et, boards: dict, have0: set, have: set) -> None:
+    """Shadow mode only. Runs AFTER Legacy's transaction is committed and closed, in its own session: it records what Legacy did (or
+    why it did not) with every BUY / SELL board row, for the comparison. It cannot touch a Legacy trade, and any failure here is
+    swallowed."""
+    import database
+    s = database.SessionLocal()
+    try:
+        import intraday_shadow as sh
+        from models_demo_trades import DemoTrade
+        today = et.date()
+        decisions = []                     # phase 1: decide (may read the shared caches); phase 2: write -- nothing pending while reading
+        for strat, rows in boards.items():
+            for sym, info in rows.items():
+                raw = info.get("signal_raw") or info.get("signal")
+                if raw not in ("BUY", "SELL"):
+                    continue
+                opened_id, held, why = None, False, ""
+                if (strat, sym) in have and (strat, sym) not in have0:
+                    t = s.query(DemoTrade.id).filter_by(strategy=strat, symbol=sym, session_date=today).order_by(DemoTrade.id.desc()).first()
+                    opened_id = t[0] if t else None
+                elif (strat, sym) in have0:
+                    held, why = True, "already held / traded today"
+                elif not _can_open(et):
+                    why = "entries closed (outside 04:00-20:00 ET)"
+                elif not _is_equity(sym):
+                    why = "unsupported instrument (index / future)"
+                elif info.get("wait") or info.get("signal") not in ("BUY", "SELL"):
+                    why = "freshness / coverage / 15-minute gate (WAIT row, no entry levels)"
+                elif not info.get("entry"):
+                    why = "no entry price"
+                elif not info.get("tradable", False):
+                    try:
+                        import intraday_15m
+                        why = "15-minute entry gate: " + str(intraday_15m.entry_check(sym, raw, (info.get("data") or {}).get("phase"))["reason"])
+                    except Exception:  # noqa: BLE001
+                        why = "entry gate refused"
+                else:
+                    why = "entry gate refused at the moment of opening (15-minute confirmation / lock)"
+                decisions.append((strat, sym, info, opened_id, held, why))
+        for strat, sym, info, opened_id, held, why in decisions:
+            sh.legacy_decision(s, et, strat, sym, info, opened_id=opened_id, held=held, reason=why)
+        s.commit()
+    except Exception:  # noqa: BLE001
+        s.rollback()
+        import logging
+        logging.getLogger(__name__).exception("shadow decision log failed; Legacy is unaffected")
+    finally:
+        s.close()
 
 
 def blotter(strategy: str = "", date: str = "") -> dict:

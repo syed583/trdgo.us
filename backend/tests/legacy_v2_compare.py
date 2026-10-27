@@ -211,7 +211,7 @@ def run_engine(name: str, mkt: Market, exec_overrides: dict | None = None) -> di
     feed = Feed(mkt)
     clock = {"now": None}
     legacy_reasons = defaultdict(Counter)
-    mp.setitem(cfg.INTRADAY_WORKFLOW, "mode", "v2" if name == "v2" else "legacy")
+    mp.setitem(cfg.INTRADAY_WORKFLOW, "mode", name)
     for k, v in (exec_overrides or {}).items():
         mp.setitem(cfg.INTRADAY_EXEC, k, v)
     mp.setattr(wf, "get_boards", lambda models: feed.boards())
@@ -243,7 +243,7 @@ def run_engine(name: str, mkt: Market, exec_overrides: dict | None = None) -> di
             clock["now"] = now
             feed.at(now)
             seen_signals.append((now, feed.boards()))
-            if name == "legacy":
+            if name in ("legacy", "shadow"):
                 dts.tick(force=True)
                 with book.Session() as s:                                # the released code stamps wall-clock time; restamp with simulated time
                     for t in s.query(m.DemoTrade).filter(m.DemoTrade.id > last_id).all():
@@ -315,14 +315,30 @@ def summarise(res: dict) -> dict:
             "sessions": dict(Counter(t.entry_session or "n/a" for t in trades)), "events": len(per_evt)}
 
 
+def book_fingerprint(book):
+    return [(t.strategy, t.symbol, t.side, t.entry_price, t.status, t.exit_price, t.profit, t.stop, t.target, str(t.entry_time)) for t in book.trades()]
+
+
 def main(out=None):
     mkt = Market()
-    out_all = {}
-    for label, name, ov in (("legacy", "legacy", None), ("v2", "v2", None),
-                            ("v2_tight_risk_sensitivity", "v2", {"max_open_total": 12, "max_open_per_strategy": 3})):
+    out_all, prints = {}, {}
+    opening = {"opening_rule": {"enabled": True, "no_entry_start": "09:30", "no_entry_end": "10:00", "require_both_after_end": True}}
+    for label, name, ov in (("legacy", "legacy", None), ("shadow", "shadow", None), ("v2", "v2", None),
+                            ("v2_tight_risk_sensitivity", "v2", {"max_open_total": 12, "max_open_per_strategy": 3}),
+                            ("v2_opening_rule_sensitivity", "v2", opening)):
         res = run_engine(name, mkt, ov)
         out_all[label] = summarise(res)
+        prints[label] = book_fingerprint(res["book"])
+        if name == "shadow":
+            sh_trades = res["book"].shadow_trades()
+            closed = [t for t in sh_trades if t.profit is not None and t.status not in ("OPEN", "PENDING_RECON")]
+            out_all[label]["shadow_book"] = {"trades": len(sh_trades), "open_at_end": sum(1 for t in sh_trades if t.status == "OPEN"),
+                                             "pending_recon": sum(1 for t in sh_trades if t.status == "PENDING_RECON"),
+                                             "net_pnl": round(sum(t.profit for t in closed), 2),
+                                             "log_rows": len(res["book"].shadow_log()),
+                                             "log_by_engine_decision": dict(Counter(f"{x.engine}/{x.decision}" for x in res["book"].shadow_log()))}
         res["mp"].undo()
+    out_all["shadow"]["legacy_book_identical_to_legacy_mode"] = prints["shadow"] == prints["legacy"]
     if out:
         Path(out).write_text(json.dumps(out_all, indent=2, default=str))
     return out_all

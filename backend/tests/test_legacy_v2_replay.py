@@ -26,3 +26,25 @@ def test_v2_replay_invariants_one_day(monkeypatch):
         assert {e.session_type for e in events} == {"PREMARKET", "REGULAR"}
     finally:
         res["mp"].undo()
+
+
+def test_shadow_replay_leaves_the_legacy_book_untouched_and_logs_every_decision(monkeypatch):
+    monkeypatch.setattr(L, "DAYS", [date(2026, 10, 27)])
+    mkt = L.Market()
+    legacy = L.run_engine("legacy", mkt)
+    try:
+        legacy_fp = L.book_fingerprint(legacy["book"])
+    finally:
+        legacy["mp"].undo()
+    shadow = L.run_engine("shadow", mkt)
+    try:
+        book = shadow["book"]
+        assert legacy_fp and L.book_fingerprint(book) == legacy_fp                                 # Legacy trades identical to the cent
+        log = book.shadow_log()
+        opened = {(x.strategy, x.symbol) for x in log if x.engine == "LEGACY" and x.decision == "OPENED"}
+        assert opened == {(t.strategy, t.symbol) for t in book.trades()}                           # every Legacy entry is logged
+        assert book.shadow_trades() and {x.engine for x in log} == {"LEGACY", "V2"}
+        assert all(x.session_type and x.data_ts and x.direction for x in log)                      # session + data timestamps on every row
+        assert not [t for t in book.shadow_trades() if t.status == "OPEN"]                         # the virtual book is flat after the bell
+    finally:
+        shadow["mp"].undo()

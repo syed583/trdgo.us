@@ -18,21 +18,8 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-class DemoTrade(Base):
-    __tablename__ = "demo_trades"
-    __table_args__ = (
-        # One position per strategy, symbol, trading day AND entry session. Rows written before the session workflow have no
-        # entry_session (NULL, read as an empty string), so they keep exactly the old one-per-day rule; a PREMARKET and a
-        # REGULAR entry of the same day can now coexist as separate trades.
-        Index("uq_demo_strategy_symbol_day_session", "strategy", "symbol", "session_date",
-              func.coalesce(text("entry_session"), text("''")), unique=True),
-        # at most ONE open position per strategy and symbol, enforced by the database itself
-        Index("uq_demo_one_open", "strategy", "symbol", unique=True,
-              postgresql_where=text("status = 'OPEN'"), sqlite_where=text("status = 'OPEN'")),
-        Index("ix_demo_session", "session_date"),
-        Index("ix_demo_strategy_session", "strategy", "session_date"),
-    )
-
+class _TradeColumns:
+    """Columns shared by the live paper book (demo_trades) and the shadow book (intraday_shadow_trades)."""
     id = Column(Integer, primary_key=True)
     strategy = Column(String(24), nullable=False)      # grok / meta / kimi / ...
     symbol = Column(String(16), nullable=False)
@@ -67,10 +54,62 @@ class DemoTrade(Base):
     fill_assumption = Column(String(160), nullable=True)   # the documented fill policy that produced the exit price
 
 
+class DemoTrade(_TradeColumns, Base):
+    __tablename__ = "demo_trades"
+    __table_args__ = (
+        # One position per strategy, symbol, trading day AND entry session. Rows written before the session workflow have no
+        # entry_session (NULL, read as an empty string), so they keep exactly the old one-per-day rule; a PREMARKET and a
+        # REGULAR entry of the same day can now coexist as separate trades.
+        Index("uq_demo_trades_strategy_symbol_day_session", "strategy", "symbol", "session_date",
+              func.coalesce(text("entry_session"), text("''")), unique=True),
+        # at most ONE open position per strategy and symbol, enforced by the database itself
+        Index("uq_demo_trades_one_open", "strategy", "symbol", unique=True,
+              postgresql_where=text("status = 'OPEN'"), sqlite_where=text("status = 'OPEN'")),
+        Index("ix_demo_session", "session_date"),
+        Index("ix_demo_strategy_session", "strategy", "session_date"),
+    )
+
+
+class ShadowTrade(_TradeColumns, Base):
+    """The V2 workflow's VIRTUAL paper book in shadow mode: same shape as demo_trades, never read by the blotter or the legacy
+    tracker. Nothing here is a trade the system placed; it records what V2 would have done on the same market data."""
+    __tablename__ = "intraday_shadow_trades"
+    __table_args__ = (
+        Index("uq_intraday_shadow_trades_day_session", "strategy", "symbol", "session_date",
+              func.coalesce(text("entry_session"), text("''")), unique=True),
+        Index("uq_intraday_shadow_trades_one_open", "strategy", "symbol", unique=True,
+              postgresql_where=text("status = 'OPEN'"), sqlite_where=text("status = 'OPEN'")),
+        Index("ix_intraday_shadow_trades_session", "session_date"),
+    )
+
+
+class IntradayShadowLog(Base):
+    """Shadow mode: every Legacy and V2 decision about a BUY / SELL signal, written when the decision CHANGES."""
+    __tablename__ = "intraday_shadow_log"
+    __table_args__ = (Index("ix_intraday_shadow_log_day", "trading_date", "engine", "strategy"),)
+
+    id = Column(Integer, primary_key=True)
+    ts = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    engine = Column(String(8), nullable=False)                   # LEGACY / V2
+    strategy = Column(String(24), nullable=False)
+    symbol = Column(String(16), nullable=False)
+    trading_date = Column(Date, nullable=False)
+    session_type = Column(String(12), nullable=False)            # PREMARKET / REGULAR / (POSTMARKET / CLOSED for legacy)
+    direction = Column(String(8), nullable=False)
+    score = Column(Float, nullable=True)
+    decision = Column(String(12), nullable=False)                # OPENED / WOULD_OPEN / REJECTED
+    code = Column(String(40), nullable=True)                     # the WAIT code or the legacy gate that refused
+    reasons = Column(Text, nullable=True)                        # JSON list
+    data_ts = Column(Text, nullable=True)                        # JSON: price age, engine age, per-source ages, quote age, board build time
+    snapshot_id = Column(String(40), nullable=True)
+    trade_id = Column(Integer, nullable=True)
+    window_state = Column(String(24), nullable=True)             # e.g. OPENING_WINDOW / NORMAL (V2 opening rule state)
+
+
 class IntradaySnapshot(Base):
     """What the strategy saw at one observation: every parameter reading and contribution, the data ages, the coverage."""
     __tablename__ = "intraday_snapshots"
-    __table_args__ = (Index("ix_snap_strategy_symbol_day", "strategy", "symbol", "trading_date"),)
+    __table_args__ = (Index("ix_intraday_snapshots_strategy_symbol_day", "strategy", "symbol", "trading_date"),)
 
     id = Column(String(40), primary_key=True)              # uuid hex
     strategy = Column(String(24), nullable=False)
@@ -95,8 +134,8 @@ class IntradaySignalEvent(Base):
     """One BUY / SELL signal of one strategy in one session of one trading day (PREMARKET and REGULAR are separate events)."""
     __tablename__ = "intraday_signal_events"
     __table_args__ = (
-        Index("uq_signal_event", "strategy", "symbol", "trading_date", "session_type", "direction", unique=True),
-        Index("ix_signal_event_day", "trading_date", "strategy"),
+        Index("uq_intraday_signal_events_key", "strategy", "symbol", "trading_date", "session_type", "direction", unique=True),
+        Index("ix_intraday_signal_events_day", "trading_date", "strategy"),
     )
 
     id = Column(Integer, primary_key=True)
@@ -121,7 +160,7 @@ class IntradaySignalEvent(Base):
 class IntradayDataException(Base):
     """A data-quality exception: a close with no valid price, awaiting reconciliation. Never a fabricated price."""
     __tablename__ = "intraday_data_exceptions"
-    __table_args__ = (Index("ix_dataexc_open", "resolved_at"),)
+    __table_args__ = (Index("ix_intraday_data_exceptions_open", "resolved_at"),)
 
     id = Column(Integer, primary_key=True)
     kind = Column(String(32), nullable=False)
@@ -137,4 +176,4 @@ class IntradayDataException(Base):
 
 def tables() -> list[str]:
     return [DemoTrade.__tablename__, IntradaySnapshot.__tablename__, IntradaySignalEvent.__tablename__,
-            IntradayDataException.__tablename__]
+            IntradayDataException.__tablename__, ShadowTrade.__tablename__, IntradayShadowLog.__tablename__]

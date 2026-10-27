@@ -124,8 +124,8 @@ def falling_bars(now, n=24, bar_s=300, start=100.0, step=0.05, warmup=False):
 class Book:
     def __init__(self):
         self.engine = create_engine("sqlite://")
-        m.Base.metadata.create_all(self.engine, tables=[m.DemoTrade.__table__, m.IntradaySnapshot.__table__,
-                                                       m.IntradaySignalEvent.__table__, m.IntradayDataException.__table__])
+        m.Base.metadata.create_all(self.engine, tables=[getattr(m, n).__table__ for n in (
+            "DemoTrade", "IntradaySnapshot", "IntradaySignalEvent", "IntradayDataException", "ShadowTrade", "IntradayShadowLog")])
         self.Session = sessionmaker(bind=self.engine)
         self.boards: dict = {}
         self.quotes: dict = {}
@@ -161,6 +161,34 @@ class Book:
             s.expunge_all()
             return rows
 
+    def shadow_trades(self, **kw):
+        with self.Session() as s:
+            q = s.query(m.ShadowTrade)
+            for k, v in kw.items():
+                q = q.filter(getattr(m.ShadowTrade, k) == v)
+            rows = q.order_by(m.ShadowTrade.id).all()
+            s.expunge_all()
+            return rows
+
+    def shadow_log(self, **kw):
+        with self.Session() as s:
+            q = s.query(m.IntradayShadowLog)
+            for k, v in kw.items():
+                q = q.filter(getattr(m.IntradayShadowLog, k) == v)
+            rows = q.order_by(m.IntradayShadowLog.id).all()
+            s.expunge_all()
+            return rows
+
+    def full_tick(self, now):
+        """The real dts.tick() (Legacy + whatever the mode adds), with the clock and the Legacy gates emulated from this book."""
+        self.now = now
+        dts.tick(force=True)
+        with self.Session() as s:                     # the released code stamps wall-clock time: restamp new rows with the simulated clock
+            for t in s.query(m.DemoTrade).filter(m.DemoTrade.id > getattr(self, "_stamped", 0)).all():
+                t.entry_time = t.updated_at = now.astimezone(timezone.utc).replace(tzinfo=None)
+                self._stamped = max(getattr(self, "_stamped", 0), t.id)
+            s.commit()
+
     def snapshots(self):
         with self.Session() as s:
             rows = s.query(m.IntradaySnapshot).all()
@@ -180,7 +208,7 @@ def make_book(monkeypatch) -> Book:
     monkeypatch.setattr(database, "SessionLocal", b.Session)
     monkeypatch.setitem(cfg.INTRADAY_WORKFLOW, "mode", "v2")
     monkeypatch.setattr(dts, "ensure_schema", lambda: None)
-    monkeypatch.setattr(dts, "MODELS", {k: (k, "x:y") for k in STRATEGIES})
+    monkeypatch.setattr(dts, "MODELS", {k: (k, k) for k in STRATEGIES})
     monkeypatch.setattr(dts, "_quote_price", lambda sym: b.quotes.get(sym, {}).get("price") if b.quotes.get(sym) else None)
     monkeypatch.setattr(wf, "get_boards", lambda models: b.boards)
     monkeypatch.setattr(wf, "get_quote", lambda sym: b.quotes.get(sym))
@@ -190,7 +218,37 @@ def make_book(monkeypatch) -> Book:
     monkeypatch.setattr(wf, "get_final_regular_close", lambda sym, d: b.final_close.get((sym, d)))
     monkeypatch.setattr(wf, "entry_locked", lambda: b.locked)
     wf._last_recon_try.clear()
+    import intraday_shadow as sh
+    sh._last.clear()
+    import intraday_safety
+    b.now = None
+    mp_ = monkeypatch
+    mp_.setattr(dts, "_et_now", lambda: b.now)
+    mp_.setattr(dts, "_board", lambda spec: legacy_board(b.boards.get(spec, {})) if spec in b.boards else None)
+
+    def legacy_tradable(r):                       # the released gate, emulated: regular session only, 15-minute reading agrees
+        sym, sig = r.get("symbol"), r.get("signal")
+        if r.get("wait") or sig not in ("BUY", "SELL") or mc.session_at(b.now)["session"] != "REGULAR":
+            return False
+        r15 = b.r15.get(sym)
+        return bool(r15 and r15.get("status") == "OK" and r15.get("bias") == (1 if sig == "BUY" else -1))
+    mp_.setattr(intraday_safety, "tradable", legacy_tradable)
+    mp_.setattr(dts, "_entry_allowed", lambda sym, sig, et_: legacy_tradable({"symbol": sym, "signal": sig}))
     return b
+
+
+def legacy_board(rows: dict) -> dict:
+    """Rows as the released freshness gate would hand them to the tracker: stale / thin rows become WAIT rows without levels."""
+    out = {"buyers": [], "sellers": [], "neutral": [], "wait": []}
+    for r in rows.values():
+        r = dict(r)
+        if r.get("wait_legacy"):
+            r.update(signal_raw=r["signal"], score_raw=r["score"], signal="WAIT", score=None, wait=True, entry=None, sl=None, tp=None,
+                     raw_levels={"entry": rows[r["symbol"]]["entry"], "sl": rows[r["symbol"]]["sl"], "tp": rows[r["symbol"]]["tp"]})
+            out["wait"].append(r)
+        else:
+            out[{"BUY": "buyers", "SELL": "sellers"}.get(r["signal"], "neutral")].append(r)
+    return out
 
 
 @pytest.fixture

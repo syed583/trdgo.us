@@ -36,8 +36,30 @@ _RECON_RETRY_S = 600.0
 _last_recon_try: dict = {}
 
 
+_SHADOW = False                       # True only while a shadow-mode tick runs: V2 then uses its own virtual book
+
+
+def mode() -> str:
+    return str(cfg.INTRADAY_WORKFLOW.get("mode", "legacy")).lower()
+
+
 def active() -> bool:
-    return str(cfg.INTRADAY_WORKFLOW.get("mode", "legacy")).lower() == "v2"
+    """V2 is THE workflow (opens real paper trades). Shadow mode is not 'active': Legacy stays the workflow."""
+    return mode() == "v2"
+
+
+def shadow() -> bool:
+    return mode() == "shadow"
+
+
+def _EXC_KIND() -> str:
+    return ("SHADOW_" if _SHADOW else "") + "CLOSE_PRICE_MISSING"
+
+
+def _T():
+    """The trade table this tick works on: the live paper book, or the shadow book while shadowing."""
+    import models_demo_trades as m
+    return m.ShadowTrade if _SHADOW else m.DemoTrade
 
 
 def _utc(dt: datetime) -> datetime:
@@ -71,24 +93,32 @@ _NEW_COLUMNS = {      # DemoTrade columns added by this workflow: name -> SQL ty
 }
 
 
-def migrate(engine=None) -> dict:
-    """ADDITIVE, idempotent schema change. Never deletes or rewrites a row.
+_ALL_MODELS = lambda m: (m.DemoTrade, m.IntradaySnapshot, m.IntradaySignalEvent, m.IntradayDataException, m.ShadowTrade,   # noqa: E731
+                         m.IntradayShadowLog)
+# The indexes V2 activation puts on demo_trades. Named after the table on purpose: in development every isolated table is renamed
+# to a "_local" twin by a text rewrite, and an index name that does not contain the table name would collide with production's.
+_ACTIVATION_INDEXES = (
+    ("uq_demo_trades_strategy_symbol_day_session",
+     "CREATE UNIQUE INDEX IF NOT EXISTS uq_demo_trades_strategy_symbol_day_session ON demo_trades "
+     "(strategy, symbol, session_date, COALESCE(entry_session, ''))"),
+    ("uq_demo_trades_one_open",
+     "CREATE UNIQUE INDEX IF NOT EXISTS uq_demo_trades_one_open ON demo_trades (strategy, symbol) WHERE status = 'OPEN'"),
+)
 
-      * the three new tables are created if missing;
-      * the nullable evidence columns are added to demo_trades;
-      * the old one-per-day unique constraint is replaced by 'one per day and entry session' (old rows count as session '')
-        and a partial unique index allows at most one OPEN position per strategy and symbol.
 
-    Returns what it did. Safe to run on every start."""
+def migrate_additive(engine=None) -> dict:
+    """The SAFE part, needed by every mode because the ORM model of demo_trades now names the evidence columns: create the new
+    tables if missing and add the nullable evidence columns to demo_trades. Never drops, rewrites or locks history (a nullable
+    ADD COLUMN is a metadata change). Idempotent."""
     from sqlalchemy import inspect, text
     import models_demo_trades as m
     if engine is None:
         from database import engine as eng
         engine = eng
-    done: dict = {"columns": [], "tables": [], "indexes": [], "constraint_dropped": False, "skipped": []}
+    done: dict = {"columns": [], "tables": [], "skipped": []}
     insp = inspect(engine)
     existing = set(insp.get_table_names())
-    for t in (m.DemoTrade, m.IntradaySnapshot, m.IntradaySignalEvent, m.IntradayDataException):
+    for t in _ALL_MODELS(m):
         if t.__tablename__ not in existing:
             try:
                 t.__table__.create(bind=engine, checkfirst=True)
@@ -97,23 +127,40 @@ def migrate(engine=None) -> dict:
                 done["skipped"].append(f"{t.__tablename__}: {type(exc).__name__}")
     insp = inspect(engine)
     have = {c["name"] for c in insp.get_columns("demo_trades")} if "demo_trades" in set(insp.get_table_names()) else set()
-    dialect = engine.dialect.name
     with engine.begin() as conn:
         for col, typ in _NEW_COLUMNS.items():
             if have and col not in have:
                 conn.execute(text(f"ALTER TABLE demo_trades ADD COLUMN {col} {typ}"))
                 done["columns"].append(col)
-    if dialect == "postgresql":
+    return done
+
+
+def migrate(engine=None) -> dict:
+    """V2 ACTIVATION schema change (``mode == "v2"`` only; needs the owner's approval): the additive part, then
+
+      * the old 'one position per strategy, symbol and day' unique constraint is replaced by 'one per day AND entry session'
+        (rows written before this have no entry_session; they count as session '', so the old rule still holds for them);
+      * a partial unique index allows at most ONE OPEN position per strategy and symbol.
+
+    Never deletes or rewrites a row. If historical OPEN duplicates exist the second index is skipped and reported, never forced."""
+    from sqlalchemy import inspect, text
+    if engine is None:
+        from database import engine as eng
+        engine = eng
+    done = dict(migrate_additive(engine), indexes=[], constraint_dropped=[])
+    if engine.dialect.name == "postgresql":
+        names = {"uq_demo_strategy_symbol_day"}
+        try:
+            for uc in inspect(engine).get_unique_constraints("demo_trades"):
+                if list(uc.get("column_names") or []) == ["strategy", "symbol", "session_date"]:
+                    names.add(uc["name"])
+        except Exception:  # noqa: BLE001
+            pass
         with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE demo_trades DROP CONSTRAINT IF EXISTS uq_demo_strategy_symbol_day"))
-            done["constraint_dropped"] = True
-    for name, ddl in (
-        ("uq_demo_strategy_symbol_day_session",
-         "CREATE UNIQUE INDEX IF NOT EXISTS uq_demo_strategy_symbol_day_session ON demo_trades "
-         "(strategy, symbol, session_date, COALESCE(entry_session, ''))"),
-        ("uq_demo_one_open",
-         "CREATE UNIQUE INDEX IF NOT EXISTS uq_demo_one_open ON demo_trades (strategy, symbol) WHERE status = 'OPEN'"),
-    ):
+            for n in sorted(x for x in names if x):
+                conn.execute(text(f'ALTER TABLE demo_trades DROP CONSTRAINT IF EXISTS "{n}"'))
+                done["constraint_dropped"].append(n)
+    for name, ddl in _ACTIVATION_INDEXES:
         try:
             with engine.begin() as conn:
                 conn.execute(text(ddl))
@@ -121,6 +168,27 @@ def migrate(engine=None) -> dict:
         except Exception as exc:  # noqa: BLE001 - e.g. historical duplicates among OPEN rows: report, never force
             done["skipped"].append(f"{name}: {type(exc).__name__}")
     return done
+
+
+def migration_plan(engine=None) -> dict:
+    """READ-ONLY dry run: what ``migrate_additive`` / ``migrate`` would change, and what would block the activation indexes."""
+    from sqlalchemy import inspect, text
+    import models_demo_trades as m
+    if engine is None:
+        from database import engine as eng
+        engine = eng
+    insp = inspect(engine)
+    tables = set(insp.get_table_names())
+    have = {c["name"] for c in insp.get_columns("demo_trades")} if "demo_trades" in tables else set()
+    plan = {"tables_to_create": [t.__tablename__ for t in _ALL_MODELS(m) if t.__tablename__ not in tables],
+            "columns_to_add": [c for c in _NEW_COLUMNS if have and c not in have], "blockers": []}
+    if "demo_trades" in tables:
+        with engine.connect() as conn:
+            dup = conn.execute(text("SELECT strategy, symbol, COUNT(*) FROM demo_trades WHERE status = 'OPEN' "
+                                    "GROUP BY strategy, symbol HAVING COUNT(*) > 1")).fetchall()
+            if dup:
+                plan["blockers"].append({"uq_demo_trades_one_open": [tuple(r) for r in dup]})
+    return plan
 
 
 # ------------------------------------------------------------------------------------------------- provider hooks ------
@@ -141,8 +209,9 @@ def get_boards(models: dict) -> dict:
                     continue
                 score = r.get("score") if r.get("score") is not None else r.get("score_raw")
                 sig = r.get("signal_raw") or r.get("signal")
-                rows[sym] = {"symbol": sym, "signal": sig, "score": score, "entry": r.get("entry"), "now": r.get("now"),
-                             "sl": r.get("sl"), "tp": r.get("tp"), "price_age_s": (r.get("data") or {}).get("price_age_s"),
+                raw = r.get("raw_levels") or {}                 # legacy WAIT rows blank their levels; shadow mode keeps the strategy's own
+                rows[sym] = {"symbol": sym, "signal": sig, "score": score, "entry": r.get("entry") or raw.get("entry"), "now": r.get("now"),
+                             "sl": r.get("sl") or raw.get("sl"), "tp": r.get("tp") or raw.get("tp"), "price_age_s": (r.get("data") or {}).get("price_age_s"),
                              "wait": False, "params": r.get("params") or [], "low_confidence": r.get("low_confidence"),
                              "signal_meta": r.get("signal_meta"), "data": r.get("data") or {}, "gate_ts": r.get("gate_ts"),
                              "model_status": r.get("model_status"), "coverage_legacy": r.get("coverage")}
@@ -222,12 +291,16 @@ def entry_locked() -> bool:
 
 
 # ------------------------------------------------------------------------------------------------------ the tick ------
-def run(now: datetime, models: dict) -> dict:
-    """One workflow tick at ``now`` (aware ET). Returns a summary (used by tests and diagnostics)."""
+def run(now: datetime, models: dict, shadow: bool = False) -> dict:
+    """One workflow tick at ``now`` (aware ET). Returns a summary (used by tests and diagnostics).
+
+    ``shadow=True``: the tick works on the VIRTUAL shadow book and logs every decision; it never touches ``demo_trades``."""
+    global _SHADOW
     import database
     summary = {"closed": [], "exits": [], "reconciled": [], "pending": [], "opened": [], "rejected": [], "signals": 0}
     boards = get_boards(models)
     s = database.SessionLocal()
+    prev, _SHADOW = _SHADOW, bool(shadow)
     try:
         try:
             _manage(s, now, boards, summary)
@@ -240,6 +313,7 @@ def run(now: datetime, models: dict) -> dict:
         if sess["session"] in (ex.PREMARKET, ex.REGULAR):
             _entries(s, now, sess, boards, summary)
     finally:
+        _SHADOW = prev
         s.close()
     return summary
 
@@ -264,7 +338,7 @@ def _manage(s, now: datetime, boards: dict, summary: dict) -> None:
     import demo_trade_service as dts
     import paper_fills as pf
     from sqlalchemy import update
-    from models_demo_trades import DemoTrade
+    DemoTrade = _T()
     for t in s.query(DemoTrade).filter_by(status="OPEN").order_by(DemoTrade.id.asc()).all():
         info = boards.get(t.strategy, {}).get(t.symbol) or {}
         if mc.close_due(t.session_date, now):
@@ -297,7 +371,8 @@ def _market_close(s, t, now: datetime, info: dict, boards: dict, summary: dict) 
     """Close one position at its trading day's official close, or record why it could not be priced."""
     import demo_trade_service as dts
     from sqlalchemy import update
-    from models_demo_trades import DemoTrade, IntradayDataException
+    from models_demo_trades import IntradayDataException
+    DemoTrade = _T()
     grace = timedelta(seconds=float(cfg.INTRADAY_EXEC["close_grace_s"]))
     close_dt = mc.close_datetime(t.session_date) if mc.is_trading_day(t.session_date) else now
     price, source, assumption, when = None, None, None, now
@@ -326,7 +401,7 @@ def _market_close(s, t, now: datetime, info: dict, boards: dict, summary: dict) 
     s.execute(update(DemoTrade).where(DemoTrade.id == t.id, DemoTrade.status == "OPEN").values(
         status=PENDING_RECON, exit_price=None, profit=None, profit_pct=None, exit_time=_utc(close_dt),
         exit_price_source="none", fill_assumption="no valid closing price: pending reconciliation"))
-    s.add(IntradayDataException(kind="CLOSE_PRICE_MISSING", trade_id=t.id, strategy=t.strategy, symbol=t.symbol,
+    s.add(IntradayDataException(kind=_EXC_KIND(), trade_id=t.id, strategy=t.strategy, symbol=t.symbol,
                                 trading_date=t.session_date, created_at=_utc(now),
                                 detail=f"no reliable price within {grace.total_seconds():.0f}s of the close and no final "
                                        f"regular-session candle; position closed administratively, price pending"))
@@ -337,7 +412,8 @@ def _reconcile(s, now: datetime, summary: dict) -> None:
     """Try again to price closes that had no valid price (not more often than every 10 minutes per trade)."""
     import demo_trade_service as dts
     from sqlalchemy import update
-    from models_demo_trades import DemoTrade, IntradayDataException
+    from models_demo_trades import IntradayDataException
+    DemoTrade = _T()
     for t in s.query(DemoTrade).filter_by(status=PENDING_RECON).all():
         if _time.time() - _last_recon_try.get(t.id, 0.0) < _RECON_RETRY_S:
             continue
@@ -350,20 +426,20 @@ def _reconcile(s, now: datetime, summary: dict) -> None:
             status=MARKET_CLOSE, exit_price=px, last_price=px, profit=profit, profit_pct=pct,
             exit_price_source="regular_close_candle",
             fill_assumption="reconciled: close of the final regular-session 5-minute candle"))
-        for e in s.query(IntradayDataException).filter_by(trade_id=t.id, kind="CLOSE_PRICE_MISSING", resolved_at=None).all():
+        for e in s.query(IntradayDataException).filter_by(trade_id=t.id, kind=_EXC_KIND(), resolved_at=None).all():
             e.resolved_at, e.resolution = _utc(now), f"reconciled at {px}"
         summary["reconciled"].append(t.id)
 
 
 # ------------------------------------------------------------------------------------------------------ entries -------
 def _open_positions(s) -> list:
-    from models_demo_trades import DemoTrade
+    DemoTrade = _T()
     return [{"strategy": t.strategy, "symbol": t.symbol, "side": t.side, "shares": t.shares,
              "price": t.last_price or t.entry_price} for t in s.query(DemoTrade).filter_by(status="OPEN").all()]
 
 
 def _day_pnl(s, today: date) -> dict:
-    from models_demo_trades import DemoTrade
+    DemoTrade = _T()
     out: dict = {"total": 0.0}
     for t in s.query(DemoTrade).filter(DemoTrade.session_date == today).all():
         if t.profit is None or t.status == PENDING_RECON:
@@ -388,7 +464,8 @@ def _snapshot_row(strategy: str, sym: str, direction: str, session: str, row: di
 
 
 def _entries(s, now: datetime, sess: dict, boards: dict, summary: dict) -> None:
-    from models_demo_trades import DemoTrade, IntradaySignalEvent
+    from models_demo_trades import IntradaySignalEvent
+    DemoTrade = _T()
     import demo_trade_service as dts
     session, today = sess["session"], sess["trading_date"]
     prev_close = last_close_before(now)
@@ -422,7 +499,8 @@ def _age_adjusted_meta(row: dict, now: datetime) -> dict:
 
 def _one_candidate(s, now: datetime, sess: dict, strat: str, sym: str, row: dict, direction: str, prev_close: datetime,
                    summary: dict) -> None:
-    from models_demo_trades import DemoTrade, IntradaySignalEvent, IntradaySnapshot
+    from models_demo_trades import IntradaySignalEvent, IntradaySnapshot
+    DemoTrade = _T()
     session, today, bounds = sess["session"], sess["trading_date"], sess["bounds"]
     ev = (s.query(IntradaySignalEvent).filter_by(strategy=strat, symbol=sym, trading_date=today, session_type=session,
                                                  direction=direction).first())
@@ -467,7 +545,19 @@ def _one_candidate(s, now: datetime, sess: dict, strat: str, sym: str, row: dict
             new_evidence = True
     snapshot_id = ev.last_snapshot_id
 
+    ost = ex.opening_state(now, session)
+
+    def log(decision: str, code, reasons: list, stage: dict, trade_id=None) -> None:
+        if not _SHADOW:
+            return
+        import intraday_shadow as sh
+        sh.record(s, engine=sh.V2, strategy=strat, symbol=sym, trading_date=today, session=session, direction=direction,
+                  score=row.get("score"), decision=decision, code=code, reasons=reasons,
+                  data_ts=sh.data_timestamps(dict(row, signal_meta=meta_now), now, (stage.get("quote") or {}).get("raw")),
+                  snapshot_id=snapshot_id, trade_id=trade_id, window_state=ost["state"], now=_utc(now))
+
     def reject(code: str, reasons: list, stage: dict) -> None:
+        log("REJECTED", code, reasons, stage)
         hist = json.loads(ev.reject_reasons or "[]")
         entry = {"code": code, "reasons": reasons}
         if not hist or {k: hist[-1].get(k) for k in ("code", "reasons")} != entry:
@@ -482,9 +572,13 @@ def _one_candidate(s, now: datetime, sess: dict, strat: str, sym: str, row: dict
     import market_calendar
     if market_calendar.instrument_kind(sym) != "equity":
         return reject(ex.WAIT_INSTRUMENT, [f"{sym} is not a US stock / ETF"], stages)
+    # 1b. the configurable opening rule (default OFF): no new entry inside the window; existing positions are managed elsewhere
+    if ost["state"] == "NO_ENTRY":
+        return reject(ex.WAIT_OPENING, [f"no new entries between {ost['from']} and {ost['until']} ET (opening rule); open positions "
+                                        f"are still managed"], stages)
     # 2. duplicate protection (cheap, database only, before any provider call): a signal never closes, flips or doubles a position
     positions = _open_positions(s)
-    from models_demo_trades import DemoTrade
+    DemoTrade = _T()
     session_exists = s.query(DemoTrade.id).filter_by(strategy=strat, symbol=sym, session_date=today,
                                                      entry_session=session).first() is not None
     held = [p for p in positions if p["strategy"] == strat and p["symbol"] == sym]
@@ -533,7 +627,7 @@ def _one_candidate(s, now: datetime, sess: dict, strat: str, sym: str, row: dict
         r15 = get_reading15(sym)
         if r15 is None and now < bounds["regular_open"] + timedelta(minutes=30):
             r15 = {"status": "WARMUP", "detail": "first 15-minute candles not closed yet"}
-    cv = ex.confirm_candles(direction, session, r5, r15, now)
+    cv = ex.confirm_candles(direction, session, r5, r15, now, require_both=(ost["state"] == "BOTH_REQUIRED"))
     stages["confirmation"] = cv
     if not cv["ok"]:
         return reject(ex.WAIT_UNCONFIRMED, cv["reasons"], stages)
@@ -566,5 +660,6 @@ def _one_candidate(s, now: datetime, sess: dict, strat: str, sym: str, row: dict
             s.flush()
     except IntegrityError:
         return reject(ex.WAIT_DUPLICATE, ["the database already holds this strategy / symbol / session position"], stages)
+    log("WOULD_OPEN" if _SHADOW else "OPENED", None, [], stages, trade.id)
     ev.trade_id, ev.eligibility_status, ev.validation_status = trade.id, "TRADED", "PASS"
     summary["opened"].append((strat, sym, session, side, trade.id))

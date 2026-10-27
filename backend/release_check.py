@@ -63,11 +63,33 @@ REQUIRED = [
     ("priority gate with adaptive brake", "backend/uw_priority.py", r"def brake\(", False),
 ]
 
+# Rows that apply ONLY to a build that contains the session workflow (intraday_workflow.py). An older build that is itself safe
+# (it passes REQUIRED) must stay a valid rollback target, so these never fail a build that predates the workflow.
+WORKFLOW_MARKER = "backend/intraday_workflow.py"
+REQUIRED_WITH_WORKFLOW = [
+    # --- intraday workflow v2 / shadow mode (the session workflow ships OFF; activating it is a separate, approved change) ---
+    ("the shipped workflow mode is legacy (V2 / shadow are opt-in)", "backend/tab_settings.py", r'INTRADAY_WORKFLOW: dict = \{"mode": "legacy"\}', False),
+    ("the regular-session opening rule ships disabled", "backend/tab_settings.py", r'"opening_rule": \{"enabled": False', False),
+    ("official-session helpers (pre-market / regular / early close)", "backend/market_calendar.py", r"def session_at\(", False),
+    ("V2 execution rules with fail-closed WAIT codes", "backend/intraday_execution.py", r'WAIT_STALE = "WAIT - STALE DATA"', False),
+    ("V2 honours the operator entry lock", "backend/intraday_workflow.py", r"if entry_locked\(\):", False),
+    ("V2 closes every position at the official close", "backend/intraday_workflow.py", r"def _market_close\(", False),
+    ("a close with no valid price is PENDING_RECON, never an invented price", "backend/intraday_workflow.py",
+     r"status=PENDING_RECON, exit_price=None, profit=None", False),
+    ("PENDING_RECON is not exposure", "backend/intraday_workflow.py", r'def _open_positions[\s\S]{0,260}filter_by\(status="OPEN"\)', False),
+    ("shadow mode writes only to the shadow book", "backend/intraday_workflow.py", r"m\.ShadowTrade if _SHADOW else m\.DemoTrade", False),
+    ("Legacy runs before the shadow evaluation and cannot be changed by it", "backend/demo_trade_service.py",
+     r"if wf\.shadow\(\):\s+# AFTER Legacy has committed", False),
+    ("the schema change has an additive-only part for every mode", "backend/demo_trade_service.py", r"wf\.migrate_additive\(engine\)", False),
+    ("the unique-index migration runs only when V2 is the workflow", "backend/demo_trade_service.py", r"if wf\.active\(\):\s+wf\.migrate\(engine\)", False),
+]
+
 
 def check(read: Callable[[str], Optional[str]]) -> dict:
     """Pure: ``read(path)`` returns a file's text (or None if absent)."""
     results = []
-    for what, path, rx, forbid in REQUIRED:
+    rows = list(REQUIRED) + (list(REQUIRED_WITH_WORKFLOW) if read(WORKFLOW_MARKER) is not None else [])
+    for what, path, rx, forbid in rows:
         text = read(path)
         found = bool(text and re.search(rx, text))
         ok = (text is not None) and (not found if forbid else found)

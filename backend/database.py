@@ -129,6 +129,8 @@ ISOLATED_TABLES = (
     "pe_pilot_state", "pe_pilot_daily", "intraday_sig_v2", "straddle_snap_v2",
     # paper trades and trade-call/plan records (ORM-managed; twins made by ensure_local_orm_tables)
     "demo_trades", "trade_calls", "trade_plans", "trade_plan_events", "trade_plan_seen",
+    # intraday workflow v2 / shadow mode evidence tables (created by intraday_workflow.migrate_additive; development gets twins)
+    "intraday_snapshots", "intraday_signal_events", "intraday_data_exceptions", "intraday_shadow_trades", "intraday_shadow_log",
 )
 ORM_ISOLATED_TABLES = ("score_snapshots", "demo_trades", "trade_calls", "trade_plans",
                        "trade_plan_events", "trade_plan_seen")

@@ -38,8 +38,9 @@ WAIT_SESSION = "WAIT - SESSION CLOSED"
 WAIT_LOCKED = "WAIT - ENTRIES LOCKED"
 WAIT_INSTRUMENT = "WAIT - UNSUPPORTED INSTRUMENT"
 WAIT_LOSS = "WAIT - DAILY LOSS LIMIT"
+WAIT_OPENING = "WAIT - OPENING WINDOW"
 ALL_CODES = (WAIT_STALE, WAIT_INSUFFICIENT, WAIT_UNCONFIRMED, WAIT_PRICE, WAIT_LIQUIDITY, WAIT_LIMIT, WAIT_DUPLICATE,
-             WAIT_SESSION, WAIT_LOCKED, WAIT_INSTRUMENT, WAIT_LOSS)
+             WAIT_SESSION, WAIT_LOCKED, WAIT_INSTRUMENT, WAIT_LOSS, WAIT_OPENING)
 
 STRATEGIES = ("chatgpt", "grok", "meta", "kimi", "gemini", "claude_pro")
 PREMARKET, REGULAR = "PREMARKET", "REGULAR"
@@ -464,7 +465,27 @@ def candle_reading(bars: list, bar_s: int, now: datetime, today) -> dict:
                        f"EMA{p['ema_fast']}/{p['ema_slow']} {ef:.2f}/{es:.2f}, RSI {rsi:.0f}")
 
 
-def confirm_candles(direction: str, session: str, r5: Optional[dict], r15: Optional[dict], now: datetime) -> dict:
+def opening_state(now: datetime, session: str) -> dict:
+    """The state of the (configurable, default OFF) regular-session opening rule at ``now``.
+
+    state: "OFF" (rule disabled or not the regular session), "NO_ENTRY" (inside [no_entry_start, no_entry_end)) or "BOTH_REQUIRED"
+    (at or after no_entry_end, 5-minute AND 15-minute confirmation both mandatory)."""
+    rule = cfg.INTRADAY_EXEC.get("opening_rule") or {}
+    if not rule.get("enabled") or session != REGULAR:
+        return {"state": "OFF", "enabled": bool(rule.get("enabled"))}
+    def hm(t):
+        h, m = str(t).split(":")
+        return now.replace(hour=int(h), minute=int(m), second=0, microsecond=0)
+    start, end = hm(rule.get("no_entry_start", "09:30")), hm(rule.get("no_entry_end", "10:00"))
+    if start <= now < end:
+        return {"state": "NO_ENTRY", "enabled": True, "from": start.strftime("%H:%M"), "until": end.strftime("%H:%M")}
+    if now >= end and rule.get("require_both_after_end", True):
+        return {"state": "BOTH_REQUIRED", "enabled": True, "from": end.strftime("%H:%M")}
+    return {"state": "OFF", "enabled": True}
+
+
+def confirm_candles(direction: str, session: str, r5: Optional[dict], r15: Optional[dict], now: datetime,
+                    require_both: bool = False) -> dict:
     """Candle confirmation, regular session only (the pre-market has no regular-session candle to require).
 
     * 5-minute: a reading must exist and AGREE (closed candles only).
@@ -484,8 +505,10 @@ def confirm_candles(direction: str, session: str, r5: Optional[dict], r15: Optio
             reasons.append(f"15-minute reading is stale ({age / 60:.0f} min since the newest closed candle)")
         elif r15["bias"] != want:
             reasons.append("15-minute candles do not confirm: " + r15.get("detail", ""))
-    elif r15 and r15.get("status") == "WARMUP":
+    elif r15 and r15.get("status") == "WARMUP" and not require_both:
         pass
+    elif r15 and r15.get("status") == "WARMUP":
+        reasons.append("15-minute: still warming up, but both timeframes are required at this time of day")
     else:
         reasons.append("15-minute: " + ((r15 or {}).get("detail") or "no reading"))
     return {"ok": not reasons, "code": WAIT_UNCONFIRMED if reasons else None, "applies": True, "reasons": reasons,
