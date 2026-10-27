@@ -69,7 +69,10 @@ def has_open_trades() -> bool:
         from models_demo_trades import DemoTrade
         s = database.SessionLocal()
         try:
-            return s.query(DemoTrade.id).filter_by(status="OPEN").first() is not None
+            if s.query(DemoTrade.id).filter_by(status="OPEN").first() is not None:
+                return True
+            import intraday_workflow as wf
+            return wf.active() and s.query(DemoTrade.id).filter_by(status="PENDING_RECON").first() is not None
         finally:
             s.close()
     except Exception:  # noqa: BLE001 - fail safe: keep ticking
@@ -80,9 +83,21 @@ def should_tick(now: Optional[datetime] = None) -> bool:
     """Tick while entries are allowed (04:00-20:00 ET weekdays); after that only to close
     out trades that are still open."""
     n = now or _et_now()
+    import intraday_workflow as wf
+    if wf.active():
+        return wf.should_tick(n, has_open_trades)
     if _can_open(n):
         return True
     return _after_close(n) and has_open_trades()
+
+
+def sleep_seconds(default: float = 60.0) -> float:
+    """How long the tracker loop sleeps. 60 s, except that it wakes at the official close when that is sooner (workflow v2)."""
+    try:
+        import intraday_workflow as wf
+        return wf.sleep_seconds(_et_now(), default) if wf.active() else default
+    except Exception:  # noqa: BLE001
+        return default
 
 
 def _exit_timed(t, now: Optional[datetime] = None) -> bool:
@@ -152,6 +167,9 @@ def ensure_schema() -> None:
         from database import Base, engine
         from models_demo_trades import DemoTrade
         DemoTrade.__table__.create(bind=engine, checkfirst=True)
+        import intraday_workflow as wf
+        if wf.active():
+            wf.migrate(engine)
         _schema_ready = True
     except Exception:  # noqa: BLE001 - never hard-fail a page on a DB blip
         pass
@@ -285,6 +303,10 @@ def tick(force: bool = False) -> None:
     try:
         _last_tick = now
         ensure_schema()
+        import intraday_workflow as wf
+        if wf.active():                       # the session workflow (see intraday_workflow.py); legacy below is unchanged
+            wf.run(_et_now(), MODELS)
+            return
         import database
         from models_demo_trades import DemoTrade
         et = _et_now()

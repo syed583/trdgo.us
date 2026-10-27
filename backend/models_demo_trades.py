@@ -9,8 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import (Column, Date, DateTime, Float, Integer, String,
-                        UniqueConstraint, Index)
+from sqlalchemy import (Boolean, Column, Date, DateTime, Float, Integer, String, Text, Index, func, text)
 
 from database import Base
 
@@ -22,7 +21,14 @@ def _utcnow() -> datetime:
 class DemoTrade(Base):
     __tablename__ = "demo_trades"
     __table_args__ = (
-        UniqueConstraint("strategy", "symbol", "session_date", name="uq_demo_strategy_symbol_day"),
+        # One position per strategy, symbol, trading day AND entry session. Rows written before the session workflow have no
+        # entry_session (NULL, read as an empty string), so they keep exactly the old one-per-day rule; a PREMARKET and a
+        # REGULAR entry of the same day can now coexist as separate trades.
+        Index("uq_demo_strategy_symbol_day_session", "strategy", "symbol", "session_date",
+              func.coalesce(text("entry_session"), text("''")), unique=True),
+        # at most ONE open position per strategy and symbol, enforced by the database itself
+        Index("uq_demo_one_open", "strategy", "symbol", unique=True,
+              postgresql_where=text("status = 'OPEN'"), sqlite_where=text("status = 'OPEN'")),
         Index("ix_demo_session", "session_date"),
         Index("ix_demo_strategy_session", "strategy", "session_date"),
     )
@@ -44,11 +50,91 @@ class DemoTrade(Base):
     profit = Column(Float, nullable=True)              # $ for the 100 shares
     profit_pct = Column(Float, nullable=True)
 
-    status = Column(String(16), nullable=False, default="OPEN")  # OPEN/STOP/TARGET/TIMED_EXIT/SCORE_EXIT
+    # OPEN / STOP / TARGET / SCORE_EXIT / TIMED_EXIT (legacy) / MARKET_CLOSE / PENDING_RECON (workflow v2)
+    status = Column(String(16), nullable=False, default="OPEN")
     exit_time = Column(DateTime(timezone=True), nullable=True)
     exit_price = Column(Float, nullable=True)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
+    # --- workflow v2 evidence (all nullable: historical rows keep NULL, never invented values) ---
+    entry_session = Column(String(12), nullable=True)      # PREMARKET / REGULAR
+    signal_event_id = Column(Integer, nullable=True)
+    snapshot_id = Column(String(40), nullable=True)
+    entry_quote = Column(Text, nullable=True)              # JSON: bid, ask, last, spread %, ages, source
+    risk_checks = Column(Text, nullable=True)              # JSON: every limit and its reading at entry
+    validation = Column(Text, nullable=True)               # JSON: data, coverage, confirmation, liquidity results
+    exit_price_source = Column(String(24), nullable=True)  # board / quote / official_close / none
+    fill_assumption = Column(String(160), nullable=True)   # the documented fill policy that produced the exit price
+
+
+class IntradaySnapshot(Base):
+    """What the strategy saw at one observation: every parameter reading and contribution, the data ages, the coverage."""
+    __tablename__ = "intraday_snapshots"
+    __table_args__ = (Index("ix_snap_strategy_symbol_day", "strategy", "symbol", "trading_date"),)
+
+    id = Column(String(40), primary_key=True)              # uuid hex
+    strategy = Column(String(24), nullable=False)
+    symbol = Column(String(16), nullable=False)
+    trading_date = Column(Date, nullable=False)
+    session_type = Column(String(12), nullable=False)
+    observed_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    signal = Column(String(8), nullable=True)              # the strategy's own BUY / SELL / NEUTRAL (raw)
+    score = Column(Float, nullable=True)                   # the strategy's own score (raw)
+    coverage_total_pct = Column(Float, nullable=True)
+    coverage_eligible_pct = Column(Float, nullable=True)
+    agreement_pct = Column(Float, nullable=True)
+    low_confidence = Column(Boolean, nullable=True)
+    fingerprint = Column(String(40), nullable=True)        # identical fingerprint = the same evidence, not a new observation
+    params = Column(Text, nullable=True)                   # JSON: name, weight, bias, points, category per parameter
+    sources = Column(Text, nullable=True)                  # JSON: per-signal age, status, source
+    quote = Column(Text, nullable=True)
+    validation = Column(Text, nullable=True)
+
+
+class IntradaySignalEvent(Base):
+    """One BUY / SELL signal of one strategy in one session of one trading day (PREMARKET and REGULAR are separate events)."""
+    __tablename__ = "intraday_signal_events"
+    __table_args__ = (
+        Index("uq_signal_event", "strategy", "symbol", "trading_date", "session_type", "direction", unique=True),
+        Index("ix_signal_event_day", "trading_date", "strategy"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    strategy = Column(String(24), nullable=False)
+    symbol = Column(String(16), nullable=False)
+    trading_date = Column(Date, nullable=False)
+    session_type = Column(String(12), nullable=False)
+    direction = Column(String(8), nullable=False)          # BUY / SELL
+    score = Column(Float, nullable=True)                   # score of the FIRST observation
+    signal_ts = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    last_seen_ts = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    snapshot_id = Column(String(40), nullable=True)        # first snapshot
+    last_snapshot_id = Column(String(40), nullable=True)
+    observations = Column(Integer, nullable=False, default=1)
+    evidence_ids = Column(Text, nullable=True)             # JSON list of distinct evidence fingerprints (bounded)
+    validation_status = Column(String(40), nullable=True)  # PASS or the latest WAIT code
+    eligibility_status = Column(String(12), nullable=False, default="PENDING")   # PENDING / ELIGIBLE / REJECTED / TRADED
+    reject_reasons = Column(Text, nullable=True)           # JSON list of the latest reasons
+    trade_id = Column(Integer, nullable=True)
+
+
+class IntradayDataException(Base):
+    """A data-quality exception: a close with no valid price, awaiting reconciliation. Never a fabricated price."""
+    __tablename__ = "intraday_data_exceptions"
+    __table_args__ = (Index("ix_dataexc_open", "resolved_at"),)
+
+    id = Column(Integer, primary_key=True)
+    kind = Column(String(32), nullable=False)
+    trade_id = Column(Integer, nullable=True)
+    strategy = Column(String(24), nullable=True)
+    symbol = Column(String(16), nullable=True)
+    trading_date = Column(Date, nullable=True)
+    detail = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    resolution = Column(Text, nullable=True)
+
 
 def tables() -> list[str]:
-    return [DemoTrade.__tablename__]
+    return [DemoTrade.__tablename__, IntradaySnapshot.__tablename__, IntradaySignalEvent.__tablename__,
+            IntradayDataException.__tablename__]

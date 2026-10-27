@@ -199,3 +199,70 @@ def instrument_kind(symbol: str) -> str:
     if s.startswith("^") or s in _INDEX_ROOTS:
         return "index"
     return "equity" if s.replace(".", "").replace("-", "").isalnum() else "unknown"
+
+
+# ------------------------------------------------------------------ trading sessions (paper-trade workflow) ----------
+# The paper-trade workflow works in two sessions of a TRADING day, in America/New_York (so daylight saving is the zone's
+# business, never a fixed UTC offset and never Dubai time):
+#
+#     PREMARKET   04:00 - 09:30 ET
+#     REGULAR     09:30 - close      (16:00 ET, or 13:00 ET on an early-close day)
+#
+# New entries are allowed in both. Nothing opens at or after the close, on a weekend, or on an exchange holiday.
+# Post-market (close - 20:00 ET) is an extended session the workflow does not trade.
+PREMARKET, REGULAR, POSTMARKET, CLOSED = "PREMARKET", "REGULAR", "POSTMARKET", "CLOSED"
+PREMARKET_OPEN, REGULAR_OPEN = time(4, 0), time(9, 30)
+
+
+def session_bounds(d: date) -> Optional[dict]:
+    """{'premarket_open', 'regular_open', 'close', 'early_close'} (aware ET datetimes) of a trading day, else None."""
+    if not is_trading_day(d):
+        return None
+    return {"premarket_open": datetime.combine(d, PREMARKET_OPEN, tzinfo=ET),
+            "regular_open": datetime.combine(d, REGULAR_OPEN, tzinfo=ET),
+            "close": close_datetime(d), "early_close": is_early_close(d)}
+
+
+def session_at(moment: datetime) -> dict:
+    """The session ``moment`` falls in: {'session', 'trading_date', 'bounds'}. ``trading_date`` is the ET calendar date;
+    ``session`` is PREMARKET / REGULAR / POSTMARKET / CLOSED (a weekend, a holiday, or outside 04:00-20:00 ET)."""
+    et = moment.astimezone(ET)
+    d = et.date()
+    b = session_bounds(d)
+    if b is None:
+        return {"session": CLOSED, "trading_date": d, "bounds": None}
+    if et < b["premarket_open"]:
+        s = CLOSED
+    elif et < b["regular_open"]:
+        s = PREMARKET
+    elif et < b["close"]:
+        s = REGULAR
+    elif et < datetime.combine(d, EXT_CLOSE, tzinfo=ET):
+        s = POSTMARKET
+    else:
+        s = CLOSED
+    return {"session": s, "trading_date": d, "bounds": b}
+
+
+def entries_allowed(moment: datetime) -> bool:
+    """May a NEW paper entry open at ``moment``? Only in PREMARKET or REGULAR, strictly before the official close."""
+    return session_at(moment)["session"] in (PREMARKET, REGULAR)
+
+
+def seconds_to_close(moment: datetime) -> Optional[float]:
+    """Seconds until today's official close (None when today is not a trading day or the close has passed)."""
+    et = moment.astimezone(ET)
+    b = session_bounds(et.date())
+    if b is None or et >= b["close"]:
+        return None
+    return (b["close"] - et).total_seconds()
+
+
+def close_due(trade_date: date, moment: datetime) -> bool:
+    """Has the official close of ``trade_date`` arrived (or passed) at ``moment``? A trade of an earlier date is always due."""
+    et = moment.astimezone(ET)
+    if trade_date < et.date():
+        return True
+    if trade_date > et.date():
+        return False
+    return et >= close_datetime(trade_date) if is_trading_day(trade_date) else True

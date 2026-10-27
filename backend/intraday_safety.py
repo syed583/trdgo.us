@@ -253,7 +253,14 @@ def gate(row: dict, *, phase: Optional[str], signals_age_s: Optional[float],
     """Apply the gate to a scored row in place and return it.
 
     Order: data freshness / coverage / API capacity first, then -- only for a BUY or SELL that survived
-    all of that -- the 15-minute candle confirmation. Neither changes the score."""
+    all of that -- the 15-minute candle confirmation. Neither changes the score.
+
+    With the session workflow on (tab_settings.INTRADAY_WORKFLOW mode "v2") the board is ANNOTATED only: the strategy's own
+    signal, score and levels stay exactly as the strategy produced them, with the per-signal data ages the execution layer
+    needs. Whether a signal may become a paper trade is decided there (intraday_execution / intraday_workflow)."""
+    if str(cfg.INTRADAY_WORKFLOW.get("mode", "legacy")).lower() == "v2":
+        return _annotate(row, phase=phase, signals_age_s=signals_age_s, price_age=price_age, model_status=model_status,
+                         inputs_source=inputs_source, meta=meta)
     ev = evaluate(row, phase=phase, signals_age_s=signals_age_s, price_age=price_age,
                   model_status=model_status, inputs_label=inputs_label, meta=meta)
     sig, sym = row.get("signal"), row.get("symbol")
@@ -285,6 +292,19 @@ def gate(row: dict, *, phase: Optional[str], signals_age_s: Optional[float],
     row["missing"] = ev["missing"]
     for k in ("entry", "tp", "sl"):                  # no entry levels for a name we are not trading
         row[k] = None
+    return row
+
+
+def _annotate(row: dict, *, phase, signals_age_s, price_age, model_status, inputs_source, meta) -> dict:
+    """Workflow v2: keep the strategy's own signal / score / levels, add the evidence the execution layer judges."""
+    row["data"] = {"signals_age_s": None if signals_age_s is None else round(signals_age_s),
+                   "price_age_s": None if price_age is None else round(price_age),
+                   "inputs": inputs_source or None, "phase": phase, "ok": None,
+                   "dropped_stale": (meta or {}).get("dropped") or []}
+    row["signal_meta"] = dict(((meta or {}).get("meta")) or {})
+    row["gate_ts"] = time.time()
+    row["model_status"] = model_status if model_status is not None else row.get("model_status")
+    row["workflow"] = "v2"
     return row
 
 

@@ -488,3 +488,47 @@ SIGNAL_DATA_TYPE: dict = {
     "funding_activity": "earnings_fundamentals",
     "insider_activity": "ownership_insider", "fund_flows": "ownership_insider",
 }
+
+
+# ---------------------------------------------------------------------------------------------
+# Intraday paper-trade WORKFLOW v2 (intraday_workflow.py / intraday_execution.py)
+# ---------------------------------------------------------------------------------------------
+# The six strategies' scores, weights, formulas and the BUY >= 55 / SELL <= 45 cutoffs are NOT touched by anything here. This
+# is the trade-PERMISSION layer: sessions, data validation, confirmation, duplicate protection, risk limits, evidence and the
+# end-of-day close.
+#
+# ``mode``:  "legacy" = the behaviour of release 277f30f (unchanged code path, kept for comparison and rollback);
+#            "v2"     = the session workflow. Switching it on in production needs the owner's explicit approval.
+INTRADAY_WORKFLOW: dict = {"mode": "legacy"}
+
+# EVERY value below is a PROPOSED starting value, NOT a tested or approved production value. Where an existing system constant
+# already says the same thing it is reused and named. The workflow records the evidence needed to calibrate the rest (every
+# candidate signal, its quote, spread and coverage, accepted or rejected, is stored), so these can be tuned from data.
+INTRADAY_EXEC: dict = {
+    "status": "PROPOSED - not approved for production",
+    # -- coverage (judged on the parameters ELIGIBLE for this strategy in this session, not on 100) --
+    "min_eligible_coverage_pct": MIN_COVERAGE_PCT,          # existing constant (70), also the live engine's COVERAGE_MIN
+    "min_agreement": V3_CONFIDENCE["min_agreement"],       # existing constant (0.55): share of covered weight on the signal's side
+    # -- persistence: the same side seen on this many DISTINCT evidence snapshots, at least this far apart --
+    "min_observations": 2,
+    "min_span_s": 120.0,
+    # -- executable quote --
+    "quote_max_age_s": {"PREMARKET": 120.0, "REGULAR": 300.0},   # existing INTRADAY_FRESHNESS["price_volume"] live / maximum
+    "max_spread_pct": {"PREMARKET": 0.10, "REGULAR": 0.20},      # PROPOSED; pre-market is held to the tighter limit on purpose
+    "require_bid_ask": {"PREMARKET": True, "REGULAR": False},    # pre-market needs a two-sided quote; regular uses it when present
+    "max_price_discrepancy_pct": 0.50,                           # PROPOSED: fresh quote vs the board price the signal was priced at
+    "min_price": 10.0,                                           # existing live-engine liquidity floor (LIQ_MIN_PRICE)
+    "min_avg_daily_volume": 1_000_000,                           # existing live-engine liquidity floor (LIQ_MIN_AVGVOL)
+    # -- risk (paper capital; sizing never exceeds the existing 100-share convention) --
+    "quantity": 100,                                             # existing fixed size
+    "paper_capital_usd": 1_000_000.0,                            # PROPOSED
+    "max_open_total": 60, "max_open_per_strategy": 15,           # PROPOSED
+    "max_exposure_total_usd": 1_000_000.0,                       # PROPOSED (gross, long + short)
+    "max_exposure_per_strategy_usd": 250_000.0,                  # PROPOSED
+    "max_exposure_per_symbol_usd": 60_000.0,                     # PROPOSED (gross, all six strategies)
+    "max_strategies_same_symbol_side": 3,                        # PROPOSED: correlated duplicates across the six strategies
+    "daily_loss_limit_per_strategy_usd": 5_000.0,                # PROPOSED (realized + unrealized, new entries stop; exits continue)
+    "daily_loss_limit_total_usd": 15_000.0,                      # PROPOSED
+    # -- end of day --
+    "close_grace_s": 300.0,                                      # PROPOSED: a close price observed this soon after the bell is still "the close"
+}

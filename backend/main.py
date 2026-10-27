@@ -549,7 +549,10 @@ def _start_demo_trade_tracker() -> None:
                     dts.tick(force=True)
             except Exception:  # noqa: BLE001
                 pass
-            _t.sleep(60)
+            try:
+                _t.sleep(dts.sleep_seconds())       # 60 s; wakes at the official close when that is sooner (workflow v2)
+            except Exception:  # noqa: BLE001
+                _t.sleep(60)
 
     threading.Thread(target=loop, name="demo-trade-tracker", daemon=True).start()
 
