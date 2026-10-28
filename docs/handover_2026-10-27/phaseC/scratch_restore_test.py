@@ -154,6 +154,7 @@ def row_diff(live, dump, limit=3):
 
 def copy_lines(conn, cols):
     """The table's rows in COPY text format (the same format pg_restore prints), one string per row."""
+    conn.execute("SET TIME ZONE 'UTC'")   # timestamptz is printed in the SESSION time zone; the dump holds UTC ('+00'), the scratch server defaults to the host's zone
     with conn.cursor().copy(f"COPY public.demo_trades ({', '.join(cols)}) TO STDOUT") as cp:
         blob = b"".join(bytes(x) for x in cp)
     return [l for l in blob.split(b"\n") if l != b""]          # BYTES: no decoding, no newline translation
@@ -188,7 +189,7 @@ def main():
                     help="scratch folder (deleted afterwards); default: the current user's temp folder, which the server's restricted token can use")
     ap.add_argument("--diag-dir", default=r"C:\audit-reports\scratch_diag", help="where the diagnostics of a failure are kept (never deleted)")
     ap.add_argument("--debug-bad-option", action="store_true", help=argparse.SUPPRESS)
-    ap.add_argument("--debug-corrupt", choices=["change", "swap"], help=argparse.SUPPRESS)   # regression test: damage the SCRATCH copy, the check must fail
+    ap.add_argument("--debug-corrupt", choices=["change", "swap", "time"], help=argparse.SUPPRESS)   # regression test: damage the SCRATCH copy, the check must fail
     ap.add_argument("--keep", action="store_true")
     ap.add_argument("--expect-tables", type=int, default=None)
     a = ap.parse_args()
@@ -228,11 +229,11 @@ def main():
         if not check("scratch cluster created (initdb)", r.returncode == 0, (r.stderr or r.stdout)[-160:] if r.returncode else ""):
             failed_start = "initdb failed"
             return 1
-        opts = f"-p {a.port} -c listen_addresses=127.0.0.1 -c fsync=off -c synchronous_commit=off" + (" -c bogus_setting=1" if a.debug_bad_option else "")
+        opts = f"-p {a.port} -c listen_addresses=127.0.0.1 -c fsync=off -c synchronous_commit=off -c timezone=UTC -c log_timezone=UTC" + (" -c bogus_setting=1" if a.debug_bad_option else "")
         rc = 1
         for i, port_try in enumerate(ports):      # a bind refusal by the OS (e.g. a port taken by Docker) -> try the next free port
             a.port = port_try
-            opts = f"-p {a.port} -c listen_addresses=127.0.0.1 -c fsync=off -c synchronous_commit=off" + (" -c bogus_setting=1" if a.debug_bad_option else "")
+            opts = f"-p {a.port} -c listen_addresses=127.0.0.1 -c fsync=off -c synchronous_commit=off -c timezone=UTC -c log_timezone=UTC" + (" -c bogus_setting=1" if a.debug_bad_option else "")
             rc = ctl([tool["pg_ctl"], "start", "-w", "-t", "90", "-D", data, "-l", work / "server.log", "-o", opts], work / "pg_ctl.out")
             if rc == 0:
                 break
@@ -274,7 +275,9 @@ def main():
             c.execute("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role")
         if a.debug_corrupt:                                    # only ever on the scratch copy
             with psycopg.connect(dsn, autocommit=True) as c:
-                if a.debug_corrupt == "change":
+                if a.debug_corrupt == "time":
+                    c.execute("UPDATE demo_trades SET entry_time = entry_time + interval '1 microsecond' WHERE id = 700")
+                elif a.debug_corrupt == "change":
                     c.execute("UPDATE demo_trades SET entry_price = entry_price + 0.0001 WHERE id = 500")
                 else:                                           # same row count and same column sums: two rows swap their entry price
                     c.execute("UPDATE demo_trades t SET entry_price = x.p FROM (SELECT id, CASE id WHEN 10 THEN (SELECT entry_price FROM demo_trades WHERE id = 11) ELSE (SELECT entry_price FROM demo_trades WHERE id = 10) END AS p FROM demo_trades WHERE id IN (10, 11)) x WHERE t.id = x.id")
