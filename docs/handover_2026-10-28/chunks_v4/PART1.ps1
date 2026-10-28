@@ -1,9 +1,9 @@
 # PART 1 of 2 - writes ONE small text file (base64 of the reviewed verifier). Executes nothing.
 & {
   $ErrorActionPreference = 'Stop'
-  $stgDir = 'C:\audit-reports\readonly_verify\parts_v4'; $stgPart = Join-Path $stgDir 'part1.b64'
+  $stgDir = 'C:\Users\initi\AppData\Local\Temp\claude\C--Users-initi-Downloads-US-STOCKS\f48be4ee-7f76-4cb9-a237-d4759a147702\scratchpad\tcheck\parts_v4'; $stgPart = Join-Path $stgDir 'part1.b64'
   $stgText = @'
-H4sIAJlK4moC/+19a3fbOLLgd/0KLHt7RaZl+dHp3Gkl6j2KraR9xrZ8Jbt7MoqWh5ZoW9cSqZCUHY/b+9u3HgAIUKQsJ+md2T2T
+H4sIADRL4moC/+19a3fbOLLgd/0KLHt7RaZl+dHp3Gkl6j2KraR9xrZ8Jbt7MoqWh5ZoW9cSqZCUHY/b+9u3HgAIUKQsJ+md2T2T
 c7pN4VEACoWqQqFQcByn3+0cbPVOjj6IMEiiaXSVink8CWfiNkyml9NxkE3jSFzGiciuQ7FI4slyTEm/nQ6atdogC67CtCbEYjq+
 EUK0xGyaZikVjoJ5yF+z6W0osuAiFUESinQcJ9CQcC+TeE7542B8HU7E/ixYTjA/iLyWSO/nF/GskfdrEmRhA5rS/7LpHDIaBDCE
 P9OrKIAK4xj6Dt1qin4YTFIRR7IFkcR3TXESZ9fYfDhLwyaA4yzouRokN5yK+3hJY2iIhOAYPQ2goft0mgoXe9cKPy2n2b3Ypr62
@@ -82,7 +82,7 @@ Hl00rA1OOqf+f553+8B99RmuM45nyzlpYnp7Sik+G+hxB+OjvZphoSEK9QHyO8UNf9CUAOQiolvDVBea
 '@
   $stgClean = ($stgText -replace '\s', '')
   $stgHash = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::ASCII.GetBytes($stgClean))).Replace('-','').ToLower()
-  if ($stgHash -ne '83cce650834ee4b052e38f67c48f0818c24e3f521bf5f691c67019ca95a1e468') { Write-Host 'STOPPED: this part was cut off or altered in the paste - nothing written. Paste it again.' -ForegroundColor Red; return }
+  if ($stgHash -ne '92dd1db2e82eb2f537ca9269184137dbaa8d790eea67a9e886ed0bc84e1135f5') { Write-Host 'STOPPED: this part was cut off or altered in the paste - nothing written. Paste it again.' -ForegroundColor Red; return }
   if (Test-Path $stgPart) { Write-Host "STOPPED: $stgPart already exists (never overwritten)" -ForegroundColor Red; return }
   New-Item -ItemType Directory -Force -Path $stgDir | Out-Null
   [IO.File]::WriteAllText($stgPart, $stgClean, [Text.Encoding]::ASCII)

@@ -1,7 +1,7 @@
 # PART 2 of 2 - writes ONE small text file (base64 of the reviewed verifier). Executes nothing.
 & {
   $ErrorActionPreference = 'Stop'
-  $stgDir = 'C:\audit-reports\readonly_verify\parts_v4'; $stgPart = Join-Path $stgDir 'part2.b64'
+  $stgDir = 'C:\Users\initi\AppData\Local\Temp\claude\C--Users-initi-Downloads-US-STOCKS\f48be4ee-7f76-4cb9-a237-d4759a147702\scratchpad\tcheck\parts_v4'; $stgPart = Join-Path $stgDir 'part2.b64'
   $stgText = @'
 mzMf8EW3pOXlMSeLMzabqP7s985PztwXHpvCKLuRJ747PALUCLdqDcP69fC8vMAtC5tZ4VQALMwxA1ydfBhrnZopcOFNmyFGbPWX
 U8oZlkLVxb3PeXRbBjVyQ5D8oBEo5cYYveZ1+1E1Dg0hYLJBL89ZHdhTA1wBSgBBBE8IT/u9zlF3sN91B+fHrpQ7XgOUXfld3R5h

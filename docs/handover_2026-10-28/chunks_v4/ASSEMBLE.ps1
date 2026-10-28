@@ -2,7 +2,7 @@
 & {
   $ErrorActionPreference = 'Stop'
   $stgWant = 'b277a7457fdf9c5db2b6b6b9701efd2186621467c38deb0980f1d59fa48e7a19'
-  $stgDirP = 'C:\audit-reports\readonly_verify\parts_v4'; $stgDst = 'C:\audit-reports\readonly_verify\verify_earnings_readonly_v4.py'; $stgTmp = $stgDst + '.staging'
+  $stgDirP = 'C:\Users\initi\AppData\Local\Temp\claude\C--Users-initi-Downloads-US-STOCKS\f48be4ee-7f76-4cb9-a237-d4759a147702\scratchpad\tcheck\parts_v4'; $stgDst = 'C:\Users\initi\AppData\Local\Temp\claude\C--Users-initi-Downloads-US-STOCKS\f48be4ee-7f76-4cb9-a237-d4759a147702\scratchpad\tcheck\verify_earnings_readonly_v4.py'; $stgTmp = $stgDst + '.staging'
   if (Test-Path $stgDst) { Write-Host "STOPPED: $stgDst already exists (never overwritten). Compare its hash manually." -ForegroundColor Red; return }
   $stgAll = ''
   foreach ($stgN in 1..2) { $stgP = Join-Path $stgDirP "part$stgN.b64"; if (-not (Test-Path $stgP)) { Write-Host "STOPPED: part$stgN.b64 is missing - paste PART $stgN first" -ForegroundColor Red; return }; $stgAll += [IO.File]::ReadAllText($stgP) }
