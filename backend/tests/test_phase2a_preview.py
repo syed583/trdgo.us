@@ -74,6 +74,27 @@ def test_preview_shows_before_and_after():
     cc = res["outcome_crosscheck"]
     assert cc["events_with_both"] == 1 and cc["same_direction"] == 1 and cc["within_0.1pct"] == 1
     assert res["calendar_outcome_issues"]["reaction_date_mismatch"] == 1 and res["calendar_outcomes_usable"] == 3
+    # grading split by report timing: AAA is Before Open; BBB, CCC, DDD are After Close; EEE is not reported yet
+    tb = res["grading_by_timing"]
+    assert tb["Before Open"]["reported"] == 1 and tb["Before Open"]["graded_with_available_prices"] == 1
+    assert tb["After Close"]["reported"] == 3 and tb["After Close"]["graded_with_available_prices"] == 2
+    assert tb["After Close"]["missing_price"] == 1 and tb["After Close"]["legacy_stamped_unverifiable"] == 3
+    assert res["events_not_reported_yet"] == 1
+    # integrity: one prediction per event and model; nothing accepted before its reaction session closed
+    ic = res["integrity_checks"]
+    assert ic["one_prediction_per_event_model"] is True and ic["no_outcome_accepted_before_reaction_close"] is True
+    assert ic["rows_vs_events_after_B"]["claude_new"] == {"before_release_rows": 5, "eligible_events": 5, "post_release_rows": 1,
+                                                          "ambiguous_rows": 0, "retrospective_rows": 0}
+
+
+def test_an_outcome_before_the_reaction_close_is_never_accepted():
+    t = load_tool()
+    now = datetime(2026, 10, 29, 12, 0, tzinfo=UTC)          # the morning after an After Close report: session not closed
+    snaps = [snap("BBB", date(2026, 10, 28), "After Close", date(2026, 10, 27), datetime(2026, 10, 27, 4, 21, tzinfo=UTC), "BUY")]
+    res = t.preview(snaps, [cal("BBB", date(2026, 10, 28), "2026-10-29", 5.0)], now=now)
+    assert res["calendar_outcomes_usable"] == 0 and res["calendar_outcome_issues"]["not_ready"] == 1
+    assert res["grading_by_timing"]["After Close"]["pending_reaction_window_open"] == 1
+    assert res["models"]["claude_new"]["AFTER_B_selection_and_timely_outcomes"]["graded"] == 0
 
 
 def test_tool_is_read_only_by_construction():
@@ -83,3 +104,56 @@ def test_tool_is_read_only_by_construction():
         assert word not in code, word
     assert code.count("SET TRANSACTION READ ONLY") == 1
     assert "import swr" not in code and "db_cache" not in code
+
+
+def test_main_prints_the_full_report_without_touching_a_database(tmp_path, monkeypatch, capsys):
+    """main() end to end with a stub database module and synthetic rows (the VPS print path)."""
+    import types
+    t = load_tool()
+    monkeypatch.setitem(sys.modules, "database", types.ModuleType("database"))
+    monkeypatch.setenv("APP_ENV", "production")
+    now_snaps = [snap("AAA", date(2026, 10, 20), "Before Open", date(2026, 10, 18), datetime(2026, 10, 18, 4, 21, tzinfo=UTC), "BUY",
+                      move=3.0, correct=1, evaluated=datetime(2026, 10, 21, 4, 30, tzinfo=UTC)),
+                 snap("BBB", date(2026, 10, 20), "After Close", date(2026, 10, 19), datetime(2026, 10, 19, 4, 21, tzinfo=UTC), "SELL",
+                      evaluated=datetime(2026, 10, 21, 4, 30, tzinfo=UTC))]
+    calendar = [cal("AAA", date(2026, 10, 20), "2026-10-20", 3.0), cal("BBB", date(2026, 10, 20), "2026-10-21", -2.0)]
+    calls = []
+
+    def fake_run(sql):
+        calls.append(sql.split()[0])
+        return now_snaps if "model_predictions" in sql else calendar
+
+    monkeypatch.setattr(t, "_run_ro", fake_run)
+    out = tmp_path / "p.json"
+    monkeypatch.setattr(sys, "argv", ["phase2a_preview.py", "--out", str(out)])
+    t.main()
+    text = capsys.readouterr().out
+    for needle in ("calendar outcomes usable", "BEFORE (legacy)", "GRADING BY REPORT TIMING", "INTEGRITY:", "Per model (AFTER-B)"):
+        assert needle in text, needle
+    assert out.exists() and calls == ["SELECT", "SELECT"]            # exactly two SELECTs, nothing else
+
+
+def test_embedded_database_and_provider_paths_are_switched_off():
+    import pytest
+    t = load_tool()
+    mc, eo, sb = t.load_embedded()
+    for fn in ("run", "ensure_table", "load_outcomes", "_save", "sync_legacy_columns", "events_to_review", "default_bars_fetcher"):
+        with pytest.raises(RuntimeError, match="disabled in the read-only preview"):
+            getattr(eo, fn)()
+    for fn in ("scoreboard", "load_rows"):
+        with pytest.raises(RuntimeError, match="disabled in the read-only preview"):
+            getattr(sb, fn)()
+    # the pure functions the preview relies on still work
+    assert eo.timing_kind("After Close") == "AMC" and eo.reaction_window(date(2026, 10, 30), "AMC")[1] == date(2026, 11, 2)
+
+
+def test_preview_computation_runs_with_the_network_blocked():
+    import socket
+    import pytest
+    t = load_tool()
+    with t.no_network():
+        with pytest.raises(RuntimeError, match="network blocked"):
+            socket.create_connection(("127.0.0.1", 9), timeout=1)
+        res = t.preview([snap("AAA", date(2026, 10, 20), "Before Open", date(2026, 10, 18),
+                              datetime(2026, 10, 18, 4, 21, tzinfo=UTC), "BUY")], [], now=datetime(2026, 11, 5, tzinfo=UTC))
+    assert res["models"]["claude_new"]["BEFORE_legacy"]["events"] == 1

@@ -1,7 +1,7 @@
 # ASSEMBLE phase2a_preview.py from the 3 verified parts (SHA-256 checked). Writes ONE new file; executes nothing.
 & {
   $ErrorActionPreference = 'Stop'
-  $stgWant = '4e31a275fa8a09c76b5289e943f346aec6f0c470e1029692b064c7cfbe460c07'
+  $stgWant = '45400c7395d5df349bf6192e15ae5df0f65fa715067b425527ab842083fa07b4'
   $stgDirP = 'C:\audit-reports\readonly_verify\parts_p2a'; $stgDst = 'C:\audit-reports\readonly_verify\phase2a_preview.py'; $stgTmp = $stgDst + '.staging'
   if (Test-Path $stgDst) { Write-Host "STOPPED: $stgDst already exists (never overwritten). Compare its hash manually." -ForegroundColor Red; return }
   $stgAll = ''

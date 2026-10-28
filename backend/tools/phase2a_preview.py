@@ -34,7 +34,7 @@ from pathlib import Path
 
 _EMBEDDED = {
     "market_calendar": (
-        "H4sIALtQ4moC/6VYe2/bRhL/n59ioKI4sqEUS7KTs68qznXVXFLHKfy4wFcclBW5khamuLklaUcp8t3vN7skRUqM48MZSETu"
+        "H4sIAONU4moC/6VYe2/bRhL/n59ioKI4sqEUS7KTs68qznXVXFLHKfy4wFcclBW5khamuLklaUcp8t3vN7skRUqM48MZSETu"
         "vJ87w16v591ckfxPofINrYW5kzlFIpFpLMwJ5UbEKl1SLDZZSCudKPckhUk2FCU6kxmJNCb8Zkqn7ohytZbZwPNuMhlTrimW"
         "kYolvf/H9ALYTJ2Ca0ZGiii3ZDidS1pCnIxPSNDPcqGN7L/7KFNgfdQmd8gZqZTylfQqHn0oVEkPmfnpIpemf2b1KCkdCaXy"
         "U073AjY0CWKcK4BNWwlvbjUAochr61YC1kZ5IZLK+pj84fjk4ICm16RT55e+c4Lz1PBFBWUZDyqTARzzewHWiyK11gMr1dAi"
@@ -61,7 +61,7 @@ _EMBEDDED = {
         "mH77mw9Wk2b+I99D4s8lGF0feNvc7oip+yLAHzsaw8+3wiUUhPxTJIWcGqONv+j9GX+pLm7RlN0Ldoc4ljuI9HquUtgXUnPx"
         "U/sZVaZga3XEzvqZd9DJxW3Q5bZZkUePuK5UZsfTwQBto1yF/ephAE6B91/l37o1mRMAAA=="),
     "earnings_outcomes": (
-        "H4sIALtQ4moC/707a3PbyJHf+Ssm2EoZyFJcyre7uULMrZIleld1suRI1F4cFQsCiaGIMwgwGEA04/i/X3fPAzMAKCm5zfmD"
+        "H4sIAONU4moC/707a3PbyJHf+Ssm2EoZyFJcyre7uULMrZIleld1suRI1F4cFQsCiaGIMwgwGEA04/i/X3fPAzMAKCm5zfmD"
         "Rc709PT0e3qanucNpnGZp/mDYCWPl1Va5Kyoq2Wx4SJkuzXPWZwzrmH4I88rtoShBWcPZZzwZAgACVsXu9FgcJVzVhY7tuUl"
         "88V+syiyoVkcJXHFA5bm7N4MEb5Ib3g/ZGIdlzxhiz1uVe7Zpkh4RjvQ94HI461YFxUrVqxax5WkaMRma9i5zoDowYCxP7C3"
         "fFWUnF1t4QAsbM4muBD4dwKruSHtKIn3ZsovSprM+eeKVXBGgGAIQNyAGdig8w/PxlLBciAttlcFI/Y2FlxtuC35Y1rUwoZ4"
@@ -131,7 +131,7 @@ _EMBEDDED = {
         "EO6YTS9gzZhB+jx0ZTrBvpFdezMpfNX/BSCiR5QwnMjhPh0J3NvkF2/z2PcGUfY9PsA5+oaRzpAit+tkPeE+Oyb01SH2a6MC"
         "OUYzEDDElh39oo4e1AZ9EUz3Ig7+FwsokRoBPgAA"),
     "earnings_scoreboard": (
-        "H4sIALtQ4moC/71bbW/bSJL+rl/RYLAAmaE08uSSXSurAZxEsxOcYw9sZwY5weBSYtvmmiK1JGVHMfzf96nqFzYpyklu985I"
+        "H4sIAONU4moC/71bbW/bSJL+rl/RYLAAmaE08uSSXSurAZxEsxOcYw9sZwY5weBSYtvmmiK1JGVHMfzf96nqFzYpyklu985I"
         "bKnZXVVdb11VXfQ8bzCLyzzNryuxKhKZiXi53JTxciuqZVHKRRGXifDvZJlepTIRibxK87ROizwUpYyTYZFn22A0GPxxE9di"
         "WWzyuhIx/gm7ZF3KoTQ48CVJl7R+MhDiuaDlosrjdXVTYOUyi6tKLXsz++X0bBadzY5nR+cz4S/jdb3BarGQVyBM1DdSWLBx"
         "ngP1Uq5kXgevGfLZ7OLs9Py32duL979jeRLXkokVP4pFvLy9SrNMJkEojn65mJ1ZNHGeiKMPb97/7ePpx3OHsBgY5edltklk"
@@ -209,7 +209,37 @@ def load_embedded():
         mod.__file__ = f"<embedded {name}>"
         sys.modules[name] = mod
         exec(compile(src, mod.__file__, "exec"), mod.__dict__)
-    return sys.modules["market_calendar"], sys.modules["earnings_outcomes"], sys.modules["earnings_scoreboard"]
+    eo, sb = sys.modules["earnings_outcomes"], sys.modules["earnings_scoreboard"]
+
+    # The embedded modules also contain the production database / provider code paths. The preview never
+    # needs them, so they are switched off: calling any of them raises instead of touching a table or a provider.
+    def _blocked(name):
+        def f(*a, **k):
+            raise RuntimeError(f"{name} is disabled in the read-only preview")
+        return f
+    for fn in ("run", "ensure_table", "load_outcomes", "_save", "sync_legacy_columns", "events_to_review",
+               "default_bars_fetcher"):
+        setattr(eo, fn, _blocked("earnings_outcomes." + fn))
+    for fn in ("scoreboard", "load_rows"):
+        setattr(sb, fn, _blocked("earnings_scoreboard." + fn))
+    return sys.modules["market_calendar"], eo, sb
+
+
+class no_network:
+    """While active, any socket connect raises (the computation must not reach a provider or the database)."""
+
+    def __enter__(self):
+        import socket
+        self._real = socket.socket.connect
+
+        def blocked(*a, **k):
+            raise RuntimeError("network blocked by the read-only preview")
+        socket.socket.connect = blocked
+        return self
+
+    def __exit__(self, *exc):
+        import socket
+        socket.socket.connect = self._real
 
 
 MODELS = {"claude_new": "Claude", "claude_pro": "Claude Pro", "gemini": "Gemini", "grok": "Grok",
@@ -271,6 +301,8 @@ def preview(snaps, cal, now=None):
     now = now or datetime.now(timezone.utc)
     rows = []
     for r in snaps:
+        if r["model"] not in MODELS:
+            continue
         rows.append({"model": r["model"], "symbol": r["symbol"], "earnings_date": _d(r["earnings_date"]),
                      "report_timing": r["report_timing"], "predicted_at": r["predicted_at"],
                      "signal": r["signal"], "score": r["score"]})
@@ -358,6 +390,72 @@ def preview(snaps, cal, now=None):
             "AFTER_B_selection_and_timely_outcomes": _slim(pb),
         }
     out["definition"] = b["method"]
+
+    # ---- how many events the corrected lifecycle can grade, split by report timing ----
+    from zoneinfo import ZoneInfo
+    today_et = now.astimezone(ZoneInfo("America/New_York")).date()
+    label_any = {}
+    for r in rows:
+        if r["report_timing"]:
+            label_any[(r["symbol"], r["earnings_date"])] = r["report_timing"]
+    cal_kind = {}
+    for c in cal:
+        k = eo.timing_kind(c.get("reporting_time")) or eo.timing_kind(c.get("report_time"))
+        if k:
+            cal_kind[(c["symbol"], _d(c["earnings_date"]))] = k
+    events = {(r["symbol"], r["earnings_date"]) for r in rows}
+    tb = {"Before Open": {"reported": 0, "graded_with_available_prices": 0, "pending_reaction_window_open": 0,
+                          "missing_price": 0, "legacy_graded": 0, "legacy_stamped_unverifiable": 0},
+          "After Close": {"reported": 0, "graded_with_available_prices": 0, "pending_reaction_window_open": 0,
+                          "missing_price": 0, "legacy_graded": 0, "legacy_stamped_unverifiable": 0},
+          "timing unknown": {"reported": 0, "graded_with_available_prices": 0, "pending_reaction_window_open": 0,
+                             "missing_price": 0, "legacy_graded": 0, "legacy_stamped_unverifiable": 0}}
+    not_reported = 0
+    for key in events:
+        if key[1] > today_et:
+            not_reported += 1
+            continue
+        kind = eo.timing_kind(label_any.get(key)) or cal_kind.get(key)
+        lab = "Before Open" if kind == "BMO" else "After Close" if kind == "AMC" else "timing unknown"
+        row = tb[lab]
+        row["reported"] += 1
+        if key in legacy_out:
+            row["legacy_graded"] += 1
+        elif key in legacy_stamp:
+            row["legacy_stamped_unverifiable"] += 1
+        if kind is None:
+            row["missing_price"] += 1
+        elif now < eo.ready_at(eo.reaction_window(key[1], kind)[1]):
+            row["pending_reaction_window_open"] += 1
+        elif key in cal_out:
+            row["graded_with_available_prices"] += 1
+        else:
+            row["missing_price"] += 1
+    out["grading_by_timing"] = tb
+    out["events_not_reported_yet"] = not_reported
+
+    # ---- integrity checks: one prediction per event/model, nothing graded before its session closed ----
+    dup, prem_ok = [], True
+    for m, v in out["models"].items():
+        B = v["AFTER_B_selection_and_timely_outcomes"]
+        counted = B["BUY"][0] + B["SELL"][0] + B["NEUTRAL_calls"]
+        if counted != B["graded"]:
+            dup.append((m, counted, B["graded"]))
+        if B["eligible"] > B["events_total"]:
+            dup.append((m, "eligible>events", B["eligible"]))
+    for key, o in cal_out.items():
+        kind = o.get("timing") or eo.timing_kind(label_any.get(key))
+        if kind and now < eo.ready_at(eo.reaction_window(key[1], kind)[1]):
+            prem_ok = False
+    out["integrity_checks"] = {
+        "one_prediction_per_event_model": not dup, "violations": dup,
+        "no_outcome_accepted_before_reaction_close": prem_ok,
+        "rows_vs_events_after_B": {m: {"before_release_rows": pick(b, m)["rows_by_class"].get("BEFORE_RELEASE", 0),
+                                       "eligible_events": pick(b, m)["events_eligible"],
+                                       "post_release_rows": pick(b, m)["rows_by_class"].get("AFTER_RELEASE", 0),
+                                       "ambiguous_rows": pick(b, m)["rows_by_class"].get("AMBIGUOUS", 0),
+                                       "retrospective_rows": pick(b, m)["rows_by_class"].get("RETROSPECTIVE", 0)}
+                                   for m in MODELS}}
     return out
 
 
@@ -385,7 +483,8 @@ def main():
     except Exception as exc:  # noqa: BLE001
         print("earnings_calendar not readable:", type(exc).__name__)
         cal = []
-    res = preview(snaps, cal)
+    with no_network():
+        res = preview(snaps, cal)
     Path(a.out).write_text(json.dumps(res, indent=1, default=str), encoding="utf-8")
     print("wrote", a.out)
     print("calendar outcomes usable:", res["calendar_outcomes_usable"], "| issues:", res["calendar_outcome_issues"])
@@ -402,7 +501,19 @@ def main():
         print(f"{v['label']:22s}| {L['graded']:3d}/{L['unverifiable']:4d}/{L['pending']:4d} | BUY {L['BUY'][0]},{L['BUY'][1]} SELL {L['SELL'][0]},{L['SELL'][1]} | "
               f"A {A['eligible']} {A['graded']} B{A['BUY'][0]},{A['BUY'][1]} S{A['SELL'][0]},{A['SELL'][1]} | "
               f"B {B['eligible']} {B['graded']} {B['pending']} {B['missing_outcome']} BUY {B['BUY'][0]},{B['BUY'][1]} {B['BUY'][2]} SELL {B['SELL'][0]},{B['SELL'][1]}")
-    print("\nbaseline (AFTER-B, Claude):", res["models"]["claude_new"]["AFTER_B_selection_and_timely_outcomes"]["baseline"])
+    print("\nGRADING BY REPORT TIMING (reported events; events not reported yet:", res["events_not_reported_yet"], ")")
+    for lab, v in res["grading_by_timing"].items():
+        print(f"  {lab:15s} {v}")
+    ic = res["integrity_checks"]
+    print("\nINTEGRITY: one prediction per event/model:", ic["one_prediction_per_event_model"], ic["violations"],
+          "| no outcome accepted before reaction close:", ic["no_outcome_accepted_before_reaction_close"])
+    print("rows vs events (AFTER-B):")
+    for m, v in ic["rows_vs_events_after_B"].items():
+        print(f"  {m:11s} {v}")
+    print("\nPer model (AFTER-B): BUY / SELL graded,correct,95%CI | NEUTRAL calls | excluded events | baseline")
+    for m, v in res["models"].items():
+        B = v["AFTER_B_selection_and_timely_outcomes"]
+        print(f"  {v['label']:22s} BUY {B['BUY']} SELL {B['SELL']} NEUTRAL {B['NEUTRAL_calls']} excluded {B['excluded']} baseline up {B['baseline']['up_pct']}% down {B['baseline']['down_pct']}% flat {B['baseline']['flat_pct']}% (n{B['baseline']['graded']})")
 
 
 if __name__ == "__main__":
