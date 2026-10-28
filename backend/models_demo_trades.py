@@ -79,3 +79,5 @@ class IntradaySignalAudit(Base):
     legacy_opened = Column(Boolean, nullable=True)       # did the active workflow open a paper trade from it
     trade_id = Column(Integer, nullable=True)
     legacy_held = Column(Boolean, nullable=True)
+    attribution_ok = Column(Boolean, nullable=True)      # the opened trade is this strategy's / symbol's / side's signal at this entry and score
+    attribution_detail = Column(Text, nullable=True)

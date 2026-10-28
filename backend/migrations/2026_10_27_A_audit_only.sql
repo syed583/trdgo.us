@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS intraday_signal_audit (
   legacy_opened BOOLEAN,
   trade_id INTEGER,
   legacy_held BOOLEAN,
+  attribution_ok BOOLEAN,
+  attribution_detail TEXT,
   PRIMARY KEY (id)
 );
 CREATE INDEX IF NOT EXISTS ix_intraday_signal_audit_day ON intraday_signal_audit (trading_date, strategy);

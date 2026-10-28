@@ -303,7 +303,7 @@ def _audit_signals(et, boards: dict, have0: set, have: set) -> None:
     t0 = _t.monotonic()
     budget = float((getattr(__import__("tab_settings"), "INTRADAY_VERIFICATION", None) or {}).get("max_seconds", 5.0))
     sv.STATS["cycles"] += 1
-    s = database.SessionLocal()
+    s = (sv.audit_sessionmaker() or database.SessionLocal)()      # its own least-privileged role when AUDIT_DATABASE_URL is set
     try:
         if s.get_bind().dialect.name == "postgresql":      # the audit can never hold a lock or a statement open against live trading
             from sqlalchemy import text as _text
@@ -326,13 +326,17 @@ def _audit_signals(et, boards: dict, have0: set, have: set) -> None:
                 except Exception:  # noqa: BLE001 - one signal's audit fault is counted and skipped
                     sv.STATS["verify_errors"] += 1
                     continue
-                opened_id, held = None, (strat, sym) in have0
+                opened_id, held, attr = None, (strat, sym) in have0, None
                 if (strat, sym) in have and not held:
-                    t = s.query(DemoTrade.id).filter_by(strategy=strat, symbol=sym, session_date=today).order_by(DemoTrade.id.desc()).first()
-                    opened_id = t[0] if t else None
-                results.append((v, sym, opened_id, held))
-        for v, sym, opened_id, held in results:
-            if sv.record(s, v, now=et, symbol=sym, opened_id=opened_id, held=held):
+                    t = s.query(DemoTrade).filter_by(strategy=strat, symbol=sym, session_date=today).order_by(DemoTrade.id.desc()).first()
+                    opened_id = t.id if t else None
+                    attr = sv.attribution(strat, sym, raw, info.get("entry"), v["score"], t)
+                    n_today = s.query(DemoTrade.id).filter_by(strategy=strat, symbol=sym, session_date=today).count()
+                    if n_today > 1:                       # the schema forbids it; if it ever happened it must be visible
+                        attr = {"ok": False, "detail": f"{n_today} trades for this strategy/symbol/day"}
+                results.append((v, sym, opened_id, held, attr))
+        for v, sym, opened_id, held, attr in results:
+            if sv.record(s, v, now=et, symbol=sym, opened_id=opened_id, held=held, attr=attr):
                 sv.STATS["recorded"] += 1
         s.commit()
     except Exception:  # noqa: BLE001
