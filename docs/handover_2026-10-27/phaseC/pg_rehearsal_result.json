@@ -54,7 +54,7 @@
     {
       "check": "auditing 240 signals (6 strategies x 40 names) in one tick is fast",
       "ok": true,
-      "detail": "0.11s, rows=241"
+      "detail": "0.18s, rows=241"
     },
     {
       "check": "an exhausted time budget audits nothing and raises nothing",

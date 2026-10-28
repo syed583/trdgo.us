@@ -67,6 +67,30 @@ def log_stats(force: bool = False) -> None:
         logging.getLogger(__name__).info("SIGNAL_AUDIT_STATS %s", json.dumps(STATS, sort_keys=True))
 
 
+_audit_sessionmaker = None
+
+
+def audit_sessionmaker():
+    """A session factory for the audit that uses its OWN least-privileged database role, when ``AUDIT_DATABASE_URL`` is set (the
+    role needs only SELECT on demo_trades and INSERT / SELECT on the audit table -- see migrations/..._A_audit_role_TEMPLATE.sql).
+    Unset (the default): the audit uses the application's normal session factory. One short connection, never pooled."""
+    import os
+    global _audit_sessionmaker
+    url = (os.getenv("AUDIT_DATABASE_URL") or "").strip()
+    if not url:
+        return None
+    if _audit_sessionmaker is None:
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import NullPool
+        if url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+        args = {"prepare_threshold": None} if (url.startswith("postgresql") and ":6543" in url) else {}
+        eng = create_engine(url, poolclass=NullPool, connect_args=args)
+        _audit_sessionmaker = sessionmaker(bind=eng, autoflush=False)
+    return _audit_sessionmaker
+
+
 def mode() -> str:
     return str((getattr(cfg, "INTRADAY_VERIFICATION", None) or {}).get("mode", "off")).lower()
 
@@ -180,7 +204,7 @@ def verify(strategy: str, row: dict, *, now: datetime, session: Optional[str] = 
     integrity = all(c["ok"] for c in checks)
 
     # 6. data (separate from integrity: a clean score on thin data is NOT verified evidence)
-    data: dict = {"status": DATA_UNVERIFIED, "reasons": []}
+    data: dict = {"status": DATA_UNVERIFIED, "staleness": "NOT ASSESSED", "reasons": []}
     meta = row.get("signal_meta")
     nosrc = NO_SOURCE.get(strategy, frozenset())
     covered = sum(float(p.get("max") or 0) for p in params if p.get("bias") is not None)
@@ -191,7 +215,7 @@ def verify(strategy: str, row: dict, *, now: datetime, session: Optional[str] = 
     if direction in ("BUY", "SELL") and (ex is None or not meta):
         # No per-signal timestamps on this row (older build, or timestamps not enabled): staleness cannot be judged. Missing evidence still can.
         thin = basic["eligible_coverage_pct"] < float(getattr(cfg, "MIN_COVERAGE_PCT", 70.0))
-        data = dict(basic, status=DATA_THIN if thin else DATA_UNVERIFIED,
+        data = dict(basic, staleness="NOT ASSESSED", status=DATA_THIN if thin else DATA_UNVERIFIED,
                     reasons=([f"only {basic['eligible_coverage_pct']:.0f}% of the eligible weight has a reading (missing readings are scored "
                               f"neutral, not verified)"] if thin else []) + ["no per-signal timestamps: staleness cannot be judged"])
     elif direction in ("BUY", "SELL"):
@@ -213,7 +237,8 @@ def verify(strategy: str, row: dict, *, now: datetime, session: Optional[str] = 
             status = DATA_OK if ed["ok"] else DATA_THIN
             if not has_ts:
                 status = DATA_UNVERIFIED
-            data = {**basic, "status": status, "reasons": ed["reasons"] + ([] if has_ts else ["no per-signal timestamps on this row"]),
+            data = {**basic, "staleness": "ASSESSED", "stale_parameters": [r["name"] for r in ed["classified"] if r["category"] == ex.STALE],
+                    "status": status, "reasons": ed["reasons"] + ([] if has_ts else ["no per-signal timestamps on this row"]),
                     "code": ed["code"], "eligible_coverage_pct": cov["eligible_pct"], "total_coverage_pct": cov["total_pct"],
                     "verified_weight": cov["available_weight"], "by_category": cov["by_category"], "agreement": ed["agreement"],
                     "price_age_s": (row.get("data") or {}).get("price_age_s"), "engine_age_s": (row.get("data") or {}).get("signals_age_s")}
@@ -226,16 +251,37 @@ def verify(strategy: str, row: dict, *, now: datetime, session: Optional[str] = 
             "data_status": data["status"], "checks": checks, "reasons": reasons, "breakdown": breakdown, "session": sess}
 
 
+def attribution(strategy: str, symbol: str, direction: str, entry, score, trade) -> dict:
+    """Is the paper trade the tracker opened really THIS strategy's, THIS symbol's, THIS side's signal at THIS entry price and score?
+    ``trade`` is the committed demo_trades row (strategy, symbol, side, entry_price, score_at_entry)."""
+    problems = []
+    if trade is None:
+        return {"ok": None, "detail": "no trade row found for the opened id"}
+    if trade.strategy != strategy:
+        problems.append(f"trade is attributed to {trade.strategy}, signal is {strategy}")
+    if trade.symbol != symbol:
+        problems.append(f"trade symbol {trade.symbol} != signal symbol {symbol}")
+    if trade.side != ("LONG" if direction == "BUY" else "SHORT"):
+        problems.append(f"trade side {trade.side} does not match the {direction} signal")
+    if entry is not None and trade.entry_price is not None and abs(float(trade.entry_price) - float(entry)) > 1e-6:
+        problems.append(f"trade entry {trade.entry_price} != signal entry {entry}")
+    tol = float((getattr(cfg, "INTRADAY_VERIFICATION", None) or {}).get("score_tolerance", 0.05))
+    if score is not None and trade.score_at_entry is not None and abs(float(trade.score_at_entry) - float(score)) > tol:
+        problems.append(f"trade score {trade.score_at_entry} != signal score {score}")
+    return {"ok": not problems, "detail": "; ".join(problems)}
+
+
 # ----------------------------------------------------------------------------------------------------- recording ------
 _last: dict = {}
 
 
-def record(s, v: dict, *, now: datetime, symbol: str, opened_id: Optional[int], held: bool) -> bool:
+def record(s, v: dict, *, now: datetime, symbol: str, opened_id: Optional[int], held: bool, attr: Optional[dict] = None) -> bool:
     """Store the outcome when it changed for this strategy / symbol / session / direction. The caller owns the transaction."""
     from models_demo_trades import IntradaySignalAudit
     sess = _session_of(now)
     key = (v["strategy"], symbol, str(sess["trading_date"]), v["session"], v["direction"])
-    sig = (v["verdict"], v["data_status"], v["score"], opened_id is not None, held)
+    attr = attr or {"ok": None, "detail": None}
+    sig = (v["verdict"], v["data_status"], v["score"], opened_id is not None, held, attr["ok"])
     if _last.get(key) == sig:
         return False
     _last[key] = sig
@@ -244,7 +290,8 @@ def record(s, v: dict, *, now: datetime, symbol: str, opened_id: Optional[int], 
         score=v["score"], recomputed_score=v["recomputed_score"], score_diff=v["score_diff"], entry_price=v["entry_price"],
         verdict=v["verdict"], data_status=v["data_status"], failed_checks=json.dumps(v["reasons"]),
         checks=json.dumps(v["checks"], default=str), breakdown=json.dumps(v["breakdown"], default=str),
-        data=json.dumps(v["data"], default=str), legacy_opened=opened_id is not None, trade_id=opened_id, legacy_held=held))
+        data=json.dumps(v["data"], default=str), legacy_opened=opened_id is not None, trade_id=opened_id, legacy_held=held,
+        attribution_ok=attr["ok"], attribution_detail=attr["detail"] or None))
     return True
 
 
@@ -260,13 +307,25 @@ def report(session_factory, day_from: date, day_to: Optional[date] = None) -> di
         for r in rows:
             last[(r.strategy, r.symbol, str(r.trading_date), r.session_type, r.direction)] = r
         per: dict = defaultdict(lambda: {"signals": 0, "integrity_pass": 0, "integrity_fail": 0, "data_ok": 0, "data_thin": 0,
-                                         "data_unverified": 0, "opened_by_legacy": 0, "fail_reasons": Counter(), "data_reasons": Counter()})
+                                         "data_unverified": 0, "stale_not_assessed": 0, "stale_assessed_with_stale_inputs": 0,
+                                         "opened_by_legacy": 0, "already_held": 0, "attribution_ok": 0, "attribution_mismatch": 0,
+                                         "fail_reasons": Counter(), "data_reasons": Counter()})
         for (strat, *_), r in last.items():
             p = per[strat]
             p["signals"] += 1
             p["integrity_pass" if r.verdict == PASS else "integrity_fail"] += 1
             p[{DATA_OK: "data_ok", DATA_THIN: "data_thin"}.get(r.data_status, "data_unverified")] += 1
             p["opened_by_legacy"] += 1 if r.legacy_opened else 0
+            p["already_held"] += 1 if r.legacy_held else 0
+            if r.attribution_ok is True:
+                p["attribution_ok"] += 1
+            elif r.attribution_ok is False:
+                p["attribution_mismatch"] += 1
+            dj = json.loads(r.data or "{}")
+            if dj.get("staleness") == "ASSESSED":
+                p["stale_assessed_with_stale_inputs"] += 1 if dj.get("stale_parameters") else 0
+            else:
+                p["stale_not_assessed"] += 1
             for why in json.loads(r.failed_checks or "[]"):
                 p["fail_reasons"][why.split(":")[0]] += 1
             if r.data_status != DATA_OK:
@@ -276,7 +335,8 @@ def report(session_factory, day_from: date, day_to: Optional[date] = None) -> di
                    "data_reasons": dict(v["data_reasons"].most_common(5))} for k, v in sorted(per.items())}
         tot = Counter()
         for v in out.values():
-            for k in ("signals", "integrity_pass", "integrity_fail", "data_ok", "data_thin", "data_unverified", "opened_by_legacy"):
+            for k in ("signals", "integrity_pass", "integrity_fail", "data_ok", "data_thin", "data_unverified", "stale_not_assessed",
+                      "stale_assessed_with_stale_inputs", "opened_by_legacy", "already_held", "attribution_ok", "attribution_mismatch"):
                 tot[k] += v[k]
         return {"from": str(day_from), "to": str(day_to), "total": dict(tot), "per_strategy": out,
                 "note": "audit only: nothing here blocked or changed a trade"}
