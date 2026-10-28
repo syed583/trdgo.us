@@ -9,6 +9,7 @@ Stages
            final score/signal/coverage, the cache ages, and whether the result equals what the tab shows.
   raw    : (separate approval, after 20:00 ET) GET-only provider reads at background priority for up to 12
            symbols: each dataset's own latest timestamp, row count and the derived parameter bias.
+  fresh  : age buckets of the cached analyses for every calendar name, scan cache sizes/ages.
   db     : SELECT-only counts from the prediction tables.
 
 Safety: reads go through plain SELECTs inside SET TRANSACTION READ ONLY (the database itself refuses a write);
@@ -52,10 +53,10 @@ def _age_h(ts):
 
 def read_cache(keys):
     """SELECT-only read of swr_cache in a READ ONLY transaction. Production namespace = the bare key."""
+    from sqlalchemy import text
+    from database import SessionLocal          # importing it loads backend/.env (APP_ENV, DATABASE_URL)
     if (os.environ.get("APP_ENV") or "").strip().lower() != "production":
         sys.exit("APP_ENV is not 'production' in this process: refusing (would read the dev namespace).")
-    from sqlalchemy import text
-    from database import SessionLocal
     db = SessionLocal()
     try:
         db.execute(text("SET TRANSACTION READ ONLY"))
@@ -238,6 +239,60 @@ def raw_stage(symbols):
     return out
 
 
+def _fetch_fresh_rows():
+    """cache_key, updated_at, value length for the earnings caches and scans. SELECT-only, READ ONLY txn."""
+    from sqlalchemy import text
+    from database import SessionLocal
+    if (os.environ.get("APP_ENV") or "").strip().lower() != "production":
+        sys.exit("APP_ENV is not 'production': refusing.")
+    db = SessionLocal()
+    try:
+        db.execute(text("SET TRANSACTION READ ONLY"))
+        q = ("SELECT cache_key, updated_at, length(value) FROM swr_cache WHERE cache_key LIKE 'earn:equity:%' "
+             "OR cache_key LIKE 'earn:trade:default:%' OR cache_key LIKE 'gemini:hitrate:%' "
+             "OR cache_key IN ('v3:spy15d','kimi:market') OR cache_key ~ '(^|:)scan(:|$)'")
+        return [(k, float(ts), int(n)) for k, ts, n in db.execute(text(q)).all()]
+    finally:
+        db.rollback()
+        db.close()
+
+
+def fresh_stage(days=15, reader=None, fetch=None):
+    """How stale is the data behind the live scores? Age buckets for every name on the earnings calendar."""
+    reader = reader or read_cache
+    fetch = fetch or _fetch_fresh_rows
+    key = SCAN_KEYS["claude"].format(d=days)
+    got = reader([key]).get(key)
+    if not got:
+        return {"status": "NO_CACHED_SCAN", "key": key}
+    names = [(r.get("symbol") or "").upper() for r in (got[1].get("rows") or [])]
+    now = time.time()
+    held = {k: (ts, n) for k, ts, n in fetch()}
+    edges = [(6, "<6h"), (24, "6-24h"), (48, "24-48h"), (96, "48-96h"), (1e9, ">96h")]
+
+    def bucket(ts):
+        if ts is None:
+            return "missing"
+        h = (now - ts) / 3600.0
+        return next(lbl for e, lbl in edges if h < e)
+
+    out = {"generated_at": _iso(now), "calendar_names": len(names), "age_buckets": {}, "scans": {}, "market": {}}
+    for kind, tmpl in (("equity", "earn:equity:{s}"), ("trade", "earn:trade:default:{s}"), ("gemini_hitrate", "gemini:hitrate:{s}")):
+        counts = {}
+        for s in names:
+            b = bucket((held.get(tmpl.format(s=s)) or (None, 0))[0])
+            counts[b] = counts.get(b, 0) + 1
+        out["age_buckets"][kind] = counts
+    for m, tmpl in SCAN_KEYS.items():
+        v = held.get(tmpl.format(d=days))
+        out["scans"][m] = {"present": v is not None, "age_h": None if v is None else round((now - v[0]) / 3600.0, 2),
+                           "bytes": None if v is None else v[1]}
+    for k in ("v3:spy15d", "kimi:market"):
+        v = held.get(k)
+        out["market"][k] = {"present": v is not None, "age_h": None if v is None else round((now - v[0]) / 3600.0, 2)}
+    return out
+
+
 def db_stage():
     from sqlalchemy import text
     from database import SessionLocal
@@ -271,7 +326,7 @@ def db_stage():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--symbols", default="")
-    ap.add_argument("--stage", choices=["pick", "cache", "raw", "db"], required=True)
+    ap.add_argument("--stage", choices=["pick", "cache", "fresh", "raw", "db"], required=True)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     syms = [s for s in a.symbols.replace(" ", "").split(",") if s]
@@ -279,7 +334,7 @@ def main():
         sys.exit("--symbols is required for this stage")
     if a.stage == "raw" and len(syms) > 12:
         sys.exit("raw stage is limited to 12 symbols (provider budget)")
-    res = {"pick": pick_stage, "cache": lambda: cache_stage(syms), "raw": lambda: raw_stage(syms), "db": db_stage}[a.stage]()
+    res = {"pick": pick_stage, "fresh": fresh_stage, "cache": lambda: cache_stage(syms), "raw": lambda: raw_stage(syms), "db": db_stage}[a.stage]()
     Path(a.out).write_text(json.dumps(res, indent=1, default=str), encoding="utf-8")
     print(f"wrote {a.out}")
     if a.stage == "pick":
@@ -287,6 +342,13 @@ def main():
         for r in sorted(res.get("rows", []), key=lambda r: (r.get("days_to") is None, r.get("days_to"))):
             print(f"{r['symbol']:6s} {str(r['date']):10s} d{r['days_to']} {str(r.get('report_timing') or r.get('time_label') or ''):10s} "
                   f"score {r['score']} {r['signal']} cov {r['coverage']}")
+    if a.stage == "fresh":
+        print("calendar names:", res.get("calendar_names"))
+        for k, v in res.get("age_buckets", {}).items():
+            print(f"  {k:15s}", v)
+        for k, v in res.get("scans", {}).items():
+            print(f"  scan {k:11s}", v)
+        print("  market", res.get("market"))
     if a.stage == "cache":
         for s, rec in res["symbols"].items():
             print(s, rec.get("status"), "equity_age_h", rec.get("equity_age_h"), "trade_age_h", rec.get("trade_age_h"))
