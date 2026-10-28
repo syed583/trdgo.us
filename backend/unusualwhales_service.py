@@ -36,8 +36,10 @@ retry.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import random
 import threading
 import time
 import urllib.error
@@ -137,8 +139,97 @@ MAX_PACE = 1.5
 # which is what cuts the pacing wait a fanned-out screen sees. The adaptive
 # dispatcher (and the 429 backoff) still widen the gap the moment a real
 # per-minute cap starts to bite, so this stays safe on a tighter token.
-MAX_INFLIGHT = 8
+# The provider's ONLY limit is 3 simultaneous in-flight REST requests per token, across every process
+# that uses the token (UW support, 2026-10-23); more returns 429 concurrent_limit_exceeded. 8 here
+# guaranteed those 429s. Override with UW_MAX_INFLIGHT (1..3).
+PROVIDER_CONCURRENCY = 3
+
+
+def _max_inflight() -> int:
+    raw = os.environ.get("UW_MAX_INFLIGHT", "").strip()
+    return max(1, min(PROVIDER_CONCURRENCY, int(raw))) if raw.isdigit() else PROVIDER_CONCURRENCY
+
+
+MAX_INFLIGHT = _max_inflight()
 _inflight = threading.BoundedSemaphore(MAX_INFLIGHT)
+
+# Live priority without rewriting every caller: background work (the cache warmer marks its own threads)
+# may hold at most ONE connection and only while no foreground request is waiting for one, so the other
+# connections always belong to live trading and pages.
+_bg = threading.local()
+_bg_slot = threading.BoundedSemaphore(1)
+_fg_waiting = 0
+_fg_lock = threading.Lock()
+BG_MAX_RETRIES = 3            # a background request retries a 429 this many times, then gives up
+_bg_cooldown = {"until": 0.0, "level": 0}   # background-only back-off after repeated 429s (never blocks the app)
+
+
+def set_background(on: bool = True) -> None:
+    """Mark the calling thread as background work (cache warming): lowest priority."""
+    _bg.on = bool(on)
+
+
+def is_background() -> bool:
+    return bool(getattr(_bg, "on", False))
+
+
+def foreground_waiting() -> int:
+    return _fg_waiting
+
+
+def background_cooldown_remaining() -> float:
+    return max(0.0, _bg_cooldown["until"] - time.time())
+
+
+def _bg_note_429() -> None:
+    """Exponential, jittered, capped: 30s, 60s, ... 15 min of background-only silence."""
+    _bg_cooldown["level"] = min(_bg_cooldown["level"] + 1, 6)
+    wait = min(900.0, 30.0 * (2 ** (_bg_cooldown["level"] - 1)))
+    _bg_cooldown["until"] = time.time() + wait * random.uniform(0.75, 1.25)
+
+
+def _bg_note_ok() -> None:
+    _bg_cooldown["level"] = 0
+
+
+def _is_concurrency_429(raw: bytes) -> bool:
+    """A 429 that means "too many in flight at once" (concurrent_limit_exceeded), not a rate."""
+    return b"concurrent" in (raw or b"").lower()
+
+
+def _backoff(attempt: int, floor: float = 0.0) -> float:
+    """Full-jitter exponential backoff (base 0.35s, cap 4s) with Retry-After as a floor."""
+    return max(floor, random.uniform(0.0, min(4.0, 0.35 * (2 ** attempt))))
+
+
+@contextlib.contextmanager
+def _slot(background: bool):
+    """Hold one of the provider's connections. Foreground requests count themselves while they wait;
+    a background request takes the single background slot and stands aside while any foreground waits."""
+    global _fg_waiting
+    if background:
+        _bg_slot.acquire()
+        try:
+            while _fg_waiting > 0:
+                time.sleep(0.05)
+            _inflight.acquire()
+        except BaseException:
+            _bg_slot.release()
+            raise
+    else:
+        with _fg_lock:
+            _fg_waiting += 1
+        try:
+            _inflight.acquire()
+        finally:
+            with _fg_lock:
+                _fg_waiting -= 1
+    try:
+        yield
+    finally:
+        _inflight.release()
+        if background:
+            _bg_slot.release()
 
 # Single-flight: when many users open the same symbol at once and the cache is
 # cold, without this every one of them fires the same request -- a burst that
@@ -180,7 +271,7 @@ _last_status: Optional[str] = None
 _metrics: dict = {
     "net_calls": 0, "net_errors": 0, "no_data": 0, "cache_hits": 0, "cache_misses": 0,
     "lat": deque(maxlen=60), "wait": deque(maxlen=60),
-    "errors_by": {}, "last_error": None, "err_times": deque(maxlen=200),
+    "errors_by": {}, "errors_by_path": {}, "last_error": None, "err_times": deque(maxlen=200),
     "last_path": None, "last_latency_ms": None, "last_at": None,
 }
 
@@ -462,9 +553,15 @@ def get(path: str, params: Optional[dict] = None) -> dict:
     # One automatic retry on a 429: a short burst can brush the per-minute cap,
     # and by the time a brief bounded wait passes the window has usually
     # advanced, so the re-send succeeds and no error ever reaches the caller.
-    for _attempt in range(2):
+    background = is_background()
+    if background and time.time() < _bg_cooldown["until"]:
+        return {"status": "RATE_LIMITED", "data": None, "detail": "Background work is backing off after a 429.",
+                "retry_in": round(background_cooldown_remaining()), "source": SOURCE}
+    max_attempts = (BG_MAX_RETRIES if background else 2) + 1
+    raw429 = b""
+    for _attempt in range(max_attempts):
         gate_start = time.time()
-        with _inflight:
+        with _slot(background):
             _space_out()
             _metrics["wait"].append((time.time() - gate_start) * 1000.0)
             net_start = time.time()
@@ -482,16 +579,25 @@ def get(path: str, params: Optional[dict] = None) -> dict:
             except urllib.error.HTTPError as exc:
                 key = str(exc.code)
                 _metrics["errors_by"][key] = _metrics["errors_by"].get(key, 0) + 1
-                if exc.code == 429 and _attempt == 0:
-                    time.sleep(min(
-                        _seconds(getattr(exc, "headers", {}).get("Retry-After"))
-                        or 1.0, 2.0))
-                    continue
+                if exc.code == 429:
+                    try:
+                        raw429 = exc.read() or b""
+                    except Exception:  # noqa: BLE001
+                        raw429 = b""
+                    _count_path_error(path, 429)
+                    if _attempt < max_attempts - 1:       # bounded: never an endless retry
+                        retry_after = _seconds(getattr(exc, "headers", {}).get("Retry-After")) or 0
+                        time.sleep(_backoff(_attempt, min(float(retry_after), 5.0)))
+                        continue
+                    if background:
+                        _bg_note_429()
+                    return _http_error(exc, raw429, background)
                 # A 404 means the provider has no data for this symbol/endpoint
                 # (a thin ticker with no dividends, insiders, etc.) -- an
                 # expected empty answer, not a pipeline failure.
                 if exc.code == 404:
                     _metrics["no_data"] += 1
+                    _count_path_error(path, 404)
                 else:
                     _metrics["net_errors"] += 1
                     _metrics["err_times"].append(time.time())
@@ -507,17 +613,27 @@ def get(path: str, params: Optional[dict] = None) -> dict:
                         "detail": type(exc).__name__, "source": SOURCE}
 
     _last_status = "OK"
+    if background:
+        _bg_note_ok()
     # Their payloads put the answer under "data"; a few return the object
     # itself. Both are handed back the same way so callers never branch.
     data = body.get("data") if isinstance(body, dict) and "data" in body else body
     return {"status": "OK", "data": data, "source": SOURCE}
 
 
-def _http_error(exc) -> dict:
+def _count_path_error(path: str, code: int) -> None:
+    """Which endpoint produced which refusal (bounded), so 429s and 404s can be traced to a caller."""
+    book = _metrics["errors_by_path"]
+    key = f"{code} {path.split('?')[0][:80]}"
+    if key in book or len(book) < 300:
+        book[key] = book.get(key, 0) + 1
+
+
+def _http_error(exc, raw: Optional[bytes] = None, background: bool = False) -> dict:
     global _last_status
 
     try:
-        body = json.loads(exc.read().decode("utf-8", "ignore") or "{}")
+        body = json.loads((raw if raw is not None else exc.read()).decode("utf-8", "ignore") or "{}")
     except Exception:  # noqa: BLE001
         body = {}
     detail = str(body.get("message") or body.get("error") or f"HTTP {exc.code}")
@@ -531,7 +647,10 @@ def _http_error(exc) -> dict:
         # would take the app off the air for far longer than the refusal
         # actually means. Their Retry-After wins when they send one.
         wait = _seconds(getattr(exc, "headers", {}).get("Retry-After")) or 5
-        _pause(wait)
+        # "Too many at once" was already backed off with jitter, and background work has its own
+        # back-off: neither may take the whole app (live trading) off the air. A real rate 429 does pause.
+        if not background and not _is_concurrency_429(raw or b""):
+            _pause(wait)
         _last_status = "RATE_LIMITED"
         return {"status": "RATE_LIMITED", "data": None, "detail": detail,
                 "retry_in": wait, "source": SOURCE}
@@ -1313,6 +1432,9 @@ def metrics() -> dict:
         "net_errors_total": _metrics["net_errors"],
         "no_data": _metrics["no_data"],
         "errors_by": dict(_metrics["errors_by"]),
+        "errors_by_path": dict(_metrics["errors_by_path"]),
+        "max_inflight": MAX_INFLIGHT,
+        "background_cooldown_s": round(background_cooldown_remaining()),
         "last_error": _metrics["last_error"],
         "avg_latency_ms": avg(lat),
         "p95_latency_ms": p95(lat),

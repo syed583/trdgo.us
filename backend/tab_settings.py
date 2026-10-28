@@ -355,3 +355,16 @@ EARN_CACHE_TTL: float = 48 * 3600.0
 import os as _os
 INTRADAY_VERIFICATION: dict = {"mode": (_os.getenv("INTRADAY_VERIFICATION_MODE") or "off").strip().lower(), "score_tolerance": 0.05,
                                "max_seconds": 5.0}
+
+
+# Unusual Whales plan policy for the cache warmer. The subscription (Whale Bundle Advanced) has UNLIMITED daily
+# requests; the provider's only limit is 3 simultaneous in-flight REST requests per token across every process
+# that uses it (enforced in unusualwhales_service). Set unlimited_daily False only if the account ever gets a quota.
+UW_PLAN: dict = {
+    "unlimited_daily": True,
+    "daily_limit_if_capped": 13000,    # used ONLY when unlimited_daily is False
+    "hourly_cap_live_hours": 400,      # warming requests per clock hour, weekdays 04:00-20:00 ET (live trading owns the connections)
+    "hourly_cap_off_hours": 6000,      # ... and outside those hours
+    "max_tries_per_symbol": 3,         # then the symbol ends as PARTIAL_DATA / failed for the day
+    "retry_delay_s": 600,              # base delay between a symbol's tries (x the try number)
+}

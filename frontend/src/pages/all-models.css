@@ -76,4 +76,6 @@
   margin: 0 0 10px; border: 1px solid var(--border, #e5e7eb); border-radius: 8px; background: var(--panel-2, rgba(148,163,184,.1)); }
 .am-warm b { font-weight: 700; }
 .am-warm-st { font-style: normal; font-weight: 700; color: var(--green, #16a34a); }
-.am-warm-st.paused_budget { color: var(--amber, #d97706); }
+.am-warm-st.throttled, .am-warm-st.retrying, .am-warm-st.partial_data, .am-warm-st.paused_manually { color: var(--amber, #d97706); }
+.am-warm-st.api_error { color: var(--red, #dc2626); }
+.am-warm-why { color: var(--amber, #d97706); }

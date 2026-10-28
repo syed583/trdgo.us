@@ -778,8 +778,17 @@ def warm_progress() -> dict:
         st["calls_today"] = st.get("calls_day", 0)
     else:
         st["calls_today"] = 0                      # a new counting day has begun
-    st["calls_limit"] = lw.DAILY_LIMIT
-    st["reserve"] = lw.RESERVE
+    unlimited = bool(st.get("plan_unlimited", True))
+    st["calls_limit"] = None if unlimited else lw.DAILY_LIMIT      # no daily ceiling on the unlimited plan
+    st["reserve"] = None if unlimited else lw.RESERVE
+    st["counts"] = lw.summary(st)
+    st["in_live_hours"] = lw.in_live_hours()
+    st["eta_seconds"] = None
+    built = int(st.get("complete") or 0) - int(st.get("skipped_fresh") or 0)
+    started = st.get("started_at")
+    if st.get("status") == "WARMING" and started and built >= 10:    # only when it can be calculated reliably
+        per = (time.time() - float(started)) / built
+        st["eta_seconds"] = round(per * st["counts"]["pending"])
     return st
 
 

@@ -94,14 +94,23 @@ export default function AllModelsPage({ ctx }: { ctx: PageContext }) {
       </div>
 
       {warm.data && warm.data.status && !['DISABLED', 'NOT_STARTED', 'UNKNOWN'].includes(warm.data.status) && (
-        <div className="am-warm" title="Local cache warmer: top-1,000 most liquid US stocks">
+        <div className="am-warm" title="Cache warmer: names reporting soon">
           <b>Cache warm-up</b>
-          <span>{warm.data.done ?? 0} / {warm.data.total ?? 0} names</span>
-          <span>priority (next 7d) {warm.data.priority_done ?? 0} / {warm.data.priority_total ?? 0}</span>
-          <span>API calls: {warm.data.calls_used_run ?? 0} this run · {warm.data.calls_today ?? 0} / {warm.data.calls_limit ?? 0} today</span>
           <em className={`am-warm-st ${String(warm.data.status).toLowerCase()}`}>
-            {warm.data.status === 'PAUSED_BUDGET' ? 'paused — daily limit, resumes after reset'
-              : String(warm.data.status).toLowerCase()}</em>
+            {String(warm.data.status).replace('_', ' ')}</em>
+          {warm.data.counts ? (<>
+            <span>{warm.data.counts.complete} / {warm.data.counts.total} warmed ({warm.data.counts.percent}%)</span>
+            <span>pending {warm.data.counts.pending}</span>
+            <span>retrying {warm.data.counts.retrying}</span>
+            <span>partial data {warm.data.counts.partial}</span>
+            <span>failed {warm.data.counts.failed}</span>
+          </>) : <span>{warm.data.done ?? 0} / {warm.data.total ?? 0} names</span>}
+          {warm.data.current && warm.data.status === 'WARMING' && <span>now: {warm.data.current}</span>}
+          {warm.data.last_success_at && <span>last update {new Date(warm.data.last_success_at * 1000).toLocaleTimeString()}</span>}
+          {warm.data.eta_seconds != null && <span>est. {Math.max(1, Math.round(warm.data.eta_seconds / 60))} min left</span>}
+          {warm.data.calls_limit != null && <span>API calls today {warm.data.calls_today ?? 0} / {warm.data.calls_limit}</span>}
+          {warm.data.pause_reason && warm.data.status !== 'WARMING' && warm.data.status !== 'COMPLETED' &&
+            <span className="am-warm-why">{warm.data.pause_reason}</span>}
         </div>
       )}
 

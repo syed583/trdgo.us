@@ -52,14 +52,7 @@ def test_production_mode_limits(monkeypatch):
     assert out == ["True", "13000", "1500", "20.0", "2"]
 
 
-def test_provider_counter_is_capped_at_13000_in_production(monkeypatch):
-    import unusualwhales_service as uw
-    monkeypatch.setattr(lw, "DAILY_LIMIT", 13000)
-    monkeypatch.setattr(uw, "budget", lambda: {"daily_limit_known": True, "app_budget": 15000,
-                                               "used_by_this_app": 12000, "app_left": 3000,
-                                               "blocked": False, "blocked_for_seconds": 0})
-    b = lw._budget()
-    assert b["app_budget"] == 13000 and b["app_left"] == 1000        # not the plan's 15,000
+# (the 13,000/day provider-counter cap was removed for the unlimited plan: see test_uw_warmer_plan.py)
 
 
 def test_get_polls_a_loading_build_when_asked_to_wait(monkeypatch):
@@ -108,7 +101,7 @@ def test_warm_one_forces_a_recompute_even_if_a_value_is_stored(monkeypatch):
     monkeypatch.setattr(swr, "peek", lambda k: store.get(k))
     import gemini_service as gm
     monkeypatch.setattr(gm, "hit_rate_bias", lambda *a, **k: None)
-    assert lw._warm_one("ZZZ") is True and calls == ["eq", "tr"]
+    assert lw._warm_one("ZZZ") == "ok" and calls == ["eq", "tr"]
 
 
 def test_force_ignores_a_loading_or_error_build(monkeypatch):
