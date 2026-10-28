@@ -21,6 +21,14 @@ Tests: hotfix build 656 passed, 12 skipped, 3 failed — the same 3 environment-
 | Migration connection mode suitable for DDL | **NOT VERIFIED.** The 12/12 run you cite used the earlier checker, whose session-mode test was wrong: it reported port **6543** (the Supabase *transaction* pooler) as session-like and advised `--port 6543`. The corrected checker (v3) must be run; it must exit 0 **and** advise a port other than 6543 (expected 5432). Never run the DDL through 6543 |
 | Rollback ready | **PASS.** Rollback SQL rehearsed on PostgreSQL 17.5 (apply → rollback → re-apply, every `demo_trades` row byte-identical, Supabase-style roles emulated), code rollback = fast-forward undone with `git reset`, config rollback = delete one line |
 
+### 1a. Actual VPS evidence, 2026-10-28 (supersedes the "NOT DONE / NOT VERIFIED" rows above)
+| Gate | Result |
+|---|---|
+| Readiness on the VPS | 12/12; port **5432 is session mode** (use `--port 5432` for DDL; 6543 never); PostgreSQL 17.11 |
+| Fresh backup | Taken and validated, SHA-256 sidecar matches (re-take <= 30 min before step B) |
+| Scratch restore V4 (PostgreSQL 17.11 tools, isolated cluster 127.0.0.1:55443, user-reported) | **16/16 PASS**: `pg_restore` exit 0 with no errors, 55/55 tables, 1,010/1,010 `demo_trades` rows byte-identical to the dump, migration A, postcheck 10/10 (RLS, complete ACL, Data API roles), rollback, re-apply, idempotence; scratch cluster stopped and deleted; production fingerprint before/after unchanged |
+| Traps found and fixed in the test (not in the product) | Docker holds ports 54320/54330 (bind refused); `COPY` prints timestamptz in the session time zone (compare in UTC); `pg_restore` stdout is CRLF/ANSI on Windows (compare bytes) |
+
 ## 2. Window and expected downtime
 * Run it in the no-entry window **20:00 → 04:00 ET** (recorded in the runbook as 01:00 → 09:00 VPS time until 1 Nov): the paper tracker opens nothing then, the Strategy Trades page is idle.
 * **Two service restarts** (code with audit OFF, then audit ON). Each: the API/frontend is unavailable **≈ 15–45 s** (my estimate — not measured on this VPS; Caddy answers 502 meanwhile) and the tracker misses at most one 60 s cycle. Total user-visible unavailability ≈ 1–2 minutes. Nothing is lost: positions are in the database and a tick is transactional (a restart mid-tick discards only that uncommitted tick).
