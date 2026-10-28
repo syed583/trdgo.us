@@ -129,6 +129,7 @@ ISOLATED_TABLES = (
     "pe_pilot_state", "pe_pilot_daily", "intraday_sig_v2", "straddle_snap_v2",
     # paper trades and trade-call/plan records (ORM-managed; twins made by ensure_local_orm_tables)
     "demo_trades", "trade_calls", "trade_plans", "trade_plan_events", "trade_plan_seen",
+    "intraday_signal_audit",
 )
 ORM_ISOLATED_TABLES = ("score_snapshots", "demo_trades", "trade_calls", "trade_plans",
                        "trade_plan_events", "trade_plan_seen")

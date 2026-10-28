@@ -106,7 +106,29 @@ def ensure_schema() -> None:
         DemoTrade.__table__.create(bind=engine, checkfirst=True)
         _schema_ready = True
     except Exception:  # noqa: BLE001 - never hard-fail a page on a DB blip
-        pass
+        return
+    _ensure_audit_table()
+
+
+_audit_table_done = False
+
+
+def _ensure_audit_table() -> None:
+    """Create ONLY the audit table, and only when audit mode is on. Separate from the Legacy schema step: a failure (e.g. no DDL right)
+    is logged once and affects nothing else; Legacy trading never depends on this table."""
+    global _audit_table_done
+    if _audit_table_done:
+        return
+    _audit_table_done = True
+    try:
+        import signal_verification as sv
+        if sv.enabled():
+            from database import engine
+            from models_demo_trades import IntradaySignalAudit
+            IntradaySignalAudit.__table__.create(bind=engine, checkfirst=True)
+    except Exception:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).exception("the audit table could not be created; Legacy trading is unaffected")
 
 
 def _board(spec: str) -> Optional[dict]:
@@ -127,7 +149,8 @@ def _row_map(board: dict) -> dict[str, dict]:
             if s:
                 out[s] = {"signal": r.get("signal"), "score": r.get("score"),
                           "entry": r.get("entry"), "now": r.get("now"),
-                          "sl": r.get("sl"), "tp": r.get("tp")}
+                          "sl": r.get("sl"), "tp": r.get("tp"),
+                          "params": r.get("params"), "data": r.get("data") or {}}   # read-only extras for the signal-verification audit
     return out
 
 
@@ -232,10 +255,12 @@ def tick(force: bool = False) -> None:
                     from models_demo_trades import _utcnow
                     t.exit_time = _utcnow()
 
+            have, have0 = set(), set()
             # open new trades for fresh BUY/SELL (one per strategy+symbol+day)
             if _can_open(et):
                 have = {(x.strategy, x.symbol) for x in
                         s.query(DemoTrade.strategy, DemoTrade.symbol).filter_by(session_date=today).all()}
+                have0 = set(have)                  # (read only; used by the signal-verification audit)
                 for strat, rows in boards.items():
                     for sym, info in rows.items():
                         sig = info.get("signal")
@@ -254,10 +279,71 @@ def tick(force: bool = False) -> None:
             s.commit()
         finally:
             s.close()
+        try:
+            import signal_verification as sv
+            if sv.enabled():                  # audit only, AFTER the tick has committed: records, never blocks or changes a trade
+                _audit_signals(et, boards, have0, have)
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).exception("signal verification failed; trading is unaffected")
     except Exception:  # noqa: BLE001
         pass
     finally:
         _tick_lock.release()
+
+
+def _audit_signals(et, boards: dict, have0: set, have: set) -> None:
+    """Signal-verification audit of every BUY / SELL board row, in its own session after Legacy's commit. Never raises. A fault in
+    one signal's verification is counted and skipped; a database fault is counted and the whole audit write is dropped; a hard time
+    budget stops the pass. Nothing here can touch a paper trade."""
+    import time as _t
+    import database
+    import signal_verification as sv
+    from models_demo_trades import DemoTrade
+    t0 = _t.monotonic()
+    budget = float((getattr(__import__("tab_settings"), "INTRADAY_VERIFICATION", None) or {}).get("max_seconds", 5.0))
+    sv.STATS["cycles"] += 1
+    s = database.SessionLocal()
+    try:
+        if s.get_bind().dialect.name == "postgresql":      # the audit can never hold a lock or a statement open against live trading
+            from sqlalchemy import text as _text
+            s.execute(_text("SET LOCAL lock_timeout = '2s'"))
+            s.execute(_text("SET LOCAL statement_timeout = '5s'"))
+        today = et.date()
+        results = []
+        for strat, rows in boards.items():
+            for sym, info in rows.items():
+                if _t.monotonic() - t0 > budget:             # a hard time budget: whatever is left is simply not audited this tick
+                    sv.STATS["budget_skips"] += 1
+                    continue
+                raw = info.get("signal_raw") or info.get("signal")
+                if raw not in ("BUY", "SELL"):
+                    continue
+                sv.STATS["signals_seen"] += 1
+                try:
+                    v = sv.verify(strat, dict(info, symbol=sym), now=et)
+                    sv.STATS["verified"] += 1
+                except Exception:  # noqa: BLE001 - one signal's audit fault is counted and skipped
+                    sv.STATS["verify_errors"] += 1
+                    continue
+                opened_id, held = None, (strat, sym) in have0
+                if (strat, sym) in have and not held:
+                    t = s.query(DemoTrade.id).filter_by(strategy=strat, symbol=sym, session_date=today).order_by(DemoTrade.id.desc()).first()
+                    opened_id = t[0] if t else None
+                results.append((v, sym, opened_id, held))
+        for v, sym, opened_id, held in results:
+            if sv.record(s, v, now=et, symbol=sym, opened_id=opened_id, held=held):
+                sv.STATS["recorded"] += 1
+        s.commit()
+    except Exception:  # noqa: BLE001
+        s.rollback()
+        sv._last.clear()                                     # nothing was stored: let the next pass record again
+        sv.STATS["write_errors"] += 1
+        import logging
+        logging.getLogger(__name__).exception("signal verification audit failed; trading is unaffected")
+    finally:
+        s.close()
+        sv.log_stats()
 
 
 def blotter(strategy: str = "", date: str = "") -> dict:

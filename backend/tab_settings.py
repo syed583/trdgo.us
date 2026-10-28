@@ -346,3 +346,12 @@ TIMING_MULT: dict[str, float] = {"bmo": 1.0, "amc": 1.0, "tue_thu": 1.0, "mon_fr
 # refreshes each name about once a day; a long TTL means page views never trigger a
 # paid recompute in between (a stale value is served while the warmer catches up).
 EARN_CACHE_TTL: float = 48 * 3600.0
+
+
+# Signal verification (signal_verification.py): independently re-derives each BUY / SELL's score from its parameters, weights and the
+# existing formula and judges the data behind it. "off" | "audit", set by the environment variable INTRADAY_VERIFICATION_MODE
+# (default off). AUDIT ONLY: it records the outcome after the paper-trade tick has committed and never blocks, delays or changes a
+# trade; there is deliberately no enforcing mode.
+import os as _os
+INTRADAY_VERIFICATION: dict = {"mode": (_os.getenv("INTRADAY_VERIFICATION_MODE") or "off").strip().lower(), "score_tolerance": 0.05,
+                               "max_seconds": 5.0}

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import (Column, Date, DateTime, Float, Integer, String,
+from sqlalchemy import (Boolean, Column, Date, DateTime, Float, Integer, String, Text,
                         UniqueConstraint, Index)
 
 from database import Base
@@ -52,3 +52,30 @@ class DemoTrade(Base):
 
 def tables() -> list[str]:
     return [DemoTrade.__tablename__]
+
+
+class IntradaySignalAudit(Base):
+    """Signal verification (audit only): the independent re-computation of one BUY / SELL signal and its data verdict."""
+    __tablename__ = "intraday_signal_audit"
+    __table_args__ = (Index("ix_intraday_signal_audit_day", "trading_date", "strategy"),)
+
+    id = Column(Integer, primary_key=True)
+    ts = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    strategy = Column(String(24), nullable=False)
+    symbol = Column(String(16), nullable=False)
+    trading_date = Column(Date, nullable=False)
+    session_type = Column(String(12), nullable=False)
+    direction = Column(String(8), nullable=False)
+    score = Column(Float, nullable=True)                 # as reported by the strategy
+    recomputed_score = Column(Float, nullable=True)      # independently re-derived
+    score_diff = Column(Float, nullable=True)
+    entry_price = Column(Float, nullable=True)
+    verdict = Column(String(8), nullable=False)          # PASS / FAIL (integrity of the score)
+    data_status = Column(String(16), nullable=False)     # DATA_OK / DATA_THIN / DATA_UNVERIFIED
+    failed_checks = Column(Text, nullable=True)          # JSON list
+    checks = Column(Text, nullable=True)                 # JSON: every check and its result
+    breakdown = Column(Text, nullable=True)              # JSON: weight, bias, points, expected points per parameter (internal only)
+    data = Column(Text, nullable=True)                   # JSON: coverage, categories, ages
+    legacy_opened = Column(Boolean, nullable=True)       # did the active workflow open a paper trade from it
+    trade_id = Column(Integer, nullable=True)
+    legacy_held = Column(Boolean, nullable=True)
