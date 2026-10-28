@@ -197,6 +197,9 @@ def build(rows: list, outcomes: dict, models: dict, now: Optional[datetime] = No
             "sell_correct": sig["SELL"]["correct"],
             "neutral_n": sig["NEUTRAL"]["graded"], "neutral_flat_hits": sig["NEUTRAL"]["flat_hits"],
             "neutral_flat_accuracy": None,
+            "history_note": ("No eligible pre-release snapshots: every stored record is date-only (retrospective), so it cannot be "
+                             "shown to precede the announcement. New captures with a real timestamp become eligible."
+                             if counts["events_eligible"] == 0 and pm["rows_by_class"].get(RETRO) else None),
             "evaluated": g, "verified": g, "pending": counts["events_pending"],
             "unverifiable": counts["events_missing_outcome"],
             "acc_30d": _pct(win[30][1], win[30][0]), "n_30d": win[30][0],

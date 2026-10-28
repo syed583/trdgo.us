@@ -230,25 +230,16 @@ def events_to_review(db, today: date) -> dict:
     return {k: (v[0] or None) for k, v in best.items()}
 
 
-def _volume(row: dict) -> float:
-    for k in ("total_volume", "volume"):
-        try:
-            return float(row.get(k))
-        except (TypeError, ValueError):
-            continue
-    return 0.0
-
-
 def regular_session_closes(rows) -> dict:
-    """date -> REGULAR-session close from raw daily rows.
+    """date -> REGULAR-session close from raw daily rows (fail closed).
 
     The provider's daily feed can send more than one row for the same date -- pre-market ('pr'), regular ('r')
     and post-market ('po') -- and the app's own overview code keeps the regular one. An earnings reaction is
     measured close to close, so a pre- or post-market row must never stand in for the close: after an After
     Close report the post-market row already contains the earnings reaction and would corrupt the base price.
-    Rules per date: a regular row wins; a date whose rows carry no market_time at all (one bar per date) uses
-    its highest-volume row; a date with only pre-/post-market rows has NO regular close yet and is left out
-    (the event then stays pending and is retried)."""
+    Only a row explicitly labelled market_time 'r' is a regular close. A date without one (only 'pr' / 'po' rows,
+    or rows with no label at all) has NO regular close and is left out: the event stays pending and is retried.
+    Unlabelled rows are never guessed at -- on real data the highest-volume row can be the post-market one."""
     by_date: dict = {}
     for r in rows or []:
         raw_day = r.get("date") or r.get("start_time")
@@ -257,15 +248,9 @@ def regular_session_closes(rows) -> dict:
             c = float(r.get("close"))
         except (TypeError, ValueError):
             continue
-        by_date.setdefault(d, []).append((r, c))
-    out: dict = {}
-    for d, items in by_date.items():
-        regular = [c for r, c in items if str(r.get("market_time") or "").strip().lower() == "r"]
-        if regular:
-            out[d] = regular[-1]
-        elif all(not r.get("market_time") for r, _ in items):
-            out[d] = max(items, key=lambda x: _volume(x[0]))[1]
-    return out
+        if str(r.get("market_time") or "").strip().lower() == "r":
+            by_date.setdefault(d, []).append(c)
+    return {d: v[-1] for d, v in by_date.items()}
 
 
 def default_bars_fetcher(symbol: str) -> dict:

@@ -88,7 +88,7 @@ export default function ModelAccuracyPage() {
             <tbody>
               {models.map((m) => (
                 <tr key={m.model}>
-                  <td className="l ma-mdl">{m.label}</td>
+                  <td className="l ma-mdl" title={m.history_note || undefined}>{m.label}{m.history_note ? <span className="ma-n"> · history not verifiable</span> : null}</td>
                   <td>{sigCell(m.buy)}</td>
                   <td>{sigCell(m.sell)}</td>
                   <td className="ma-n" title={m.neutral?.note}>{m.neutral?.graded ?? 0} calls</td>

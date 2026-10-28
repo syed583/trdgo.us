@@ -1,7 +1,7 @@
-"""Proposed (NOT applied): rows without a market_time label must never be guessed at.
+"""Rows without a market_time label must never be guessed at.
 
 The REAL AMKR rows below are the ones the production dry run printed on 2026-10-29. Strip their labels and the highest-volume
-heuristic (what 9a242a58 does for unlabelled dates) picks the POST-market row on both days, because the provider's
+heuristic (what 9a242a58 did for unlabelled dates) picks the POST-market row on both days, because the provider's
 total_volume of the post-market row (a running total) exceeds the regular row's. With the fail-closed rule the dates have
 no regular close, so the event stays pending and is retried."""
 import pathlib

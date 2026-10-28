@@ -69,9 +69,11 @@ def test_date_with_only_extended_hours_rows_has_no_regular_close_yet():
     assert o["status"] == eo.PENDING_PRICE and "2026-10-28" in o["note"]
 
 
-def test_unlabelled_single_rows_and_duplicates_without_market_time():
+def test_unlabelled_rows_are_never_guessed_and_the_event_stays_pending():
     rows = [row("2026-10-27", None, 100.0, 9000), row("2026-10-28", None, 104.0, 500), row("2026-10-28", None, 105.0, 8000)]
-    assert eo.regular_session_closes(rows) == {date(2026, 10, 27): 100.0, date(2026, 10, 28): 105.0}   # highest volume
+    assert eo.regular_session_closes(rows) == {}                       # fail closed: no label, no close
+    o = eo.evaluate("X", date(2026, 10, 27), "AMC", NOW, eo.regular_session_closes(rows))
+    assert o["status"] == eo.PENDING_PRICE and o["move_pct"] is None   # retried, not graded and not failed
 
 
 def test_several_regular_rows_last_wins_and_bad_rows_are_ignored():
