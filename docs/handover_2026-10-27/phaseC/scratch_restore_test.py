@@ -14,9 +14,11 @@ import json
 import os
 import re
 import shutil
+import platform
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -37,10 +39,91 @@ def run(cmd, **kw):
     return subprocess.run([str(c) for c in cmd], capture_output=True, text=True, **kw)
 
 
-def ctl(cmd):
-    """pg_ctl start / stop: the server it spawns inherits the pipes, so they must NOT be captured (capturing would wait for the server to exit)."""
-    p = subprocess.run([str(c) for c in cmd], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+def ctl(cmd, out_file=None):
+    """pg_ctl start / stop: the server it spawns inherits the handles, so PIPES must not be used (capturing would wait for the server to exit);
+    the output goes to a FILE instead, so the reason of a failure is never lost."""
+    sink = open(out_file, "ab") if out_file else subprocess.DEVNULL
+    try:
+        p = subprocess.run([str(c) for c in cmd], stdin=subprocess.DEVNULL, stdout=sink, stderr=subprocess.STDOUT)
+    finally:
+        if out_file:
+            sink.close()
     return p.returncode
+
+
+def can_bind(port):
+    """Can this process listen on 127.0.0.1:port? (Windows can forbid a port inside an excluded range or one held by another program.)"""
+    with socket.socket() as s_:
+        try:
+            s_.bind(("127.0.0.1", port))
+            return True, ""
+        except OSError as exc:
+            return False, f"errno {exc.errno}: {exc.strerror}"
+
+
+def pick_port(preferred):
+    cands = ([preferred] if preferred else []) + list(range(54320, 54340)) + [15432, 25432, 35432, 45432, 55432, 5439, 15439]
+    tried = []
+    for p in cands:
+        ok, why = can_bind(p)
+        tried.append((p, ok, why))
+        if ok:
+            return p, tried
+    return None, tried
+
+
+def sh(cmd, timeout=40):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return (r.stdout or "") + (r.stderr or "")
+    except Exception as exc:  # noqa: BLE001
+        return f"<{type(exc).__name__}: {exc}>"
+
+
+def grant_acl(path):
+    """On Windows the PostgreSQL tools run the server with a RESTRICTED token (administrator rights removed). A folder whose access list names
+    only 'Administrators' then becomes unreadable to the server. Give the current user (by SID) explicit full control of THIS scratch folder only."""
+    if os.name != "nt":
+        return "not Windows"
+    me = sh(["whoami", "/user", "/fo", "csv", "/nh"]).strip().split(",")
+    sid = me[-1].strip().strip('"') if me else ""
+    if not sid.startswith("S-1-"):
+        return f"could not determine the user SID ({me})"
+    return f"icacls grant {sid}: " + sh(["icacls", str(path), "/grant", f"*{sid}:(OI)(CI)F", "/T", "/C", "/Q"]).strip()[:200]
+
+
+def collect_diag(work, data, port, tried, diag_dir, reason, tool_bin):
+    """Everything needed to find out WHY the scratch server did not start, saved OUTSIDE the work folder (which is deleted afterwards)."""
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    out = Path(diag_dir) / stamp
+    out.mkdir(parents=True, exist_ok=True)
+    lines = [f"reason: {reason}", f"time: {stamp}", f"python {sys.version.split()[0]} on {platform.platform()}", f"user: {sh(['whoami']).strip()}"]
+    try:
+        import ctypes
+        lines.append(f"running elevated (administrator): {bool(ctypes.windll.shell32.IsUserAnAdmin())}")
+    except Exception:  # noqa: BLE001
+        lines.append("elevation: unknown")
+    lines.append(f"port chosen: {port}; bind tests: " + "; ".join(f"{p}:{'ok' if ok else why}" for p, ok, why in tried[:12]))
+    lines.append("--- excluded TCP port ranges (netsh) ---\n" + sh(["netsh", "int", "ipv4", "show", "excludedportrange", "protocol=tcp"]))
+    lines.append("--- listeners on the port ---\n" + "\n".join(l for l in sh(["netstat", "-ano"]).splitlines() if f":{port} " in l))
+    lines.append("--- ACL of the work folder and the data folder ---\n" + sh(["icacls", str(work)]) + sh(["icacls", str(data)]))
+    lines.append("--- ACL of the parent folder ---\n" + sh(["icacls", str(Path(work).parent)]))
+    lines.append(f"--- work folder listing ---\n" + sh(["cmd", "/c", "dir", "/a", str(work)]))
+    lines.append("--- data folder listing ---\n" + sh(["cmd", "/c", "dir", "/a", str(data)]))
+    lines.append("--- pg_ctl status ---\n" + sh([str(Path(tool_bin) / "pg_ctl.exe"), "status", "-D", str(data)]))
+    lines.append("--- postgres --version ---\n" + sh([str(Path(tool_bin) / "postgres.exe"), "--version"]))
+    lines.append("--- Microsoft Defender detections mentioning postgres (read-only query; nothing is changed) ---\n" + sh(
+        ["powershell", "-NoProfile", "-Command", "try { Get-MpThreatDetection | Where-Object { $_.Resources -match 'postgres|initdb|pg_ctl|scratch' } | Select-Object -First 5 "
+         "| Format-List ThreatID, ProcessName, Resources, InitialDetectionTime } catch { 'not available: ' + $_.Exception.Message }"], timeout=60))
+    (out / "diagnosis.txt").write_text("\n".join(lines), encoding="utf-8", errors="replace")
+    for name in ("server.log", "pg_ctl.out", "initdb.out"):
+        f = Path(work) / name
+        if f.exists():
+            shutil.copy(f, out / name)
+    conf = Path(data) / "postgresql.conf"
+    if conf.exists():
+        (out / "postgresql.conf.effective.txt").write_text("\n".join(l for l in conf.read_text(errors="ignore").splitlines() if l.strip() and not l.strip().startswith("#")), encoding="utf-8")
+    return out
 
 
 def lf_sha(path):
@@ -78,8 +161,11 @@ def main():
     ap.add_argument("--pg-bin", required=True)
     ap.add_argument("--sql-dir", required=True)
     ap.add_argument("--gate", required=True, help="path of prod_gate_checks.py (its postcheck is run against the scratch copy)")
-    ap.add_argument("--port", type=int, default=54320)
-    ap.add_argument("--work", default=r"C:\audit-reports\scratch_restore")
+    ap.add_argument("--port", type=int, default=0, help="0 = pick the first port Windows lets this process listen on (default)")
+    ap.add_argument("--work", default=str(Path(tempfile.gettempdir()) / "trdgo_scratch_restore"),
+                    help="scratch folder (deleted afterwards); default: the current user's temp folder, which the server's restricted token can use")
+    ap.add_argument("--diag-dir", default=r"C:\audit-reports\scratch_diag", help="where the diagnostics of a failure are kept (never deleted)")
+    ap.add_argument("--debug-bad-option", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--keep", action="store_true")
     ap.add_argument("--expect-tables", type=int, default=None)
     a = ap.parse_args()
@@ -98,24 +184,38 @@ def main():
         if not (Path(a.sql_dir) / name).exists() or lf_sha(Path(a.sql_dir) / name) != sha:
             print(f"STOPPED: {name} is missing or does not have the reviewed SHA-256 {sha}")
             return 2
-    with socket.socket() as s_:
-        if s_.connect_ex(("127.0.0.1", a.port)) == 0:
-            print(f"STOPPED: port {a.port} is already in use")
-            return 2
+    port, tried = pick_port(a.port)
+    if port is None:
+        print("STOPPED: no port in the candidate list can be bound on 127.0.0.1:", [(p, why) for p, ok, why in tried[:8]])
+        return 2
+    a.port = port
+    print(f"scratch port: {port} (bind-tested on 127.0.0.1" + (f"; skipped: {[(p, why) for p, ok, why in tried if not ok]}" if any(not ok for _, ok, _ in tried) else "") + ")")
     print("pg_restore:", run([tool["pg_restore"], "--version"]).stdout.strip(), "| dump:", dump.name, f"({dump.stat().st_size / 1e6:.1f} MB)")
     if work.exists():
         shutil.rmtree(work)
     work.mkdir(parents=True)
+    print("work folder:", work, "|", grant_acl(work))
     data = work / "pgdata"
     started = False
+    failed_start = None
     try:
         r = run([tool["initdb"], "-D", data, "-U", "scratch", "-A", "trust", "--encoding=UTF8", "--no-sync"])
+        (work / "initdb.out").write_text((r.stdout or "") + (r.stderr or ""), encoding="utf-8", errors="replace")
         if not check("scratch cluster created (initdb)", r.returncode == 0, (r.stderr or r.stdout)[-160:] if r.returncode else ""):
+            failed_start = "initdb failed"
             return 1
-        rc = ctl([tool["pg_ctl"], "start", "-w", "-t", "90", "-D", data, "-l", work / "server.log", "-o",
-                  f"-p {a.port} -c listen_addresses=127.0.0.1 -c fsync=off -c synchronous_commit=off"])
+        opts = f"-p {a.port} -c listen_addresses=127.0.0.1 -c fsync=off -c synchronous_commit=off" + (" -c bogus_setting=1" if a.debug_bad_option else "")
+        rc = ctl([tool["pg_ctl"], "start", "-w", "-t", "90", "-D", data, "-l", work / "server.log", "-o", opts], work / "pg_ctl.out")
         started = rc == 0
-        if not check("scratch cluster started on 127.0.0.1 only", started, f"port {a.port}" if started else f"pg_ctl exit {rc}; see {work / 'server.log'}"):
+        if not check("scratch cluster started on 127.0.0.1 only", started, f"port {a.port}" if started else f"pg_ctl exit {rc}"):
+            failed_start = f"pg_ctl start exit {rc}"
+            d = collect_diag(work, data, a.port, tried, a.diag_dir, failed_start, b)
+            print(f"DIAGNOSTICS SAVED (they survive the cleanup): {d}")
+            for name in ("pg_ctl.out", "server.log"):
+                f = work / name
+                if f.exists() and f.stat().st_size:
+                    print(f"--- {name} (last lines) ---")
+                    print("\n".join(f.read_text(errors="replace").splitlines()[-25:]))
             return 1
         base = f"host=127.0.0.1 port={a.port} user=scratch connect_timeout=10"
         with psycopg.connect(base + " dbname=postgres", autocommit=True) as c:
@@ -202,7 +302,15 @@ def main():
         return 2
     finally:
         if started:
-            ctl([tool["pg_ctl"], "stop", "-m", "fast", "-D", data])
+            ctl([tool["pg_ctl"], "stop", "-m", "fast", "-D", data], work / "pg_ctl_stop.out")
+        try:                                    # keep the server log, even after a pass (small); never lose the reason of a failure
+            keep = Path(a.diag_dir) / "last_run"
+            keep.mkdir(parents=True, exist_ok=True)
+            for name in ("server.log", "pg_ctl.out", "initdb.out"):
+                if (work / name).exists():
+                    shutil.copy(work / name, keep / name)
+        except Exception:  # noqa: BLE001
+            pass
         if not a.keep and work.exists() and "scratch" in work.name.lower():
             shutil.rmtree(work, ignore_errors=True)
             print("scratch cluster stopped and deleted")
