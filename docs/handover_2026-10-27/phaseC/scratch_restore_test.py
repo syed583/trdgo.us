@@ -9,6 +9,7 @@ Options: --port 54320 (scratch port), --work C:\\audit-reports\\scratch_restore,
 Exit code 0 = every check passed, 1 = a check failed, 2 = the test itself could not run.
 """
 import argparse
+import collections
 import hashlib
 import json
 import os
@@ -136,24 +137,40 @@ def lf_sha(path):
 
 
 def copy_hash(lines):
-    return hashlib.md5("\n".join(sorted(lines)).encode("utf-8")).hexdigest()
+    """Order-independent content hash that is exact for duplicates too (sorted byte strings, length-prefixed so no row can merge into another)."""
+    h = hashlib.md5()
+    for b_ in sorted(lines):
+        h.update(len(b_).to_bytes(8, "big") + b_)
+    return h.hexdigest()
+
+
+def row_diff(live, dump, limit=3):
+    """Multiset comparison (counts duplicates): rows only in the restored table / only in the dump. Returns (n_only_live, n_only_dump, samples)."""
+    a, b_ = collections.Counter(live), collections.Counter(dump)
+    only_live, only_dump = a - b_, b_ - a
+    sample = [("restored", r[:120]) for r in list(only_live)[:limit]] + [("dump", r[:120]) for r in list(only_dump)[:limit]]
+    return sum(only_live.values()), sum(only_dump.values()), sample
 
 
 def copy_lines(conn, cols):
     """The table's rows in COPY text format (the same format pg_restore prints), one string per row."""
     with conn.cursor().copy(f"COPY public.demo_trades ({', '.join(cols)}) TO STDOUT") as cp:
-        blob = b"".join(bytes(x) for x in cp).decode("utf-8")
-    return [l for l in blob.split("\n") if l != ""]
+        blob = b"".join(bytes(x) for x in cp)
+    return [l for l in blob.split(b"\n") if l != b""]          # BYTES: no decoding, no newline translation
 
 
-def dump_rows(text):
+def dump_rows(blob):
+    """Rows of demo_trades from `pg_restore --data-only` output, as BYTES, split ONLY on b"\\n". (str.splitlines() would also split on U+2028, U+0085,
+    VT, FF ... which COPY text does not escape, and a text-mode pipe on Windows decodes with the ANSI code page and rewrites newlines.)"""
     cols, rows, inside = None, [], False
-    for line in text.splitlines():
+    for line in blob.split(b"\n"):
+        if line.endswith(b"\r"):                  # pg_restore writes CRLF on Windows; a real CR inside data is escaped by COPY (backslash-r), never raw
+            line = line[:-1]
         if not inside:
-            m = re.match(r"COPY (?:public\.)?demo_trades \((.*?)\) FROM stdin;", line)
+            m = re.match(rb"COPY (?:public\.)?demo_trades \((.*?)\) FROM stdin;", line)
             if m:
-                cols, inside = [c.strip() for c in m.group(1).split(",")], True
-        elif line == "\\.":
+                cols, inside = [c.strip().decode() for c in m.group(1).split(b",")], True
+        elif line == b"\\.":
             break
         else:
             rows.append(line)
@@ -171,6 +188,7 @@ def main():
                     help="scratch folder (deleted afterwards); default: the current user's temp folder, which the server's restricted token can use")
     ap.add_argument("--diag-dir", default=r"C:\audit-reports\scratch_diag", help="where the diagnostics of a failure are kept (never deleted)")
     ap.add_argument("--debug-bad-option", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--debug-corrupt", choices=["change", "swap"], help=argparse.SUPPRESS)   # regression test: damage the SCRATCH copy, the check must fail
     ap.add_argument("--keep", action="store_true")
     ap.add_argument("--expect-tables", type=int, default=None)
     a = ap.parse_args()
@@ -240,16 +258,26 @@ def main():
         with psycopg.connect(dsn, autocommit=True) as c:
             for rname in ROLES:
                 c.execute(f"CREATE ROLE {rname} NOLOGIN" + (" BYPASSRLS" if rname in ("service_role", "supabase_admin") else ""))
-            # emulate Supabase: every NEW table / sequence in public is granted to the Data API roles by default
-            c.execute("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role")
-            c.execute("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role")
+            # the dump contains CREATE SCHEMA public: start from a database WITHOUT it (scratch only), so the restore is clean and reproducible
+            c.execute("DROP SCHEMA public CASCADE")
         # ---- restore ----
         t0 = time.time()
         r = run([tool["pg_restore"], "--no-owner", "--no-privileges", "-h", "127.0.0.1", "-p", a.port, "-U", "scratch", "-d", "restore_check", dump])
         errs = [l for l in (r.stderr or "").splitlines() if l.strip()]
         print(f"pg_restore finished in {time.time() - t0:.0f}s, exit {r.returncode}, {len(errs)} message lines")
-        for l in errs[:8]:
+        for l in errs[:12]:
             print("   |", l[:170])
+        check("pg_restore completed with exit code 0 and no error (any error fails the test)", r.returncode == 0 and not any("error" in l.lower() for l in errs),
+              f"exit {r.returncode}, {sum('error' in l.lower() for l in errs)} error lines")
+        with psycopg.connect(dsn, autocommit=True) as c:      # emulate Supabase: every NEW table / sequence in public is granted to the Data API roles by default
+            c.execute("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role")
+            c.execute("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role")
+        if a.debug_corrupt:                                    # only ever on the scratch copy
+            with psycopg.connect(dsn, autocommit=True) as c:
+                if a.debug_corrupt == "change":
+                    c.execute("UPDATE demo_trades SET entry_price = entry_price + 0.0001 WHERE id = 500")
+                else:                                           # same row count and same column sums: two rows swap their entry price
+                    c.execute("UPDATE demo_trades t SET entry_price = x.p FROM (SELECT id, CASE id WHEN 10 THEN (SELECT entry_price FROM demo_trades WHERE id = 11) ELSE (SELECT entry_price FROM demo_trades WHERE id = 10) END AS p FROM demo_trades WHERE id IN (10, 11)) x WHERE t.id = x.id")
         with psycopg.connect(dsn) as c:
             has = c.execute("SELECT to_regclass('public.demo_trades') IS NOT NULL").fetchone()[0]
             check("the dump restores into a scratch database and demo_trades exists", has, f"pg_restore exit {r.returncode}, {len(errs)} message lines")
@@ -262,14 +290,17 @@ def main():
             if a.expect_tables is not None:
                 check("the restored schema has the expected number of tables", ntab == a.expect_tables, f"{ntab} vs {a.expect_tables}")
             # ---- row integrity: dump text vs restored table ----
-            out = run([tool["pg_restore"], "--data-only", "--table=demo_trades", "-f", "-", dump]).stdout
+            out = subprocess.run([str(x) for x in (tool["pg_restore"], "--data-only", "--table=demo_trades", "-f", "-", dump)], capture_output=True).stdout   # bytes
             cols, drows = dump_rows(out)
             check("the demo_trades rows can be read straight out of the dump", bool(cols) and len(drows) > 0, f"{len(drows)} rows")
             live_lines = copy_lines(c, cols)
             n_db = c.execute("SELECT COUNT(*) FROM demo_trades").fetchone()[0]
             check("restored row count equals the dump's row count", n_db == len(drows), f"{n_db} vs {len(drows)}")
             base_hash = copy_hash(live_lines)
-            check("every restored row is byte-identical to the dump (content hash)", copy_hash(drows) == base_hash, f"md5 {base_hash}")
+            n_live, n_dump, sample = row_diff(live_lines, drows)
+            check("every restored row is byte-identical to the dump (exact multiset comparison, duplicates counted)",
+                  n_live == 0 and n_dump == 0 and copy_hash(drows) == base_hash,
+                  f"{len(drows)} rows, md5 {base_hash}" if n_live == 0 and n_dump == 0 else f"{n_live} restored-only, {n_dump} dump-only; e.g. {sample}")
 
         def sql_file(name, sha):
             text_ = (Path(a.sql_dir) / name).read_text(encoding="utf-8")
