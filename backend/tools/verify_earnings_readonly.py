@@ -12,6 +12,8 @@ Stages
   fresh  : age buckets of the cached analyses for every calendar name, scan cache sizes/ages.
   snapshots: prediction capture-time audit (provisional BMO/AMC windows, ET), records for AMZN/EAT/GRMN,
            earnings-moves distribution, Claude Pro cache keys. SELECT-only, READ ONLY transactions.
+  integrity: prediction-history integrity (one prediction per event by explicit definitions, accuracy with
+           sample sizes and intervals, grading-by-timing, repeated scores, post-release and retrospective detail).
   db     : SELECT-only counts from the prediction tables.
 
 Safety: reads go through plain SELECTs inside SET TRANSACTION READ ONLY (the database itself refuses a write);
@@ -404,6 +406,169 @@ def snapshots_stage(days=15, reader=None, run=None, require_prod=True):
     return out
 
 
+# ---- integrity stage -----------------------------------------------------------------------------
+# One clearly defined prediction per (model, symbol, earnings event), by three definitions:
+#   verified_last : the LAST genuine BEFORE_RELEASE snapshot (strict pre-release, real capture timestamp)
+#   verified_first: the EARLIEST genuine BEFORE_RELEASE snapshot (longest lead time)
+#   app_board     : what the app's scoreboard uses today = latest snapshot on or before the earnings date,
+#                   of ANY class (can be post-release or retrospective)
+#   all_rows      : every row counted (shows how repeated daily rows inflate the sample)
+# Retrospective, ambiguous and post-release rows are never part of the verified_* definitions.
+
+_BASE2 = """
+WITH x AS (
+  SELECT id, model, symbol, earnings_date, report_timing, snapshot_date, predicted_at, signal, score,
+         evaluated_at, correct, actual_move_pct, actual_direction,
+         (predicted_at AT TIME ZONE 'America/New_York') AS pa_et,
+         (predicted_at = (date_trunc('day', predicted_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')) AS midnight_stamp
+  FROM {SRC} WHERE earnings_date IS NOT NULL
+), c AS (
+  SELECT *,
+    CASE
+      WHEN midnight_stamp THEN 'RETROSPECTIVE'
+      WHEN pa_et::date > earnings_date THEN 'AFTER_RELEASE'
+      WHEN pa_et::date < earnings_date THEN 'BEFORE_RELEASE'
+      WHEN report_timing ILIKE '%before%' OR report_timing ILIKE 'bmo%' OR report_timing ILIKE '%pre%' THEN
+        CASE WHEN pa_et::time < TIME '06:00' THEN 'BEFORE_RELEASE'
+             WHEN pa_et::time < TIME '09:30' THEN 'AMBIGUOUS' ELSE 'AFTER_RELEASE' END
+      WHEN report_timing ILIKE '%after%' OR report_timing ILIKE 'amc%' OR report_timing ILIKE '%post%' THEN
+        CASE WHEN pa_et::time < TIME '16:00' THEN 'BEFORE_RELEASE' ELSE 'AFTER_RELEASE' END
+      ELSE 'AMBIGUOUS' END AS cls
+  FROM x
+), ev_last AS (
+  SELECT DISTINCT ON (model, symbol, earnings_date) * FROM c WHERE cls = 'BEFORE_RELEASE'
+  ORDER BY model, symbol, earnings_date, predicted_at DESC
+), ev_first AS (
+  SELECT DISTINCT ON (model, symbol, earnings_date) * FROM c WHERE cls = 'BEFORE_RELEASE'
+  ORDER BY model, symbol, earnings_date, predicted_at ASC
+), ev_board AS (
+  SELECT DISTINCT ON (model, symbol, earnings_date) * FROM c WHERE snapshot_date <= earnings_date
+  ORDER BY model, symbol, earnings_date, snapshot_date DESC
+)
+"""
+
+_OUTCOME_COLS = ("COUNT(*) events, "
+                 "COUNT(*) FILTER (WHERE actual_move_pct IS NOT NULL) graded, "
+                 "COUNT(*) FILTER (WHERE evaluated_at IS NOT NULL AND actual_move_pct IS NULL) unverifiable, "
+                 "COUNT(*) FILTER (WHERE evaluated_at IS NULL) pending, "
+                 "COALESCE(SUM(correct) FILTER (WHERE actual_move_pct IS NOT NULL), 0) correct")
+_TODAY_ET = "(now() AT TIME ZONE 'America/New_York')::date"
+
+INTEGRITY_QUERIES = {
+    "accuracy": ("SELECT 'verified_last' def, model, signal, " + _OUTCOME_COLS + " FROM ev_last GROUP BY model, signal "
+                 "UNION ALL SELECT 'verified_first', model, signal, " + _OUTCOME_COLS + " FROM ev_first GROUP BY model, signal "
+                 "UNION ALL SELECT 'app_board', model, signal, " + _OUTCOME_COLS + " FROM ev_board GROUP BY model, signal "
+                 "UNION ALL SELECT 'all_rows', model, signal, " + _OUTCOME_COLS + " FROM c GROUP BY model, signal "
+                 "ORDER BY 1, 2, 3"),
+    "board_composition": ("SELECT model, cls, COUNT(*) events, COUNT(*) FILTER (WHERE actual_move_pct IS NOT NULL) graded "
+                          "FROM ev_board GROUP BY model, cls ORDER BY model, cls"),
+    "event_coverage": ("SELECT model, COUNT(*) reported_events, COUNT(*) FILTER (WHERE has_before) with_genuine_before, "
+                       "COUNT(*) FILTER (WHERE NOT has_before AND has_after) only_post_release, "
+                       "COUNT(*) FILTER (WHERE NOT has_before AND NOT has_after AND has_retro) only_retrospective "
+                       "FROM (SELECT model, symbol, earnings_date, BOOL_OR(cls = 'BEFORE_RELEASE') has_before, "
+                       "BOOL_OR(cls = 'AFTER_RELEASE') has_after, BOOL_OR(cls = 'RETROSPECTIVE') has_retro FROM c "
+                       "WHERE earnings_date < " + _TODAY_ET + " GROUP BY 1, 2, 3) q GROUP BY model ORDER BY model"),
+    "grading_by_timing": ("SELECT model, report_timing, COUNT(*) events, "
+                          "COUNT(*) FILTER (WHERE actual_move_pct IS NOT NULL) graded, "
+                          "COUNT(*) FILTER (WHERE evaluated_at IS NOT NULL AND actual_move_pct IS NULL) unverifiable, "
+                          "COUNT(*) FILTER (WHERE evaluated_at IS NULL) pending, "
+                          "COUNT(*) FILTER (WHERE report_timing ILIKE '%after%' AND evaluated_at IS NOT NULL AND "
+                          "evaluated_at < (((earnings_date + 1)::timestamp + interval '21 hours') AT TIME ZONE 'UTC')) amc_evaluated_before_reaction_close "
+                          "FROM ev_last WHERE earnings_date < " + _TODAY_ET + " GROUP BY model, report_timing ORDER BY model, report_timing"),
+    "base_rates": ("SELECT actual_direction, COUNT(*) n FROM ev_last WHERE model = 'claude_new' AND actual_move_pct IS NOT NULL "
+                   "GROUP BY actual_direction ORDER BY actual_direction"),
+    "snapshots_per_event": ("SELECT model, COUNT(*) events, ROUND(AVG(n), 2) avg_snapshots, MAX(n) max_snapshots FROM "
+                            "(SELECT model, symbol, earnings_date, COUNT(*) n FROM c WHERE cls = 'BEFORE_RELEASE' GROUP BY 1, 2, 3) q "
+                            "GROUP BY model ORDER BY model"),
+    "repeated_scores": ("SELECT model, COUNT(*) transitions, COUNT(*) FILTER (WHERE score = prev_score) same_score, "
+                        "COUNT(*) FILTER (WHERE signal = prev_signal) same_signal, COUNT(*) FILTER (WHERE signal <> prev_signal) flipped "
+                        "FROM (SELECT model, score, signal, LAG(score) OVER w prev_score, LAG(signal) OVER w prev_signal FROM c "
+                        "WHERE cls = 'BEFORE_RELEASE' WINDOW w AS (PARTITION BY model, symbol, earnings_date ORDER BY predicted_at)) q "
+                        "WHERE prev_signal IS NOT NULL GROUP BY model ORDER BY model"),
+    "after_release_detail": ("SELECT snapshot_date, to_char(pa_et, 'HH24') capture_hour_et, report_timing, COUNT(*) rows, "
+                             "COUNT(DISTINCT model) models, COUNT(DISTINCT symbol) symbols FROM c WHERE cls = 'AFTER_RELEASE' "
+                             "GROUP BY 1, 2, 3 ORDER BY 1, 2, 3"),
+    "retrospective_detail": ("SELECT model, MIN(snapshot_date) first_snapshot, MAX(snapshot_date) last_snapshot, COUNT(*) rows, "
+                             "COUNT(DISTINCT (symbol, earnings_date)) events, COUNT(*) FILTER (WHERE score IS NULL) no_score, "
+                             "COUNT(*) FILTER (WHERE report_timing IS NULL OR report_timing = '') no_timing, "
+                             "COUNT(*) FILTER (WHERE evaluated_at IS NOT NULL) evaluated FROM c WHERE cls = 'RETROSPECTIVE' "
+                             "GROUP BY model ORDER BY model"),
+    "date_sanity": ("SELECT model, MIN(snapshot_date) first_snapshot, MAX(snapshot_date) last_snapshot, MIN(earnings_date) first_event, "
+                    "MAX(earnings_date) last_event, COUNT(*) FILTER (WHERE snapshot_date > earnings_date) snapshot_after_event, "
+                    "COUNT(*) FILTER (WHERE snapshot_date < DATE '2026-10-13') before_launch FROM c GROUP BY model ORDER BY model"),
+    "capture_runs": ("SELECT predicted_at, to_char(predicted_at AT TIME ZONE 'America/New_York', 'YYYY-MM-DD HH24:MI:SS') captured_et, "
+                     "COUNT(*) rows, COUNT(DISTINCT model) models FROM c WHERE cls <> 'RETROSPECTIVE' "
+                     "GROUP BY predicted_at ORDER BY predicted_at"),
+    "source_tables": ("SELECT table_name, column_name FROM information_schema.columns WHERE table_name IN "
+                      "('ped_scores','earnings_signal_snapshots','earnings_calendar','model_backtests','earnings_reactions',"
+                      "'earnings_signal_history','score_snapshots') ORDER BY table_name, ordinal_position"),
+    "scan_keys": ("SELECT cache_key, length(value) bytes, updated_at FROM swr_cache WHERE cache_key ~ '(^|:)scan(:|$)' "
+                  "OR cache_key LIKE 'claudepro:%' OR cache_key LIKE 'allmodels:%' ORDER BY cache_key"),
+}
+_COUNT_TABLES = ("ped_scores", "earnings_signal_snapshots", "model_backtests", "score_snapshots")
+
+
+def wilson(ok, n, z=1.96):
+    """95% Wilson interval, in percent, for a hit rate (so small samples are not over-read)."""
+    if not n:
+        return None
+    p = ok / n
+    d = 1 + z * z / n
+    centre = (p + z * z / (2 * n)) / d
+    half = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / d
+    return round((centre - half) * 100, 1), round((centre + half) * 100, 1)
+
+
+def integrity_stage(run=None, require_prod=True, src="model_predictions", now=None):
+    """Prediction-history integrity audit. SELECT-only; definitions documented above."""
+    if require_prod:
+        import database  # noqa: F401  (importing it loads backend/.env)
+        if (os.environ.get("APP_ENV") or "").strip().lower() != "production":
+            sys.exit("APP_ENV is not 'production': refusing.")
+    run = run or _run_ro
+    now = now or time.time()
+    base = _BASE2.replace("{SRC}", src)
+    out = {"generated_at": _iso(now), "definitions": {
+        "verified_last": "last genuine BEFORE_RELEASE snapshot per (model, symbol, earnings_date)",
+        "verified_first": "earliest genuine BEFORE_RELEASE snapshot per event",
+        "app_board": "latest snapshot on/before the earnings date, any class (what the app scoreboard uses today)",
+        "all_rows": "every row (shows inflation from repeated daily snapshots)"},
+        "note": "BEFORE/AFTER/AMBIGUOUS use provisional ET windows; no confirmed release timestamps exist in the database.",
+        "tables": {}}
+    for k, q in INTEGRITY_QUERIES.items():
+        try:
+            if k in ("source_tables", "scan_keys"):
+                out["tables"][k] = run(q)
+            else:
+                out["tables"][k] = run(base + q)
+        except Exception as exc:  # noqa: BLE001
+            out["tables"][k] = {"error": f"{type(exc).__name__}: {str(exc)[:240]}"}
+    counts = {}
+    for t in _COUNT_TABLES:
+        try:
+            counts[t] = run(f"SELECT COUNT(*) n FROM {t}")[0]["n"]
+        except Exception as exc:  # noqa: BLE001
+            counts[t] = f"absent/err: {type(exc).__name__}"
+    out["table_row_counts"] = counts
+    sk = out["tables"].get("scan_keys")
+    if isinstance(sk, list):
+        for r in sk:
+            r["age_h"] = round((now - float(r["updated_at"])) / 3600.0, 2)
+    # accuracy tables with sample sizes and intervals
+    acc = {}
+    for r in (out["tables"].get("accuracy") or []):
+        if not isinstance(r, dict) or r.get("signal") not in ("BUY", "SELL", "NEUTRAL"):
+            continue
+        key = f'{r["def"]}|{r["model"]}'
+        a = acc.setdefault(key, {})
+        g, ok = int(r["graded"]), int(r["correct"])
+        a[r["signal"]] = {"events": int(r["events"]), "graded": g, "unverifiable": int(r["unverifiable"]),
+                          "pending": int(r["pending"]), "correct": ok,
+                          "accuracy_pct": round(ok / g * 100, 1) if g else None, "ci95": wilson(ok, g)}
+    out["accuracy_summary"] = acc
+    return out
+
+
 def db_stage():
     from sqlalchemy import text
     from database import SessionLocal
@@ -437,7 +602,7 @@ def db_stage():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--symbols", default="")
-    ap.add_argument("--stage", choices=["pick", "cache", "fresh", "snapshots", "raw", "db"], required=True)
+    ap.add_argument("--stage", choices=["pick", "cache", "fresh", "snapshots", "integrity", "raw", "db"], required=True)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     syms = [s for s in a.symbols.replace(" ", "").split(",") if s]
@@ -445,7 +610,7 @@ def main():
         sys.exit("--symbols is required for this stage")
     if a.stage == "raw" and len(syms) > 12:
         sys.exit("raw stage is limited to 12 symbols (provider budget)")
-    res = {"pick": pick_stage, "fresh": fresh_stage, "snapshots": snapshots_stage, "cache": lambda: cache_stage(syms), "raw": lambda: raw_stage(syms), "db": db_stage}[a.stage]()
+    res = {"pick": pick_stage, "fresh": fresh_stage, "snapshots": snapshots_stage, "integrity": integrity_stage, "cache": lambda: cache_stage(syms), "raw": lambda: raw_stage(syms), "db": db_stage}[a.stage]()
     Path(a.out).write_text(json.dumps(res, indent=1, default=str), encoding="utf-8")
     print(f"wrote {a.out}")
     if a.stage == "pick":
@@ -453,6 +618,42 @@ def main():
         for r in sorted(res.get("rows", []), key=lambda r: (r.get("days_to") is None, r.get("days_to"))):
             print(f"{r['symbol']:6s} {str(r['date']):10s} d{r['days_to']} {str(r.get('report_timing') or r.get('time_label') or ''):10s} "
                   f"score {r['score']} {r['signal']} cov {r['coverage']}")
+    if a.stage == "integrity":
+        t_ = res["tables"]
+
+        def show(title, key, fmt=None):
+            print("\n" + title)
+            v = t_.get(key)
+            if not isinstance(v, list):
+                print("  ", v)
+                return
+            for r in v:
+                print("  ", fmt(r) if fmt else {k: (str(x)[:19] if "updated" in k or k == "predicted_at" else x) for k, x in r.items()})
+        print("definitions:", json.dumps(res["definitions"], indent=1))
+        print("table row counts:", res["table_row_counts"])
+        show("EVENT COVERAGE (reported events per model)", "event_coverage")
+        show("SNAPSHOTS PER EVENT (genuine before-release rows)", "snapshots_per_event")
+        show("REPEATED SCORES between consecutive daily snapshots", "repeated_scores")
+        show("BOARD COMPOSITION (class of the snapshot the app scoreboard grades)", "board_composition")
+        show("GRADING BY REPORT TIMING (verified_last events)", "grading_by_timing")
+        show("BASE RATES of actual direction (claude_new graded events)", "base_rates")
+        print("\nACCURACY (BUY/SELL directional; NEUTRAL = flat-band match). def | model | signal: graded n, correct, acc%, 95% CI, unverifiable, pending")
+        for key in sorted(res["accuracy_summary"]):
+            for sig in ("BUY", "SELL", "NEUTRAL"):
+                v = res["accuracy_summary"][key].get(sig)
+                if v:
+                    print(f"  {key:28s} {sig:8s} events={v['events']:<6} graded={v['graded']:<5} correct={v['correct']:<5} acc={v['accuracy_pct']}  ci95={v['ci95']}  unverifiable={v['unverifiable']} pending={v['pending']}")
+        show("AFTER_RELEASE detail (provisional)", "after_release_detail")
+        show("RETROSPECTIVE detail", "retrospective_detail")
+        show("DATE SANITY", "date_sanity")
+        show("CAPTURE RUNS (distinct predicted_at, non-retrospective)", "capture_runs",
+             lambda r: f"{r['captured_et']} ET  rows={r['rows']} models={r['models']}")
+        show("SCAN CACHE KEYS (Claude Pro and others)", "scan_keys",
+             lambda r: f"{r['cache_key']:28s} bytes={r['bytes']:<9} age_h={r['age_h']}")
+        tabs = {}
+        for r in (t_.get("source_tables") or []):
+            tabs.setdefault(r["table_name"], []).append(r["column_name"])
+        print("\nSOURCE TABLE COLUMNS:", tabs)
     if a.stage == "snapshots":
         t_ = res["tables"]
         print("windows (ET, provisional):", res["provisional_windows_et"])
