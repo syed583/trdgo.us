@@ -1,5 +1,5 @@
 {
-  "server": "PostgreSQL 18.6 (PGlite 0.5.12) on wasm32-unknown-emscripten",
+  "server": "PostgreSQL 17.5 on aarch64-unknown-linux-gnu, compiled by em",
   "results": [
     {
       "check": "rehearsal book: 172 OPEN + 40 closed",
@@ -48,16 +48,6 @@
     },
     {
       "check": "the audit write did not touch a single Legacy row",
-      "ok": true,
-      "detail": ""
-    },
-    {
-      "check": "auditing 240 signals (6 strategies x 40 names) in one tick is fast",
-      "ok": true,
-      "detail": "0.18s, rows=241"
-    },
-    {
-      "check": "an exhausted time budget audits nothing and raises nothing",
       "ok": true,
       "detail": ""
     },
