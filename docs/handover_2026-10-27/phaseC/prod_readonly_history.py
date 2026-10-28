@@ -65,9 +65,19 @@ def main() -> int:
     cur.execute("SELECT version()")
     out["server_banner"] = cur.fetchone()[0][:80]
     out["connection_port"] = port                      # 6543 = Supabase transaction pooler, 5432 = session pooler / direct
-    cur.execute("SELECT pg_is_in_recovery(), current_setting('transaction_read_only'), has_schema_privilege(current_user, 'public', 'CREATE')")
-    rec, ro, can_create = cur.fetchone()
-    out["is_replica"], out["session_read_only"], out["can_create_in_public"] = rec, ro, can_create
+    cur.execute("SELECT pg_is_in_recovery(), current_setting('transaction_read_only'), has_schema_privilege(current_user, 'public', 'CREATE'), "
+                "has_schema_privilege(current_user, 'public', 'USAGE')")
+    rec, ro, can_create, can_use = cur.fetchone()
+    out["is_replica"], out["session_read_only"] = rec, ro
+    cur.execute("SELECT r.rolsuper, r.rolcreatedb, r.rolcreaterole, r.rolbypassrls FROM pg_roles r WHERE r.rolname = current_user")
+    sup, cdb, crole, byp = cur.fetchone()
+    perms = {"schema_public_usage": can_use, "schema_public_create": can_create, "superuser": sup, "createdb": cdb, "createrole": crole,
+             "bypass_rls": byp}
+    for priv in ("SELECT", "INSERT", "UPDATE", "DELETE"):
+        cur.execute("SELECT has_table_privilege(current_user, 'public.demo_trades', %s)", (priv,))
+        perms["demo_trades_" + priv.lower()] = cur.fetchone()[0]
+    out["permissions_of_the_connecting_role"] = perms           # role name and credentials are deliberately not printed
+    out["can_create_in_public"] = can_create
     cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'intraday_%' OR table_name = 'demo_trades' ORDER BY 1")
     out["relevant_tables"] = [r[0] for r in cur.fetchall()]
     cur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'demo_trades' ORDER BY ordinal_position")
@@ -88,49 +98,77 @@ def main() -> int:
     since = date.today() - timedelta(days=a.days)
     cur.execute("SELECT id, strategy, symbol, side, shares, session_date, entry_price, stop, target, score_at_entry, status FROM demo_trades "
                 "WHERE session_date >= %s OR status = 'OPEN' ORDER BY id", (since,))
-    per = defaultdict(lambda: {"trades": 0, "pass": 0, "fail": 0, "reasons": Counter(), "examples": defaultdict(list)})
+    per = defaultdict(lambda: {"trades": 0, "PASS": 0, "FAIL": 0, "NOT VERIFIABLE": 0, "fail_reasons": Counter(), "nv_reasons": Counter(),
+                               "examples": defaultdict(list)})
     for (id_, strat, sym, side, shares, sd, entry, stop, target, score, status) in cur.fetchall():
-        reasons = []
+        fails, nv = [], []
+        # 1. stored score vs the unchanged thresholds and the trade's own side
         if score is None:
-            reasons.append("no entry score stored")
+            nv.append("no entry score stored")
         elif side == "LONG" and score < buy:
-            reasons.append(f"LONG opened below the BUY cutoff ({buy:g})")
+            fails.append(f"LONG opened at a score below the BUY cutoff ({buy:g})")
         elif side == "SHORT" and score > sell:
-            reasons.append(f"SHORT opened above the SELL cutoff ({sell:g})")
-        if not entry or entry <= 0:
-            reasons.append("no usable entry price")
-        elif stop is not None and target is not None:
-            if not ((stop < entry < target) if side == "LONG" else (target < entry < stop)):
-                reasons.append("stop/target do not bracket the entry")
-        else:
-            reasons.append("stop or target missing")
+            fails.append(f"SHORT opened at a score above the SELL cutoff ({sell:g})")
+        # 2. stored entry price
+        if entry is None or entry <= 0:
+            fails.append("entry price missing or not positive")
+        # 3. stored stop / target bracket
+        if stop is None or target is None:
+            nv.append("stop or target not stored")
+        elif entry is not None and entry > 0 and not ((stop < entry < target) if side == "LONG" else (target < entry < stop)):
+            fails.append("stop/target do not bracket the entry")
+        # 4. size convention
         if shares != 100:
-            reasons.append("size is not 100 shares")
+            fails.append("size is not 100 shares")
+        verdict = "FAIL" if fails else "NOT VERIFIABLE" if nv else "PASS"
         p = per[strat]
         p["trades"] += 1
-        p["pass" if not reasons else "fail"] += 1
-        for r_ in reasons:
-            p["reasons"][r_] += 1
+        p[verdict] += 1
+        for r_ in fails:
+            p["fail_reasons"][r_] += 1
+        for r_ in nv:
+            p["nv_reasons"][r_] += 1
+        for r_ in fails + nv:
             if len(p["examples"][r_]) < 3:
-                p["examples"][r_].append({"id": id_, "symbol": sym, "date": str(sd), "score": score, "status": status})
+                p["examples"][r_].append({"id": id_, "symbol": sym, "date": str(sd), "side": side, "score": score, "status": status})
     conn.rollback()
     conn.close()
-    out["window"] = {"from": str(since), "plus": "all OPEN rows", "note": "entry score, side, bracket and size only; per-parameter contributions "
-                     "were never stored and are NOT invented"}
-    out["per_strategy"] = {k: {"trades": v["trades"], "pass": v["pass"], "fail": v["fail"], "reasons": dict(v["reasons"]),
-                               "examples": dict(v["examples"])} for k, v in sorted(per.items())}
-    out["total"] = {"trades": sum(v["trades"] for v in per.values()), "pass": sum(v["pass"] for v in per.values()),
-                    "fail": sum(v["fail"] for v in per.values())}
+    order = ["chatgpt", "grok", "meta", "kimi", "gemini", "claude_pro"]
+    out["window"] = {"from": str(since), "plus": "all OPEN rows"}
+    out["stored_value_checks"] = ("entry score vs the unchanged thresholds and the trade's side; entry price; stop/target bracket; 100-share size. "
+                                  "These use only what the trade row stored.")
+    out["parameter_weight_verification"] = {
+        "status": "NOT VERIFIABLE for every historical trade",
+        "why": "the per-parameter readings, biases and contributions behind a score were never stored with the trade (only score_at_entry); "
+               "they cannot be reconstructed afterwards and none are invented here",
+        "trades_not_verifiable": None}
+    out["per_strategy"] = {k: {"trades": v["trades"], "PASS": v["PASS"], "FAIL": v["FAIL"], "NOT VERIFIABLE": v["NOT VERIFIABLE"],
+                               "fail_reasons": dict(v["fail_reasons"]), "not_verifiable_reasons": dict(v["nv_reasons"]),
+                               "examples": dict(v["examples"]),
+                               "parameter_weight_verification": f"NOT VERIFIABLE ({v['trades']} of {v['trades']})"}
+                           for k, v in sorted(per.items(), key=lambda kv: (order.index(kv[0]) if kv[0] in order else 99, kv[0]))}
+    tot = {k: sum(v[k] for v in per.values()) for k in ("trades", "PASS", "FAIL", "NOT VERIFIABLE")}
+    out["total"] = tot
+    out["parameter_weight_verification"]["trades_not_verifiable"] = tot["trades"]
     Path(a.out).mkdir(parents=True, exist_ok=True)
     f = Path(a.out) / f"history-readonly-{datetime.now().strftime('%Y%m%d-%H%M')}.json"
     f.write_text(json.dumps(out, indent=2, default=str), encoding="utf-8")
-    print(f"server {out['server_version']} (port {port}); demo_trades {total} rows, {size / 1e6:.1f} MB; "
-          f"V2 evidence columns present: {out['v2_evidence_columns_present'] or 'none'}; can CREATE in public: {can_create}")
-    print(f"rows by status: {out['rows_by_status']}; open duplicates (strategy, symbol): {out['open_duplicates_strategy_symbol']}")
-    print(f"{'model':12} {'trades':>7} {'pass':>6} {'fail':>6}  reasons")
+    print(f"PostgreSQL {out['server_version']} (connection port {port}; read-only session: {out['session_read_only']}; replica: {out['is_replica']})")
+    print(f"permissions of the connecting role: {out['permissions_of_the_connecting_role']}")
+    print(f"demo_trades: {total} rows, {size / 1e6:.1f} MB; V2 evidence columns present: {out['v2_evidence_columns_present'] or 'none'}; "
+          f"intraday tables: {[t for t in out['relevant_tables'] if t != 'demo_trades'] or 'none'}")
+    print(f"rows by status: {out['rows_by_status']}; OPEN duplicates (strategy, symbol): {out['open_duplicates_strategy_symbol']}")
+    print(f"window: session_date >= {since} plus every OPEN row.  STORED-VALUE checks (score / side / price / bracket / size):")
+    print(f"{'model':11} {'trades':>6} {'PASS':>6} {'FAIL':>6} {'NOT VERIFIABLE':>15}  parameter-weight check")
     for k, v in out["per_strategy"].items():
-        print(f"{k:12} {v['trades']:>7} {v['pass']:>6} {v['fail']:>6}  {v['reasons'] or '-'}")
-    print(f"TOTAL        {out['total']['trades']:>7} {out['total']['pass']:>6} {out['total']['fail']:>6}\nreport: {f}")
+        print(f"{k:11} {v['trades']:>6} {v['PASS']:>6} {v['FAIL']:>6} {v['NOT VERIFIABLE']:>15}  {v['parameter_weight_verification']}")
+        for r_, n in v["fail_reasons"].items():
+            print(f"{'':11}   FAIL: {n} x {r_}")
+        for r_, n in v["not_verifiable_reasons"].items():
+            print(f"{'':11}   NOT VERIFIABLE: {n} x {r_}")
+    print(f"{'TOTAL':11} {tot['trades']:>6} {tot['PASS']:>6} {tot['FAIL']:>6} {tot['NOT VERIFIABLE']:>15}")
+    print("PARAMETER-WEIGHT verification: NOT VERIFIABLE for all trades (the contributions were never stored).")
+    print(f"report: {f}")
     return 0
 
 
