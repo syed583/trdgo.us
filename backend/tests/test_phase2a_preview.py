@@ -157,3 +157,19 @@ def test_preview_computation_runs_with_the_network_blocked():
         res = t.preview([snap("AAA", date(2026, 10, 20), "Before Open", date(2026, 10, 18),
                               datetime(2026, 10, 18, 4, 21, tzinfo=UTC), "BUY")], [], now=datetime(2026, 11, 5, tzinfo=UTC))
     assert res["models"]["claude_new"]["BEFORE_legacy"]["events"] == 1
+
+
+def test_label_less_backfill_rows_do_not_mask_a_premature_stamp():
+    t = load_tool()
+    now = datetime(2026, 11, 5, 15, 0, tzinfo=UTC)
+    snaps = [
+        # genuine After Close capture, stamped the next morning (before the reaction session closed)
+        snap("BBB", date(2026, 10, 28), "After Close", date(2026, 10, 27), datetime(2026, 10, 27, 4, 21, tzinfo=UTC), "BUY",
+             evaluated=datetime(2026, 10, 29, 4, 30, tzinfo=UTC)),
+        # a date-only backfill row of another model, no timing label, stamped EARLIER
+        snap("BBB", date(2026, 10, 28), None, date(2026, 10, 26), datetime(2026, 10, 26, 0, 0, tzinfo=UTC), "BUY",
+             evaluated=datetime(2026, 10, 28, 1, 0, tzinfo=UTC), model="claude_pm"),
+    ]
+    res = t.preview(snaps, [], now=now)
+    assert res["legacy_stamps_before_reaction_close"]["After Close"] == {"events_stamped": 1, "stamped_before_reaction_close": 1}
+    assert res["legacy_stamps_before_reaction_close"]["unknown"]["events_stamped"] == 0
