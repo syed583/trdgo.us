@@ -55,21 +55,26 @@ def can_bind(port):
     """Can this process listen on 127.0.0.1:port? (Windows can forbid a port inside an excluded range or one held by another program.)"""
     with socket.socket() as s_:
         try:
+            if os.name == "nt":                 # PostgreSQL binds with SO_EXCLUSIVEADDRUSE: test the same way (EACCES when another process, e.g. Docker, holds the port)
+                s_.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
             s_.bind(("127.0.0.1", port))
             return True, ""
         except OSError as exc:
             return False, f"errno {exc.errno}: {exc.strerror}"
 
 
-def pick_port(preferred):
-    cands = ([preferred] if preferred else []) + list(range(54320, 54340)) + [15432, 25432, 35432, 45432, 55432, 5439, 15439]
-    tried = []
-    for p in cands:
+def pick_port(preferred, want=4):
+    """Up to `want` bindable ports (the first is used, the others are fall-backs if the server still cannot start on it)."""
+    cands = ([preferred] if preferred else []) + [55443] + list(range(54320, 54340)) + [15432, 25432, 35432, 45432, 55432, 5439, 15439]
+    tried, good = [], []
+    for p in dict.fromkeys(cands):
         ok, why = can_bind(p)
         tried.append((p, ok, why))
         if ok:
-            return p, tried
-    return None, tried
+            good.append(p)
+            if len(good) >= want:
+                break
+    return good, tried
 
 
 def sh(cmd, timeout=40):
@@ -184,7 +189,8 @@ def main():
         if not (Path(a.sql_dir) / name).exists() or lf_sha(Path(a.sql_dir) / name) != sha:
             print(f"STOPPED: {name} is missing or does not have the reviewed SHA-256 {sha}")
             return 2
-    port, tried = pick_port(a.port)
+    ports, tried = pick_port(a.port)
+    port = ports[0] if ports else None
     if port is None:
         print("STOPPED: no port in the candidate list can be bound on 127.0.0.1:", [(p, why) for p, ok, why in tried[:8]])
         return 2
@@ -205,7 +211,17 @@ def main():
             failed_start = "initdb failed"
             return 1
         opts = f"-p {a.port} -c listen_addresses=127.0.0.1 -c fsync=off -c synchronous_commit=off" + (" -c bogus_setting=1" if a.debug_bad_option else "")
-        rc = ctl([tool["pg_ctl"], "start", "-w", "-t", "90", "-D", data, "-l", work / "server.log", "-o", opts], work / "pg_ctl.out")
+        rc = 1
+        for i, port_try in enumerate(ports):      # a bind refusal by the OS (e.g. a port taken by Docker) -> try the next free port
+            a.port = port_try
+            opts = f"-p {a.port} -c listen_addresses=127.0.0.1 -c fsync=off -c synchronous_commit=off" + (" -c bogus_setting=1" if a.debug_bad_option else "")
+            rc = ctl([tool["pg_ctl"], "start", "-w", "-t", "90", "-D", data, "-l", work / "server.log", "-o", opts], work / "pg_ctl.out")
+            if rc == 0:
+                break
+            log = (work / "server.log").read_text(errors="replace") if (work / "server.log").exists() else ""
+            print(f"   start on port {port_try} failed (pg_ctl exit {rc}): {log.strip().splitlines()[-1][:160] if log.strip() else 'no log'}")
+            if "bind" not in log.lower():
+                break
         started = rc == 0
         if not check("scratch cluster started on 127.0.0.1 only", started, f"port {a.port}" if started else f"pg_ctl exit {rc}"):
             failed_start = f"pg_ctl start exit {rc}"
