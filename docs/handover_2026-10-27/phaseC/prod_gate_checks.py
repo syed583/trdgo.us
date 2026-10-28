@@ -281,6 +281,15 @@ def backup(a):
     R.add(f"the dump is fresh (taken within {a.max_age_min:g} minutes)", age_min <= a.max_age_min, f"{age_min:.0f} minutes old")
     size = dump.stat().st_size
     R.add("the dump is not empty", size > 0, f"{size / 1e6:.1f} MB")
+    import hashlib
+    h = hashlib.sha256()
+    with open(dump, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    side = Path(str(dump) + ".sha256")
+    want = side.read_text(encoding="utf-8", errors="ignore").split()[0].strip().lower() if side.exists() and side.read_text(errors="ignore").strip() else None
+    R.add("the dump's SHA-256 equals the recorded .sha256 sidecar", want == h.hexdigest(), f"SHA-256 {h.hexdigest()}" if want == h.hexdigest()
+          else (f"computed {h.hexdigest()} vs recorded {want}" if want else "no .sha256 sidecar found"))
     prev = [p for p in dumps if p != dump]
     if prev:
         ratio = size / max(prev[0].stat().st_size, 1)
@@ -294,7 +303,8 @@ def backup(a):
         R.summary()
         return R.exit_code()
     ver = subprocess.run([tool, "--version"], capture_output=True, text=True).stdout.strip()
-    R.add("pg_restore is version 17 or newer", bool(re.search(r"\b(1[7-9]|[2-9]\d)\.", ver)), ver)
+    mm = re.search(r"(\d+)(?:\.\d+)*\s*$", ver)
+    R.add(f"pg_restore is version {a.min_pg_major} or newer (it must be at least the server's major version)", bool(mm) and int(mm.group(1)) >= a.min_pg_major, ver)
     toc = subprocess.run([tool, "--list", str(dump)], capture_output=True, text=True)
     R.add("pg_restore can read the dump (--list succeeds)", toc.returncode == 0, (toc.stderr or "").strip()[:120])
     t = toc.stdout
@@ -414,6 +424,7 @@ def main():
     sub.choices["backup"].add_argument("--dump")
     sub.choices["backup"].add_argument("--pg-restore")
     sub.choices["backup"].add_argument("--max-age-min", type=float, default=30.0)
+    sub.choices["backup"].add_argument("--min-pg-major", type=int, default=17)
     a = ap.parse_args()
     try:
         return {"readiness": readiness, "backup": backup, "postcheck": postcheck}[a.cmd](a)
