@@ -1,0 +1,61 @@
+# PART 3 of 3 - writes ONE small text file (base64 of the reviewed script). Executes nothing.
+& {
+  $ErrorActionPreference = 'Stop'
+  $stgDir = 'C:\audit-reports\readonly_verify\parts_p2a'; $stgPart = Join-Path $stgDir 'part3.b64'
+  $stgText = @'
+qQry8//ud5Q//+83KH8b8EcNojH++s8ftU/+kaTXS1egn6a//loZ5R/RHf1uTNK//lGW5P/5nsH/+tvf/vHbg5+WOfs78dPf/hiw
+6ZJrwB/1Uf6h/iiIY1/Xf/1+7U+d/vHLL981dH755eqd/fQ//qh68/9+9/z//ue/BDgd0z9+q6zzK/Hrhev+j+fpnsZ//Z75Ndpf
+L3Z+/tPo3xK4OlzC/a35u3zYL7/8OpUxnZex/ROF/yLX//Xzn5//VyH/H3t8SPx/XQurPllOsb7ruvwU1+GSpL+06fbTf1xp8Y+7
+78X6rb0fu3+1f+nX3fXsnTZFW3y3C79efbeNXfWj5fv/nz9KPv0U5+H87ucfw1yXgm5/92/SOfxuUr//v+6rovkxovz9/3Xfp9+7
+1z/pY/p37vfqZmwx/lrk66dLOy1D+cXSKP3i4q8//Vqb6etHBbJvGTRRV3/UOvq1EM6vJX1+mS8K7fvnP4qZ/fb0t3puafJLOF8P
+i3cbfg/1LbhrOn+qYfVTGM9LWP9WMCyevwt0/WhIfp/gz7/XYromsYb1Ev467hdvPtVfZ/nLv+rHTf8+vPvgTO7Ps/8SrS/taX9p
+jqJcKv7NPEMpn7z/X5m+Gn75tQbQv4Tw4+ajztglgv9jObR/k8BPaT/98ivPv7L0X2ur/e94+J//+cVSNvf1327Q7f53GPo7jPy3
+i5lfHc0v49L+MnZ/nYb6dy/zXZroug3rOE+b4/fqRHP6/9d2fb2N40b8PZ9CVR9C4bxKnF6B1nsuYC+2RYFcttjbPhSqIMiWnFVt
+ST7JdpIm/u79zZAUSclO0oc74O5CcjgcDofzT8bwcWfGgTglHaFHf5ElvG6psB9DZQtwye4V8sbtmieje7JFSHdzv8sFoSemfvO+
+fZ3d/TL79O3vX+5MpS8/MLpDXdqIzlE0YVKm2y12G7B+bEg59vHS5oJYUl9UVHrQoaGpNxsqXyUCu5crkYmOT5nQVa2KlXegqlt3
+VI0PS4qi5QJc1TIXB1n4KeCqXVxBbTBGMhBYClht52ArpENIkCKgtc5g8PIN2E/NkE6kaGtsv0yx2V0DUqPJ+DrWxMuabJY6EnwL
+R/JOtIoY3/e/5ttNsUx1JcB6k9m1FE21P9pdV+FN5Ie8UaUPP/ZLJkoR/GnqFksMQqrcRYsuCBga8dhZOD5Bnm54BDY00MxErR+r
+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
+'@
+  $stgClean = ($stgText -replace '\s', '')
+  $stgHash = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::ASCII.GetBytes($stgClean))).Replace('-','').ToLower()
+  if ($stgHash -ne '66b475ea74f3fdc948efd2582d638237691b7da1e813c8ba8a30553ba749ae21') { Write-Host 'STOPPED: this part was cut off or altered in the paste - nothing written. Paste it again.' -ForegroundColor Red; return }
+  if (Test-Path $stgPart) { Write-Host "STOPPED: $stgPart already exists (never overwritten)" -ForegroundColor Red; return }
+  New-Item -ItemType Directory -Force -Path $stgDir | Out-Null
+  [IO.File]::WriteAllText($stgPart, $stgClean, [Text.Encoding]::ASCII)
+  Write-Host "PART 3 OK: $($stgClean.Length) characters, hash verified" -ForegroundColor Green
+}

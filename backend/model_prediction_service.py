@@ -250,79 +250,24 @@ def capture(days: int = 15) -> int:
 # Grading                                                                      #
 # --------------------------------------------------------------------------- #
 def grade(max_symbols: int = 120) -> int:
-    """Fill the outcome for predictions whose earnings have reported.
+    """Grade reported earnings events and return how many were newly graded.
 
-    One live post-earnings-move lookup per symbol (not per row), capped so a run
-    stays well inside the API budget. Returns rows graded."""
+    Phase 2A lifecycle (earnings_outcomes): an event is graded only after its reaction session has
+    closed (Before Open: the earnings-day session; After Close: the next valid trading session; US
+    holidays, early closes and daylight saving respected) and both closing prices exist. Until then it
+    stays pending and is retried on a back-off schedule that never stops -- an outcome that is simply
+    not available yet is never recorded as permanently unverifiable. Outcomes live in
+    `earnings_event_outcomes`; the legacy columns of model_predictions are filled only for rows that
+    were never evaluated, and rows already stamped are not rewritten."""
     if not _ensure_table():
         return 0
-    from sqlalchemy import text
+    import earnings_outcomes as eo
     from database import SessionLocal
     db = SessionLocal()
     try:
-        today = date.today()
-        syms = [r[0] for r in db.execute(text(
-            "SELECT DISTINCT symbol FROM model_predictions "
-            "WHERE evaluated_at IS NULL AND earnings_date IS NOT NULL "
-            "AND earnings_date < :t ORDER BY symbol LIMIT :lim"),
-            {"t": today, "lim": max_symbols}).all()]
-        if not syms:
-            return 0
-
-        import earnings_trade_service as ets
-        graded = 0
-        for sym in syms:
-            try:
-                moves = ets._historical_moves(sym) or []
-            except Exception:  # noqa: BLE001
-                moves = []
-            by_date = {str(m.get("date"))[:10]: m.get("move_pct")
-                       for m in moves if m.get("date") is not None}
-            # Every reported, not-yet-attempted row for this symbol. We attempt
-            # each one; if no real post-earnings move can be matched it is marked
-            # UNVERIFIABLE (evaluated_at set, correct left NULL) -- distinct from
-            # PENDING (earnings not yet reported, evaluated_at still NULL).
-            prows = db.execute(text(
-                "SELECT id, earnings_date, signal FROM model_predictions "
-                "WHERE symbol = :s AND evaluated_at IS NULL "
-                "AND earnings_date IS NOT NULL AND earnings_date < :t"),
-                {"s": sym, "t": today}).all()
-            for pid, edate, sig in prows:
-                key = str(edate)[:10]
-                mv = by_date.get(key)
-                if mv is None and by_date:
-                    # No exact report-date match: take the REAL report closest to
-                    # the predicted earnings date, within +/-5 days (the UW report
-                    # date and the calendar's earnings_date often differ by a day,
-                    # and an AMC reaction lands on the next session).
-                    best_d, best_gap = None, 6
-                    for dd in by_date:
-                        try:
-                            gap = abs((date.fromisoformat(dd) - edate).days)
-                        except Exception:  # noqa: BLE001
-                            continue
-                        if gap <= 5 and gap < best_gap:
-                            best_d, best_gap = dd, gap
-                    if best_d is not None:
-                        mv = by_date[best_d]
-                if mv is None:
-                    # Reported but no usable outcome -> UNVERIFIABLE (never 0%).
-                    db.execute(text(
-                        "UPDATE model_predictions SET evaluated_at = now() "
-                        "WHERE id = :id"), {"id": pid})
-                    continue
-                adir = _direction(mv)
-                correct = 1 if (adir is not None and sig == adir) else 0
-                db.execute(text(
-                    "UPDATE model_predictions SET actual_move_pct = :mv, "
-                    "actual_direction = :adir, correct = :c, evaluated_at = now() "
-                    "WHERE id = :id"),
-                    {"mv": float(mv), "adir": adir, "c": correct, "id": pid})
-                graded += 1
-            # Commit per symbol so a long run holds no lock and partial progress
-            # survives an interruption.
-            db.commit()
-        return graded
+        summary = eo.run(max_symbols=max_symbols, db=db)
+        eo.sync_legacy_columns(db)
+        return int(summary.get("graded_new", 0))
     except Exception:  # noqa: BLE001
         db.rollback()
         return 0
@@ -346,8 +291,10 @@ def _latest_per_event_sql() -> str:
         "ORDER BY model, symbol, earnings_date, snapshot_date DESC")
 
 
-def scoreboard() -> dict:
-    """Per-model accuracy over graded events, with 7/30/90-day cuts, BUY/SELL
+def scoreboard_legacy() -> dict:
+    """LEGACY scoreboard (kept for comparison, not shown by default): every snapshot class, the
+    latest snapshot on/before the earnings date, and legacy outcomes that may be unverifiable.
+    Per-model accuracy over graded events, with 7/30/90-day cuts, BUY/SELL
     splits, average move, direction-aware return, confidence buckets, consensus
     accuracy -- every figure with its sample size. Read-only."""
     if not _ensure_table():
@@ -529,6 +476,16 @@ def scoreboard() -> dict:
             "note": ("Accuracy is measured only on earnings that have already "
                      "reported; each figure shows its sample size (n). Models "
                      "added recently have little or no evaluated history yet.")}
+
+
+def scoreboard(definition: str = "last") -> dict:
+    """Verified earnings accuracy scoreboard (read-only, provisional): one eligible pre-release prediction
+    per stock / earnings event / model, graded outcomes only, BUY / SELL / NEUTRAL separate. See
+    earnings_scoreboard for the exact definition."""
+    import earnings_scoreboard as sb
+    models = dict(_model_labels())
+    # only the live earnings models are scored; retired ids stay in the table untouched
+    return sb.scoreboard(models, definition=definition)
 
 
 def history(model: Optional[str] = None, symbol: Optional[str] = None,

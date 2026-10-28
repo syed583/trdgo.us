@@ -794,11 +794,19 @@ def warm_progress() -> dict:
 
 @router.get("/model-accuracy/scoreboard")
 def model_accuracy_scoreboard() -> dict:
-    """Read-only accuracy scoreboard for the earnings models: per-model hit-rate
-    with 7/30/90-day cuts, BUY/SELL splits, consensus and confidence buckets.
-    Every figure carries its sample size; unreached events stay UNVERIFIED."""
+    """Verified (provisional) accuracy scoreboard for the earnings models: one eligible pre-release
+    prediction per stock / event / model, graded outcomes only, BUY / SELL / NEUTRAL separate, with
+    sample sizes, intervals, baseline and excluded / pending / missing-outcome counts. A new cache key
+    is used so an old-format cached answer is never served."""
     import model_prediction_service as mp
-    return swr.serve("modacc:scoreboard", lambda: mp.scoreboard(), 300.0)
+    return swr.serve("modacc:scoreboard:v2", lambda: mp.scoreboard(), 300.0)
+
+
+@router.get("/model-accuracy/scoreboard-legacy")
+def model_accuracy_scoreboard_legacy() -> dict:
+    """The previous scoreboard (all snapshot classes, legacy outcomes), kept for comparison only."""
+    import model_prediction_service as mp
+    return swr.serve("modacc:scoreboard:legacy", lambda: mp.scoreboard_legacy(), 300.0)
 
 
 @router.get("/model-accuracy/history")

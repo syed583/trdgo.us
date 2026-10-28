@@ -17,7 +17,10 @@ briefly unreachable degrades to the in-memory behaviour, never an error.
 
 from __future__ import annotations
 
+import base64
+import gzip
 import json
+import logging
 import os
 import threading
 import time
@@ -53,8 +56,39 @@ _SKIP_STATUS = {
 }
 
 # Payloads larger than this are not worth a round trip to store; the in-memory
-# tier still holds them for this process.
+# tier still holds them for this process. The limit applies to what is actually
+# STORED, i.e. after compression below.
 _MAX_BYTES = 1_500_000
+
+# Large JSON payloads (a 537-name Claude Pro scan is ~1.7 MB) compress ~8x, so values above this size
+# are stored gzip+base64 behind a prefix instead of raising the limit. Smaller values stay plain JSON,
+# and rows written before this change (plain JSON) remain readable.
+_COMPRESS_OVER = 200_000
+_GZ_PREFIX = "gz1:"
+
+log = logging.getLogger(__name__)
+_dropped: dict[str, dict] = {}
+_dropped_lock = threading.Lock()
+
+
+def _encode(blob: str) -> str:
+    """JSON text -> stored text (compressed when large)."""
+    if len(blob) <= _COMPRESS_OVER:
+        return blob
+    return _GZ_PREFIX + base64.b64encode(gzip.compress(blob.encode("utf-8"), 6)).decode("ascii")
+
+
+def _decode(stored: str) -> Any:
+    """Stored text -> value (plain JSON or gz1: compressed)."""
+    if stored.startswith(_GZ_PREFIX):
+        return json.loads(gzip.decompress(base64.b64decode(stored[len(_GZ_PREFIX):])).decode("utf-8"))
+    return json.loads(stored)
+
+
+def dropped() -> dict:
+    """Keys whose value was too large to persist even after compression (key -> sizes, when)."""
+    with _dropped_lock:
+        return {k: dict(v) for k, v in _dropped.items()}
 
 _ready = False
 _ready_lock = threading.Lock()
@@ -97,7 +131,7 @@ def get(key: str) -> Optional[tuple[float, Any]]:
             {"k": namespace() + key}).first()
         if not row:
             return None
-        return float(row[1]), json.loads(row[0])
+        return float(row[1]), _decode(row[0])
     except Exception:  # noqa: BLE001 - a read miss is just a miss
         return None
     finally:
@@ -124,7 +158,7 @@ def get_many(keys: list[str]) -> dict[str, tuple[float, Any]]:
             {"ks": [ns + k for k in ks]}).all()
         for k, v, t in rows:
             try:
-                out[k[len(ns):]] = (float(t), json.loads(v))
+                out[k[len(ns):]] = (float(t), _decode(v))
             except Exception:  # noqa: BLE001 - skip a single corrupt row
                 pass
     except Exception:  # noqa: BLE001 - a read miss is just a miss
@@ -138,11 +172,18 @@ def _write(key: str, value: Any, when: float) -> None:
     if not _ensure_table():
         return
     try:
-        blob = json.dumps(value, default=str)
+        raw = json.dumps(value, default=str)
     except (TypeError, ValueError):
         return
+    blob = _encode(raw)
     if len(blob) > _MAX_BYTES:
+        # Never drop silently: record and log it so an oversized screen is visible, not mysteriously cold.
+        with _dropped_lock:
+            _dropped[key] = {"raw_bytes": len(raw), "stored_bytes": len(blob), "limit": _MAX_BYTES, "at": when}
+        log.warning("db_cache: %s not persisted (%d bytes raw, %d stored, limit %d)", key, len(raw), len(blob), _MAX_BYTES)
         return
+    with _dropped_lock:
+        _dropped.pop(key, None)
     db = SessionLocal()
     try:
         db.execute(text(
