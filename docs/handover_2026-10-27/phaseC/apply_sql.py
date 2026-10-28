@@ -20,6 +20,7 @@ def main() -> int:
     ap.add_argument("--root", default=r"C:\apps\us-stock-reader")
     ap.add_argument("--file", required=True)
     ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--port", type=int, default=None, help="override the connection port, e.g. 5432 (session pooler) instead of 6543 (transaction pooler)")
     a = ap.parse_args()
     mig = (Path(a.root) / "backend" / "migrations").resolve()
     f = (mig / a.file).resolve()
@@ -41,6 +42,9 @@ def main() -> int:
     if not url:
         sys.exit("STOPPED: no DATABASE_URL")
     url = url.replace("postgresql+psycopg://", "postgresql://", 1)
+    if a.port:                                     # DDL in one explicit transaction belongs on a session-mode connection
+        p = urlparse(url)
+        url = url.replace(f":{p.port}/", f":{a.port}/", 1) if p.port else url
     import psycopg
     conn = psycopg.connect(url, connect_timeout=15, prepare_threshold=None, autocommit=True)
     print("connected (port %s), server %s" % (urlparse(url).port, conn.execute("SHOW server_version").fetchone()[0]))
