@@ -324,8 +324,12 @@ function Invoke-Deploy {
         $stage = 'BUILD'
         $outF = Join-Path $LogDir "npm_build_$Stamp.out.log"; $errF = Join-Path $LogDir "npm_build_$Stamp.err.log"
         $p = Start-Process -FilePath 'npm.cmd' -ArgumentList 'run', 'build' -WorkingDirectory "$R\frontend" -RedirectStandardOutput $outF -RedirectStandardError $errF -PassThru -WindowStyle Hidden
+        $null = $p.Handle     # PowerShell 5.1: without touching the handle, ExitCode comes back EMPTY even on success (reproduced; broke the first run)
         if (-not $p.WaitForExit($BuildTimeoutS * 1000)) { try { $p.Kill() } catch { }; throw "npm run build exceeded ${BuildTimeoutS}s" }
-        if ($p.ExitCode -ne 0) { throw "npm run build failed (exit $($p.ExitCode)); see $errF" }
+        $p.WaitForExit()
+        $code = $p.ExitCode
+        if ($null -eq $code) { throw "npm run build: the exit code is unavailable; treating as failure (see $outF and $errF)" }
+        if ($code -ne 0) { throw "npm run build failed (exit $code); see $errF" }
         $idx = Get-Item -LiteralPath "$Dist\index.html" -ErrorAction Stop
         if ($idx.Length -lt 200 -or $idx.LastWriteTime -lt $t0) { throw 'dist\index.html is missing, tiny or not rebuilt' }
         $hit = Get-ChildItem "$Dist\assets" -Filter *.js -ErrorAction Stop | Select-String -Pattern 'partial data' -SimpleMatch -List | Select-Object -First 1
