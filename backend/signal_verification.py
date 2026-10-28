@@ -59,12 +59,22 @@ _stats_logged = 0.0
 
 
 def log_stats(force: bool = False) -> None:
+    """One grep-able line every STATS_EVERY_S. The application configures no INFO logging (the root logger is WARNING), so this logger
+    owns a stderr handler -- otherwise the line would never reach the service log."""
     import logging
+    import sys
     import time
     global _stats_logged
     if force or time.monotonic() - _stats_logged >= STATS_EVERY_S:
         _stats_logged = time.monotonic()
-        logging.getLogger(__name__).info("SIGNAL_AUDIT_STATS %s", json.dumps(STATS, sort_keys=True))
+        lg = logging.getLogger("signal_verification.stats")
+        if not lg.handlers:
+            h = logging.StreamHandler(sys.stderr)
+            h.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+            lg.addHandler(h)
+            lg.setLevel(logging.INFO)
+            lg.propagate = False
+        lg.info("SIGNAL_AUDIT_STATS %s", json.dumps(STATS, sort_keys=True))
 
 
 _audit_sessionmaker = None

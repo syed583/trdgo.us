@@ -1,11 +1,13 @@
-"""Apply ONE reviewed migration file (backend/migrations/*.sql) to the database named by DATABASE_URL / backend\\.env.
+"""Apply ONE reviewed migration file to the database named by DATABASE_URL / backend\\.env.
 
-Only for the explicitly approved production step. It prints the file's SHA-256 and the statement summary, refuses to run any file that
-is not in backend\\migrations, runs the whole file as ONE transaction (the files carry BEGIN / SET LOCAL lock_timeout / COMMIT), never
-prints the connection string, and rolls back on any error. Without --apply it only shows what it would run.
+Only for the explicitly approved production step. It prints the file's SHA-256 (line endings normalised to LF) and the statement summary,
+refuses to run a file whose SHA-256 differs from --expect-sha256, refuses any file that is not a .sql directly inside the migrations folder,
+runs the whole file as ONE transaction (the files carry BEGIN / SET LOCAL lock_timeout / COMMIT), never prints the connection string, and
+rolls back on any error. Without --apply it only shows what it would run.
 
-    python apply_sql.py --root C:\\apps\\us-stock-reader --file 2026_10_27_A_audit_only.sql            (dry run)
-    python apply_sql.py --root C:\\apps\\us-stock-reader --file 2026_10_27_A_audit_only.sql --apply    (after approval + backup)
+    python apply_sql.py --root C:\\apps\\us-stock-reader --sql-dir C:\\audit-reports\\apply\\migrations --file 2026_10_27_A_audit_only.sql \\
+           --expect-sha256 <hash> --port 5432                       (dry run)
+    ... the same command with --apply                               (after the backup, the readiness run and your approval)
 """
 import argparse
 import hashlib
@@ -17,17 +19,23 @@ from urllib.parse import urlparse
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--root", default=r"C:\apps\us-stock-reader")
+    ap.add_argument("--root", default=r"C:\apps\us-stock-reader", help="where backend\\.env (the connection settings) lives")
+    ap.add_argument("--sql-dir", default=None, help="folder holding the reviewed .sql (default <root>\\backend\\migrations); lets the SQL be "
+                    "taken straight from a fetched commit without touching the running code")
     ap.add_argument("--file", required=True)
+    ap.add_argument("--expect-sha256", default=None, help="refuse unless the file has exactly this SHA-256")
     ap.add_argument("--apply", action="store_true")
-    ap.add_argument("--port", type=int, default=None, help="override the connection port, e.g. 5432 (session pooler) instead of 6543 (transaction pooler)")
+    ap.add_argument("--port", type=int, default=None, help="override the connection port, e.g. 5432 (session mode) instead of 6543 (transaction pooler)")
     a = ap.parse_args()
-    mig = (Path(a.root) / "backend" / "migrations").resolve()
+    mig = (Path(a.sql_dir) if a.sql_dir else Path(a.root) / "backend" / "migrations").resolve()
     f = (mig / a.file).resolve()
     if f.parent != mig or not f.exists() or f.suffix != ".sql":
-        sys.exit("STOPPED: the file must be a .sql in backend\\migrations")
+        sys.exit("STOPPED: the file must be a .sql directly inside the migrations folder")
     sql = f.read_text(encoding="utf-8")
-    print("file:", f.name, "sha256:", hashlib.sha256(sql.encode("utf-8")).hexdigest())
+    digest = hashlib.sha256(sql.replace("\r\n", "\n").encode("utf-8")).hexdigest()
+    print("file:", f.name, "sha256 (LF):", digest)
+    if a.expect_sha256 and digest.lower() != a.expect_sha256.lower():
+        sys.exit("STOPPED: the SQL file does not have the expected SHA-256")
     stmts = [s.strip() for s in sql.split(";") if s.strip() and not all(l.strip().startswith("--") or not l.strip() for l in s.splitlines())]
     for s in stmts:
         print("  ", " ".join(x for x in s.splitlines() if not x.strip().startswith("--"))[:110])

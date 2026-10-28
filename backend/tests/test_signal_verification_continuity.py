@@ -211,3 +211,13 @@ def test_securing_the_audit_table_is_a_noop_off_postgresql_and_its_sql_is_the_mi
     sql = (Path(__file__).resolve().parents[1] / "migrations" / "2026_10_27_A_audit_only.sql").read_text(encoding="utf-8")
     assert "ENABLE ROW LEVEL SECURITY" in sql and all(stmt.split("\n")[1].strip() in sql for stmt in sv.SECURE_AUDIT_SQL[1:2])
     assert "REVOKE ALL ON TABLE intraday_signal_audit FROM anon" in sql and "FROM authenticated" in sql
+
+
+def test_the_stats_line_reaches_stderr_even_though_the_app_configures_no_info_logging(capsys):
+    import logging
+    logging.getLogger("signal_verification.stats").handlers.clear()
+    logging.getLogger().setLevel(logging.WARNING)                              # as in the service
+    sv.STATS["cycles"] = 7
+    sv.log_stats(force=True)
+    err = capsys.readouterr().err
+    assert "SIGNAL_AUDIT_STATS" in err and '"cycles": 7' in err
