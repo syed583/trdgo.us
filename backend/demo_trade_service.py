@@ -201,6 +201,8 @@ def _ensure_extra_tables() -> None:
         if need:
             from database import engine
             wf.ensure_tables(engine, need)
+            if "intraday_signal_audit" in need:
+                sv.secure_audit_table(engine)          # keep the audit data out of the Data API
         _extra_tables_done = True
     except Exception:  # noqa: BLE001
         import logging

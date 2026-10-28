@@ -1,7 +1,8 @@
-"""READ-ONLY production gate checks for the audit-only deployment.  Two subcommands:
+"""READ-ONLY production gate checks for the audit-only deployment.  Three subcommands:
 
     python prod_gate_checks.py readiness [--root C:\\apps\\us-stock-reader] [--out C:\\audit-reports] [--require-least-privilege]
     python prod_gate_checks.py backup    [--dump <file>] [--pg-restore <exe>] [--max-age-min 30] [--root ...] [--out ...]
+    python prod_gate_checks.py postcheck [--expect-demo-rows N] [--root ...] [--out ...]     (after migration A: is the audit table right and private?)
 
 Exit code:  0 = every MANDATORY check passed;  1 = at least one MANDATORY check FAILED;  2 = the checker itself could not run.
 (Advisory findings -- e.g. an over-privileged role unless --require-least-privilege -- are printed as FAIL (advisory) and do not change the
@@ -118,6 +119,7 @@ def readiness(a):
         return cur.fetchall()
 
     ver, num = one("SHOW server_version")[0], one("SHOW server_version_num")[0]
+    one_db = one("SELECT current_database()")[0]
     facts.update(server_version=ver, connection_port=port, host_kind=host_kind(url))
     print(f"PostgreSQL {ver} (version_num {num}); connection port {port}; {host_kind(url)}")
     R.add("server is PostgreSQL 17", str(ver).startswith("17"), f"version {ver}")
@@ -175,25 +177,54 @@ def readiness(a):
     long_tx = one("SELECT COUNT(*) FROM pg_stat_activity WHERE xact_start IS NOT NULL AND now() - xact_start > interval '60 seconds' "
                   "AND backend_type = 'client backend' AND pid <> pg_backend_pid()")[0]
     R.add("no transaction older than 60 s that could block a DDL lock", long_tx == 0, f"{long_tx} long transactions")
+    # ---- row-level security and Data API exposure (Supabase) ----
+    n_force = one("SELECT COUNT(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r' "
+                  "AND c.relforcerowsecurity")[0]
+    n_pol = one("SELECT COUNT(*) FROM pg_policies WHERE schemaname = 'public'")[0]
+    evt = [r[0] for r in rows("SELECT evtname FROM pg_event_trigger ORDER BY 1")]
+    web = {}
+    for r_ in ("anon", "authenticated"):
+        if one("SELECT COUNT(*) FROM pg_roles WHERE rolname = %s", r_)[0]:
+            web[r_] = {"select_demo_trades": one("SELECT has_table_privilege(%s, 'public.demo_trades', 'SELECT')", r_)[0],
+                       "create_in_public": one("SELECT has_schema_privilege(%s, 'public', 'CREATE')", r_)[0]}
+    dflt = rows("SELECT pg_get_userbyid(d.defaclrole), d.defaclobjtype, d.defaclacl::text FROM pg_default_acl d "
+                "LEFT JOIN pg_namespace n ON n.oid = d.defaclnamespace WHERE n.nspname = 'public' OR d.defaclnamespace = 0")
+    exposes_new = any(("anon=" in str(r[2]) or "authenticated=" in str(r[2])) and r[1] == "r" for r in dflt)
+    facts["rls"] = {"tables_force_rls": n_force, "policies_in_public": n_pol, "event_triggers": evt, "data_api_roles": web,
+                    "default_privileges_expose_new_tables_to_data_api_roles": exposes_new}
+    print(f"row-level security: {n_rls} of {n_tables} tables enabled, {n_force} forced, {n_pol} policies; event triggers: {evt or 'none'}")
+    print(f"Data API roles present: {web or 'none'}; new tables in public are exposed to them by default privileges: {exposes_new}")
+    R.add("new tables in public are NOT exposed to the Data API by default (otherwise the migration's REVOKE / RLS lines are essential)",
+          not exposes_new, "migration A enables RLS and revokes anon/authenticated on the audit table either way", mandatory=False)
+    R.add("migration A's protection of the audit table is part of the SQL (RLS enabled + revoke)", True,
+          "the audit table is created private on every run", mandatory=False)
     conn.rollback()
     conn.close()
 
     # ---- how the migration should connect ----
     print("\nconnection method for the migration:")
     cur_mode = probe_mode(url)
+    if port == 6543:        # the statement probe cannot prove session semantics under light load (the pooler may hand the same backend back)
+        cur_mode["mode"] = "TRANSACTION-pooled (port 6543 is the Supabase transaction pooler by design; the statement probe below is only indicative)"
     facts["connection_mode_current_port"] = cur_mode
     print(f"  port {port}: {cur_mode['mode']} ({cur_mode['distinct_backends_over_8_statements']} backend(s) over 8 statements)")
     session_url, session_ok = None, False
     if "SESSION" in cur_mode["mode"]:
         session_url, session_ok = url, True
     else:
-        for alt in (5432,):
+        for alt in (a.alt_port,):
             try:
                 alt_url = with_port(url, alt)
                 m5 = probe_mode(alt_url)
+                with __import__("psycopg").connect(alt_url, connect_timeout=10, prepare_threshold=None) as c5:
+                    same = (c5.execute("SHOW server_version").fetchone()[0] == str(ver)
+                            and c5.execute("SELECT current_database()").fetchone()[0] == one_db)
+                m5["same_server_and_database"] = same
+                if not same:
+                    m5["mode"] = "NOT THE SAME DATABASE: " + m5["mode"]
                 facts[f"connection_mode_port_{alt}"] = m5
                 print(f"  port {alt}: {m5['mode']} ({m5['distinct_backends_over_8_statements']} backend(s))")
-                if "SESSION" in m5["mode"]:
+                if "SESSION" in m5["mode"] and same:
                     session_url, session_ok = alt_url, True
             except Exception as exc:  # noqa: BLE001
                 facts[f"connection_mode_port_{alt}"] = f"unreachable: {type(exc).__name__}"
@@ -303,20 +334,70 @@ def backup(a):
     return R.exit_code()
 
 
+def postcheck(a):
+    """After migration A (read-only): the audit table has exactly the expected shape and is private; demo_trades is unchanged."""
+    import psycopg
+    R = Results()
+    url = load_url(a.root)
+    conn = psycopg.connect(url, connect_timeout=15, prepare_threshold=None)
+    conn.read_only = True
+    cur = conn.cursor()
+    cur.execute("SET TRANSACTION READ ONLY")
+
+    def one(sql, *p):
+        cur.execute(sql, p or None)
+        return cur.fetchone()
+
+    cols = [r[0] for r in cur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = %s "
+                                      "ORDER BY ordinal_position", (AUDIT_TABLE,)).fetchall()]
+    want = ["id", "ts", "strategy", "symbol", "trading_date", "session_type", "direction", "score", "recomputed_score", "score_diff", "entry_price",
+            "verdict", "data_status", "failed_checks", "checks", "breakdown", "data", "legacy_opened", "trade_id", "legacy_held",
+            "attribution_ok", "attribution_detail"]
+    R.add("the audit table exists with exactly the expected columns", cols == want, f"{len(cols)} columns" + ("" if cols == want else f": {cols}"))
+    R.add("its index exists", one("SELECT COUNT(*) FROM pg_indexes WHERE tablename = %s AND indexname = %s", AUDIT_TABLE, AUDIT_INDEX)[0] == 1)
+    rls = one("SELECT relrowsecurity FROM pg_class WHERE relname = %s AND relkind = 'r'", AUDIT_TABLE)
+    R.add("row-level security is enabled on the audit table", bool(rls and rls[0]))
+    for r_ in ("anon", "authenticated"):
+        if one("SELECT COUNT(*) FROM pg_roles WHERE rolname = %s", r_)[0]:
+            priv = one("SELECT has_table_privilege(%s, %s, 'SELECT') OR has_table_privilege(%s, %s, 'INSERT') OR has_table_privilege(%s, %s, 'UPDATE') "
+                       "OR has_table_privilege(%s, %s, 'DELETE')", r_, "public." + AUDIT_TABLE, r_, "public." + AUDIT_TABLE, r_, "public." + AUDIT_TABLE,
+                       r_, "public." + AUDIT_TABLE)[0]
+            R.add(f"the audit data is not reachable by the Data API role '{r_}'", not priv)
+    n = one(f"SELECT COUNT(*) FROM {AUDIT_TABLE}")[0]
+    print(f"audit rows so far: {n}")
+    cols_dt = {r[0]: r[1] for r in cur.execute("SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'demo_trades'").fetchall()}
+    R.add("demo_trades still has exactly the original columns", cols_dt == EXPECTED_COLUMNS)
+    rows_now = one("SELECT COUNT(*) FROM demo_trades")[0]
+    if a.expect_demo_rows is not None:
+        R.add("demo_trades has at least the rows it had before the migration (trading continues, nothing deleted)", rows_now >= a.expect_demo_rows,
+              f"{rows_now} rows now, {a.expect_demo_rows} before")
+    print(f"demo_trades rows now: {rows_now}")
+    conn.rollback()
+    conn.close()
+    Path(a.out).mkdir(parents=True, exist_ok=True)
+    line = R.summary()
+    f = Path(a.out) / f"gate-postcheck-{datetime.now().strftime('%Y%m%d-%H%M')}.json"
+    f.write_text(json.dumps({"checks": R.rows, "summary": line, "exit_code": R.exit_code()}, indent=2, default=str), encoding="utf-8")
+    print("report:", f)
+    return R.exit_code()
+
+
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("readiness", "backup"):
+    for name in ("readiness", "backup", "postcheck"):
         sp = sub.add_parser(name)
         sp.add_argument("--root", default=r"C:\apps\us-stock-reader")
         sp.add_argument("--out", default=r"C:\audit-reports")
     sub.choices["readiness"].add_argument("--require-least-privilege", action="store_true")
+    sub.choices["readiness"].add_argument("--alt-port", type=int, default=5432, help="the session-mode port to try when the current one is a transaction pooler")
+    sub.choices["postcheck"].add_argument("--expect-demo-rows", type=int, default=None)
     sub.choices["backup"].add_argument("--dump")
     sub.choices["backup"].add_argument("--pg-restore")
     sub.choices["backup"].add_argument("--max-age-min", type=float, default=30.0)
     a = ap.parse_args()
     try:
-        return readiness(a) if a.cmd == "readiness" else backup(a)
+        return {"readiness": readiness, "backup": backup, "postcheck": postcheck}[a.cmd](a)
     except SystemExit:
         raise
     except Exception as exc:  # noqa: BLE001

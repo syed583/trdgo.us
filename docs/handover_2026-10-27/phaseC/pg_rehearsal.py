@@ -82,6 +82,11 @@ with database.engine.begin() as c:
     for t in ("intraday_signal_audit", "intraday_shadow_log", "intraday_shadow_trades", "intraday_data_exceptions", "intraday_signal_events",
               "intraday_snapshots", "demo_trades"):
         c.execute(text(f"DROP TABLE IF EXISTS {t} CASCADE"))
+    # emulate Supabase: Data API roles exist and every NEW table / sequence in public is granted to them by default
+    for r_ in ("anon", "authenticated"):
+        c.execute(text(f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{r_}') THEN CREATE ROLE {r_} NOLOGIN; END IF; END $$"))
+    c.execute(text("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated"))
+    c.execute(text("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated"))
     c.execute(text("""CREATE TABLE demo_trades (id SERIAL PRIMARY KEY, strategy VARCHAR(24) NOT NULL, symbol VARCHAR(16) NOT NULL,
         side VARCHAR(5) NOT NULL, shares INTEGER NOT NULL, session_date DATE NOT NULL, entry_time TIMESTAMPTZ NOT NULL, entry_price FLOAT NOT NULL,
         stop FLOAT, target FLOAT, score_at_entry FLOAT, last_price FLOAT, profit FLOAT, profit_pct FLOAT, status VARCHAR(16) NOT NULL,
@@ -104,6 +109,16 @@ check("rehearsal book: 172 OPEN + 40 closed", n_rows == 212 and scalar("SELECT C
 # -------------------------------------------------------------------------------------------- A: audit table only --------
 err = try_file("2026_10_27_A_audit_only.sql")
 check("A applies cleanly", err is None, err or "")
+c_ = scalar("SELECT has_table_privilege('anon', 'public.intraday_signal_audit', 'SELECT') OR has_table_privilege('authenticated', "
+            "'public.intraday_signal_audit', 'INSERT')")
+rls_ = scalar("SELECT relrowsecurity FROM pg_class WHERE relname = 'intraday_signal_audit' AND relkind = 'r'")
+with database.engine.begin() as c0:
+    c0.execute(text("CREATE TABLE ctl_unprotected (id int)"))                         # negative control: an unprotected new table IS exposed
+exposed_ctl = scalar("SELECT has_table_privilege('anon', 'public.ctl_unprotected', 'SELECT')")
+with database.engine.begin() as c0:
+    c0.execute(text("DROP TABLE ctl_unprotected"))
+check("negative control: an unprotected new table in public is exposed to the Data API roles (the emulation is faithful)", exposed_ctl is True)
+check("A makes the audit table private: RLS on, no privileges for anon / authenticated", rls_ is True and c_ is False, f"rls={rls_} reachable={c_}")
 check("A creates the audit table and index only", tables() == {"demo_trades", "intraday_signal_audit"} and
       "ix_intraday_signal_audit_day" in {i["name"] for i in inspect(database.engine).get_indexes("intraday_signal_audit")})
 check("A leaves demo_trades columns, indexes and every row byte-identical",

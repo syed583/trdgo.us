@@ -33,4 +33,19 @@ CREATE TABLE IF NOT EXISTS intraday_signal_audit (
 );
 CREATE INDEX IF NOT EXISTS ix_intraday_signal_audit_day ON intraday_signal_audit (trading_date, strategy);
 
+-- Keep the audit data private. On Supabase every new table in public is reachable through the Data API roles unless protected:
+-- enable row-level security (no policy = no access for those roles) and revoke their grants. Conditional on the roles existing.
+ALTER TABLE intraday_signal_audit ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    REVOKE ALL ON TABLE intraday_signal_audit FROM anon;
+    REVOKE ALL ON SEQUENCE intraday_signal_audit_id_seq FROM anon;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+    REVOKE ALL ON TABLE intraday_signal_audit FROM authenticated;
+    REVOKE ALL ON SEQUENCE intraday_signal_audit_id_seq FROM authenticated;
+  END IF;
+END $$;
+
 COMMIT;

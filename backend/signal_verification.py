@@ -91,6 +91,36 @@ def audit_sessionmaker():
     return _audit_sessionmaker
 
 
+# On Supabase every table created in schema public is, by default, reachable through the Data API roles (anon / authenticated). The
+# audit table must stay private: enable row-level security (no policy = no access for those roles) and revoke their grants. The
+# statements are conditional on the roles existing, so they are harmless on any other PostgreSQL. The application's own role owns the
+# table / bypasses RLS and is unaffected.
+SECURE_AUDIT_SQL = (
+    "ALTER TABLE intraday_signal_audit ENABLE ROW LEVEL SECURITY",
+    """DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
+    REVOKE ALL ON TABLE intraday_signal_audit FROM anon;
+    REVOKE ALL ON SEQUENCE intraday_signal_audit_id_seq FROM anon;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+    REVOKE ALL ON TABLE intraday_signal_audit FROM authenticated;
+    REVOKE ALL ON SEQUENCE intraday_signal_audit_id_seq FROM authenticated;
+  END IF;
+END $$""",
+)
+
+
+def secure_audit_table(engine) -> None:
+    """PostgreSQL only: keep the audit table out of the Data API (see SECURE_AUDIT_SQL). Idempotent."""
+    if engine.dialect.name != "postgresql":
+        return
+    from sqlalchemy import text
+    with engine.begin() as conn:
+        for stmt in SECURE_AUDIT_SQL:
+            conn.execute(text(stmt))
+
+
 def mode() -> str:
     return str((getattr(cfg, "INTRADAY_VERIFICATION", None) or {}).get("mode", "off")).lower()
 

@@ -12,6 +12,16 @@
       "detail": ""
     },
     {
+      "check": "negative control: an unprotected new table in public is exposed to the Data API roles (the emulation is faithful)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "A makes the audit table private: RLS on, no privileges for anon / authenticated",
+      "ok": true,
+      "detail": "rls=True reachable=False"
+    },
+    {
       "check": "A creates the audit table and index only",
       "ok": true,
       "detail": ""
