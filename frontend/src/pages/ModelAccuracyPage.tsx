@@ -201,7 +201,13 @@ export default function ModelAccuracyPage() {
             </>
           )}
 
-          <div className="ma-h">Prediction verification</div>
+          <div className="ma-h">Prediction verification (legacy outcomes)</div>
+          <p className="ma-n" role="alert" style={{ color: 'var(--bad, #c0392b)' }}>
+            <b>Legacy outcomes — INVALID for verified performance.</b> The Actual move, Actual and Result columns below were
+            computed by the old grader from pre-market / after-hours candle rows, not regular-session closes (28 of 33
+            stored values differed from the verified move in the 2026-10-29 audit; 14 changed class). They are kept only as
+            a record. Use the verified scoreboard above.
+          </p>
           <div className="ma-toolbar">
             <select value={model} onChange={(e) => setModel(e.target.value)}>
               <option value="">All models</option>
@@ -213,7 +219,7 @@ export default function ModelAccuracyPage() {
             <thead>
               <tr>
                 <th className="l">Model</th><th className="l">Symbol</th><th>Earnings</th>
-                <th>Call</th><th>Score</th><th>Actual move</th><th>Actual</th><th>Result</th>
+                <th>Call</th><th>Score</th><th>Actual move (legacy)</th><th>Actual (legacy)</th><th>Result (legacy)</th>
               </tr>
             </thead>
             <tbody>

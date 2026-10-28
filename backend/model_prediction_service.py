@@ -249,6 +249,19 @@ def capture(days: int = 15) -> int:
 # --------------------------------------------------------------------------- #
 # Grading                                                                      #
 # --------------------------------------------------------------------------- #
+LEGACY_OUTCOMES_NOTE = (
+    "LEGACY outcome data: actual_move_pct / actual_direction / correct on model_predictions were computed by the "
+    "old grader, which read pre-market / after-hours candle rows instead of regular-session closes. In the "
+    "2026-10-29 audit sample 28 of 33 stored values differed from the verified move and 14 changed the "
+    "BUY/SELL/NEUTRAL class. Do not use them for verified performance reporting; use /model-accuracy/scoreboard.")
+
+
+def legacy_sync_enabled() -> bool:
+    """Writing verified outcomes into the legacy columns is OFF unless EARNINGS_LEGACY_SYNC is explicitly truthy."""
+    import os
+    return os.environ.get("EARNINGS_LEGACY_SYNC", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def grade(max_symbols: int = 120) -> int:
     """Grade reported earnings events and return how many were newly graded.
 
@@ -257,8 +270,8 @@ def grade(max_symbols: int = 120) -> int:
     holidays, early closes and daylight saving respected) and both closing prices exist. Until then it
     stays pending and is retried on a back-off schedule that never stops -- an outcome that is simply
     not available yet is never recorded as permanently unverifiable. Outcomes live in
-    `earnings_event_outcomes`; the legacy columns of model_predictions are filled only for rows that
-    were never evaluated, and rows already stamped are not rewritten."""
+    `earnings_event_outcomes`. The legacy columns of model_predictions are NOT written unless
+    EARNINGS_LEGACY_SYNC is explicitly enabled (and even then only for never-evaluated rows)."""
     if not _ensure_table():
         return 0
     import earnings_outcomes as eo
@@ -266,7 +279,8 @@ def grade(max_symbols: int = 120) -> int:
     db = SessionLocal()
     try:
         summary = eo.run(max_symbols=max_symbols, db=db)
-        eo.sync_legacy_columns(db)
+        if legacy_sync_enabled():
+            eo.sync_legacy_columns(db)
         return int(summary.get("graded_new", 0))
     except Exception:  # noqa: BLE001
         db.rollback()
@@ -534,7 +548,8 @@ def history(model: Optional[str] = None, symbol: Optional[str] = None,
                     "signal": r.signal, "score": r.score,
                     "actual_move_pct": r.actual_move_pct,
                     "actual_direction": r.actual_direction, "result": result})
-    return {"status": "OK", "source": SOURCE, "rows": out, "count": len(out)}
+    return {"status": "OK", "source": SOURCE, "rows": out, "count": len(out),
+            "legacy_outcomes_invalid": True, "legacy_note": LEGACY_OUTCOMES_NOTE}
 
 
 def overlay(symbols: list[str]) -> dict:
@@ -549,7 +564,8 @@ def overlay(symbols: list[str]) -> dict:
     All read from the stored graded predictions -- no extra API calls, no model
     recomputation. Missing history is simply absent (never shown as 0%)."""
     syms = [s.upper() for s in (symbols or []) if s]
-    out = {"model_stats": {}, "prev": {}, "last_move": {}}
+    out = {"model_stats": {}, "prev": {}, "last_move": {},
+           "legacy_outcomes_invalid": True, "legacy_note": LEGACY_OUTCOMES_NOTE}
     # Per-model stats straight from the scoreboard (directional headline).
     try:
         sb = scoreboard()

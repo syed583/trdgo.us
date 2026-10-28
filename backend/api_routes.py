@@ -804,9 +804,11 @@ def model_accuracy_scoreboard() -> dict:
 
 @router.get("/model-accuracy/scoreboard-legacy")
 def model_accuracy_scoreboard_legacy() -> dict:
-    """The previous scoreboard (all snapshot classes, legacy outcomes), kept for comparison only."""
+    """The previous scoreboard (all snapshot classes, legacy outcomes), kept for comparison only. INVALID for
+    verified performance reporting: the legacy outcomes were graded from the wrong candle rows."""
     import model_prediction_service as mp
-    return swr.serve("modacc:scoreboard:legacy", lambda: mp.scoreboard_legacy(), 300.0)
+    return swr.serve("modacc:scoreboard:legacy", lambda: {
+        **mp.scoreboard_legacy(), "legacy_outcomes_invalid": True, "legacy_note": mp.LEGACY_OUTCOMES_NOTE}, 300.0)
 
 
 @router.get("/model-accuracy/history")

@@ -179,7 +179,7 @@ export default function AllModelsPage({ ctx }: { ctx: PageContext }) {
                     <td className="am-date">{dayLabel(r.date)}
                       {r.report_clock ? <em>{r.report_clock}</em> : null}</td>
                     <td className={`am-lastmove ${r.last_move ? (r.last_move.move_pct > 0 ? 'up' : r.last_move.move_pct < 0 ? 'down' : '') : ''}`}
-                      title={r.last_move ? `Previous earnings (${r.last_move.earnings_date}): ${signedPct(r.last_move.move_pct)}`
+                      title={r.last_move ? `Previous earnings (${r.last_move.earnings_date}), legacy move, unverified: ${signedPct(r.last_move.move_pct)}`
                         : 'No recorded previous earnings move'}>
                       {r.last_move ? signedPct(r.last_move.move_pct) : '—'}</td>
                     <td className="am-cons" title={`${t.b} BUY vs ${t.s} SELL across ${models.length} models`}>
@@ -200,13 +200,13 @@ export default function AllModelsPage({ ctx }: { ctx: PageContext }) {
                       return (
                         <td key={k} className={`am-cell ${tier(c.signal)} ${c.changed ? 'chg' : ''}`}
                           title={`${c.signal || 'no data'}${c.score != null ? ` · ${c.score}` : ''}${c.coverage != null ? ` · coverage ${c.coverage}%` : ''}`
-                            + (p ? `\nPrevious earnings call: ${p.signal} → actual ${signedPct(p.actual_move_pct)} (${p.result})`
+                            + (p ? `\nPrevious earnings call (legacy outcome, unverified): ${p.signal} → ${signedPct(p.actual_move_pct)} (${p.result})`
                               : '\nNo recorded previous call')}>
                           <span className="am-l">{letter(c.signal)}</span>
                           <span className="am-sc">{c.score != null ? c.score : ''}</span>
                           {c.coverage != null && <span className="am-cov">{c.coverage}%</span>}
                           {p && <span className={`am-prev ${p.result === 'CORRECT' ? 'ok' : 'no'}`}
-                            title={`Previous: ${p.signal} → ${signedPct(p.actual_move_pct)} (${p.result})`}>
+                            title={`Previous (legacy outcome, unverified): ${p.signal} → ${signedPct(p.actual_move_pct)} (${p.result})`}>
                             {p.result === 'CORRECT' ? '✓' : '✗'}</span>}
                         </td>
                       );
