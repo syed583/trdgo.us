@@ -363,6 +363,25 @@ def postcheck(a):
                        "OR has_table_privilege(%s, %s, 'DELETE')", r_, "public." + AUDIT_TABLE, r_, "public." + AUDIT_TABLE, r_, "public." + AUDIT_TABLE,
                        r_, "public." + AUDIT_TABLE)[0]
             R.add(f"the audit data is not reachable by the Data API role '{r_}'", not priv)
+    # the complete access list of the table and its sequence: who can touch the audit data at all (role names only, no credentials)
+    def grantees(relname, kind):
+        out = []
+        for g, priv in cur.execute("SELECT acl.grantee, acl.privilege_type FROM pg_class c, LATERAL aclexplode(c.relacl) acl "
+                                   "WHERE c.relname = %s AND c.relkind = %s", (relname, kind)).fetchall():
+            out.append(("PUBLIC" if g == 0 else one("SELECT rolname FROM pg_roles WHERE oid = %s", g)[0], priv))
+        return out
+    seq_name = AUDIT_TABLE + "_id_seq"
+    tacl, sacl = grantees(AUDIT_TABLE, "r"), grantees(seq_name, "S")
+    t_who, s_who = sorted({g for g, _ in tacl}), sorted({g for g, _ in sacl})
+    print(f"who holds privileges on the audit table: {t_who or 'only the owner (no explicit grants)'}; on its sequence: {s_who or 'only the owner'}")
+    R.add("no privilege on the audit table for PUBLIC, anon or authenticated (complete ACL, not just the two probes)",
+          not ({"PUBLIC", "anon", "authenticated"} & set(t_who)), f"grantees: {t_who}" if {"PUBLIC", "anon", "authenticated"} & set(t_who) else "")
+    R.add("no privilege on the audit sequence for PUBLIC, anon or authenticated", not ({"PUBLIC", "anon", "authenticated"} & set(s_who)),
+          f"grantees: {s_who}" if {"PUBLIC", "anon", "authenticated"} & set(s_who) else "")
+    pol = one("SELECT COUNT(*) FROM pg_policies WHERE tablename = %s", AUDIT_TABLE)[0]
+    R.add("no row-level-security policy opens the audit table to anyone", pol == 0, f"{pol} policies" if pol else "", mandatory=True)
+    if one("SELECT COUNT(*) FROM pg_roles WHERE rolname = 'service_role'")[0]:
+        print("note: the Supabase 'service_role' (server-side API key, bypasses RLS) can read every table in public by design, as for the other tables.")
     n = one(f"SELECT COUNT(*) FROM {AUDIT_TABLE}")[0]
     print(f"audit rows so far: {n}")
     cols_dt = {r[0]: r[1] for r in cur.execute("SELECT column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'demo_trades'").fetchall()}
