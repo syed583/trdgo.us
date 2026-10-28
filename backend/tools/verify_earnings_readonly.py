@@ -10,6 +10,8 @@ Stages
   raw    : (separate approval, after 20:00 ET) GET-only provider reads at background priority for up to 12
            symbols: each dataset's own latest timestamp, row count and the derived parameter bias.
   fresh  : age buckets of the cached analyses for every calendar name, scan cache sizes/ages.
+  snapshots: prediction capture-time audit (provisional BMO/AMC windows, ET), records for AMZN/EAT/GRMN,
+           earnings-moves distribution, Claude Pro cache keys. SELECT-only, READ ONLY transactions.
   db     : SELECT-only counts from the prediction tables.
 
 Safety: reads go through plain SELECTs inside SET TRANSACTION READ ONLY (the database itself refuses a write);
@@ -293,6 +295,115 @@ def fresh_stage(days=15, reader=None, fetch=None):
     return out
 
 
+# ---- snapshots stage -----------------------------------------------------------------------------
+# Provisional release windows in America/New_York (NOT confirmed release timestamps).
+BMO_EARLIEST = "06:00"     # before this on the report day: before a Before-Open release
+BMO_LATEST = "09:30"       # after this: after the open, so after the release; between = ambiguous
+AMC_RELEASE = "16:00"      # before this on the report day: before an After-Close release
+
+_CLASSIFIED = """
+WITH x AS (
+  SELECT model, symbol, earnings_date, report_timing, snapshot_date, predicted_at, signal, score,
+         evaluated_at, correct, actual_move_pct,
+         (predicted_at AT TIME ZONE 'America/New_York') AS pa_et,
+         (predicted_at = (date_trunc('day', predicted_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')) AS midnight_stamp
+  FROM model_predictions WHERE earnings_date IS NOT NULL
+), c AS (
+  SELECT *,
+    CASE
+      WHEN midnight_stamp THEN 'RETROSPECTIVE'
+      WHEN pa_et::date > earnings_date THEN 'AFTER_RELEASE'
+      WHEN pa_et::date < earnings_date THEN 'BEFORE_RELEASE'
+      WHEN report_timing ILIKE '%before%' OR report_timing ILIKE 'bmo%' OR report_timing ILIKE '%pre%' THEN
+        CASE WHEN pa_et::time < TIME '06:00' THEN 'BEFORE_RELEASE'
+             WHEN pa_et::time < TIME '09:30' THEN 'AMBIGUOUS' ELSE 'AFTER_RELEASE' END
+      WHEN report_timing ILIKE '%after%' OR report_timing ILIKE 'amc%' OR report_timing ILIKE '%post%' THEN
+        CASE WHEN pa_et::time < TIME '16:00' THEN 'BEFORE_RELEASE' ELSE 'AFTER_RELEASE' END
+      ELSE 'AMBIGUOUS' END AS cls
+  FROM x)
+"""
+
+SNAP_QUERIES = {
+    "columns": "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'model_predictions' ORDER BY ordinal_position",
+    "totals": "SELECT COUNT(*) rows_total, COUNT(*) FILTER (WHERE earnings_date IS NULL) no_earnings_date, "
+              "COUNT(*) FILTER (WHERE report_timing IS NULL OR report_timing = '') no_report_timing, "
+              "COUNT(*) FILTER (WHERE score IS NULL) no_score FROM model_predictions",
+    "by_model_class": _CLASSIFIED + "SELECT model, cls, COUNT(*) n, COUNT(*) FILTER (WHERE evaluated_at IS NOT NULL) evaluated, "
+                      "COUNT(*) FILTER (WHERE evaluated_at IS NULL) pending, COALESCE(SUM(correct),0) correct "
+                      "FROM c GROUP BY model, cls ORDER BY model, cls",
+    "by_model": _CLASSIFIED + "SELECT model, COUNT(*) predictions, COUNT(DISTINCT (symbol, earnings_date)) events, "
+                "COUNT(*) FILTER (WHERE evaluated_at IS NOT NULL) evaluated, COUNT(*) FILTER (WHERE evaluated_at IS NULL) pending, "
+                "COUNT(*) FILTER (WHERE cls = 'RETROSPECTIVE') retrospective, COUNT(*) FILTER (WHERE cls = 'AFTER_RELEASE') after_release, "
+                "COUNT(*) FILTER (WHERE cls = 'AMBIGUOUS') ambiguous, COUNT(*) FILTER (WHERE cls = 'BEFORE_RELEASE') before_release, "
+                "MIN(predicted_at) first_predicted_at, MAX(predicted_at) last_predicted_at FROM c GROUP BY model ORDER BY model",
+    "records": _CLASSIFIED + "SELECT symbol, earnings_date, model, report_timing, snapshot_date, "
+               "to_char(pa_et, 'YYYY-MM-DD HH24:MI:SS') captured_et, cls, signal, score, "
+               "(evaluated_at IS NOT NULL) evaluated, actual_move_pct, correct FROM c WHERE symbol IN ('AMZN', 'EAT', 'GRMN') "
+               "ORDER BY symbol, earnings_date DESC, model, snapshot_date DESC LIMIT 1200",
+    "claudepro_keys": "SELECT cache_key, length(value) bytes, updated_at FROM swr_cache WHERE cache_key LIKE 'claudepro:%' ORDER BY cache_key",
+    "large_values": "SELECT COUNT(*) FILTER (WHERE length(value) > 1400000) over_1_4mb, COUNT(*) FILTER (WHERE length(value) > 1500000) over_cap_1_5mb, "
+                    "MAX(length(value)) largest FROM swr_cache",
+    "moves_by_key": "SELECT cache_key, CASE WHEN json_typeof((value::json)->'historical_moves') = 'array' "
+                    "THEN json_array_length((value::json)->'historical_moves') END n FROM swr_cache WHERE cache_key LIKE 'earn:trade:default:%'",
+}
+
+
+def _run_ro(sql, params=None):
+    from sqlalchemy import text
+    from database import SessionLocal
+    db = SessionLocal()
+    try:
+        db.execute(text("SET TRANSACTION READ ONLY"))
+        return [dict(r._mapping) for r in db.execute(text(sql), params or {})]
+    finally:
+        db.rollback()
+        db.close()
+
+
+def snapshots_stage(days=15, reader=None, run=None, require_prod=True):
+    """Prediction snapshot audit. Classifications use PROVISIONAL BMO/AMC windows, not release timestamps."""
+    if require_prod:
+        import database  # noqa: F401  (importing it loads backend/.env)
+        if (os.environ.get("APP_ENV") or "").strip().lower() != "production":
+            sys.exit("APP_ENV is not 'production': refusing.")
+    run = run or _run_ro
+    reader = reader or read_cache
+    out = {"generated_at": _iso(time.time()), "provisional_windows_et": {"before_open_before": BMO_EARLIEST,
+           "before_open_ambiguous_until": BMO_LATEST, "after_close_release": AMC_RELEASE},
+           "note": "Classes are estimates; no confirmed release timestamps exist in the database.", "tables": {}}
+    for k, q in SNAP_QUERIES.items():
+        if k == "moves_by_key":
+            continue
+        try:
+            out["tables"][k] = run(q)
+        except Exception as exc:  # noqa: BLE001
+            out["tables"][k] = {"error": f"{type(exc).__name__}: {str(exc)[:200]}"}
+    # Historical earnings-moves distribution over the calendar names.
+    key = SCAN_KEYS["claude"].format(d=days)
+    got = reader([key]).get(key)
+    names = [(r.get("symbol") or "").upper() for r in ((got[1] if got else {}).get("rows") or [])]
+    try:
+        rows = {r["cache_key"][len("earn:trade:default:"):]: r["n"] for r in run(SNAP_QUERIES["moves_by_key"])}
+        dist = {}
+        for s in names:
+            lbl = "no trade cache" if s not in rows else "no moves list" if rows[s] is None else str(rows[s])
+            dist[lbl] = dist.get(lbl, 0) + 1
+        out["moves_distribution_calendar_names"] = {"calendar_names": len(names), "n_moves": dict(sorted(dist.items()))}
+    except Exception as exc:  # noqa: BLE001
+        out["moves_distribution_calendar_names"] = {"error": f"{type(exc).__name__}: {str(exc)[:200]}"}
+    cols = {c["column_name"] for c in (out["tables"].get("columns") or []) if isinstance(c, dict)}
+    out["unverifiable"] = {
+        "input_snapshot_columns": sorted(cols & {"inputs", "params", "payload", "evidence", "input_snapshot"}),
+        "coverage_column": sorted(cols & {"coverage", "coverage_pct"}),
+        "release_timestamp_column": sorted(cols & {"released_at", "release_ts", "announced_at"}),
+        "tier_column": sorted(cols & {"tier"}),
+        "conclusion": ("Rows hold only model, symbol, dates, timing label, signal and score. Input values, data coverage, "
+                       "input ages and the actual release time are not stored, so no prediction can be independently "
+                       "re-derived or confirmed pre-release from the database alone."),
+    }
+    return out
+
+
 def db_stage():
     from sqlalchemy import text
     from database import SessionLocal
@@ -326,7 +437,7 @@ def db_stage():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--symbols", default="")
-    ap.add_argument("--stage", choices=["pick", "cache", "fresh", "raw", "db"], required=True)
+    ap.add_argument("--stage", choices=["pick", "cache", "fresh", "snapshots", "raw", "db"], required=True)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     syms = [s for s in a.symbols.replace(" ", "").split(",") if s]
@@ -334,7 +445,7 @@ def main():
         sys.exit("--symbols is required for this stage")
     if a.stage == "raw" and len(syms) > 12:
         sys.exit("raw stage is limited to 12 symbols (provider budget)")
-    res = {"pick": pick_stage, "fresh": fresh_stage, "cache": lambda: cache_stage(syms), "raw": lambda: raw_stage(syms), "db": db_stage}[a.stage]()
+    res = {"pick": pick_stage, "fresh": fresh_stage, "snapshots": snapshots_stage, "cache": lambda: cache_stage(syms), "raw": lambda: raw_stage(syms), "db": db_stage}[a.stage]()
     Path(a.out).write_text(json.dumps(res, indent=1, default=str), encoding="utf-8")
     print(f"wrote {a.out}")
     if a.stage == "pick":
@@ -342,6 +453,28 @@ def main():
         for r in sorted(res.get("rows", []), key=lambda r: (r.get("days_to") is None, r.get("days_to"))):
             print(f"{r['symbol']:6s} {str(r['date']):10s} d{r['days_to']} {str(r.get('report_timing') or r.get('time_label') or ''):10s} "
                   f"score {r['score']} {r['signal']} cov {r['coverage']}")
+    if a.stage == "snapshots":
+        t_ = res["tables"]
+        print("windows (ET, provisional):", res["provisional_windows_et"])
+        print("columns:", [c["column_name"] for c in t_["columns"]] if isinstance(t_["columns"], list) else t_["columns"])
+        print("totals:", t_["totals"])
+        print("\nPER MODEL:")
+        for r in (t_["by_model"] if isinstance(t_["by_model"], list) else [t_["by_model"]]):
+            print(" ", {k: (str(v)[:19] if "predicted_at" in k else v) for k, v in r.items()})
+        print("\nPER MODEL x CLASS (n / evaluated / pending / correct):")
+        for r in (t_["by_model_class"] if isinstance(t_["by_model_class"], list) else []):
+            print(f"  {r['model']:11s} {r['cls']:14s} n={r['n']:<6} evaluated={r['evaluated']:<6} pending={r['pending']:<6} correct={r['correct']}")
+        print("\nRECORDS (AMZN, EAT, GRMN) - newest first, max 70 per symbol:")
+        seen = {}
+        for r in (t_["records"] if isinstance(t_["records"], list) else []):
+            seen[r["symbol"]] = seen.get(r["symbol"], 0) + 1
+            if seen[r["symbol"]] <= 70:
+                print(f"  {r['symbol']:5s} earn {r['earnings_date']} {str(r['report_timing'] or ''):12s} {r['model']:11s} snap {r['snapshot_date']} "
+                      f"cap_et {r['captured_et']} {r['cls']:14s} {r['signal']:7s} {r['score']} eval={r['evaluated']} move={r['actual_move_pct']} ok={r['correct']}")
+        print("\nCLAUDE PRO cache keys:", t_["claudepro_keys"])
+        print("LARGE swr values:", t_["large_values"])
+        print("\nEARNINGS-MOVES DISTRIBUTION:", res["moves_distribution_calendar_names"])
+        print("\nUNVERIFIABLE:", res["unverifiable"])
     if a.stage == "fresh":
         print("calendar names:", res.get("calendar_names"))
         for k, v in res.get("age_buckets", {}).items():
