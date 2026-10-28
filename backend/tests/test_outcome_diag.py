@@ -6,6 +6,7 @@ import types
 from datetime import date, datetime, timezone
 
 import pytest
+from decimal import Decimal
 
 UTC = timezone.utc
 TOOL = pathlib.Path(__file__).resolve().parent.parent / "tools" / "outcome_diag.py"
@@ -48,11 +49,13 @@ def data():
     ]
     cal = [{"symbol": "EEE", "earnings_date": e28, "reporting_time": "After Close", "report_time": None, "reaction_date": None,
             "post_earnings_move_percent": None, "eps_actual": None, "lifecycle": "x", "data_status": "x", "fetched_at": None, "updated_at": None}]
-    trades = [{"cache_key": "earn:trade:default:CCC", "updated_at": at(30, 9, 0), "hm": [{"date": "2026-10-28", "move_pct": 5.0}]},
-              {"cache_key": "earn:trade:default:AAA", "updated_at": at(30, 9, 0), "hm": [{"date": "2026-10-28", "move_pct": 3.0}]},
-              {"cache_key": "earn:trade:default:DDD", "updated_at": at(28, 9, 0), "hm": [{"date": "2026-07-29", "move_pct": 1.0}]}]
-    prices = [{"symbol": "CCC", "snapshot_date": date(2026, 10, 28), "price": 100.0, "created_at": at(28, 21, 5)},
-              {"symbol": "CCC", "snapshot_date": date(2026, 10, 29), "price": 105.0, "created_at": at(29, 21, 5)}]
+    trades = [{"cache_key": "earn:trade:default:ZZZ", "updated_at": at(30, 9, 0).timestamp(), "hm": None},
+              {"cache_key": "earn:trade:default:CCC", "updated_at": at(30, 9, 0).timestamp(), "hm": [{"date": "2026-10-28", "move_pct": 5.0}]},
+              {"cache_key": "earn:trade:default:AAA", "updated_at": at(30, 9, 0).timestamp(), "hm": [{"date": "2026-10-28", "move_pct": 3.0}]},
+              {"cache_key": "earn:trade:default:DDD", "updated_at": at(28, 9, 0).timestamp(), "hm": [{"date": "2026-07-29", "move_pct": 1.0}]}]
+    # production types: price is a Decimal, created_at a naive timestamp
+    prices = [{"symbol": "CCC", "snapshot_date": date(2026, 10, 28), "price": Decimal("100.0"), "created_at": at(28, 21, 5).replace(tzinfo=None)},
+              {"symbol": "CCC", "snapshot_date": date(2026, 10, 29), "price": Decimal("105.0"), "created_at": at(29, 21, 5).replace(tzinfo=None)}]
     return snaps, cal, trades, prices, [{"table_name": "score_snapshots", "column_name": "price"}]
 
 
@@ -97,7 +100,7 @@ def test_sample_audit_gives_dates_stamps_cached_moves_prices_and_reasons():
     assert "before the reaction session closed" in early["why_no_new_outcome"]
     assert "cached earnings-move history has this event" in early["why_no_new_outcome"]
     assert early["cached_move"][0]["move_pct"] == 5.0 and early["trade_cache_built_utc"] == "2026-10-30T09:00+00:00"
-    assert [p["price"] for p in early["stored_prices_score_snapshots"]] == [100.0, 105.0]
+    assert [float(p["price"]) for p in early["stored_prices_score_snapshots"]] == [100.0, 105.0]
     bmo = sa["BMO legacy stamped, no move"][0]
     assert bmo["symbol"] == "BBB" and "after the close but recorded no move" in bmo["why_no_new_outcome"]
     assert sa["AMC stamped early, no stored move"][0]["symbol"] == "DDD"
@@ -138,3 +141,12 @@ def test_read_only_by_construction():
     for fn in ("run", "ensure_table", "load_outcomes", "_save", "sync_legacy_columns", "events_to_review", "default_bars_fetcher"):
         with pytest.raises(RuntimeError, match="disabled in the read-only diagnostic"):
             getattr(eo, fn)()
+
+
+def test_epoch_float_timestamps_are_accepted_as_production_stores_them():
+    t = load_tool()
+    assert t._utc(1793203200.0) == datetime.fromtimestamp(1793203200.0, tz=UTC)
+    assert t._utc(1793203200) == datetime.fromtimestamp(1793203200, tz=UTC)
+    assert t._utc("2026-10-30T09:00:00Z") == datetime(2026, 10, 30, 9, 0, tzinfo=UTC)
+    assert t._utc(datetime(2026, 10, 30, 9, 0)) == datetime(2026, 10, 30, 9, 0, tzinfo=UTC)
+    assert t._utc(None) is None

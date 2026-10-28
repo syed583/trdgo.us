@@ -276,6 +276,8 @@ def _d(v):
 def _utc(v):
     if v is None:
         return None
+    if isinstance(v, (int, float)):                       # swr_cache.updated_at is epoch seconds (double precision)
+        return datetime.fromtimestamp(float(v), tz=timezone.utc)
     if isinstance(v, str):
         v = datetime.fromisoformat(v.replace("Z", "+00:00"))
     return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
