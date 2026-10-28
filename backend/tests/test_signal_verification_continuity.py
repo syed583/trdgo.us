@@ -202,3 +202,12 @@ def test_the_audit_can_use_its_own_database_role(monkeypatch, tmp_path):
     monkeypatch.delenv("AUDIT_DATABASE_URL")
     monkeypatch.setattr(sv, "_audit_sessionmaker", None)
     assert sv.audit_sessionmaker() is None                                   # default: the application's normal session factory
+
+
+def test_securing_the_audit_table_is_a_noop_off_postgresql_and_its_sql_is_the_migrations_sql(monkeypatch, tmp_path):
+    rig = Rig(monkeypatch, tmp_path)
+    sv.secure_audit_table(rig.e)                                              # SQLite: nothing to do, nothing raised
+    from pathlib import Path
+    sql = (Path(__file__).resolve().parents[1] / "migrations" / "2026_10_27_A_audit_only.sql").read_text(encoding="utf-8")
+    assert "ENABLE ROW LEVEL SECURITY" in sql and all(stmt.split("\n")[1].strip() in sql for stmt in sv.SECURE_AUDIT_SQL[1:2])
+    assert "REVOKE ALL ON TABLE intraday_signal_audit FROM anon" in sql and "FROM authenticated" in sql

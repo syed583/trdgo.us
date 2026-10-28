@@ -126,6 +126,7 @@ def _ensure_audit_table() -> None:
             from database import engine
             from models_demo_trades import IntradaySignalAudit
             IntradaySignalAudit.__table__.create(bind=engine, checkfirst=True)
+            sv.secure_audit_table(engine)          # keep the audit data out of the Data API
     except Exception:  # noqa: BLE001
         import logging
         logging.getLogger(__name__).exception("the audit table could not be created; Legacy trading is unaffected")
