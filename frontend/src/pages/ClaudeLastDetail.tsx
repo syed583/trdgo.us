@@ -6,6 +6,7 @@ import { ScoreGauge } from '../components/common';
 import { RiskAlertsCard } from '../components/EarningsShared';
 import { api, api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
+import { signalView, legacySignalView, bandsFor } from '../lib/earningsSignal';
 import './tab-scan.css';
 import './earnings-trade-screen.css';   // ets-* layout (same as Claude +-)
 
@@ -13,16 +14,6 @@ import './earnings-trade-screen.css';   // ets-* layout (same as Claude +-)
 // Claude +- (Earnings Trade) detail: a scored gauge, a confidence card, the
 // News & Risk Alerts panel, sub-tabs and an Add-to-Watchlist button.
 
-// Bands: BUY >= 55, NEUTRAL 45-55, SELL <= 45.
-const COLOR = (s: number | null) =>
-  s == null ? 'var(--text-mute)' : s >= 55 ? 'var(--green)' : s <= 45 ? 'var(--red)' : 'var(--amber)';
-const CALL = (s: number | null) =>
-  s == null ? '--' : s >= 55 ? 'BUY' : s <= 45 ? 'SELL' : 'NEUTRAL';
-const TONE = (s: number | null) =>
-  s == null ? 'flat' : s >= 55 ? 'buy' : s <= 45 ? 'sell' : 'flat';
-const SETUP = (s: number | null) =>
-  s == null ? '--' : s >= 65 ? 'Strong Setup' : s >= 55 ? 'Good Setup'
-    : s <= 35 ? 'Weak Setup' : s <= 45 ? 'Soft Setup' : 'Neutral';
 const num = (v: any, d = 2) => (v == null ? '--' : Number(v).toFixed(d));
 
 export default function ClaudeLastDetail({ ctx, base = '/claude-last', pz = false, model }:
@@ -46,6 +37,10 @@ export default function ClaudeLastDetail({ ctx, base = '/claude-last', pz = fals
   const ok = d?.status === 'OK';
   const score: number | null = ok ? d.score : null;
   const params: any[] = ok ? (d.params || []) : [];
+  // Earnings models show the backend's final signal/tier; the intraday models that
+  // share this component keep their fixed 55/45 reading of the score.
+  const legacy = !!model?.base?.includes('intraday');
+  const sv = legacy ? legacySignalView(score) : signalView(ok ? d : null);
 
   useEffect(() => {
     if (ctx.demo || ok || resp.loading) return;
@@ -123,19 +118,20 @@ export default function ClaudeLastDetail({ ctx, base = '/claude-last', pz = fals
             <div className="ets-card">
               <div className="ets-card-h">
                 <span><Target size={15} /> Direction Signal</span>
-                <span className={`ets-badge ${TONE(score)}`}>{CALL(score)}</span>
+                <span className={`ets-badge ${sv.tone}`}>{sv.label}</span>
               </div>
               <div className="ets-gauges ets-gauges-one">
                 <div className="ets-gauge-wrap">
                   <div className="ets-gauge-title">Direction</div>
                   <div className="ets-gauge">
-                    <ScoreGauge value={score ?? 0} color={COLOR(score)} size={118} />
+                    <ScoreGauge value={score ?? 0} color={sv.color} size={118} />
                     <div className="ets-gauge-num">
-                      <span style={{ color: COLOR(score) }}>{score == null ? '--' : Math.round(score)}</span>
+                      <span style={{ color: sv.color }}>{score == null ? '--' : legacy ? Math.round(score) : score}</span>
                       <span className="ets-gauge-max">/100</span>
                     </div>
                   </div>
-                  <div className="ets-setup" style={{ color: COLOR(score) }}>{SETUP(score)}</div>
+                  <div className="ets-setup" style={{ color: sv.color }}>{sv.setup}</div>
+                  {sv.note && <div className="ets-conf-note">{sv.note}</div>}
                 </div>
               </div>
               <button className="ets-why-toggle" onClick={() => setWhyOpen((v) => !v)} aria-expanded={whyOpen}>
@@ -146,7 +142,7 @@ export default function ClaudeLastDetail({ ctx, base = '/claude-last', pz = fals
                 <div className="ets-why">
                   <div className="ets-why-side">
                     <div className="ets-why-h">Direction
-                      <span className="ets-why-score">{score != null ? `${score}/100 · ${CALL(score)}` : '--'}</span>
+                      <span className="ets-why-score">{score != null ? `${score}/100 · ${sv.label}` : '--'}</span>
                     </div>
                     {params.map((p: any, i: number) => (
                       <div key={i} className="ets-why-row">
@@ -166,9 +162,11 @@ export default function ClaudeLastDetail({ ctx, base = '/claude-last', pz = fals
                     ))}
                     {!params.length && <div className="ets-why-d">No parameter detail available.</div>}
                   </div>
-                  <div className="ets-note">v2 — 13 parameters, 100 pts. 5-step scale:
-                    strong bull = full Max · neutral / no data = half · strong bear = 0.
-                    BUY ≥ 55 · NEUTRAL 45–55 · SELL ≤ 45, subject to the Implied-Move gate.</div>
+                  <div className="ets-note">
+                    5-step scale: strong bull = full Max · neutral = half · strong bear = 0; inputs with no
+                    data are left out and the rest rescaled to 100.
+                    {legacy ? ' BUY ≥ 55 · NEUTRAL 45–55 · SELL ≤ 45.' : ` ${bandsFor(base) ?? ''}`}
+                  </div>
                 </div>
               )}
             </div>
