@@ -145,10 +145,10 @@ class Book:
 
     def trades(self, **kw):
         with self.Session() as s:
-            q = s.query(m.DemoTrade)
+            q = s.query(m.DemoTradeV2)
             for k, v in kw.items():
-                q = q.filter(getattr(m.DemoTrade, k) == v)
-            rows = q.order_by(m.DemoTrade.id).all()
+                q = q.filter(getattr(m.DemoTradeV2, k) == v)
+            rows = q.order_by(m.DemoTradeV2.id).all()
             s.expunge_all()
             return rows
 

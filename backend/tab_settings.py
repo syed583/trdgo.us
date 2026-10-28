@@ -506,7 +506,9 @@ INTRADAY_WORKFLOW: dict = {"mode": "legacy"}
 # Signal verification (signal_verification.py): independently re-derives each BUY / SELL's score from its parameters, weights
 # and the existing formula and judges the data behind it. "off" | "audit". AUDIT ONLY: it records the outcome and never blocks,
 # delays or changes a trade; there is deliberately no enforcing mode (adding one needs the owner's explicit approval).
-INTRADAY_VERIFICATION: dict = {"mode": "off", "score_tolerance": 0.05}
+import os as _os
+INTRADAY_VERIFICATION: dict = {"mode": (_os.getenv("INTRADAY_VERIFICATION_MODE") or "off").strip().lower(), "score_tolerance": 0.05,
+                               "max_seconds": 5.0}
 
 # EVERY value below is a PROPOSED starting value, NOT a tested or approved production value. Where an existing system constant
 # already says the same thing it is reused and named. The workflow records the evidence needed to calibrate the rest (every

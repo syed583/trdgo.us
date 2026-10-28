@@ -250,7 +250,7 @@ def test_only_off_and_audit_exist_an_unknown_mode_is_inert(monkeypatch):
 
 def test_the_shipped_default_is_off_and_the_active_workflow_is_unchanged():
     src = Path(cfg.__file__).read_text(encoding="utf-8")
-    assert 'INTRADAY_VERIFICATION: dict = {"mode": "off"' in src and 'INTRADAY_WORKFLOW: dict = {"mode": "legacy"}' in src
+    assert 'INTRADAY_VERIFICATION_MODE") or "off"' in src and 'INTRADAY_WORKFLOW: dict = {"mode": "legacy"}' in src
 
 
 def test_the_strategy_trades_page_shows_direction_and_entry_but_no_parameter_scoring():
@@ -297,3 +297,52 @@ def test_history_report_rechecks_existing_trades_read_only(book):
     assert rep["per_strategy"]["chatgpt"]["pass"] == 2 and rep["per_strategy"]["grok"]["fail"] == 2
     with book.Session() as s:
         assert s.query(m.DemoTrade).count() == 8 and all(t.status == "OPEN" for t in s.query(m.DemoTrade).all())
+
+
+def test_the_builtin_no_source_table_equals_the_execution_registry():
+    import intraday_execution as ex
+    for st, paths in ex.REGISTRY.items():
+        sets = [{k for k, v in reg.items() if v in (ex.UNIMPLEMENTED, ex.NOT_APPLICABLE)} for reg in paths.values()]
+        assert set(sv.NO_SOURCE.get(st, ())) == set.intersection(*sets), st
+
+
+def test_without_timestamps_missing_evidence_is_still_reported():
+    thin = row("chatgpt", "NVDA", NOW, signal="BUY", session="REGULAR", score=56.0,
+               overrides={n: None for i, n in enumerate(sv.configured_weights("chatgpt")) if i % 4})
+    thin["signal_meta"] = None
+    v = verdict("chatgpt", thin)
+    assert v["data_status"] == "DATA_THIN" and v["data"]["eligible_coverage_pct"] < 70 and v["data"]["no_source_weight"] == 36
+    full = good_row()
+    full["signal_meta"] = None
+    f = verdict("chatgpt", full)
+    assert f["data_status"] == "DATA_UNVERIFIED" and f["data"]["eligible_coverage_pct"] > 80      # never-sourced parameters are not "missing"
+
+
+def test_the_audits_own_health_is_counted_without_the_database(book, monkeypatch):
+    monkeypatch.setitem(cfg.INTRADAY_WORKFLOW, "mode", "legacy")
+    monkeypatch.setitem(cfg.INTRADAY_VERIFICATION, "mode", "audit")
+    for k in sv.STATS:
+        sv.STATS[k] = 0
+    legacy_day(book)
+    assert sv.STATS["signals_seen"] >= 2 and sv.STATS["verified"] == sv.STATS["signals_seen"] and sv.STATS["recorded"] >= 2
+    assert sv.STATS["verify_errors"] == 0 and sv.STATS["write_errors"] == 0
+    orig = sv.verify
+    monkeypatch.setattr(sv, "verify", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom")))
+    before = sv.STATS["verify_errors"]
+    book.full_tick(et(*TUE, 15, 59, 30))
+    assert sv.STATS["verify_errors"] > before                                                  # counted per signal, nothing raised
+    monkeypatch.setattr(sv, "verify", orig)
+    monkeypatch.setattr(sv, "record", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("db down")))
+    w = sv.STATS["write_errors"]
+    book.full_tick(et(*TUE, 15, 59, 40))
+    assert sv.STATS["write_errors"] == w + 1                                                    # a failing write is counted and dropped
+
+
+def test_the_cli_aggregates_the_audits_log_stats(tmp_path):
+    import signal_verification_cli as cli
+    log = tmp_path / "app.log"
+    log.write_text("x\nSIGNAL_AUDIT_STATS " + json.dumps({"cycles": 10, "verified": 100, "verify_errors": 1, "write_errors": 0}) + "\n"
+                   "SIGNAL_AUDIT_STATS " + json.dumps({"cycles": 20, "verified": 250, "verify_errors": 2, "write_errors": 1}) + "\n"
+                   "SIGNAL_AUDIT_STATS " + json.dumps({"cycles": 3, "verified": 30, "verify_errors": 0, "write_errors": 0}) + "\n")  # a restart
+    out = cli.stats_from_log(str(log))
+    assert out["process_runs"] == 2 and out["total"]["verified"] == 280 and out["total"]["verify_errors"] == 2 and out["total"]["write_errors"] == 1

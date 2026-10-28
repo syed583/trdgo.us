@@ -172,13 +172,40 @@ def ensure_schema() -> None:
         from models_demo_trades import DemoTrade
         DemoTrade.__table__.create(bind=engine, checkfirst=True)
         import intraday_workflow as wf
-        # the ORM model names the evidence columns, so every mode needs them: additive and nullable (history untouched)
-        wf.migrate_additive(engine)
         if wf.active():
-            wf.migrate(engine)                # the activation part (unique indexes) only when V2 is THE workflow
+            wf.migrate(engine)                # V2 activation only: evidence columns + unique indexes (separate approval)
         _schema_ready = True
     except Exception:  # noqa: BLE001 - never hard-fail a page on a DB blip
-        pass
+        return
+    _ensure_extra_tables()
+
+
+_extra_tables_done = False
+
+
+def _ensure_extra_tables() -> None:
+    """Create ONLY the new tables the enabled optional features need (audit and/or shadow). Separate from the Legacy schema step
+    above: a failure here (e.g. no DDL right) is logged once and affects nothing else; Legacy never depends on these tables."""
+    global _extra_tables_done
+    if _extra_tables_done:
+        return
+    try:
+        import signal_verification as sv
+        import intraday_workflow as wf
+        need = []
+        if sv.enabled():
+            need.append("intraday_signal_audit")
+        if wf.shadow():
+            need += ["intraday_shadow_trades", "intraday_shadow_log", "intraday_signal_events", "intraday_snapshots",
+                     "intraday_data_exceptions"]
+        if need:
+            from database import engine
+            wf.ensure_tables(engine, need)
+        _extra_tables_done = True
+    except Exception:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).exception("optional intraday tables could not be created; Legacy trading is unaffected")
+        _extra_tables_done = True               # do not retry on every tick
 
 
 def _board(spec: str) -> Optional[dict]:
@@ -468,34 +495,57 @@ def _shadow_log_legacy(et, boards: dict, have0: set, have: set) -> None:
 
 
 def _audit_signals(et, boards: dict, have0: set, have: set) -> None:
-    """Signal-verification audit of every BUY / SELL board row, in its own session after Legacy's commit. Never raises."""
+    """Signal-verification audit of every BUY / SELL board row, in its own session after Legacy's commit. Never raises. A fault in
+    one signal's verification is counted and skipped; a database fault is counted and the whole audit write is dropped; a hard time
+    budget stops the pass. Nothing here can touch a paper trade."""
+    import time as _t
     import database
     import signal_verification as sv
     from models_demo_trades import DemoTrade
+    t0 = _t.monotonic()
+    budget = float((getattr(__import__("tab_settings"), "INTRADAY_VERIFICATION", None) or {}).get("max_seconds", 5.0))
+    sv.STATS["cycles"] += 1
     s = database.SessionLocal()
     try:
+        if s.get_bind().dialect.name == "postgresql":      # the audit can never hold a lock or a statement open against live trading
+            from sqlalchemy import text as _text
+            s.execute(_text("SET LOCAL lock_timeout = '2s'"))
+            s.execute(_text("SET LOCAL statement_timeout = '5s'"))
         today = et.date()
         results = []
         for strat, rows in boards.items():
             for sym, info in rows.items():
+                if _t.monotonic() - t0 > budget:             # a hard time budget: whatever is left is simply not audited this tick
+                    sv.STATS["budget_skips"] += 1
+                    continue
                 raw = info.get("signal_raw") or info.get("signal")
                 if raw not in ("BUY", "SELL"):
                     continue
-                v = sv.verify(strat, dict(info, symbol=sym), now=et)
+                sv.STATS["signals_seen"] += 1
+                try:
+                    v = sv.verify(strat, dict(info, symbol=sym), now=et)
+                    sv.STATS["verified"] += 1
+                except Exception:  # noqa: BLE001 - one signal's audit fault is counted and skipped
+                    sv.STATS["verify_errors"] += 1
+                    continue
                 opened_id, held = None, (strat, sym) in have0
                 if (strat, sym) in have and not held:
                     t = s.query(DemoTrade.id).filter_by(strategy=strat, symbol=sym, session_date=today).order_by(DemoTrade.id.desc()).first()
                     opened_id = t[0] if t else None
                 results.append((v, sym, opened_id, held))
         for v, sym, opened_id, held in results:
-            sv.record(s, v, now=et, symbol=sym, opened_id=opened_id, held=held)
+            if sv.record(s, v, now=et, symbol=sym, opened_id=opened_id, held=held):
+                sv.STATS["recorded"] += 1
         s.commit()
     except Exception:  # noqa: BLE001
         s.rollback()
+        sv._last.clear()                                     # nothing was stored: let the next pass record again
+        sv.STATS["write_errors"] += 1
         import logging
         logging.getLogger(__name__).exception("signal verification audit failed; trading is unaffected")
     finally:
         s.close()
+        sv.log_stats()
 
 
 def blotter(strategy: str = "", date: str = "") -> dict:

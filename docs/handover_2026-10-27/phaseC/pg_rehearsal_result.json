@@ -1,0 +1,135 @@
+{
+  "server": "PostgreSQL 18.6 (PGlite 0.5.12) on wasm32-unknown-emscripten",
+  "results": [
+    {
+      "check": "rehearsal book: 172 OPEN + 40 closed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "A applies cleanly",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "A creates the audit table and index only",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "A leaves demo_trades columns, indexes and every row byte-identical",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "A is idempotent (second run)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Legacy ORM insert works on the migrated PostgreSQL schema (no V2 column named)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Legacy ORM update works",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the audit hook writes a row to PostgreSQL",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the stored audit row has the verdict, data status and a full parameter breakdown",
+      "ok": true,
+      "detail": "('PASS', 'DATA_OK', True, 20)"
+    },
+    {
+      "check": "the audit write did not touch a single Legacy row",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "auditing 240 signals (6 strategies x 40 names) in one tick is fast",
+      "ok": true,
+      "detail": "0.11s, rows=241"
+    },
+    {
+      "check": "an exhausted time budget audits nothing and raises nothing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "rollback A removes the audit table",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "a FAILING audit write (table missing) raises nothing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "...and leaves every Legacy row exactly as it was",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "...and does not leave a transaction open or locked",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "Legacy keeps trading right after the failed audit write",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "rollback A restored the original shape (columns and indexes)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "re-applying A after a rollback works",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "B applies, is idempotent and its rollback removes only its tables",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "rollback B",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "C applies (columns, constraint swap, unique indexes) on 173 OPEN-distinct rows",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "C added the 8 nullable columns and left every historical value identical",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "C is idempotent",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "rollback C removes the new indexes and changes no row",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "C refuses atomically when OPEN duplicates exist (old constraint still there, no new index)",
+      "ok": true,
+      "detail": "UniqueViolation: could not create unique index \"uq_demo_trades_one_open\""
+    }
+  ]
+}

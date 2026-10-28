@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from sqlalchemy.orm import declared_attr, deferred
 from sqlalchemy import (Boolean, Column, Date, DateTime, Float, Integer, String, Text, Index, func, text)
 
 from database import Base
@@ -43,7 +44,11 @@ class _TradeColumns:
     exit_price = Column(Float, nullable=True)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
-    # --- workflow v2 evidence (all nullable: historical rows keep NULL, never invented values) ---
+
+class _EvidenceColumns:
+    """Workflow v2 evidence (all nullable: historical rows keep NULL, never invented values). Present on the shadow book and, for V2
+    activation only, on demo_trades -- where the LEGACY mapper (DemoTrade) deliberately does not map them, so Legacy, shadow and audit
+    mode neither read nor write them and work on a demo_trades table that does not have them."""
     entry_session = Column(String(12), nullable=True)      # PREMARKET / REGULAR
     signal_event_id = Column(Integer, nullable=True)
     snapshot_id = Column(String(40), nullable=True)
@@ -54,8 +59,14 @@ class _TradeColumns:
     fill_assumption = Column(String(160), nullable=True)   # the documented fill policy that produced the exit price
 
 
-class DemoTrade(_TradeColumns, Base):
+V2_EVIDENCE_COLUMNS = ("entry_session", "signal_event_id", "snapshot_id", "entry_quote", "risk_checks", "validation",
+                       "exit_price_source", "fill_assumption")
+
+
+class DemoTrade(_TradeColumns, _EvidenceColumns, Base):
     __tablename__ = "demo_trades"
+    # The LEGACY mapper leaves the V2 evidence columns out: no SELECT, INSERT or UPDATE of Legacy / shadow / audit mode names them.
+    __mapper_args__ = {"exclude_properties": list(V2_EVIDENCE_COLUMNS)}
     __table_args__ = (
         # One position per strategy, symbol, trading day AND entry session. Rows written before the session workflow have no
         # entry_session (NULL, read as an empty string), so they keep exactly the old one-per-day rule; a PREMARKET and a
@@ -70,7 +81,13 @@ class DemoTrade(_TradeColumns, Base):
     )
 
 
-class ShadowTrade(_TradeColumns, Base):
+class DemoTradeV2(Base):
+    """The SAME demo_trades table mapped WITH the V2 evidence columns. Used only when ``mode == "v2"`` (after the activation
+    migration has added the columns). Never imported by Legacy code."""
+    __table__ = DemoTrade.__table__
+
+
+class ShadowTrade(_TradeColumns, _EvidenceColumns, Base):
     """The V2 workflow's VIRTUAL paper book in shadow mode: same shape as demo_trades, never read by the blotter or the legacy
     tracker. Nothing here is a trade the system placed; it records what V2 would have done on the same market data."""
     __tablename__ = "intraday_shadow_trades"

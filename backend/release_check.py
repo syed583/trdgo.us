@@ -77,13 +77,14 @@ REQUIRED_WITH_WORKFLOW = [
     ("a close with no valid price is PENDING_RECON, never an invented price", "backend/intraday_workflow.py",
      r"status=PENDING_RECON, exit_price=None, profit=None", False),
     ("PENDING_RECON is not exposure", "backend/intraday_workflow.py", r'def _open_positions[\s\S]{0,260}filter_by\(status="OPEN"\)', False),
-    ("shadow mode writes only to the shadow book", "backend/intraday_workflow.py", r"m\.ShadowTrade if _SHADOW else m\.DemoTrade", False),
+    ("shadow mode writes only to the shadow book", "backend/intraday_workflow.py", r"m\.ShadowTrade if _SHADOW else m\.DemoTradeV2", False),
     ("Legacy runs before the shadow evaluation and cannot be changed by it", "backend/demo_trade_service.py",
      r"if wf\.shadow\(\):\s+# AFTER Legacy has committed", False),
-    ("signal verification ships off and has no enforcing mode", "backend/tab_settings.py", r'INTRADAY_VERIFICATION: dict = \{"mode": "off"', False),
+    ("signal verification ships off and has no enforcing mode", "backend/tab_settings.py", r'INTRADAY_VERIFICATION_MODE"\) or "off"', False),
     ("signal verification is audit-only, after Legacy's commit", "backend/demo_trade_service.py",
      r"if sv\.enabled\(\):\s+# audit only, AFTER Legacy has committed", False),
-    ("the schema change has an additive-only part for every mode", "backend/demo_trade_service.py", r"wf\.migrate_additive\(engine\)", False),
+    ("optional tables are created on their own, never touching demo_trades", "backend/demo_trade_service.py", r"wf\.ensure_tables\(engine, need\)", False),
+    ("the Legacy mapper does not map the V2 evidence columns", "backend/models_demo_trades.py", r'"exclude_properties": list\(V2_EVIDENCE_COLUMNS\)', False),
     ("the unique-index migration runs only when V2 is the workflow", "backend/demo_trade_service.py", r"if wf\.active\(\):\s+wf\.migrate\(engine\)", False),
 ]
 

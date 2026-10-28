@@ -23,13 +23,48 @@ from collections import Counter, defaultdict
 from datetime import date, datetime
 from typing import Any, Optional
 
-import intraday_execution as ex
-import market_calendar as mc
 import tab_settings as cfg
+
+try:                                    # optional: a build without the V2 modules still verifies score integrity and missing evidence
+    import intraday_execution as ex
+except Exception:  # noqa: BLE001
+    ex = None
+try:
+    import market_calendar as mc
+except Exception:  # noqa: BLE001
+    mc = None
 
 PASS, FAIL = "PASS", "FAIL"
 DATA_OK, DATA_THIN, DATA_UNVERIFIED = "DATA_OK", "DATA_THIN", "DATA_UNVERIFIED"
 STEPS = (-1.0, -0.5, 0.0, 0.5, 1.0)
+
+
+def _session_of(now: datetime) -> dict:
+    """{'session', 'trading_date'} for ``now`` (ET). The shared calendar when present, else a plain weekday / clock rule."""
+    if mc is not None and hasattr(mc, "session_at"):
+        sa = mc.session_at(now)
+        return {"session": sa["session"], "trading_date": sa["trading_date"]}
+    from datetime import time as _t
+    t = now.time()
+    sess = ("CLOSED" if now.weekday() >= 5 else "PREMARKET" if _t(4, 0) <= t < _t(9, 30) else "REGULAR" if _t(9, 30) <= t < _t(16, 0)
+            else "POSTMARKET" if _t(16, 0) <= t < _t(20, 0) else "CLOSED")
+    return {"session": sess, "trading_date": now.date()}
+
+
+# Per-process counters of the audit's own health, logged as one grep-able line every ``STATS_EVERY_S`` (no database needed, so an audit
+# DATABASE failure is still counted):  SIGNAL_AUDIT_STATS {...}
+STATS: dict = {"cycles": 0, "signals_seen": 0, "verified": 0, "recorded": 0, "verify_errors": 0, "write_errors": 0, "budget_skips": 0}
+STATS_EVERY_S = 600.0
+_stats_logged = 0.0
+
+
+def log_stats(force: bool = False) -> None:
+    import logging
+    import time
+    global _stats_logged
+    if force or time.monotonic() - _stats_logged >= STATS_EVERY_S:
+        _stats_logged = time.monotonic()
+        logging.getLogger(__name__).info("SIGNAL_AUDIT_STATS %s", json.dumps(STATS, sort_keys=True))
 
 
 def mode() -> str:
@@ -59,6 +94,13 @@ def configured_weights(strategy: str) -> dict:
     return {}
 
 
+# Parameters that have NO data source in any path of the strategy (declared with a weight, never fed): they are scored neutral by the
+# strategy and can never be evidence. Mirrors intraday_execution.REGISTRY (a test keeps the two equal); kept here so a build without the
+# V2 modules can still tell "no source exists" from "the source is missing right now".
+NO_SOURCE = {"chatgpt": frozenset({"absorption", "breakout_quality", "liquidity_sweeps", "market_structure", "supply_demand", "volatility",
+                                   "volume_profile"})}
+
+
 def _check(name: str, ok: bool, detail: str = "") -> dict:
     return {"check": name, "ok": bool(ok), "detail": detail}
 
@@ -72,7 +114,7 @@ def verify(strategy: str, row: dict, *, now: datetime, session: Optional[str] = 
            bounds: Optional[dict] = None, prev_close: Optional[datetime] = None) -> dict:
     """Verify one board row. Returns {verdict, integrity, data, checks, reasons, breakdown, recomputed_score, ...}."""
     tol = float((getattr(cfg, "INTRADAY_VERIFICATION", None) or {}).get("score_tolerance", 0.05))
-    sess = session or mc.session_at(now)["session"]
+    sess = session or _session_of(now)["session"]
     direction = row.get("signal_raw") or row.get("signal")
     score = row.get("score") if row.get("score") is not None else row.get("score_raw")
     params = row.get("params") or []
@@ -140,10 +182,22 @@ def verify(strategy: str, row: dict, *, now: datetime, session: Optional[str] = 
     # 6. data (separate from integrity: a clean score on thin data is NOT verified evidence)
     data: dict = {"status": DATA_UNVERIFIED, "reasons": []}
     meta = row.get("signal_meta")
-    if direction in ("BUY", "SELL"):
+    nosrc = NO_SOURCE.get(strategy, frozenset())
+    covered = sum(float(p.get("max") or 0) for p in params if p.get("bias") is not None)
+    total_w = sum(float(p.get("max") or 0) for p in params if p.get("name") not in nosrc)      # eligible weight (a source exists)
+    basic = {"eligible_coverage_pct": round(100 * covered / total_w, 1) if total_w else 0.0,
+             "missing_weight_pct": round(100 * (total_w - covered) / total_w, 1) if total_w else 0.0,
+             "no_source_weight": sum(float(p.get("max") or 0) for p in params if p.get("name") in nosrc)}
+    if direction in ("BUY", "SELL") and (ex is None or not meta):
+        # No per-signal timestamps on this row (older build, or timestamps not enabled): staleness cannot be judged. Missing evidence still can.
+        thin = basic["eligible_coverage_pct"] < float(getattr(cfg, "MIN_COVERAGE_PCT", 70.0))
+        data = dict(basic, status=DATA_THIN if thin else DATA_UNVERIFIED,
+                    reasons=([f"only {basic['eligible_coverage_pct']:.0f}% of the eligible weight has a reading (missing readings are scored "
+                              f"neutral, not verified)"] if thin else []) + ["no per-signal timestamps: staleness cannot be judged"])
+    elif direction in ("BUY", "SELL"):
         try:
             if bounds is None:
-                bounds = mc.session_bounds(mc.session_at(now)["trading_date"])
+                bounds = mc.session_bounds(_session_of(now)["trading_date"])
             if prev_close is None:
                 import intraday_workflow as wf
                 prev_close = wf.last_close_before(now)
@@ -159,7 +213,7 @@ def verify(strategy: str, row: dict, *, now: datetime, session: Optional[str] = 
             status = DATA_OK if ed["ok"] else DATA_THIN
             if not has_ts:
                 status = DATA_UNVERIFIED
-            data = {"status": status, "reasons": ed["reasons"] + ([] if has_ts else ["no per-signal timestamps on this row"]),
+            data = {**basic, "status": status, "reasons": ed["reasons"] + ([] if has_ts else ["no per-signal timestamps on this row"]),
                     "code": ed["code"], "eligible_coverage_pct": cov["eligible_pct"], "total_coverage_pct": cov["total_pct"],
                     "verified_weight": cov["available_weight"], "by_category": cov["by_category"], "agreement": ed["agreement"],
                     "price_age_s": (row.get("data") or {}).get("price_age_s"), "engine_age_s": (row.get("data") or {}).get("signals_age_s")}
@@ -179,7 +233,7 @@ _last: dict = {}
 def record(s, v: dict, *, now: datetime, symbol: str, opened_id: Optional[int], held: bool) -> bool:
     """Store the outcome when it changed for this strategy / symbol / session / direction. The caller owns the transaction."""
     from models_demo_trades import IntradaySignalAudit
-    sess = mc.session_at(now)
+    sess = _session_of(now)
     key = (v["strategy"], symbol, str(sess["trading_date"]), v["session"], v["direction"])
     sig = (v["verdict"], v["data_status"], v["score"], opened_id is not None, held)
     if _last.get(key) == sig:

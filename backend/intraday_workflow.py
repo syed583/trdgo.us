@@ -59,7 +59,7 @@ def _EXC_KIND() -> str:
 def _T():
     """The trade table this tick works on: the live paper book, or the shadow book while shadowing."""
     import models_demo_trades as m
-    return m.ShadowTrade if _SHADOW else m.DemoTrade
+    return m.ShadowTrade if _SHADOW else m.DemoTradeV2
 
 
 def _utc(dt: datetime) -> datetime:
@@ -106,27 +106,37 @@ _ACTIVATION_INDEXES = (
 )
 
 
-def migrate_additive(engine=None) -> dict:
-    """The SAFE part, needed by every mode because the ORM model of demo_trades now names the evidence columns: create the new
-    tables if missing and add the nullable evidence columns to demo_trades. Never drops, rewrites or locks history (a nullable
-    ADD COLUMN is a metadata change). Idempotent."""
-    from sqlalchemy import inspect, text
+def ensure_tables(engine=None, names=None) -> dict:
+    """Create the named NEW tables if they do not exist (CREATE TABLE IF NOT EXISTS semantics). Touches nothing that exists --
+    in particular not demo_trades. ``names=None`` means all of the workflow's new tables."""
+    from sqlalchemy import inspect
     import models_demo_trades as m
     if engine is None:
         from database import engine as eng
         engine = eng
-    done: dict = {"columns": [], "tables": [], "skipped": []}
-    insp = inspect(engine)
-    existing = set(insp.get_table_names())
+    done: dict = {"tables": [], "skipped": []}
+    existing = set(inspect(engine).get_table_names())
     for t in _ALL_MODELS(m):
-        if t.__tablename__ not in existing:
-            try:
-                t.__table__.create(bind=engine, checkfirst=True)
-                done["tables"].append(t.__tablename__)
-            except Exception as exc:  # noqa: BLE001 - e.g. the development table-isolation twin already exists
-                done["skipped"].append(f"{t.__tablename__}: {type(exc).__name__}")
-    insp = inspect(engine)
-    have = {c["name"] for c in insp.get_columns("demo_trades")} if "demo_trades" in set(insp.get_table_names()) else set()
+        if t is m.DemoTrade or t.__tablename__ in existing or (names is not None and t.__tablename__ not in names):
+            continue
+        try:
+            t.__table__.create(bind=engine, checkfirst=True)
+            done["tables"].append(t.__tablename__)
+        except Exception as exc:  # noqa: BLE001 - e.g. the development table-isolation twin already exists
+            done["skipped"].append(f"{t.__tablename__}: {type(exc).__name__}")
+    return done
+
+
+def migrate_additive(engine=None) -> dict:
+    """V2 ACTIVATION, step 1 (additive): all the new tables plus the nullable evidence columns on demo_trades. Needed ONLY when V2
+    is the workflow (the Legacy mapper does not map those columns). Never drops, rewrites or locks history beyond a catalog change.
+    Idempotent."""
+    from sqlalchemy import inspect, text
+    if engine is None:
+        from database import engine as eng
+        engine = eng
+    done = dict(ensure_tables(engine), columns=[])
+    have = {c["name"] for c in inspect(engine).get_columns("demo_trades")} if "demo_trades" in set(inspect(engine).get_table_names()) else set()
     with engine.begin() as conn:
         for col, typ in _NEW_COLUMNS.items():
             if have and col not in have:
