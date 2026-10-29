@@ -1,6 +1,6 @@
 # Earnings freshness, timing and evidence fixes: isolated development result (2026-10-30)
 
-Branch `fix/earnings-freshness-evidence`, based on `91b8fe92` (Phase 2A/2B, itself on the production base `38ca61d`). Nothing is
+Branch `fix/earnings-freshness-evidence`, based on `91b8fe92` (Phase 2B on top of Phase 2A `b4533203`, which is the production build; the earlier base was `38ca61d`). Nothing is
 committed, pushed or deployed. All tests ran on mocks and in-memory SQLite. No production database, no provider request, no restart.
 
 ## What changed (files)
@@ -92,9 +92,9 @@ was ever loaded. The server is stopped and its data deleted after the run.
 | Item | Value |
 |---|---|
 | Branch | `fix/earnings-freshness-evidence` (local only; **not pushed**) |
-| Production now | `38ca61df` (per the 2026-10-28 deployment; Phase 2A preflight passed on `b4533203` but **2A is not deployed**) |
-| Stack | `38ca61d` -> **Phase 2A** `b4533203` (outcome lifecycle, verified scoreboard, new table `earnings_event_outcomes`, frontend changes) -> **Phase 2B** `dc025951`, `91b8fe92` (flag `HISTORICAL_MOVES_METHOD`, default legacy) -> **this fix commit** |
-| What deploying this branch means | It deploys **everything in the stack**. The 12 files of this fix are the only new part; Phase 2A/2B carry their own gates (fresh dump + scratch restore, push approval, CREATE privilege, 120-request first grading cycle, frontend build) from `docs/PHASE2A_DEPLOYMENT_PLAN_2026-10-29.md`. Either deploy 2A first as planned and this after, or deploy the stack in one controlled step after every 2A gate is green. |
+| Production now | `b4533203` (**Phase 2A is deployed**, 2026-10-29 13:11 server time, per the project notes). *Correction 2026-10-30: this row earlier said `38ca61df` and 2A not deployed; that was wrong. Re-confirm with `git rev-parse HEAD` on the VPS before any deploy.* |
+| Stack | `38ca61d` -> **Phase 2A** `b4533203` (**already in production; not re-applied**) -> **Phase 2B** `dc025951`, `91b8fe92` (flag `HISTORICAL_MOVES_METHOD`, default legacy) -> **this fix commit** |
+| What deploying this branch means | Over production `b4533203` it deploys only Phase 2B + this fix: 9 backend runtime files (no frontend, no dependency, no migration). Phase 2A's gates are already passed. The release package is `docs/deploy_final_669217f3/`. |
 | Defaults shipped | `EARN_CAPTURE_GUARD` unset = **shadow**, `EARN_EVIDENCE` unset = **off**, `EARN_ROW_FRESHNESS` unset = **off**. Set none of them. The warmer fix is active. |
 | Migration at default settings | **none** (the two evidence tables are created only when `EARN_EVIDENCE` is switched on). Phase 2A's one `CREATE TABLE IF NOT EXISTS earnings_event_outcomes` still applies if 2A goes with it. |
 | Frontend / dependencies / env files | not touched by this fix (the 2A part has frontend changes: it needs its own `npm run build`) |
@@ -108,10 +108,10 @@ Nothing in the 12 files changes a model, weight, threshold or any of the 30 SHA-
 | 1 | Explicit approval to push the branch (the VPS fetches from GitHub) | owner |
 | 2 | Fresh logical backup: `pg_dump -Fc` via `docs/handover_2026-10-27/take_predeploy_dump_FINAL.ps1` (session pooler :5432, never overwrites, `pg_restore --list` check + SHA-256 sidecar) | record path, size, SHA-256 |
 | 3 | Scratch restore of that dump into a throw-away database with equal row counts for `model_predictions`, `earnings_signal_snapshots`, `swr_cache` (the restore path has never been exercised) | `PASTE_scratch_restore_v4.ps1` |
-| 4 | Record the current build: `git rev-parse HEAD` on the VPS (expect `38ca61df...`); keep the current `dist` ZIP if 2A's frontend is part of the same deploy | VPS |
+| 4 | Record the current build: `git rev-parse HEAD` on the VPS (expect `b4533203e1d561c82809c72d7eed054745d42665`; the script refuses anything else). No frontend change, so no `dist` rebuild | VPS |
 | 5 | Baseline read-only measurements (so after-deploy numbers can be compared): `local_warm_state` row 2 (`calls_day`, symbols count), rows per `model` in `model_predictions` for the latest `snapshot_date`, `swr_cache` key counts for `earn:equity:` / `earn:trade:default:`, the 429 count of the last 24 h on the UW dashboard, `service.err.log` size | the existing read-only inspection scripts |
 | 6 | Environment check: `APP_ENV=production`; `EARN_CAPTURE_GUARD`, `EARN_EVIDENCE`, `EARN_ROW_FRESHNESS`, `EARN_FRESHNESS_JSON`, `EARNINGS_LEGACY_SYNC`, `HISTORICAL_MOVES_METHOD` all **unset** | ENVCHECK script, names only |
-| 7 | A SHA-checked deploy script for the new target SHA, written and reviewed (clone of `deploy_phase2a_b4533203.ps1` with Preflight / Deploy / PostCheck / Rollback modes). **Not written yet.** | produced after approval |
+| 7 | A SHA-checked deploy script for the new target SHA, written and reviewed (clone of `deploy_phase2a_b4533203.ps1` with Preflight / Deploy / PostCheck / Rollback modes). Written and self-tested: `docs/deploy_final_669217f3/deploy_final_669217f3.ps1` (not executed). | done |
 | 8 | Deploy window outside US market hours (see R5); the restart takes about 7 s | owner |
 
 ## R3. Deployment steps (after approval; one at a time, each SHA-checked)
@@ -126,7 +126,7 @@ Smoke tests (read-only): `/api/health` 200 and a protected route still 401; no n
 
 ## R4. Rollback
 
-* Code rollback: on the VPS `git checkout --detach 38ca61df...` (or the SHA recorded in R2 item 4), restore the pre-deploy `dist` ZIP if the frontend was rebuilt, `Restart-Service USStockReader`, health check. About 7 s of downtime.
+* Code rollback: on the VPS `git checkout --detach b4533203...` (the script's Rollback mode does this; never below 2A), `Restart-Service USStockReader`, health check. About 7 s of downtime.
 * Flags need no rollback at the shipped defaults. If a flag was ever turned on: unset it and restart. The evidence tables are additive and may stay (the application never reads them); dropping them is the owner's choice.
 * Never restore the database dump for a code rollback. A dump restore is for data corruption only, into a scratch database first.
 * Safe to leave in place after a rollback: rows the new code captured (they follow the old schema), and the Phase 2A table `earnings_event_outcomes`.
