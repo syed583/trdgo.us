@@ -126,8 +126,9 @@ def historical_moves(symbol: str, limit: int = 0) -> list:
         return []
 
 
-def _pairs(moves):
-    return [[m["date"], m["move_pct"]] for m in moves]
+def _triples(moves, timing: dict):
+    """[date, move_pct, 'AMC' | 'BMO'] -- the report timing the move was measured with, so a report can split by timing."""
+    return [[m["date"], m["move_pct"], "AMC" if "post" in timing.get(m["date"], "") else "BMO"] for m in moves]
 
 
 def _record_shadow(symbol: str, timing: dict, candle_rows, served: str, served_moves: list) -> None:
@@ -142,7 +143,7 @@ def _record_shadow(symbol: str, timing: dict, candle_rows, served: str, served_m
         both = {served: served_moves, other: compute(timing, candle_rows, other)}
         import db_cache
         db_cache.put(SHADOW_KEY.format(symbol), {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "served": served,
-                                                  LEGACY: _pairs(both[LEGACY]), REGULAR: _pairs(both[REGULAR])})
+                                                  LEGACY: _triples(both[LEGACY], timing), REGULAR: _triples(both[REGULAR], timing)})
     except Exception:  # noqa: BLE001
         pass
 

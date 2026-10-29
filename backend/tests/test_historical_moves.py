@@ -236,7 +236,8 @@ def test_shadow_keeps_both_methods_and_serves_the_configured_one(uw, cache, monk
     calls = list(uw.calls)
     assert served == original_historical_moves(uw, "AMKR")                             # still legacy
     rec = cache.store["moves:shadow:AMKR"]
-    assert rec["served"] == "legacy" and dict(rec["legacy"])["2026-10-26"] == -0.86 and dict(rec["regular_close"])["2026-10-26"] == 8.5
+    assert rec["served"] == "legacy" and {d: m for d, m, k in rec["legacy"]}["2026-10-26"] == -0.86 and {d: m for d, m, k in rec["regular_close"]}["2026-10-26"] == 8.5
+    assert [k for d, m, k in rec["legacy"] if d == "2026-10-26"] == ["AMC"] and [k for d, m, k in rec["legacy"] if d == "2026-10-20"] == ["BMO"]
     assert calls == ["earnings", "candles"]                                            # no extra provider requests for the shadow
 
 
@@ -275,3 +276,45 @@ def test_capture_and_scoreboard_expose_the_method(monkeypatch):
     monkeypatch.setitem(sys.modules, "db_cache", Cache())
     out = mp.scoreboard()
     assert out["input_method_now"] == "legacy" and out["input_method_history"] == [] and out["models"] == []
+
+
+# ------------------------------------------------------------------------------ the read-only shadow report
+def _load_report():
+    import importlib.util
+    import pathlib
+    spec = importlib.util.spec_from_file_location("moves_shadow_report_under_test",
+                                                  pathlib.Path(__file__).resolve().parent.parent / "tools" / "moves_shadow_report.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_shadow_report_compares_the_two_methods_by_timing():
+    r = _load_report()
+    recs = {
+        "AMKR": {"served": "legacy", "legacy": [["2026-10-20", 2.1, "BMO"], ["2026-10-26", -0.86, "AMC"], ["2026-07-20", 1.0, "BMO"]],
+                 "regular_close": [["2026-10-20", 5.6, "BMO"], ["2026-10-26", 8.5, "AMC"]]},          # 2026-07-20 refused (no regular close)
+        "BANR": {"served": "legacy", "legacy": [["2026-10-21", 0.0, "AMC"]], "regular_close": [["2026-10-21", 3.01, "AMC"]]},
+        "BAD": {"unexpected": True},
+    }
+    out = r.analyse(recs)
+    assert out["symbols"] == 2 and out["legacy_events"] == 4 and out["events_compared"] == 3 and out["refused_by_regular_close_method"] == 1
+    assert out["AMC"]["events"] == 2 and out["AMC"]["sign_flips"] == 1 and out["AMC"]["class_changes"] == 2
+    assert out["BMO"]["events"] == 1 and out["ALL"]["mean_abs_regular"] > out["ALL"]["mean_abs_legacy"]
+
+
+def test_shadow_report_is_read_only_and_makes_no_provider_requests():
+    import pathlib
+    src = (pathlib.Path(__file__).resolve().parent.parent / "tools" / "moves_shadow_report.py").read_text(encoding="utf-8")
+    for word in ("INSERT ", "UPDATE ", "DELETE ", "DROP ", ".commit(", "unusualwhales", "candles("):
+        assert word not in src, word
+    assert "SET TRANSACTION READ ONLY" in src and src.count("write_text(") == 1
+
+
+def test_shadow_report_loads_rows_and_the_method_log():
+    r = _load_report()
+    rows = [("moves:shadow:AMKR", '{"served":"legacy","legacy":[["2026-10-26",-0.86,"AMC"]],"regular_close":[["2026-10-26",8.5,"AMC"]]}', 100.0),
+            ("moves:method:history", '[{"method":"regular_close","at":"2026-11-03T10:00:00+00:00"}]', 50.0)]
+    recs, hist, ages = r.load(lambda sql: rows)
+    assert list(recs) == ["AMKR"] and hist[0]["method"] == "regular_close" and ages == [100.0]
