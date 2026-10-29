@@ -83,6 +83,32 @@ def tab_scan(model: str, d: int) -> tuple[dict, Optional[float]]:
     return res, swr.held_at(key)
 
 
+def _row_days_to(m: dict):
+    """Countdown on the US-Eastern date. A model's own scan row counts with the server clock (UTC+1), which is a day short overnight."""
+    try:
+        import earnings_clock
+        d = earnings_clock.days_to(m.get("date"))
+        return m.get("days_to") if d is None else d
+    except Exception:  # noqa: BLE001 - a label must never break the scan
+        return m.get("days_to")
+
+
+def _inputs_built_map(symbols: list[str]) -> Optional[dict]:
+    """{symbol: build epoch of its earn:equity cache entry}, or None when EARN_ROW_FRESHNESS is off (the default).
+
+    One batched read, not one per symbol. Lets each row show the age of the data behind its BUY/SELL, which the row's own
+    `updated_at` (the scan's build time) cannot."""
+    import os
+    if os.environ.get("EARN_ROW_FRESHNESS", "").strip().lower() not in ("1", "true", "yes", "on"):
+        return None
+    try:
+        import db_cache
+        held = db_cache.get_many([f"earn:equity:{s}" for s in symbols])
+        return {s: (held.get(f"earn:equity:{s}") or (None,))[0] for s in symbols}
+    except Exception:  # noqa: BLE001 - a label must never break the scan
+        return None
+
+
 def scan(days: int = 15) -> dict:
     import swr
 
@@ -112,6 +138,7 @@ def scan(days: int = 15) -> dict:
 
     out: list[dict] = []
     snapshot: dict[str, dict] = {}
+    inputs_built = _inputs_built_map(list(meta))
     for s, m in meta.items():
         cells = {k: _cell(per[k].get(s)) for k, _ in MODELS}
         psig = prev.get(s) or {}
@@ -127,11 +154,17 @@ def scan(days: int = 15) -> dict:
         stamps = [when[k] for k, c in cells.items() if c["signal"] != "PENDING" and when.get(k)]
         upd = min(stamps) if stamps else None
         row = {"symbol": s, "company": m.get("company"), "date": m.get("date"),
-               "date_label": m.get("date_label"), "days_to": m.get("days_to"),
+               "date_label": m.get("date_label"), "days_to": _row_days_to(m),
                "report_timing": m.get("report_timing") or m.get("time_label"),
                "sector": m.get("sector"), "cells": cells, "changed": changed_any,
                "consensus": {"buy": buy, "sell": sell, "text": f"{buy} BUY · {sell} SELL"},
                "updated_at": upd, "updated_et": _et(upd)}
+        if inputs_built is not None:
+            # `updated_at` above is when the SCAN was assembled (seconds ago) and says nothing about the data underneath it.
+            # These say how old the cached analysis behind the calls is.
+            built = inputs_built.get(s)
+            row["inputs_updated_at"] = built
+            row["inputs_age_h"] = None if built is None else round((__import__("time").time() - built) / 3600.0, 1)
         fvi = fmap.get(s)
         if fvi and fvi.get("time") and str(fvi.get("date"))[:10] == str(row.get("date"))[:10]:
             row["report_clock"] = fvi["time"]

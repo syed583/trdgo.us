@@ -203,10 +203,97 @@ def capture_timestamp() -> datetime:
     return now
 
 
-def capture(days: int = 15) -> int:
+GUARD_MODES = ("off", "shadow", "enforce")
+TIMING_BASIS = "PROVISIONAL_WINDOW_UNVERIFIED"      # no verified release timestamp exists; the cut-off is an estimate from BMO / AMC
+
+
+def capture_mode() -> str:
+    """EARN_CAPTURE_GUARD: off | shadow (default) | enforce.
+
+    off     capture exactly as before.
+    shadow  capture exactly as before (every row is still written) but each row is JUDGED (cache freshness, release cut-off) and the
+            verdict goes to the evidence record and the log, so the guard can be reviewed on real data before it blocks anything.
+    enforce rows whose inputs are STALE / missing, or that would be captured after the provisional release cut-off, are NOT written
+            to model_predictions (a SKIPPED evidence row records why), and the window shrinks to the warmer's window."""
+    import os
+    m = os.environ.get("EARN_CAPTURE_GUARD", "shadow").strip().lower()
+    return m if m in GUARD_MODES else "shadow"
+
+
+def capture_window_days() -> int:
+    """Calendar days the capture looks ahead in enforce mode: freshness_policy 'capture_days', else the warmer's own
+    window (10 trading days), so predictions are never made for names whose caches nobody refreshes."""
+    try:
+        import freshness_policy as fp
+        v = fp.config().get("capture_days")
+        if v:
+            return int(v)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        import local_warmer
+        return int(local_warmer.trading_days_window(10))
+    except Exception:  # noqa: BLE001
+        return 14
+
+
+last_capture_report: dict = {}
+
+
+def _snapshot_day(captured_at: datetime) -> date:
+    """The server-local calendar date of the capture. This is what `snapshot_date` has always held (date.today()); it is kept so the
+    unique key (model, symbol, earnings_date, snapshot_date) and every stored row keep their meaning. Eligibility is judged on the
+    US-Eastern clock instead (earnings_clock / earnings_scoreboard.classify)."""
+    return captured_at.astimezone().date()
+
+
+def _judge(sym: str, edate: date, timing, captured_at: datetime, cache: dict) -> dict:
+    """Guard verdict for one symbol/event: release cut-off first, then cache freshness. Pure apart from the cache lookup in `cache`."""
+    import earnings_clock as ec
+    import earnings_scoreboard as sb
+    import freshness_policy as fp
+    cls = sb.classify(edate, timing, captured_at)
+    d2 = ec.days_to(edate, captured_at)
+    v = {"class": cls, "days_to": d2, "decision": "OK", "detail": "", "freshness": {}, "payload": None, "epoch": None, "age_h": None}
+    if cls != sb.BEFORE:
+        v["decision"] = "POST_CUTOFF"
+        v["detail"] = f"capture class {cls}: not provably before the release (provisional window, release time unverified)"
+    ent = cache.get(sym)
+    if ent is None:
+        ent = cache[sym] = _read_equity_cache(sym)
+    payload, epoch = ent
+    v["payload"], v["epoch"] = payload, epoch
+    if epoch is None or not isinstance(payload, dict) or not payload.get("params"):
+        if v["decision"] == "OK":
+            v["decision"], v["detail"] = "NO_CACHE", "no earn:equity analysis is cached for this symbol"
+        return v
+    age_h = (captured_at.timestamp() - float(epoch)) / 3600.0
+    v["age_h"] = age_h
+    fr = fp.assess(max(age_h, 0.0), payload.get("params"), d2)
+    v["freshness"] = fr
+    if fr["status"] == fp.STALE and v["decision"] == "OK":
+        v["decision"] = "STALE"
+        v["detail"] = f"cache {fr['cache_age_h']} h old; stale for: {', '.join(fr['stale'])}"
+    return v
+
+
+def _read_equity_cache(sym: str):
+    """(payload, build-epoch) of the Equity analysis cache entry; (None, None) when absent. Read only."""
+    try:
+        import swr
+        key = f"earn:equity:{sym}"
+        return swr.peek(key), swr.held_at(key)
+    except Exception:  # noqa: BLE001
+        return None, None
+
+
+def capture(days: int = 15, now: Optional[datetime] = None) -> int:
     """Record today's BUY/SELL/NEUTRAL + score for every one of the 10 models,
     for each upcoming earnings name. Reads the warmed caches via all_models.
-    Returns the number of prediction rows written (new rows only)."""
+    Returns the number of prediction rows written (new rows only).
+
+    Guard (EARN_CAPTURE_GUARD, default shadow) and evidence (EARN_EVIDENCE, default off): see capture_mode() and
+    prediction_evidence_service. With both at their defaults the rows written are exactly what they were before."""
     if not _ensure_table():
         return 0
     try:                                   # remember which historical-moves method the inputs of these predictions use
@@ -214,16 +301,26 @@ def capture(days: int = 15) -> int:
         hm.log_method_if_changed()
     except Exception:  # noqa: BLE001
         pass
+    mode = capture_mode()
+    if mode == "enforce":
+        days = min(int(days), capture_window_days())
     try:
         import all_models_service as am
         res = am.scan(days)
     except Exception:  # noqa: BLE001
         return 0
     rows = (res or {}).get("rows") or []
-    today = date.today()
-    captured_at = capture_timestamp()
+    import earnings_clock as ec
+    captured_at = capture_timestamp() if now is None else now
+    today = ec.et_today(captured_at)       # the US-Eastern date decides whether an event is still ahead (the server clock is UTC+1)
+    # the stored snapshot_date keeps its original meaning (server-local date.today()), so old keys still match; an explicit `now` is for tests
+    snap_day = date.today() if now is None else _snapshot_day(captured_at)
 
     payload: list[dict] = []
+    entries: list[dict] = []
+    cache: dict = {}
+    counts = {"OK": 0, "STALE": 0, "NO_CACHE": 0, "POST_CUTOFF": 0}
+    verdicts: dict = {}
     for r in rows:
         sym = (r.get("symbol") or "").upper()
         ed = r.get("date")
@@ -231,42 +328,87 @@ def capture(days: int = 15) -> int:
             edate = datetime.fromisoformat(str(ed)[:10]).date() if ed else None
         except Exception:  # noqa: BLE001
             edate = None
-        # Only record predictions made BEFORE the announcement.
-        if edate is None or edate < today:
+        # Only record predictions made BEFORE the announcement. off / shadow keep the legacy server-date test so what is written is
+        # exactly what was always written; enforce uses the US-Eastern date (the release cut-off below then does the real work).
+        if edate is None or edate < (today if mode == "enforce" else snap_day):
             continue
         timing = r.get("report_timing")
+        vkey = (sym, edate)
+        if mode != "off" and vkey not in verdicts:
+            try:
+                verdicts[vkey] = _judge(sym, edate, timing, captured_at, cache)
+            except Exception:  # noqa: BLE001 - a judging fault must never stop capture
+                verdicts[vkey] = {"decision": "OK", "detail": "guard error", "freshness": {}, "payload": None, "epoch": None, "age_h": None}
+        v = verdicts.get(vkey) or {"decision": "OK", "detail": "", "freshness": {}, "payload": None, "epoch": None, "age_h": None}
+        blocked = mode == "enforce" and v["decision"] != "OK"
         for model, cell in (r.get("cells") or {}).items():
             sig = (cell or {}).get("signal")
             if sig not in ("BUY", "SELL", "NEUTRAL"):
                 continue
             # The sheet's "claude" column is the stored history's "claude_new" model.
             model = _STORED_ID.get(model, model)
+            if mode != "off":
+                counts[v["decision"]] = counts.get(v["decision"], 0) + 1
+            entries.append({"model": model, "symbol": sym, "earnings_date": edate, "report_timing": timing, "timing_basis": TIMING_BASIS,
+                            "predicted_at": captured_at, "signal": sig, "score": (cell or {}).get("score"),
+                            "status": "SKIPPED" if blocked else "CAPTURED", "guard_mode": mode, "guard_decision": v["decision"],
+                            "guard_detail": v["detail"], "cache_age_h": v["age_h"], "freshness": v["freshness"], "_v": v})
+            if blocked:
+                continue
             payload.append({"model": model, "symbol": sym, "edate": edate,
-                            "timing": timing, "snap": today, "at": captured_at,
+                            "timing": timing, "snap": snap_day, "at": captured_at,
                             "signal": sig, "score": (cell or {}).get("score")})
-    if not payload:
-        return 0
+
+    last_capture_report.clear()
+    last_capture_report.update({"mode": mode, "at": captured_at.isoformat(), "window_days": days, "events": len(verdicts),
+                                "rows_judged": counts, "rows_written_candidates": len(payload)})
+    if mode != "off" and (counts["STALE"] or counts["NO_CACHE"] or counts["POST_CUTOFF"]):
+        import logging
+        logging.getLogger(__name__).warning("earnings capture guard (%s): %s", mode, counts)
 
     from sqlalchemy import text
     from database import SessionLocal
-    db = SessionLocal()
-    try:
-        n = 0
-        stmt = text(
-            "INSERT INTO model_predictions "
-            "(model, symbol, earnings_date, report_timing, snapshot_date, predicted_at, signal, score) "
-            "VALUES (:model, :symbol, :edate, :timing, :snap, :at, :signal, :score) "
-            "ON CONFLICT (model, symbol, earnings_date, snapshot_date) DO NOTHING")
-        for p in payload:
-            res = db.execute(stmt, p)
-            n += res.rowcount or 0
-        db.commit()
-        return n
-    except Exception:  # noqa: BLE001
-        db.rollback()
-        return 0
-    finally:
-        db.close()
+    n = 0
+    if payload:
+        db = SessionLocal()
+        try:
+            stmt = text(
+                "INSERT INTO model_predictions "
+                "(model, symbol, earnings_date, report_timing, snapshot_date, predicted_at, signal, score) "
+                "VALUES (:model, :symbol, :edate, :timing, :snap, :at, :signal, :score) "
+                "ON CONFLICT (model, symbol, earnings_date, snapshot_date) DO NOTHING")
+            for p in payload:
+                res = db.execute(stmt, p)
+                n += res.rowcount or 0
+            db.commit()
+        except Exception:  # noqa: BLE001
+            db.rollback()
+            n = 0
+        finally:
+            db.close()
+
+    # Evidence is a separate, best-effort step: its failure can never change what was captured above.
+    if entries:
+        try:
+            import prediction_evidence_service as pes
+            if pes.enabled():
+                snaps: dict = {}
+                for e in entries:
+                    v = e.pop("_v")
+                    if v.get("payload") and v.get("epoch") is not None:
+                        k = (e["symbol"],)
+                        if k not in snaps:
+                            snaps[k] = pes.build_snapshot(e["symbol"], v["payload"], f"earn:equity:{e['symbol']}", v["epoch"])
+                        e["snapshot"] = snaps[k]
+                db = SessionLocal()
+                try:
+                    last_capture_report["evidence"] = pes.record(db, entries)
+                finally:
+                    db.close()
+        except Exception:  # noqa: BLE001
+            import logging
+            logging.getLogger(__name__).exception("earnings capture: evidence step failed (predictions unaffected)")
+    return n
 
 
 # --------------------------------------------------------------------------- #

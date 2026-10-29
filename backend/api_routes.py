@@ -2619,9 +2619,12 @@ def earnings_trade(symbol: str, profile: str = "default") -> dict:
     import earnings_trade_service as ets
 
     pf = profile if profile in ("final", "plusminus") else "default"
-    return swr.serve(f"earn:trade:{pf}:{symbol.upper()}",
-                     lambda: ets.get_summary(symbol, pf),
-                     market.session_ttl(120, 1800))
+    import earnings_clock
+    # The stored payload carries the countdown as of the moment it was built; recompute it now on the US-Eastern date.
+    return earnings_clock.refresh_countdown(
+        swr.serve(f"earn:trade:{pf}:{symbol.upper()}",
+                  lambda: ets.get_summary(symbol, pf),
+                  market.session_ttl(120, 1800)))
 
 
 @router.get("/post-earnings/dashboard")

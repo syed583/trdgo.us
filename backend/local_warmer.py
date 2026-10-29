@@ -49,6 +49,20 @@ TR = "earn:trade:default:{}"
 
 _state: dict = {"status": "IDLE"}
 
+# symbol -> report date (ISO) of the queue built by build_queue(); lets the warmer pick the refresh age by how close the report is
+_event_dates: dict = {}
+
+
+def max_age_for(sym: str) -> float:
+    """Seconds a name's cache may age before it is re-warmed: shorter for names reporting within a couple of days
+    (freshness_policy.DEFAULTS, overridable with EARN_FRESHNESS_JSON). Falls back to MAX_AGE if the policy cannot be read."""
+    try:
+        import earnings_clock as ec
+        import freshness_policy as fp
+        return fp.warm_max_age_seconds(ec.days_to(_event_dates.get(sym)))
+    except Exception:  # noqa: BLE001 - the policy must never stop the warmer
+        return MAX_AGE
+
 
 # ----------------------------------------------------------------- state ----
 def _ensure_table(db) -> None:
@@ -132,10 +146,12 @@ def build_queue() -> tuple[list[str], int]:
     soon: list[str] = []
     window = trading_days_window(10) if is_production() else 7
     rows = sorted((cal.calendar(days=window) or {}).get("rows") or [], key=lambda r: str(r.get("date") or ""))
+    _event_dates.clear()
     for r in rows:
         s_ = (r.get("symbol") or "").upper()
         if s_ in inuni and s_ not in soon:
             soon.append(s_)
+            _event_dates[s_] = r.get("date")
     if is_production():
         return soon, len(soon)
     rest = [x for x in ranked if x not in set(soon)]
@@ -337,6 +353,7 @@ def _run_pass() -> int:
     provider_errs = 0
     t_run = time.time()
     pass_no = 0
+    counted: set = set()                                          # names counted complete in THIS run (each counted once)
     while True:
         pass_no += 1
         progressed = False
@@ -345,14 +362,19 @@ def _run_pass() -> int:
             st = _state["symbols"].get(sym) or {}
             if st.get("s") in ("failed", "partial"):
                 continue                                          # given up for today; counted in the report
-            if sym in ages and ages[sym] < MAX_AGE:               # already warm (restart / resume / fresh)
-                if not st.get("done"):
+            # A name is warm because its CACHE is young enough, not because a per-day flag says it was done earlier:
+            # the flag let a name age past MAX_AGE all day, and left a resumed run counting 0 of N complete.
+            if sym in ages and ages[sym] < max_age_for(sym):      # already warm (restart / resume / fresh)
+                if sym not in counted:
+                    counted.add(sym)
                     _state["complete"] += 1
                     _state["skipped_fresh"] += 1
+                    _state["done"] += 1
+                    _state["priority_done"] = min(n_priority, _state["priority_done"] + (1 if i < n_priority else 0))
                     _state["symbols"][sym] = {"s": "ok", "done": 1}
                 continue
-            if st.get("done"):
-                continue
+            if sym in counted:
+                continue                                          # warmed earlier in this run
             if st.get("s") == "retry" and time.time() < st.get("next", 0):
                 waiting_retry.append(st["next"])
                 continue
@@ -399,8 +421,11 @@ def _run_pass() -> int:
             if res == "ok":
                 provider_errs = 0
                 progressed = True
-                _state["complete"] += 1
-                _state["done"] += 1
+                if sym not in counted:
+                    counted.add(sym)
+                    _state["complete"] += 1
+                    _state["done"] += 1
+                ages[sym] = 0.0                                   # its cache is brand new now; later passes skip it
                 _state["last_success_at"] = time.time()
                 _state["symbols"][sym] = {"s": "ok", "done": 1}
             elif (hs != "OK" or int(uw._metrics.get("net_errors", 0)) > errs0) and int(st.get("faults", 0)) < 6:
@@ -433,6 +458,9 @@ def _run_pass() -> int:
             _apply("RETRYING", f"{len(waiting_retry)} symbols wait for a retry", current=None)
             save_state()
             _sleep(min(60, max(5, min(waiting_retry) - time.time())))
+        if (not progressed and not waiting_retry
+                and not any(v.get("s") == "retry" for v in _state["symbols"].values())):
+            break                                             # nothing can change in this run: stop instead of spinning
         if pass_no > 200:                                     # hard bound: no endless loop inside one run
             break
     c = summary()
