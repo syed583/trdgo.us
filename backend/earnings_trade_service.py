@@ -24,51 +24,13 @@ def _f(v) -> Optional[float]:
 
 
 def _historical_moves(symbol: str, limit: int = 0) -> list[dict]:
-    """The 1-day price move around the reports. limit<=0 => all history available."""
-    try:
-        import unusualwhales_service as uw
-        # Keep the report *timing* with each date: an after-close (AMC/postmarket)
-        # report prints while the market is shut, so its reaction lands on the
-        # NEXT session, not the report day. Comparing the report day's close to
-        # the prior close for an AMC name captures an ordinary trading day and
-        # badly understates the real earnings move. Before-open (BMO/premarket)
-        # reports react on the report day itself (prior close -> report close).
-        timing: dict[str, str] = {}
-        for r in uw._rows(uw.earnings_history(symbol)):
-            d = r.get("report_date")
-            if d and r.get("reported_eps") not in (None, ""):
-                timing[d] = (r.get("report_time") or "").strip().lower()
-        dates = sorted(timing)
-        if not dates:
-            return []
-        # Deep candle window so even old reports have a prior close to compare to.
-        # UW caps the daily candle request at ~2500; 3000 returns nothing at all,
-        # which silently emptied the whole post-earnings history.
-        bars = uw._rows(uw.candles(symbol, "1d", limit=2500))
-        bars = [b for b in bars if b.get("date") and _f(b.get("close")) is not None]
-        bars.sort(key=lambda b: b["date"])
-        closes = [(b["date"], _f(b["close"])) for b in bars]
-        out: list[dict] = []
-        for d in dates:
-            # First trading day on/after the report.
-            idx = next((i for i, (bd, _) in enumerate(closes) if bd >= d), None)
-            if idx is None or idx == 0:
-                continue
-            after_close = "post" in timing.get(d, "")
-            if after_close:
-                # AMC: reaction is report day's close -> the next session's close.
-                if idx + 1 >= len(closes):
-                    continue
-                base, react = closes[idx][1], closes[idx + 1][1]
-            else:
-                # BMO / intraday / unknown: prior close -> report day's close.
-                base, react = closes[idx - 1][1], closes[idx][1]
-            if base:
-                out.append({"date": d, "label": d[:7],
-                            "move_pct": round((react - base) / base * 100, 2)})
-        return out[-limit:] if limit and limit > 0 else out
-    except Exception:  # noqa: BLE001
-        return []
+    """The 1-day price move around the reports. limit<=0 => all history available.
+
+    Delegates to ``historical_moves`` (method chosen by HISTORICAL_MOVES_METHOD, default ``legacy`` = the original
+    position-based computation, byte-for-byte). The regular-close method is opt-in: see that module's docstring.
+    """
+    import historical_moves as hm
+    return hm.historical_moves(symbol, limit)
 
 
 def get_summary(symbol: str, profile: str = "default") -> dict:

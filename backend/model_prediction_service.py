@@ -209,6 +209,11 @@ def capture(days: int = 15) -> int:
     Returns the number of prediction rows written (new rows only)."""
     if not _ensure_table():
         return 0
+    try:                                   # remember which historical-moves method the inputs of these predictions use
+        import historical_moves as hm
+        hm.log_method_if_changed()
+    except Exception:  # noqa: BLE001
+        pass
     try:
         import all_models_service as am
         res = am.scan(days)
@@ -517,7 +522,14 @@ def scoreboard(definition: str = "last") -> dict:
     import earnings_scoreboard as sb
     models = dict(_model_labels())
     # only the live earnings models are scored; retired ids stay in the table untouched
-    return sb.scoreboard(models, definition=definition)
+    out = sb.scoreboard(models, definition=definition)
+    try:                                   # which historical-moves method fed the models, and since when (empty = the original method throughout)
+        import historical_moves as hm
+        out["input_method_now"] = hm.method()
+        out["input_method_history"] = hm.method_history()
+    except Exception:  # noqa: BLE001
+        pass
+    return out
 
 
 def history(model: Optional[str] = None, symbol: Optional[str] = None,

@@ -19,7 +19,9 @@ PINS = {
     "pre_earnings_direction_service.py": "eef1ee9c2d8026850376a8014196c6f556eb7f2123e404c57653bf895368518f",
     "earnings_engine.py": "d2da225e84ecae07e3da3429639828e38fa7b87db033b067d45e22cdc1cd9039",
     "earnings_equity_service.py": "516f87dbdca1acf76e7cdeb08053295f17231f6fee85ee908054ac93527d23f3",
-    "earnings_trade_service.py": "32e7db8f5a2ac1719764884f2390af9d9c0cb74500aa159de2fbfbad920cd931",
+    # Phase 2B (deliberate, owner-approved): _historical_moves now delegates to historical_moves.py (default method "legacy" is byte-for-byte
+    # the original, proven against the verbatim original in test_historical_moves.py). Only this one pin changed; no model or tab_settings pin.
+    "earnings_trade_service.py": "f4f73b43ba8b75ae12f3891e463fa78564df1c7114b0fd6f6be9a082c7bdd736",
     "tab_settings.py": "b45280fd7d4ff1226fdaee7db0459835d8baee98e8df332d93f0dcd1dd6cf4f9",
     "chatgpt_intraday_service.py": "3d9ec4dd2f16c0b36571686fad49451302760e379f5898a717425ba5bfa32bf5",
     "claude_pro_intraday_service.py": "14b76e081b4beaff3095413bec5a16d3054ab9ee5b60b10ff936a97f1ef7e0d0",
