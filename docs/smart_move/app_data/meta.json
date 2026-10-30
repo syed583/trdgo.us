@@ -1,0 +1,18 @@
+{
+ "baseline_prereg_sha256": "9316348ba0d290342c7cefb551ec973b463029e1371a3db8a81a18493f8ff77e",
+ "files_sha256": {
+  "calendar_observations.json": "028c2315f6591445a58296ed456df90011606678f70aaed00f2d2c20568b63fd",
+  "replay_dev.json": "6ce503e55aef80a824929c4c351906a075adcebc9c590d667c661eb00c0b0c09",
+  "sector_etfs.json": "393db5215a00eaae58e4e28e53d8cd27a32b56a25f5e45bb1160b898308abd71",
+  "spy_regular.json": "3be58912c75d50525eeed3ede5f42667851f717c03290586901ef8534cf21074",
+  "synthetic.json": "d977a6764fb9bf2ed383e00ff6457aee27b1e7f9d23a005c2aefe51966637fb7"
+ },
+ "inputs_sha256": {
+  "SPY.json(candle file)": "375e35df2b7facbd6e70b0f6b70fc2e2e65893fbb73c07cd31006f20c381c61a",
+  "replay2.json": "04a44cab9fe5b446922a574faaa923d57206a24c271fa9325076ef017a6a36b4",
+  "synthetic_season_results.json": "2c8013021a092b96a4f2ad7c0b0690a644bf1ef27ede01ae8802064b8b2bcece"
+ },
+ "note": "derived from saved evidence only; no outcome fields; nothing here was requested after 2026-10-30 13:08 UTC",
+ "pack_version": 1,
+ "score40_prereg_sha256": "b25bd8d7889461561405ad8ec3c225b00a9202e9c75bf4b88e3e14ef7e31eb87"
+}

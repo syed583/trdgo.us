@@ -61,6 +61,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/option-scanner', label: 'IV Crush Check', icon: <Flame size={S} /> },
     { to: '/unusual-activity', label: 'Unusual Activity', icon: <Zap size={S} /> },
     { to: '/pre-earnings-direction', label: 'Pre-Earnings Direction', icon: <Compass size={S} /> },
+    { to: '/smart-move', label: 'Smart Move', icon: <Gauge size={S} /> },
     { to: '/earnings-signals', label: 'Signal History', icon: <History size={S} /> },
     { to: '/forward-scoreboard', label: 'Forward Scoreboard', icon: <ShieldCheck size={S} /> },
     { to: '/historical-backtest', label: 'Historical Backtest', icon: <FlaskConical size={S} /> },

@@ -1008,3 +1008,12 @@ export const api2 = {
 };
 
 export { ApiError };
+
+/** Smart Move dashboard (saved evidence, read-only). Every call is a GET against /api/smart-move. */
+export const smartMoveApi = {
+  meta: (s?: AbortSignal) => request<any>('/api/smart-move/meta', s),
+  calendar: (query: string, s?: AbortSignal) => request<any>(`/api/smart-move/calendar?${query}`, s),
+  replay: (query: string, s?: AbortSignal) => request<any>(`/api/smart-move/replay?${query}`, s),
+  synthetic: (query: string, s?: AbortSignal) => request<any>(`/api/smart-move/synthetic?${query}`, s),
+  stock: (symbol: string, s?: AbortSignal) => request<any>(`/api/smart-move/stock/${encodeURIComponent(symbol)}`, s),
+};

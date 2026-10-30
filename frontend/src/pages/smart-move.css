@@ -1,0 +1,90 @@
+/* Smart Move dashboard: uses the app's theme tokens so it follows light/dark. */
+.sm { position: relative; }
+.sm .spin { animation: sm-spin 1s linear infinite; }
+@keyframes sm-spin { to { transform: rotate(360deg); } }
+
+.sm-banner {
+  display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; margin: 4px 0 10px;
+  background: var(--amber-bg); border: 1px solid var(--amber); border-radius: 8px; color: var(--text); font-size: 13px; line-height: 1.45;
+}
+.sm-banner svg { color: var(--amber); flex: none; margin-top: 2px; }
+.sm-hash { color: var(--text-dim); font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; }
+
+.sm-fresh { display: flex; gap: 8px; align-items: center; padding: 7px 12px; margin-bottom: 10px; border-radius: 8px; background: var(--panel); border: 1px solid var(--border); color: var(--text-dim); font-size: 12.5px; }
+.sm-fresh.stale { border-color: var(--red); background: var(--red-bg); color: var(--text); }
+.sm-fresh.stale svg { color: var(--red); }
+
+.sm-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-top: 6px; }
+.sm-tab { background: none; border: 0; color: var(--text-dim); padding: 9px 14px; font-size: 13px; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.sm-tab:hover { color: var(--text); }
+.sm-tab.on { color: var(--text); border-bottom-color: var(--accent); }
+.sm-label { display: flex; gap: 6px; align-items: flex-start; color: var(--text-dim); font-size: 12.5px; padding: 8px 2px 10px; line-height: 1.4; }
+.sm-label svg { flex: none; margin-top: 2px; }
+
+.sm-exp { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; font-size: 12.5px; color: var(--text-dim); }
+.sm-exp select { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; max-width: 560px; }
+
+.sm-filters { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; margin-bottom: 12px; font-size: 11.5px; color: var(--text-dim); }
+.sm-filters label { display: flex; flex-direction: column; gap: 3px; }
+.sm-filters input, .sm-filters select { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; font-size: 12.5px; min-width: 110px; }
+.sm-search { display: flex; align-items: center; gap: 6px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 0 8px; height: 30px; color: var(--text-dim); }
+.sm-search input { border: 0; background: none; outline: none; min-width: 190px; padding: 0; }
+.sm-search button { background: none; border: 0; color: var(--text-dim); cursor: pointer; display: flex; }
+
+.sm-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.sm-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+.sm-card-k { font-size: 11px; color: var(--text-mute); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 5px; }
+.sm-card-v { font-size: 22px; font-weight: 700; } .sm-card-v small { font-size: 12px; font-weight: 500; color: var(--text-dim); }
+.sm-card-split { display: flex; gap: 10px; font-size: 13px; font-weight: 700; flex-wrap: wrap; }
+.sm-card-split .buy { color: var(--green); } .sm-card-split .sell { color: var(--red); } .sm-card-split .nt { color: var(--text-dim); }
+.sm-card-small { font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+
+.sm-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); max-height: 68vh; overflow-y: auto; }
+.sm-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.sm-table th { position: sticky; top: 0; z-index: 1; background: var(--panel-2); text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-mute); padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.sm-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.sm-table tbody tr { cursor: pointer; }
+.sm-table tbody tr:hover, .sm-table tbody tr:focus { background: var(--panel-2); outline: none; }
+.sm-table tbody tr.sel { background: var(--accent-bg); }
+.sm-table td small, .sm-mini td small { display: block; color: var(--text-mute); font-size: 11px; margin-top: 2px; }
+.sm-sym { font-weight: 700; } .sm-co { max-width: 190px; } .sm-avail b { font-size: 14px; }
+.sm-now { margin-top: 3px; font-size: 11px; color: var(--text-mute); }
+.sm-kind { font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: var(--panel-3); color: var(--text-dim); }
+.sm-kind.BMO { color: var(--accent); } .sm-kind.AMC { color: var(--purple); }
+.sm-none { color: var(--text-mute); }
+.sm-src { color: var(--text-dim); white-space: nowrap; }
+
+.sm-var { display: flex; flex-direction: column; gap: 3px; }
+.sm-sig { display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .03em; padding: 2px 8px; border-radius: 999px; width: fit-content; }
+.sm-sig.buy { background: var(--green-bg); color: var(--green); }
+.sm-sig.sell { background: var(--red-bg); color: var(--red); }
+.sm-sig.no_trade { background: var(--panel-3); color: var(--text-dim); }
+.sm-pts { font-size: 11px; color: var(--text-mute); }
+.sm-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.sm-chip { font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: var(--red-bg); color: var(--red); }
+.sm-chip.partial { background: var(--amber-bg); color: var(--amber); }
+
+.sm-state { text-align: center; padding: 34px 16px; background: var(--panel); border: 1px dashed var(--border-2); border-radius: 10px; margin-bottom: 12px; color: var(--text-dim); }
+.sm-state-icon { display: flex; justify-content: center; margin-bottom: 8px; color: var(--text-mute); }
+.sm-state-title { font-weight: 700; color: var(--text); margin-bottom: 4px; } .sm-state-body { font-size: 12.5px; margin-bottom: 10px; }
+
+.sm-detail { position: fixed; top: 0; right: 0; bottom: 0; width: min(640px, 100vw); background: var(--bg-2); border-left: 1px solid var(--border-2); box-shadow: -12px 0 32px rgba(0,0,0,.35); overflow-y: auto; z-index: 40; padding: 14px 18px 30px; }
+.sm-detail-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; } .sm-detail-head h2 { margin: 0; font-size: 22px; }
+.sm-detail h3 { font-size: 14px; margin: 14px 0 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .sm-detail h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-mute); margin: 14px 0 6px; }
+.sm-kv { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 14px; font-size: 12.5px; }
+.sm-kv > div { display: flex; flex-direction: column; gap: 2px; } .sm-kv span { color: var(--text-mute); font-size: 11px; } .sm-kv small { color: var(--text-mute); font-size: 11px; }
+.sm-note { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; color: var(--text-dim); margin: 8px 0; } .sm-note.warn { color: var(--amber); }
+.sm-mini { width: 100%; border-collapse: collapse; font-size: 12px; margin: 6px 0; }
+.sm-mini th { text-align: left; color: var(--text-mute); font-weight: 600; font-size: 11px; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+.sm-mini td { padding: 4px 6px; border-bottom: 1px solid var(--border); vertical-align: top; } .sm-mini tr.miss td { color: var(--text-mute); }
+.mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; }
+.sm-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sm-engine { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--panel); }
+.sm-engine-head { display: flex; justify-content: space-between; align-items: center; text-transform: capitalize; } .sm-engine-pts { font-size: 12px; color: var(--text-dim); margin: 5px 0; }
+.sm-codes { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 4px; } .sm-code { font-size: 10.5px; background: var(--panel-3); color: var(--text-dim); border-radius: 4px; padding: 1px 6px; }
+.sm-miss { margin: 0; padding-left: 18px; font-size: 12.5px; color: var(--text-dim); } .sm-lim ul { margin: 0; padding-left: 18px; font-size: 12px; color: var(--text-dim); line-height: 1.5; }
+
+@media (max-width: 760px) {
+  .sm-two, .sm-kv { grid-template-columns: 1fr; }
+  .sm-filters label, .sm-filters input, .sm-filters select { min-width: 0; width: 100%; }
+}
