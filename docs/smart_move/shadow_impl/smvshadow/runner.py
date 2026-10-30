@@ -77,6 +77,9 @@ class ShadowRunner:
         f5 = ev.get(5)
         for p in preds:
             p["adv20"] = f5.extracted.get("adv20") if f5 and f5.usable else None
+        for p in preds:
+            if info.get("calendar"):
+                p.setdefault("explanation", {})["calendar"] = info["calendar"]
         self.predictions += preds
         self.snapshots.append({"symbol": a["symbol"], "event_date": a["event_date"], "evidence": list(ev.values()) + extras})
         self.processed.append(a)

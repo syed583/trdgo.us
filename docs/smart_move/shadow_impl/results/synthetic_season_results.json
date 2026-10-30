@@ -1,0 +1,811 @@
+{
+ "calendar_status": {
+  "ESTIMATED": 6,
+  "STALE": 2,
+  "UNKNOWN": 2,
+  "VENDOR_CONFIRMED": 18
+ },
+ "events": 28,
+ "note": "SYNTHETIC - invented data, mechanics only, no accuracy meaning",
+ "plan_hash": "10cdcde78270da786c2a94b502307b1a5b29aae8c55900ee4fbee572011ef2ce",
+ "prereg_sha256": "b25bd8d7889461561405ad8ec3c225b00a9202e9c75bf4b88e3e14ef7e31eb87",
+ "reason_code_counts": {
+  "BELOW_MARGIN": 24,
+  "CONFLICT": 1,
+  "NO_OBSERVATION": 4,
+  "RULE": 11,
+  "SINGLE_VENDOR": 4,
+  "SOURCE_ESTIMATION": 4,
+  "STALE_CALENDAR": 4,
+  "TIMING_CONTRADICTED": 4
+ },
+ "requests_used": {
+  "2026-11-03": 308
+ },
+ "rows": [
+  {
+   "calendar_no_trade_reasons": [],
+   "calendar_status": "VENDOR_CONFIRMED",
+   "continuation": {
+    "available": 40,
+    "bear": 0,
+    "bull": 31,
+    "reasons": [
+     "RULE"
+    ],
+    "signal": "BUY"
+   },
+   "contrarian": {
+    "available": 40,
+    "bear": 6,
+    "bull": 25,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "eligible": true,
+   "symbol": "S00",
+   "synthetic_inputs": {
+    "history": "up",
+    "skew": "call_rich",
+    "trend": "up"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [],
+   "calendar_status": "VENDOR_CONFIRMED",
+   "continuation": {
+    "available": 40,
+    "bear": 7,
+    "bull": 17,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "available": 40,
+    "bear": 2,
+    "bull": 22,
+    "reasons": [
+     "RULE"
+    ],
+    "signal": "BUY"
+   },
+   "eligible": true,
+   "symbol": "S01",
+   "synthetic_inputs": {
+    "history": "up",
+    "skew": "flat",
+    "trend": "down"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [],
+   "calendar_status": "VENDOR_CONFIRMED",
+   "continuation": {
+    "available": 40,
+    "bear": 25,
+    "bull": 6,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "available": 40,
+    "bear": 31,
+    "bull": 0,
+    "reasons": [
+     "RULE"
+    ],
+    "signal": "SELL"
+   },
+   "eligible": true,
+   "symbol": "S02",
+   "synthetic_inputs": {
+    "history": "down",
+    "skew": "put_rich",
+    "trend": "up"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [],
+   "calendar_status": "VENDOR_CONFIRMED",
+   "continuation": {
+    "available": 40,
+    "bear": 18,
+    "bull": 12,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "available": 40,
+    "bear": 17,
+    "bull": 13,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "eligible": true,
+   "symbol": "S03",
+   "synthetic_inputs": {
+    "history": "down",
+    "skew": "call_rich",
+    "trend": "flat"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [],
+   "calendar_status": "VENDOR_CONFIRMED",
+   "continuation": {
+    "available": 40,
+    "bear": 0,
+    "bull": 6,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "available": 40,
+    "bear": 6,
+    "bull": 0,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "eligible": true,
+   "symbol": "S04",
+   "synthetic_inputs": {
+    "history": "mixed",
+    "skew": "flat",
+    "trend": "up"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [],
+   "calendar_status": "VENDOR_CONFIRMED",
+   "continuation": {
+    "available": 40,
+    "bear": 13,
+    "bull": 2,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "available": 40,
+    "bear": 12,
+    "bull": 3,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "eligible": true,
+   "symbol": "S05",
+   "synthetic_inputs": {
+    "history": "mixed",
+    "skew": "put_rich",
+    "trend": "flat"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [],
+   "calendar_status": "VENDOR_CONFIRMED",
+   "continuation": {
+    "available": 40,
+    "bear": 7,
+    "bull": 12,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "available": 40,
+    "bear": 2,
+    "bull": 17,
+    "reasons": [
+     "RULE"
+    ],
+    "signal": "BUY"
+   },
+   "eligible": true,
+   "symbol": "S06",
+   "synthetic_inputs": {
+    "history": "quiet",
+    "skew": "call_rich",
+    "trend": "down"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [],
+   "calendar_status": "VENDOR_CONFIRMED",
+   "continuation": {
+    "available": 40,
+    "bear": 3,
+    "bull": 2,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "available": 40,
+    "bear": 2,
+    "bull": 3,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "eligible": true,
+   "symbol": "S07",
+   "synthetic_inputs": {
+    "history": "quiet",
+    "skew": "flat",
+    "trend": "flat"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [],
+   "calendar_status": "VENDOR_CONFIRMED",
+   "continuation": {
+    "available": 40,
+    "bear": 17,
+    "bull": 17,
+    "reasons": [
+     "CONFLICT"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "available": 40,
+    "bear": 12,
+    "bull": 22,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "eligible": true,
+   "symbol": "S08",
+   "synthetic_inputs": {
+    "history": "up",
+    "skew": "put_rich",
+    "trend": "down"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [
+    "STALE_CALENDAR"
+   ],
+   "calendar_status": "STALE",
+   "continuation": {
+    "reasons": [
+     "STALE_CALENDAR"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "reasons": [
+     "STALE_CALENDAR"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "eligible": false,
+   "symbol": "S09",
+   "synthetic_inputs": {
+    "history": "down",
+    "skew": "call_rich",
+    "trend": "up"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [
+    "TIMING_CONTRADICTED"
+   ],
+   "calendar_status": "ESTIMATED",
+   "continuation": {
+    "reasons": [
+     "TIMING_CONTRADICTED"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "reasons": [
+     "TIMING_CONTRADICTED"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "eligible": false,
+   "symbol": "S10",
+   "synthetic_inputs": {
+    "history": "down",
+    "skew": "flat",
+    "trend": "down"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [
+    "SINGLE_VENDOR"
+   ],
+   "calendar_status": "ESTIMATED",
+   "continuation": {
+    "reasons": [
+     "SINGLE_VENDOR"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "reasons": [
+     "SINGLE_VENDOR"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "eligible": false,
+   "symbol": "S11",
+   "synthetic_inputs": {
+    "history": "mixed",
+    "skew": "put_rich",
+    "trend": "up"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [
+    "SOURCE_ESTIMATION"
+   ],
+   "calendar_status": "ESTIMATED",
+   "continuation": {
+    "reasons": [
+     "SOURCE_ESTIMATION"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "reasons": [
+     "SOURCE_ESTIMATION"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "eligible": false,
+   "symbol": "S12",
+   "synthetic_inputs": {
+    "history": "mixed",
+    "skew": "call_rich",
+    "trend": "flat"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [
+    "NO_OBSERVATION"
+   ],
+   "calendar_status": "UNKNOWN",
+   "continuation": {
+    "reasons": [
+     "NO_OBSERVATION"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "reasons": [
+     "NO_OBSERVATION"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "eligible": false,
+   "symbol": "S13",
+   "synthetic_inputs": {
+    "history": "quiet",
+    "skew": "flat",
+    "trend": "up"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [],
+   "calendar_status": "VENDOR_CONFIRMED",
+   "continuation": {
+    "available": 40,
+    "bear": 13,
+    "bull": 2,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "available": 40,
+    "bear": 12,
+    "bull": 3,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "eligible": true,
+   "symbol": "S14",
+   "synthetic_inputs": {
+    "history": "quiet",
+    "skew": "put_rich",
+    "trend": "flat"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [],
+   "calendar_status": "VENDOR_CONFIRMED",
+   "continuation": {
+    "available": 40,
+    "bear": 7,
+    "bull": 27,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "available": 40,
+    "bear": 2,
+    "bull": 32,
+    "reasons": [
+     "RULE"
+    ],
+    "signal": "BUY"
+   },
+   "eligible": true,
+   "symbol": "S15",
+   "synthetic_inputs": {
+    "history": "up",
+    "skew": "call_rich",
+    "trend": "down"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [],
+   "calendar_status": "VENDOR_CONFIRMED",
+   "continuation": {
+    "available": 40,
+    "bear": 3,
+    "bull": 17,
+    "reasons": [
+     "RULE"
+    ],
+    "signal": "BUY"
+   },
+   "contrarian": {
+    "available": 40,
+    "bear": 2,
+    "bull": 18,
+    "reasons": [
+     "RULE"
+    ],
+    "signal": "BUY"
+   },
+   "eligible": true,
+   "symbol": "S16",
+   "synthetic_inputs": {
+    "history": "up",
+    "skew": "flat",
+    "trend": "flat"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [],
+   "calendar_status": "VENDOR_CONFIRMED",
+   "continuation": {
+    "available": 40,
+    "bear": 32,
+    "bull": 2,
+    "reasons": [
+     "RULE"
+    ],
+    "signal": "SELL"
+   },
+   "contrarian": {
+    "available": 40,
+    "bear": 27,
+    "bull": 7,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "eligible": true,
+   "symbol": "S17",
+   "synthetic_inputs": {
+    "history": "down",
+    "skew": "put_rich",
+    "trend": "down"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [],
+   "calendar_status": "VENDOR_CONFIRMED",
+   "continuation": {
+    "available": 40,
+    "bear": 0,
+    "bull": 16,
+    "reasons": [
+     "RULE"
+    ],
+    "signal": "BUY"
+   },
+   "contrarian": {
+    "available": 40,
+    "bear": 6,
+    "bull": 10,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "eligible": true,
+   "symbol": "S18",
+   "synthetic_inputs": {
+    "history": "mixed",
+    "skew": "call_rich",
+    "trend": "up"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [],
+   "calendar_status": "VENDOR_CONFIRMED",
+   "continuation": {
+    "available": 40,
+    "bear": 7,
+    "bull": 2,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "available": 40,
+    "bear": 2,
+    "bull": 7,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "eligible": true,
+   "symbol": "S19",
+   "synthetic_inputs": {
+    "history": "mixed",
+    "skew": "flat",
+    "trend": "down"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [],
+   "calendar_status": "VENDOR_CONFIRMED",
+   "continuation": {
+    "available": 40,
+    "bear": 10,
+    "bull": 6,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "available": 40,
+    "bear": 16,
+    "bull": 0,
+    "reasons": [
+     "RULE"
+    ],
+    "signal": "SELL"
+   },
+   "eligible": true,
+   "symbol": "S20",
+   "synthetic_inputs": {
+    "history": "quiet",
+    "skew": "put_rich",
+    "trend": "up"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [],
+   "calendar_status": "VENDOR_CONFIRMED",
+   "continuation": {
+    "available": 40,
+    "bear": 3,
+    "bull": 12,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "available": 40,
+    "bear": 2,
+    "bull": 13,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "eligible": true,
+   "symbol": "S21",
+   "synthetic_inputs": {
+    "history": "quiet",
+    "skew": "call_rich",
+    "trend": "flat"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [],
+   "calendar_status": "VENDOR_CONFIRMED",
+   "continuation": {
+    "available": 40,
+    "bear": 0,
+    "bull": 21,
+    "reasons": [
+     "RULE"
+    ],
+    "signal": "BUY"
+   },
+   "contrarian": {
+    "available": 40,
+    "bear": 6,
+    "bull": 15,
+    "reasons": [
+     "BELOW_MARGIN"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "eligible": true,
+   "symbol": "S22",
+   "synthetic_inputs": {
+    "history": "up",
+    "skew": "flat",
+    "trend": "up"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [
+    "STALE_CALENDAR"
+   ],
+   "calendar_status": "STALE",
+   "continuation": {
+    "reasons": [
+     "STALE_CALENDAR"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "reasons": [
+     "STALE_CALENDAR"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "eligible": false,
+   "symbol": "S23",
+   "synthetic_inputs": {
+    "history": "up",
+    "skew": "put_rich",
+    "trend": "flat"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [
+    "TIMING_CONTRADICTED"
+   ],
+   "calendar_status": "ESTIMATED",
+   "continuation": {
+    "reasons": [
+     "TIMING_CONTRADICTED"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "reasons": [
+     "TIMING_CONTRADICTED"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "eligible": false,
+   "symbol": "S24",
+   "synthetic_inputs": {
+    "history": "down",
+    "skew": "call_rich",
+    "trend": "down"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [
+    "SINGLE_VENDOR"
+   ],
+   "calendar_status": "ESTIMATED",
+   "continuation": {
+    "reasons": [
+     "SINGLE_VENDOR"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "reasons": [
+     "SINGLE_VENDOR"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "eligible": false,
+   "symbol": "S25",
+   "synthetic_inputs": {
+    "history": "down",
+    "skew": "flat",
+    "trend": "flat"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [
+    "SOURCE_ESTIMATION"
+   ],
+   "calendar_status": "ESTIMATED",
+   "continuation": {
+    "reasons": [
+     "SOURCE_ESTIMATION"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "reasons": [
+     "SOURCE_ESTIMATION"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "eligible": false,
+   "symbol": "S26",
+   "synthetic_inputs": {
+    "history": "mixed",
+    "skew": "put_rich",
+    "trend": "down"
+   }
+  },
+  {
+   "calendar_no_trade_reasons": [
+    "NO_OBSERVATION"
+   ],
+   "calendar_status": "UNKNOWN",
+   "continuation": {
+    "reasons": [
+     "NO_OBSERVATION"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "contrarian": {
+    "reasons": [
+     "NO_OBSERVATION"
+    ],
+    "signal": "NO_TRADE"
+   },
+   "eligible": false,
+   "symbol": "S27",
+   "synthetic_inputs": {
+    "history": "quiet",
+    "skew": "call_rich",
+    "trend": "up"
+   }
+  }
+ ],
+ "signals": {
+  "continuation": {
+   "BUY": 4,
+   "NO_TRADE": 23,
+   "SELL": 1
+  },
+  "contrarian": {
+   "BUY": 4,
+   "NO_TRADE": 22,
+   "SELL": 2
+  }
+ }
+}

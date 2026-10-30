@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SCHEMA = Path(__file__).resolve().parents[1] / "schema" / "smv_schema_v1.sql"
+SCHEMA_CAL = Path(__file__).resolve().parents[1] / "schema" / "smv_schema_v2_calendar.sql"
 
 
 def rel_for(sha):
@@ -92,6 +93,22 @@ class Db:
 
     def apply_schema(self):
         self.c.execute(SCHEMA.read_text(encoding="utf-8"))
+
+    def apply_calendar_schema(self):
+        self.c.execute(SCHEMA_CAL.read_text(encoding="utf-8"))
+
+    def add_calendar_observations(self, log):
+        """Insert every observation of an ObservationLog in append order, idempotently."""
+        for o, chain in log._rows:
+            self.c.execute("INSERT INTO smv.calendar_observations(source,vendor,symbol,event_date,label_raw,clock_raw,vendor_flag_raw,raw_sha256,calendar_observed_at,published_at,chain_sha256) "
+                           "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+                           (o.source, o.vendor, o.symbol, o.date, o.label, o.clock, o.vendor_flag, o.raw_sha256, o.observed_at, o.published_at, chain))
+
+    def add_calendar_evaluation(self, run_id, ev, evaluated_at):
+        self.c.execute("INSERT INTO smv.calendar_evaluations(run_id,symbol,event_date,status,kind,eligible_for_shadow,reasons,no_trade_reasons,calendar_observed_at,prediction_snapshot_at,detail,evaluated_at) "
+                       "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s) ON CONFLICT DO NOTHING",
+                       (run_id, ev["symbol"], ev["event_date"], ev["status"], ev["kind"], ev["eligible_for_shadow"], ev["reasons"], ev["no_trade_reasons"], ev["calendar_observed_at"],
+                        ev["prediction_snapshot_at"], json.dumps({k: ev[k] for k in ("confidence", "moved_from", "dependency", "vendors", "timing_status")}, default=str), evaluated_at))
 
     def _one(self, sql, args=()):
         r = self.c.execute(sql, args).fetchone()
