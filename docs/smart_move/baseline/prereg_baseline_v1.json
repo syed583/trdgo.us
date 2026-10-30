@@ -1,0 +1,194 @@
+{
+ "benchmarks": [
+  "always_BUY",
+  "always_SELL",
+  "momentum_sign (ret20>0 BUY else SELL; ret20 missing = NO_TRADE)",
+  "previous_reaction_sign (last prior reaction >0.5% BUY, < -0.5% SELL, else NO_TRADE)",
+  "random_coverage_matched (1000 seeded draws, same number of calls as the continuation rule, random side)"
+ ],
+ "claims": "No accuracy claim is made from this run. Results are descriptive pipeline-check statistics on the development period.",
+ "costs": {
+  "borrow_bps_for_SELL": 1,
+  "commission_bps_per_side": 1,
+  "note": "sensitivity results are reported, never used to choose the primary rule",
+  "per_side_half_spread_plus_slippage_bps": {
+   "20e6<=adv20<200e6": 8,
+   "adv20<20e6": 20,
+   "adv20>=200e6": 3
+  },
+  "round_trip": "2*(side+commission) (+ borrow for SELL)",
+  "sensitivity": {
+   "cost_multipliers": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "slippage_only_multipliers": [
+    1,
+    2,
+    3
+   ],
+   "vote_threshold_scale": [
+    0.6,
+    1.0,
+    1.4
+   ]
+  }
+ },
+ "cutoff": {
+  "availability_buffer_minutes": 45,
+  "last_usable_session": "last trading session whose close + 45 minutes <= cutoff (repository exchange calendar)",
+  "record": "UTC and America/New_York",
+  "rule": "earliest plausible release E = per-event label nominal (BMO 06:00 ET, AMC 16:00 ET on the event date) or the SEC acceptance time if earlier; cutoff = E minus exactly 24 absolute hours"
+ },
+ "decision": {
+  "BUY": "bull>=2 and bear==0",
+  "SELL": "bear>=2 and bull==0",
+  "bear": "count of -1 votes",
+  "bull": "count of +1 votes",
+  "direction_flip_after_results": "forbidden",
+  "gates_NO_TRADE": [
+   "votes_available<2 (INSUFFICIENT_COVERAGE)",
+   "adv20 missing or <20,000,000 USD (ILLIQUID)",
+   "entry deadline not after cutoff (NOT_TRADABLE)"
+  ],
+  "otherwise": "NO_TRADE",
+  "rules_reported": [
+   "continuation (as above)",
+   "contrarian (BUY and SELL swapped, same conditions)"
+  ]
+ },
+ "entry_exit": {
+  "entry": "market-on-close order for the BASE session close (BMO: previous session, AMC: earnings-day session)",
+  "exit": "market-on-close order for the REACTION session close",
+  "never": "price any trade at a close earlier than the cutoff",
+  "order_deadline_minutes_before_close": 10,
+  "require_cutoff_before_order_deadline": true,
+  "require_entry_session_after_last_usable_session_or_close_after_cutoff": true
+ },
+ "event_set": {
+  "categories": [
+   "EXPLORATORY_UNCERTAIN_BMO_FILING_BOUND",
+   "EXPLORATORY_UNCERTAIN_AMC_NOT_CONTRADICTED"
+  ],
+  "exclusions_in_input": "cutoffs.csv already excludes unknown timing, no cutoff evidence and entry-before-cutoff events",
+  "label": "timing-uncertain (release time never verified); never called verified"
+ },
+ "features": {
+  "adv20": "mean of close*volume over the last 20 sessions (liquidity)",
+  "last": "last usable session; every window ends at or before it",
+  "mean4": "mean of the symbol's last up to 4 earlier reconstructed reactions whose reaction close + 45 min <= cutoff; needs >= 3",
+  "rel20": "ret20 minus SPY ret20",
+  "ret20": "close[last]/close[last-20]-1",
+  "runup5": "close[last]/close[last-5]-1 (diagnostic)",
+  "rv20": "stdev of the last 20 daily returns (diagnostic)"
+ },
+ "frozen_at_utc": "2026-10-30T11:03:12+00:00",
+ "inputs_sha256": {
+  "h1a/h1a_events.json": "b75d7ee3e659d68beb4d72eabd4965cb463e9b81220628ef4fbc55f5d98706ac",
+  "h1a/h1a_manifest.json": "4131c93c2fb1bd92715202ce32586ce04a5e0194f28ce279ddd362a72748c079",
+  "h1b/baseline/cutoffs.csv": "d47d098b4373eacbbf787c0825d64dcbf09c96557b2eb1edab839d2a7efeac1b",
+  "h1b/candles_raw_index.json": "444fc6098047efc243069cc3e4befab178872f7a980b8aef3e58276f5ec681d8",
+  "h1b/events_h1b.csv": "362ae6c9ba53c6f6242516b866d20c81ae7bae571a88e360a3b36dcc6c6c46c5",
+  "h1b/h1b_manifest.json": "1da8d6b319710baf66e8f896e3d84179e8eaa677134dfc2e3bce0443f2cafd5f",
+  "h1b/sec_filings.json": "670593a0c9e76b06fba6cabfe3a792eea2b826ee5eb90ac69fc6e138c7f22c34"
+ },
+ "intervals": {
+  "bonferroni_two_rules_z": 2.2414,
+  "bootstrap": {
+   "cluster": "ISO week of the earnings date",
+   "reps": 2000,
+   "seed": 20261030
+  },
+  "wilson_z": 1.96
+ },
+ "label": {
+  "classes": [
+   "UP",
+   "FLAT",
+   "DOWN"
+  ],
+  "flat_band_pct": 0.5,
+  "name": "next-session close-to-close",
+  "not": "an immediate reaction",
+  "reconstruction": "recomputed from the stored regular-session closes (market_time r) with the Phase 2A window rule; must equal the stored move for every dev event or the event is excluded and reported"
+ },
+ "metrics": [
+  "eligible events",
+  "BUY/SELL/NO_TRADE counts",
+  "coverage (decided/eligible)",
+  "abstention rate",
+  "confusion matrix decision x UP/FLAT/DOWN",
+  "strict hit rate (FLAT is a miss)",
+  "direction-only hit rate (ex FLAT)",
+  "mean net return per decided call (raw and SPY-adjusted)",
+  "by liquidity bucket and timing label",
+  "missing-feature counts",
+  "suspect-window events"
+ ],
+ "purpose": "Offline price-only baseline, DEVELOPMENT-period pipeline check (run once). Not a performance claim; the 100-point Smart Move model is not implemented.",
+ "random_baseline": {
+  "draws": 1000,
+  "seed": 20261030
+ },
+ "raw_candles": {
+  "index_file": "h1b/candles_raw_index.json",
+  "location": "local, not in Git; every file hash must match the index"
+ },
+ "sealing": {
+  "candle_truncation_date": "2025-10-01 (last reaction close of any dev event); no later price is loaded",
+  "outcome_columns_dropped_for_sealed_rows_at_load": [
+   "status",
+   "move_pct",
+   "direction"
+  ],
+  "run_once": "the run writes a record file and refuses to run again",
+  "unseal": "not implemented in this run; any unseal needs a new written approval and a new pre-registration hash"
+ },
+ "splits": {
+  "dev": [
+   "2024-10-01",
+   "2025-09-30"
+  ],
+  "sealed": [
+   "validation",
+   "test"
+  ],
+  "test": [
+   "2026-04-01",
+   "2026-10-31"
+  ],
+  "this_run": "dev only",
+  "validation": [
+   "2025-10-01",
+   "2026-03-31"
+  ]
+ },
+ "suspect_rule": {
+  "applies_to": "a close-to-close move of the SYMBOL on a session that is not the reaction session of one of its own events",
+  "detection_data": "the dev-truncated candles only",
+  "effect": "the affected feature is MISSING (no repair, no imputation); events stay in the dataset",
+  "threshold_pct": 25,
+  "window": "per feature (ret20/rel20/runup5/rv20/adv20: the sessions used; mean4: from each prior event's base close to its reaction close)"
+ },
+ "version": "smv-baseline-prereg-1",
+ "votes": {
+  "earnings_history": {
+   "feature": "mean4",
+   "minus": -0.01,
+   "plus": 0.01
+  },
+  "missing_feature": "no vote (not a neutral vote)",
+  "relative_strength": {
+   "feature": "rel20",
+   "minus": -0.03,
+   "plus": 0.03
+  },
+  "trend": {
+   "feature": "ret20",
+   "minus": -0.05,
+   "plus": 0.05
+  }
+ }
+}
