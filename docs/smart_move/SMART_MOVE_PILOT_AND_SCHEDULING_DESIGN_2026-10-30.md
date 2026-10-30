@@ -152,3 +152,53 @@ All four have UPDATE/DELETE/TRUNCATE-rejecting triggers (same pattern as the ver
 5. **Capture scope for later:** warmed names (~2,400 events/year) or the whole predicted calendar (~6,000/year)?
 6. **Table prefix:** accept `smv_` instead of `sm_`?
 7. **Commit:** this revision is committed locally (no push).
+
+---
+# Revision 3 (2026-10-30 evening): H1a procedure, freshness separation, calendar edge cases, scope phasing
+Applies the owner's H1a decisions. Still research only: no scoring engine, no migration, no recurring job, no push. Supersedes sections 3.5 (H1a has its own strict budget: **50 UW requests, 0 SEC**, nothing else) and the scope row of 4.4.
+
+## 12. H1a status and exact procedure
+**H1a has NOT been run.** The 50-symbol sample must come from the production universe (symbols with a GRADED outcome) and that export does not exist yet; it needs a read-only run on the VPS by you. I will not pick symbols by hand or from a stale list. Prepared and tested offline (no real request, no production access):
+
+| Tool (in `docs/smart_move/scripts/`) | Purpose | SHA-256 |
+|---|---|---|
+| `export_universe.py` (VPS, read-only) | one CSV row per symbol with >= 1 GRADED outcome: counts, majority timing inputs, last base close, dates, `avg_volume_20` from the already-stored `earn:equity:<SYM>` cache entry (empty when absent) | `114fa56fcbd69e99bf13625988175ae461466929728fcd2f996651e2413a43d1` (4,800 bytes) |
+| `PASTE_export_universe.ps1` | hash-checked staging block (refuses to overwrite, executes nothing) | - |
+| `freeze_sample.py` (local) | pre-registered selection (`smv-pilot-1`, seed `smartmove-pilot-1`), writes `h1a_manifest.json` + `.sha256`, lists every exclusion and the selection-bias notes | `69ba258d2c127a786104bdcc308000858292629d0431774ece075123fe17308f` |
+| `h1a_runner.py` (local) | the only request code: refuses unless the manifest SHA-256 matches, max 50 UW (one `GET /api/earnings/{SYM}?limit=24` per symbol, the call the application itself makes), 0 SEC, 2 s apart, no retries, stops on 429, never overwrites output, keeps only rows from 2024-10-01 | `5de19f9cfcf07a6aace1b2475287ad48263a1f41ffeb8be7aa0c82d204cca302` |
+
+Offline tests passed (15 checks): freeze deterministic, 50 unique symbols, mixed/no-timing symbols excluded and listed, price-proxy fallback when volume coverage < 80 %, runner dry run sends nothing, wrong hash refused, non-local base URL refused, stops on a 429 (8 sent, 42 unrequested), exactly 50 requests on a full run, overwrite refused; export script run against a throw-away local PostgreSQL with synthetic rows (gz1-compressed cache value decoded, tables unchanged afterwards, writes rejected in the read-only session).
+
+**Installation procedure on the VPS (verified in the sandbox with the same block; nothing else is touched):**
+1. Open `PASTE_export_universe.ps1`, copy all, paste into the elevated PowerShell. Expected: `STAGED C:\audit-reports\smart_move_universe\export_universe.py  4800 bytes  SHA-256 114fa56f...43d1`. `STOPPED` means the text was altered: nothing is written; paste again.
+2. Run (read-only, one connection, aggregates only, writes one new CSV + `.sha256`):
+```powershell
+$py = 'C:\apps\us-stock-reader\backend\.venv\Scripts\python.exe'
+& $py -I 'C:\audit-reports\smart_move_universe\export_universe.py'
+```
+3. Send me the printed lines and the CSV (tickers, counts, one price and one volume figure per symbol: nothing sensitive), or copy the file to this PC.
+4. I then run `freeze_sample.py`, show the manifest and its SHA-256 here, and run `h1a_runner.py` (<= 50 UW requests) unless you tell me to wait for your review of the manifest. After H1a I report: actual event count, date coverage, release-time quality, missing fields, sample-selection limitations and the revised H1b request budget, then stop.
+
+## 13. Separating source freshness from prediction timestamp (never label stale evidence fresh)
+Every stored input carries four separate facts, and a prediction carries its own:
+* `source_as_of_ts` - the provider's stamp (NULL when none; never inferred);
+* `capture_ts_utc` - when we fetched it;
+* `source_session` - the last COMPLETED trading session the data reflects, computed with the repo's `market_calendar` (trading days, early closes) in America/New_York;
+* `freshness_class`, computed at capture and again at prediction time: `FRESH` (reflects the latest completed session and is within the category's maximum age), `LAST_SESSION_WEEKEND` / `LAST_SESSION_HOLIDAY` (the latest session is the correct, but old, evidence: allowed and **always labelled**, never "fresh"), `STALE_AGE` (older than the category maximum: dropped with reason `STALE_AGE`), `UNSTAMPED` (no provider stamp: capture time only). Provisional maxima: prices and IV rank must include the last completed session; flow/dark pool/unusual: last-session data captured within 24 h; headlines captured within 6 h; consensus within 24 h.
+* The prediction row has `prediction_ts_utc` (when computed) **distinct from** `evidence_as_of_min/max`, a per-category `freshness` map and `stale_weight_share` (weight of inputs that are not FRESH). Reports split every metric by freshness class; the strict set requires that no available input is `STALE_AGE`. The preview page shows "evidence as of <session>, captured <time>, predicted <time>" and prints "weekend evidence" on Saturday/Sunday windows.
+
+## 14. Calendar and timing edge cases (design; tested with a fake clock when coded)
+* **Weekends:** ticks run 7 days; a Monday BMO event's window opens Saturday 06:00 ET; its evidence is the Friday session, class `LAST_SESSION_WEEKEND`.
+* **Market holidays and early closes:** from `market_calendar`; the window itself is in wall-clock hours (48-24 h before the assumed release) but `source_session` skips holidays; tests for Thanksgiving week, Good Friday, 3-4 July, Christmas, the day after Thanksgiving (13:00 close), both DST transitions.
+* **Changing earnings dates:** every change is a new `smv_event_versions` row; earlier predictions are marked superseded; evaluation uses the FINAL event version: a prediction made in the window of an earlier version but earlier than 48 h before the final assumed release is flagged `EARLY_FOR_FINAL_DATE` (not in the strict set); a date moved earlier so that the new window has already passed is `MISSED/LATE_DISCOVERY`. Whether the provider marks the date confirmed is stored when available, never assumed.
+* **BMO/AMC uncertainty:** window from the earliest plausible release (BMO 06:00 ET, AMC 16:00 ET, unknown 06:00 ET on the date); sources that disagree (UW label vs the Finviz clock string) -> `timing_conflict`; unknown, conflicting, "during market hours" and SEC-acceptance-inconsistent cases get signal NO_TRADE (UNKNOWN_TIMING) and are outside the strict set but are captured and reported in a separate extended set.
+
+## 15. Scope phasing
+Design for the full predicted calendar (about 6,000 events/year, about 30,000 new UW requests/year, about 90 MB/year compressed): every table, the scheduler loop, the request governor and the coverage report are sized for it from day one, with an `event_scope` column (`WARMED` | `CALENDAR`). Forward-capture validation **starts with the warmed-name subset** (about 2,400 events/year). Expansion to the whole calendar is a separate approval and is gated on measured evidence from the warmed phase, reported together: in-window coverage (target >= 95 % of window-closed events), freshness-class mix, request volume and 429/concurrency incidents against the shared token, missing-reason rates, database growth, and prediction quality shown with intervals (monitoring only: with a small sample it cannot prove an edge, so it informs but does not by itself justify expansion).
+
+## 16. Universe v1 export result and why the sample is NOT frozen from it (2026-10-30)
+The owner ran `export_universe.py` (v1): `universe_20261030-111630.csv`, SHA-256 `843cd0349d86fe65c845c1b59645d4e5a2eaa76bd3b3cc7f8095e584878ec4ae`, 240 symbols with a GRADED outcome, **0 with `avg_volume_20`** in the stored cache. The pasted rows run from `AAMI` to `FCFS` and end there: they are the whole file (240 rows), not a truncated paste.
+**Finding:** the graded universe is the first 240 symbols **in alphabetical order** (A to FCFS). `earnings_outcomes.run` grades `sorted(symbols)[:120]` per cycle, and two cycles have run. A sample drawn from it would contain no symbol after "FCFS" - an artefact of grading order, not of the market. This is the grading-order bias recorded earlier, now measured. The pre-registered rule (v1 stratification by timing x price tertile among graded symbols) is therefore **not used** and **no H1a request has been sent**.
+**Proposed protocol change (needs your approval, made before any request):** universe v2 = symbols with a recorded prediction for an event dated today or earlier, whatever the grading status (`export_universe_v2.py`, SHA-256 `314ae68bcc67329fec939d2dd502e968736d1e83b8a14b961f4035cd54ad5b23`, 4,680 bytes; staging block `PASTE_export_universe_v2.ps1`). Event timing comes from the latest non-empty `report_timing` label of each event (Before Open -> BMO, After Close -> AMC, anything else = no timing, excluded and counted). Ungraded symbols have no stored price and no volume, so liquidity strata are dropped: method `smv-pilot-2` stratifies by timing only (25 BMO + 25 AMC, seeded hash order) when fewer than 80 % have a price or volume, and liquidity is described afterwards from the pilot's own candle volumes (H1b), never used for selection. Known limit: thin names may be over- or under-represented; the post-hoc liquidity description will show it.
+Offline tests of v2 against a throw-away PostgreSQL (400 synthetic symbols, grader reaching only the first 120): future-dated events ignored, tables unchanged, selection spans S003..S399 (not just the graded prefix), 25/25 strata. The earlier 15 checks of the freeze/runner pair were re-run after the change: all pass.
+**Alternative:** wait until the grading backlog clears (about 2-3 more cycles) and re-run v1; slower, and the universe would still depend on which events have prices.
