@@ -676,11 +676,20 @@ class LiveScorer:
             exp = expected_session(now)
             used = []
 
+            early = set()
+
             def latest(kind, symbol, params):
+                """The frozen design says capture AND prediction happen between release - 48 h and the cutoff: evidence retrieved before the window opened does not count."""
                 r = self.s._latest(kind, symbol, params)
                 if r and r["retrieved_at"] <= now.isoformat():
+                    if r["retrieved_at"] < plan["window_start_utc"].isoformat():
+                        early.add((kind, symbol))
+                        return None
                     return r
                 return None
+
+            def why(default, *keys):
+                return "RETRIEVED_BEFORE_WINDOW" if any(k in early for k in keys) else default
             cand_rec, hist_rec = latest("ohlc", sym, {"timeframe": "3Y"}), latest("earnings", sym, {"limit": 24})
             spy_rec, sec_rec = latest("ohlc", "SPY", {"timeframe": "3Y"}), (latest("ohlc", etf, {"timeframe": "3Y"}) if etf else None)
             ctx_rec, ivr_rec = latest("vol_context", sym, {"date": exp.isoformat()}), latest("iv_rank", sym, {"date": exp.isoformat()})
@@ -708,9 +717,9 @@ class LiveScorer:
                     return fn()
                 except (fr.LeakageError, Exception) as exc:  # noqa: BLE001
                     return missing(factor, "live", why if isinstance(exc, fr.LeakageError) else type(exc).__name__, now)
-            evid[5] = safe(5, lambda: ad.f5_price_technical(cand, spy, plan, now, react, sha_c), "OUT_OF_WINDOW") if cand and spy else missing(5, "live.ohlc", "NO_FRESH_PRICE_EVIDENCE" if not cand else "NO_FRESH_MARKET_EVIDENCE", now)
-            evid[3] = safe(3, lambda: ad.f3_reaction_history(hist, cand, ev["event_date"], plan, now, sha_h), "OUT_OF_WINDOW") if hist and cand else missing(3, "live.earnings+ohlc", "NO_FRESH_HISTORY_OR_PRICE", now)
-            evid[8] = safe(8, lambda: ad.f8_sector_market(spy, sec, plan, now, sha_s), "OUT_OF_WINDOW") if spy else missing(8, "live.ohlc:SPY", "NO_FRESH_MARKET_EVIDENCE", now)
+            evid[5] = safe(5, lambda: ad.f5_price_technical(cand, spy, plan, now, react, sha_c), "OUT_OF_WINDOW") if cand and spy else missing(5, "live.ohlc", why("NO_FRESH_PRICE_EVIDENCE", ("ohlc", sym)) if not cand else why("NO_FRESH_MARKET_EVIDENCE", ("ohlc", "SPY")), now)
+            evid[3] = safe(3, lambda: ad.f3_reaction_history(hist, cand, ev["event_date"], plan, now, sha_h), "OUT_OF_WINDOW") if hist and cand else missing(3, "live.earnings+ohlc", why("NO_FRESH_HISTORY_OR_PRICE", ("earnings", sym), ("ohlc", sym)), now)
+            evid[8] = safe(8, lambda: ad.f8_sector_market(spy, sec, plan, now, sha_s), "OUT_OF_WINDOW") if spy else missing(8, "live.ohlc:SPY", why("NO_FRESH_MARKET_EVIDENCE", ("ohlc", "SPY")), now)
             # F7 only from a PROSPECTIVE capture taken in the window; saved or replayed context never enters
             f7_ok = bool(ctx and ctx_rec and plan["window_start_utc"] <= datetime.fromisoformat(ctx_rec["retrieved_at"]) <= plan["cutoff_utc"])
             evid[7] = safe(7, lambda: ad.f7_volatility_context({"data": ctx}, ivr, plan, now, sha_x), "OUT_OF_WINDOW") if f7_ok else missing(7, "uw.volatility.context", "NOT_CAPTURED_LIVE_IN_WINDOW", now)

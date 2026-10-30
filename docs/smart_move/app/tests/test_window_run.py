@@ -79,3 +79,26 @@ def test_rate_limit_stops_the_run(tmp_path):
     rep = W.collect(svc)
     n = len(prov.calls)
     assert any(d == "STOP_429" for d in rep["denials"]) and n < 60
+
+
+def test_weekend_rehearsal_friday_close_evidence_is_enough_inside_the_saturday_window(tmp_path):
+    """Saturday 22:00 ET (Sunday 02:00 UTC): the market is closed, the last completed session is Friday, Monday's before-open and after-close windows are open."""
+    from datetime import datetime, timezone
+    start = datetime(2026, 11, 1, 2, 0, tzinfo=timezone.utc)
+    clock0 = gv.FakeClock(start)
+    prov0 = S.SimulatedProvider(clock0)
+    cfg0 = L.LiveConfig(mode="SIMULATION", store_dir=tmp_path / "seed", refresh_enabled=True, authorized_daily=100, spacing_s=0.0)
+    s0 = L.RefreshService(cfg0, prov0, clock0)
+    s0.refresh_calendar([8])
+    clock = gv.FakeClock(start + timedelta(minutes=1))
+    prov = S.SimulatedProvider(gv.FakeClock(start))
+    prov.clock = clock
+    svc = L.RefreshService(L.LiveConfig(mode="SIMULATION", store_dir=tmp_path / "run", refresh_enabled=False, authorized_daily=0, spacing_s=0.0), prov, clock)
+    for r in s0.store.read("cal_obs"):
+        svc.store.append("cal_obs", r)
+    assert str(L.expected_session(clock.now())) == "2026-10-30"                              # Friday's session is the evidence
+    rep = W.collect(svc)
+    assert rep["status"] == "OK" and rep["attempts_total"] <= 60 and len(rep["selected"]) == 10
+    assert sum(1 for c in prov.calls if c[0] in ("uw_calendar", "finviz_calendar", "finnhub_calendar")) <= 5      # one trading day ahead: 2 UW (+1 page), Finviz, Finnhub
+    assert all(r["available_points"] == 40 for r in rep["results"]) and all(r["calendar_status"] == "VENDOR_CONFIRMED" for r in rep["results"])
+    assert all(r["capture_ts"] and r["hours_to_cutoff"] > 0 for r in rep["results"])

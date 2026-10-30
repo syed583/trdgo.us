@@ -294,3 +294,22 @@ def test_live_dataset_is_never_filled_from_the_saved_pack_or_the_replay(api, mon
     monkeypatch.delenv("SMART_MOVE_MODE", raising=False)
     assert client.get("/api/smart-move/live").json()["counts"]["total"] == 0
     assert client.get("/api/smart-move/calendar").json()["counts"]["total"] == 271              # the saved observation stays a separate dataset
+
+
+def test_evidence_retrieved_before_the_capture_window_opened_does_not_count(tmp_path):
+    """The frozen design: capture and prediction between release - 48 h and the cutoff. Run at T0 (window open), then score as if the window had opened later than the retrieval."""
+    svc, _, _ = make(tmp_path)
+    svc.run()
+    assert all(r["available_points"] == 40 for r in rows_of(svc))
+    # move every retrieval one day earlier in the store: now the evidence pre-dates the window
+    for name in ("evidence", "cal_obs"):
+        path = svc.store.root / (name + ".jsonl")
+        recs = [json.loads(x) for x in path.read_text().splitlines()]
+        for r in recs:
+            key = "retrieved_at" if name == "evidence" else "observed_at"
+            r[key] = (datetime.fromisoformat(r[key]) - timedelta(days=3)).isoformat()
+        path.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    early = rows_of(svc)
+    assert early and all(r["engine"][v]["signal"] == "NO_TRADE" for r in early for v in ("continuation", "contrarian"))
+    sample = [r for r in early if r["symbol"] == "SIM00"][0]
+    assert {m["reason"] for m in sample["missing_factors"] if m["factor"] in ("F3", "F5", "F8")} == {"RETRIEVED_BEFORE_WINDOW"} and sample["available_points"] < 24
