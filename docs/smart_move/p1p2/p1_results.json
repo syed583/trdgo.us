@@ -1,0 +1,103 @@
+{
+ "manifest_sha256": "c7406f789f241d06607d43ee3b02269e98e03dd65c1959f425bc8006a1b396ce",
+ "requests_sent": 5,
+ "budget": 10,
+ "stopped": "transport error HTTPError",
+ "results": [
+  {
+   "id": "UW-2026-10-30-premarket-p1",
+   "provider": "UNUSUAL_WHALES",
+   "path": "/api/earnings/premarket",
+   "params": {
+    "date": "2026-10-30",
+    "limit": 100,
+    "page": 1
+   },
+   "retrieved_at_utc": "2026-10-30T13:01:02+00:00",
+   "rows": 0,
+   "status": 200,
+   "bytes": 11,
+   "raw_sha256": "8fe32e407a1038ee38753b70e5374b3a46d6ae9d5f16cd5b73c53abaca8f5ed0",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "UW-2026-10-30-afterhours-p1",
+   "provider": "UNUSUAL_WHALES",
+   "path": "/api/earnings/afterhours",
+   "params": {
+    "date": "2026-10-30",
+    "limit": 100,
+    "page": 1
+   },
+   "retrieved_at_utc": "2026-10-30T13:01:05+00:00",
+   "rows": 0,
+   "status": 200,
+   "bytes": 11,
+   "raw_sha256": "8fe32e407a1038ee38753b70e5374b3a46d6ae9d5f16cd5b73c53abaca8f5ed0",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "UW-2026-11-02-premarket-p1",
+   "provider": "UNUSUAL_WHALES",
+   "path": "/api/earnings/premarket",
+   "params": {
+    "date": "2026-11-02",
+    "limit": 100,
+    "page": 1
+   },
+   "retrieved_at_utc": "2026-10-30T13:01:07+00:00",
+   "rows": 0,
+   "status": 200,
+   "bytes": 11,
+   "raw_sha256": "8fe32e407a1038ee38753b70e5374b3a46d6ae9d5f16cd5b73c53abaca8f5ed0",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "UW-2026-11-02-afterhours-p1",
+   "provider": "UNUSUAL_WHALES",
+   "path": "/api/earnings/afterhours",
+   "params": {
+    "date": "2026-11-02",
+    "limit": 100,
+    "page": 1
+   },
+   "retrieved_at_utc": "2026-10-30T13:01:10+00:00",
+   "rows": 4,
+   "status": 200,
+   "bytes": 2275,
+   "raw_sha256": "a00e8abced226cf0fdeab5c7d3771ec8fd54884ea768f1e56a3779f58f46f204",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "FZ-A",
+   "provider": "FINVIZ_ELITE",
+   "path": "export.ashx",
+   "params": {
+    "v": "152",
+    "c": "1,68",
+    "t": "<4 tickers>",
+    "tickers": [
+     "BRCC",
+     "CVGI",
+     "GAIA",
+     "OPAD"
+    ]
+   },
+   "retrieved_at_utc": "2026-10-30T13:01:13+00:00",
+   "status": 301,
+   "error": "HTTPError"
+  }
+ ]
+}

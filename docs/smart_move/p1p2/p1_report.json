@@ -1,0 +1,153 @@
+{
+ "finviz_clock_vs_uw_label": {
+  "postmarket | 4:30 PM": 77,
+  "postmarket | 8:30 AM": 2,
+  "premarket | 8:30 AM": 21
+ },
+ "finviz_time_values_distinct": 2,
+ "finviz_vs_finnhub": {
+  "finviz_date_not_in_finnhub": 1,
+  "finviz_symbol_not_in_finnhub": 8,
+  "same_date": 91,
+  "timing_agree": 91
+ },
+ "formats": {
+  "finnhub_dates": {
+   "2026-10-30": 55,
+   "2026-11-02": 203
+  },
+  "finnhub_hour": {
+   "": 90,
+   "amc": 102,
+   "bmo": 66
+  },
+  "finnhub_row_keys": [
+   "date",
+   "epsActual",
+   "epsEstimate",
+   "hour",
+   "quarter",
+   "revenueActual",
+   "revenueEstimate",
+   "symbol",
+   "year"
+  ],
+  "finnhub_rows": 258,
+  "finviz_clock_values": {
+   "4:30 PM": 77,
+   "8:30 AM": 23
+  },
+  "finviz_columns": [
+   "Ticker",
+   "Earnings Date"
+  ],
+  "finviz_dates": {
+   "2026-07-20": 1,
+   "2026-08-04": 1,
+   "2026-10-21": 1,
+   "2026-11-02": 97
+  },
+  "finviz_rows": 100,
+  "finviz_rows_without_time": 0,
+  "uw_report_date": {
+   "2026-11-02": 129
+  },
+  "uw_report_time": {
+   "postmarket": 104,
+   "premarket": 25
+  },
+  "uw_row_keys": [
+   "actual_eps",
+   "continent",
+   "country_code",
+   "country_name",
+   "ending_fiscal_quarter",
+   "expected_move",
+   "expected_move_perc",
+   "full_name",
+   "has_options",
+   "is_s_p_500",
+   "marketcap",
+   "post_earnings_close",
+   "post_earnings_date",
+   "pre_earnings_close",
+   "pre_earnings_date",
+   "reaction",
+   "report_date",
+   "report_time",
+   "sector",
+   "source",
+   "street_mean_est",
+   "symbol"
+  ],
+  "uw_rows": 129,
+  "uw_source_flag": {
+   "company": 129
+  }
+ },
+ "no_trade_reasons": {
+  "SINGLE_VENDOR": 7
+ },
+ "observation_log_chain_ok": true,
+ "retrieved_utc_range": [
+  "2026-10-30T13:01:10+00:00",
+  "2026-10-30T13:03:11+00:00"
+ ],
+ "uw_company_flag_among_2026_11_02_rows": {
+  "company": 129
+ },
+ "uw_vs_finnhub": {
+  "not_in_other_vendor_set": 13,
+  "same_date": 116,
+  "timing_agree": 116
+ },
+ "uw_vs_finnhub_diffs": [],
+ "uw_vs_finviz": {
+  "date_differs": 3,
+  "not_in_other_vendor_set": 29,
+  "same_date": 97,
+  "timing_agree": 97
+ },
+ "uw_vs_finviz_diffs": [
+  {
+   "finviz": [
+    "2026-07-20",
+    "8:30 AM"
+   ],
+   "symbol": "RYAAY",
+   "uw": [
+    "2026-11-02",
+    "premarket",
+    "company"
+   ]
+  },
+  {
+   "finviz": [
+    "2026-10-21",
+    "8:30 AM"
+   ],
+   "symbol": "UDR",
+   "uw": [
+    "2026-11-02",
+    "postmarket",
+    "company"
+   ]
+  },
+  {
+   "finviz": [
+    "2026-08-04",
+    "8:30 AM"
+   ],
+   "symbol": "GRAB",
+   "uw": [
+    "2026-11-02",
+    "postmarket",
+    "company"
+   ]
+  }
+ ],
+ "would_be_status_uw_symbols_for_2026_11_02": {
+  "ESTIMATED": 7,
+  "VENDOR_CONFIRMED": 122
+ }
+}

@@ -138,3 +138,13 @@ def test_observation_log_is_append_only_idempotent_and_tamper_evident():
     head = log.head()
     log._rows[0] = (cc.CalObs(**{**a.__dict__, "vendor_flag": "estimation"}), log._rows[0][1])             # tamper with the stored flag
     assert not log.verify() and head != "0" * 64
+
+
+def test_a_past_dated_vendor_row_is_set_aside_not_counted_as_a_conflict():
+    old = cc.from_finviz("AAA", "7/20/2026 8:30:00 AM", NOW - timedelta(hours=1), "f-old")               # retrieved 2 Nov, dated July: stale
+    r = ev([uw(), fh(), old])
+    assert r["status"] == cc.VENDOR_CONFIRMED and r["stale_vendor_rows"] == ["FINVIZ:2026-07-20"]       # confirmed by Unusual Whales + Finnhub, the stale row only recorded
+    r2 = ev([uw(), old])
+    assert r2["status"] != cc.VENDOR_CONFIRMED and "SINGLE_VENDOR" in r2["no_trade_reasons"] and "DATE_CONFLICT_OVER_1_DAY" not in r2["no_trade_reasons"]
+    r3 = ev([old])
+    assert r3["no_trade_reasons"] == ["NO_OBSERVATION"] and "ONLY_STALE_VENDOR_ROWS" in r3["reasons"]

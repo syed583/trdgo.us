@@ -1,0 +1,70 @@
+{
+ "already_sent_in_first_run": 5,
+ "approved_cap": 10,
+ "first_run_manifest_sha256": "c7406f789f241d06607d43ee3b02269e98e03dd65c1959f425bc8006a1b396ce",
+ "max_requests_now": 5,
+ "max_total_with_first_run": 10,
+ "reason": "first run: UW page index 1 (second page) instead of 0 returned empty pages; Finviz redirect (301) refused by the no-redirect client",
+ "requests": [
+  {
+   "id": "UW-2026-11-02-premarket-p0",
+   "n": 1,
+   "params": {
+    "date": "2026-11-02",
+    "limit": 100,
+    "page": 0
+   },
+   "path": "/api/earnings/premarket",
+   "provider": "UNUSUAL_WHALES"
+  },
+  {
+   "id": "UW-2026-11-02-afterhours-p0",
+   "n": 2,
+   "params": {
+    "date": "2026-11-02",
+    "limit": 100,
+    "page": 0
+   },
+   "path": "/api/earnings/afterhours",
+   "provider": "UNUSUAL_WHALES"
+  },
+  {
+   "id": "UW-2026-10-30-afterhours-p0",
+   "n": 3,
+   "params": {
+    "date": "2026-10-30",
+    "limit": 100,
+    "page": 0
+   },
+   "path": "/api/earnings/afterhours",
+   "provider": "UNUSUAL_WHALES"
+  },
+  {
+   "id": "FZ-A",
+   "n": 4,
+   "params": {
+    "c": "1,68",
+    "t": "<=100 largest-market-cap tickers from the UW rows of this and the first run>",
+    "v": "152"
+   },
+   "path": "export.ashx",
+   "provider": "FINVIZ_ELITE"
+  },
+  {
+   "id": "FH-A",
+   "n": 5,
+   "params": {
+    "from": "2026-10-30",
+    "to": "2026-11-02"
+   },
+   "path": "/calendar/earnings",
+   "provider": "FINNHUB"
+  }
+ ],
+ "stop_rules": [
+  "401, 403 or 429 stops the run",
+  "any error stops the run",
+  "no retries"
+ ],
+ "version": "smv-p1-continue-1"
+}

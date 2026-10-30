@@ -1,0 +1,808 @@
+{
+ "manifest_sha256": "8d31e0e73a73a840395071f007cb02aac15eadc1a31ba1589f551dadd9e193cd",
+ "requests_sent": 40,
+ "budget": 40,
+ "stopped": null,
+ "results": [
+  {
+   "id": "CX-01",
+   "path": "/api/stock/ALGM/volatility/context",
+   "params": {
+    "date": "2025-05-05"
+   },
+   "event": {
+    "earnings_date": "2025-05-08",
+    "kind": "BMO",
+    "symbol": "ALGM"
+   },
+   "retrieved_at_utc": "2026-10-30T13:05:47+00:00",
+   "status": 200,
+   "bytes": 747,
+   "raw_sha256": "302887488ad88b7f351fa762efe2185f30600e3f4b061bba20d81fa8f8fb0607",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-02",
+   "path": "/api/stock/RDDT/volatility/context",
+   "params": {
+    "date": "2025-07-28"
+   },
+   "event": {
+    "earnings_date": "2025-07-31",
+    "kind": "AMC",
+    "symbol": "RDDT"
+   },
+   "retrieved_at_utc": "2026-10-30T13:05:50+00:00",
+   "status": 200,
+   "bytes": 732,
+   "raw_sha256": "865071203fe7b5d68d37f6e9737a776f73b54679d3f8736e94f43aa540690469",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-03",
+   "path": "/api/stock/OTIS/volatility/context",
+   "params": {
+    "date": "2025-07-18"
+   },
+   "event": {
+    "earnings_date": "2025-07-23",
+    "kind": "BMO",
+    "symbol": "OTIS"
+   },
+   "retrieved_at_utc": "2026-10-30T13:05:53+00:00",
+   "status": 200,
+   "bytes": 726,
+   "raw_sha256": "3324888e2856546218f0c85112bccc3b626ea1d4bd45da108de5d7d01e965cfe",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-04",
+   "path": "/api/stock/BY/volatility/context",
+   "params": {
+    "date": "2025-04-21"
+   },
+   "event": {
+    "earnings_date": "2025-04-24",
+    "kind": "AMC",
+    "symbol": "BY"
+   },
+   "retrieved_at_utc": "2026-10-30T13:05:55+00:00",
+   "status": 200,
+   "bytes": 733,
+   "raw_sha256": "6a883670e9d8c3e2b1483db4010f205b9b6b71534079d9eb0d9049c49199922d",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-05",
+   "path": "/api/stock/MO/volatility/context",
+   "params": {
+    "date": "2025-04-25"
+   },
+   "event": {
+    "earnings_date": "2025-04-29",
+    "kind": "BMO",
+    "symbol": "MO"
+   },
+   "retrieved_at_utc": "2026-10-30T13:05:58+00:00",
+   "status": 200,
+   "bytes": 747,
+   "raw_sha256": "aa5ddbc161a6418f84baa63a6fe7a42b68b396e9d2da9e9dd83e7fc10e02a843",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-06",
+   "path": "/api/stock/MUSA/volatility/context",
+   "params": {
+    "date": "2025-01-31"
+   },
+   "event": {
+    "earnings_date": "2025-02-05",
+    "kind": "AMC",
+    "symbol": "MUSA"
+   },
+   "retrieved_at_utc": "2026-10-30T13:06:01+00:00",
+   "status": 200,
+   "bytes": 744,
+   "raw_sha256": "7472e3ca628806bbda0f45d167e6942322dc7c57ba6c8f63951d833b982c2234",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-07",
+   "path": "/api/stock/BNL/volatility/context",
+   "params": {
+    "date": "2025-04-25"
+   },
+   "event": {
+    "earnings_date": "2025-04-30",
+    "kind": "AMC",
+    "symbol": "BNL"
+   },
+   "retrieved_at_utc": "2026-10-30T13:06:03+00:00",
+   "status": 200,
+   "bytes": 741,
+   "raw_sha256": "c06d4c59bbe62b77c427a20ae1ab5f015119eabeebd664d76922600cc5d9d66a",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-08",
+   "path": "/api/stock/INBK/volatility/context",
+   "params": {
+    "date": "2025-04-17"
+   },
+   "event": {
+    "earnings_date": "2025-04-23",
+    "kind": "AMC",
+    "symbol": "INBK"
+   },
+   "retrieved_at_utc": "2026-10-30T13:06:06+00:00",
+   "status": 200,
+   "bytes": 740,
+   "raw_sha256": "a2d27123583ec5fdda0baa07cc3f61eb4acdd224258699784ca9eef7e13fe425",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-09",
+   "path": "/api/stock/GNRC/volatility/context",
+   "params": {
+    "date": "2025-02-07"
+   },
+   "event": {
+    "earnings_date": "2025-02-12",
+    "kind": "BMO",
+    "symbol": "GNRC"
+   },
+   "retrieved_at_utc": "2026-10-30T13:06:08+00:00",
+   "status": 200,
+   "bytes": 731,
+   "raw_sha256": "3a63d33ac57174c5d0f1bb03b28b2b0a2c276573f15bb5e6fef13d178a85ae69",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-10",
+   "path": "/api/stock/SPFI/volatility/context",
+   "params": {
+    "date": "2025-04-21"
+   },
+   "event": {
+    "earnings_date": "2025-04-24",
+    "kind": "AMC",
+    "symbol": "SPFI"
+   },
+   "retrieved_at_utc": "2026-10-30T13:06:11+00:00",
+   "status": 200,
+   "bytes": 748,
+   "raw_sha256": "4d0759f4ec5f6371854d9999265bf7bc4905802f4fc7f3c2d8512453dd2fccc1",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-11",
+   "path": "/api/stock/FFIV/volatility/context",
+   "params": {
+    "date": "2025-01-24"
+   },
+   "event": {
+    "earnings_date": "2025-01-28",
+    "kind": "AMC",
+    "symbol": "FFIV"
+   },
+   "retrieved_at_utc": "2026-10-30T13:06:14+00:00",
+   "status": 200,
+   "bytes": 757,
+   "raw_sha256": "8a3c6d2b37af180c787159ce5332b3c2dc8c2537e480db1479ed49f493d75f18",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-12",
+   "path": "/api/stock/WM/volatility/context",
+   "params": {
+    "date": "2025-07-25"
+   },
+   "event": {
+    "earnings_date": "2025-07-28",
+    "kind": "AMC",
+    "symbol": "WM"
+   },
+   "retrieved_at_utc": "2026-10-30T13:06:16+00:00",
+   "status": 200,
+   "bytes": 729,
+   "raw_sha256": "c86e6561b14c1e550809b16a8bdd4aedc5c64e1df4fb3e0d306d3680d359f980",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-13",
+   "path": "/api/stock/EXR/volatility/context",
+   "params": {
+    "date": "2025-02-21"
+   },
+   "event": {
+    "earnings_date": "2025-02-25",
+    "kind": "AMC",
+    "symbol": "EXR"
+   },
+   "retrieved_at_utc": "2026-10-30T13:06:19+00:00",
+   "status": 200,
+   "bytes": 732,
+   "raw_sha256": "05ba1de6e1a408167a11741a24c6b36856af89ae16c1a3dfe69b65c734f2c139",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-14",
+   "path": "/api/stock/RDDT/volatility/context",
+   "params": {
+    "date": "2025-04-28"
+   },
+   "event": {
+    "earnings_date": "2025-05-01",
+    "kind": "AMC",
+    "symbol": "RDDT"
+   },
+   "retrieved_at_utc": "2026-10-30T13:06:22+00:00",
+   "status": 200,
+   "bytes": 750,
+   "raw_sha256": "966130e83d771ca04c640a06e8e6f7e9912dbc8af25122e8dd4e9d3f5e1c6e8c",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-15",
+   "path": "/api/stock/ZWS/volatility/context",
+   "params": {
+    "date": "2025-04-17"
+   },
+   "event": {
+    "earnings_date": "2025-04-22",
+    "kind": "AMC",
+    "symbol": "ZWS"
+   },
+   "retrieved_at_utc": "2026-10-30T13:06:24+00:00",
+   "status": 200,
+   "bytes": 747,
+   "raw_sha256": "55d26fdc57180bc066b48b5ab8a3e1c4d32c878b80b0a431c3f997692b36fa55",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-16",
+   "path": "/api/stock/EXR/volatility/context",
+   "params": {
+    "date": "2024-10-25"
+   },
+   "event": {
+    "earnings_date": "2024-10-29",
+    "kind": "AMC",
+    "symbol": "EXR"
+   },
+   "retrieved_at_utc": "2026-10-30T13:06:27+00:00",
+   "status": 200,
+   "bytes": 745,
+   "raw_sha256": "ba3a1af823274d9cd2a700605c6458faa02beb92ff69a740e4a6c48eb04d9102",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-17",
+   "path": "/api/stock/ROG/volatility/context",
+   "params": {
+    "date": "2025-02-14"
+   },
+   "event": {
+    "earnings_date": "2025-02-19",
+    "kind": "AMC",
+    "symbol": "ROG"
+   },
+   "retrieved_at_utc": "2026-10-30T13:06:29+00:00",
+   "status": 200,
+   "bytes": 734,
+   "raw_sha256": "9cc7e5b21871d746133ed79e0b272fcc7d87d7dc60a4e817fdb043870e6ffd41",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-18",
+   "path": "/api/stock/BLDR/volatility/context",
+   "params": {
+    "date": "2025-04-28"
+   },
+   "event": {
+    "earnings_date": "2025-05-01",
+    "kind": "BMO",
+    "symbol": "BLDR"
+   },
+   "retrieved_at_utc": "2026-10-30T13:06:33+00:00",
+   "status": 200,
+   "bytes": 747,
+   "raw_sha256": "692e7420010048ef8319259881b92241cee010a51c0a41b42dced68c978d10d6",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-19",
+   "path": "/api/stock/PRLB/volatility/context",
+   "params": {
+    "date": "2025-04-29"
+   },
+   "event": {
+    "earnings_date": "2025-05-02",
+    "kind": "BMO",
+    "symbol": "PRLB"
+   },
+   "retrieved_at_utc": "2026-10-30T13:06:35+00:00",
+   "status": 200,
+   "bytes": 750,
+   "raw_sha256": "6bb5c2f6a42fc9ff9487c78fd04cf0d0f60061146c5ce4fb898505bddfbdd5d9",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-20",
+   "path": "/api/stock/TMUS/volatility/context",
+   "params": {
+    "date": "2025-01-24"
+   },
+   "event": {
+    "earnings_date": "2025-01-29",
+    "kind": "BMO",
+    "symbol": "TMUS"
+   },
+   "retrieved_at_utc": "2026-10-30T13:06:38+00:00",
+   "status": 200,
+   "bytes": 743,
+   "raw_sha256": "da87283699960053706e98bf2e8a34f5187a1ca950ae0a97df63b5e6d0ef9dc2",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-21",
+   "path": "/api/stock/INCY/volatility/context",
+   "params": {
+    "date": "2024-10-25"
+   },
+   "event": {
+    "earnings_date": "2024-10-29",
+    "kind": "BMO",
+    "symbol": "INCY"
+   },
+   "retrieved_at_utc": "2026-10-30T13:06:41+00:00",
+   "status": 200,
+   "bytes": 754,
+   "raw_sha256": "b51cb078ce4abaef0a02b1472eb683d3091b77b33b4a420f44afb22dc8a7d540",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-22",
+   "path": "/api/stock/WT/volatility/context",
+   "params": {
+    "date": "2025-01-28"
+   },
+   "event": {
+    "earnings_date": "2025-01-31",
+    "kind": "BMO",
+    "symbol": "WT"
+   },
+   "retrieved_at_utc": "2026-10-30T13:06:44+00:00",
+   "status": 200,
+   "bytes": 731,
+   "raw_sha256": "146fb163044d80e702578743748d070a4a7c7d748c7d616bcb46740a62086c35",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-23",
+   "path": "/api/stock/IDCC/volatility/context",
+   "params": {
+    "date": "2025-07-28"
+   },
+   "event": {
+    "earnings_date": "2025-07-31",
+    "kind": "BMO",
+    "symbol": "IDCC"
+   },
+   "retrieved_at_utc": "2026-10-30T13:06:47+00:00",
+   "status": 200,
+   "bytes": 728,
+   "raw_sha256": "ad27be813eee6ce1f184177b02fc58c68f8f886300341d565622fec0e3970bf8",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-24",
+   "path": "/api/stock/TMUS/volatility/context",
+   "params": {
+    "date": "2025-04-21"
+   },
+   "event": {
+    "earnings_date": "2025-04-24",
+    "kind": "AMC",
+    "symbol": "TMUS"
+   },
+   "retrieved_at_utc": "2026-10-30T13:06:49+00:00",
+   "status": 200,
+   "bytes": 746,
+   "raw_sha256": "9f6b65bcf87f435c9afdf0f907841bb0ae4532083505bd9829b7bf38cf51b9cc",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-25",
+   "path": "/api/stock/MUSA/volatility/context",
+   "params": {
+    "date": "2024-10-25"
+   },
+   "event": {
+    "earnings_date": "2024-10-30",
+    "kind": "AMC",
+    "symbol": "MUSA"
+   },
+   "retrieved_at_utc": "2026-10-30T13:06:52+00:00",
+   "status": 200,
+   "bytes": 746,
+   "raw_sha256": "ee09000e7322ec9cc75a8ff94ab97e07662355b60e4d6ff028d4632b35d74ed1",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-26",
+   "path": "/api/stock/ALGM/volatility/context",
+   "params": {
+    "date": "2024-10-28"
+   },
+   "event": {
+    "earnings_date": "2024-10-31",
+    "kind": "BMO",
+    "symbol": "ALGM"
+   },
+   "retrieved_at_utc": "2026-10-30T13:06:55+00:00",
+   "status": 200,
+   "bytes": 733,
+   "raw_sha256": "5232164fac5ddb4a2f403f90c5ac1b3275fb5bfa76e6d9f00243a3129ae67fb7",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-27",
+   "path": "/api/stock/WT/volatility/context",
+   "params": {
+    "date": "2025-04-29"
+   },
+   "event": {
+    "earnings_date": "2025-05-02",
+    "kind": "BMO",
+    "symbol": "WT"
+   },
+   "retrieved_at_utc": "2026-10-30T13:06:58+00:00",
+   "status": 200,
+   "bytes": 747,
+   "raw_sha256": "74ce8e1ad0e7512ab06de61f784268b568f3a918663a489b3a196be88345930a",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-28",
+   "path": "/api/stock/TSLA/volatility/context",
+   "params": {
+    "date": "2025-07-18"
+   },
+   "event": {
+    "earnings_date": "2025-07-23",
+    "kind": "AMC",
+    "symbol": "TSLA"
+   },
+   "retrieved_at_utc": "2026-10-30T13:07:00+00:00",
+   "status": 200,
+   "bytes": 733,
+   "raw_sha256": "cccfc217672f005373df17f74ff4faac55806331d39a5402fd64d71a82667acc",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-29",
+   "path": "/api/stock/T/volatility/context",
+   "params": {
+    "date": "2025-04-17"
+   },
+   "event": {
+    "earnings_date": "2025-04-23",
+    "kind": "BMO",
+    "symbol": "T"
+   },
+   "retrieved_at_utc": "2026-10-30T13:07:03+00:00",
+   "status": 200,
+   "bytes": 732,
+   "raw_sha256": "1e0124d3b32950e651d614d526297a41b59e78aa5e13608e284ba0ccf6e896e4",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-30",
+   "path": "/api/stock/ICE/volatility/context",
+   "params": {
+    "date": "2025-04-28"
+   },
+   "event": {
+    "earnings_date": "2025-05-01",
+    "kind": "BMO",
+    "symbol": "ICE"
+   },
+   "retrieved_at_utc": "2026-10-30T13:07:06+00:00",
+   "status": 200,
+   "bytes": 751,
+   "raw_sha256": "429121bfaf571631afc6dc6e3a3110771e2bf40fd911e560898c2565122e007a",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-31",
+   "path": "/api/stock/FSLR/volatility/context",
+   "params": {
+    "date": "2025-04-25"
+   },
+   "event": {
+    "earnings_date": "2025-04-29",
+    "kind": "AMC",
+    "symbol": "FSLR"
+   },
+   "retrieved_at_utc": "2026-10-30T13:07:08+00:00",
+   "status": 200,
+   "bytes": 748,
+   "raw_sha256": "7a06bc2fce91e0dfb63f177ffd6b206f7c5a441759eff5f3b0bdae5fbb9fa7b2",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-32",
+   "path": "/api/stock/ESI/volatility/context",
+   "params": {
+    "date": "2025-07-25"
+   },
+   "event": {
+    "earnings_date": "2025-07-30",
+    "kind": "AMC",
+    "symbol": "ESI"
+   },
+   "retrieved_at_utc": "2026-10-30T13:07:11+00:00",
+   "status": 200,
+   "bytes": 728,
+   "raw_sha256": "6212954f40566b807d0b40d50d3bc18d3e4d0c66c42a19bab1812a0513299447",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-33",
+   "path": "/api/stock/FSLR/volatility/context",
+   "params": {
+    "date": "2025-02-21"
+   },
+   "event": {
+    "earnings_date": "2025-02-25",
+    "kind": "AMC",
+    "symbol": "FSLR"
+   },
+   "retrieved_at_utc": "2026-10-30T13:07:14+00:00",
+   "status": 200,
+   "bytes": 742,
+   "raw_sha256": "d367c3d5b4240c54f2343f3231a9f8d263e2199af625b5a38bb029379788efa5",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-34",
+   "path": "/api/stock/BNL/volatility/context",
+   "params": {
+    "date": "2025-02-14"
+   },
+   "event": {
+    "earnings_date": "2025-02-19",
+    "kind": "AMC",
+    "symbol": "BNL"
+   },
+   "retrieved_at_utc": "2026-10-30T13:07:17+00:00",
+   "status": 200,
+   "bytes": 754,
+   "raw_sha256": "df2018f8ca852b8f9540715b4aa89b7810388d82d323cbafe2b8439a84c9777e",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-35",
+   "path": "/api/stock/EXLS/volatility/context",
+   "params": {
+    "date": "2025-02-21"
+   },
+   "event": {
+    "earnings_date": "2025-02-25",
+    "kind": "AMC",
+    "symbol": "EXLS"
+   },
+   "retrieved_at_utc": "2026-10-30T13:07:19+00:00",
+   "status": 200,
+   "bytes": 736,
+   "raw_sha256": "677095b3e704cd35866f9d0e7e00ea4846e240dd0cc806f2a11ab458ec57a8de",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-36",
+   "path": "/api/stock/PI/volatility/context",
+   "params": {
+    "date": "2025-04-17"
+   },
+   "event": {
+    "earnings_date": "2025-04-23",
+    "kind": "AMC",
+    "symbol": "PI"
+   },
+   "retrieved_at_utc": "2026-10-30T13:07:22+00:00",
+   "status": 200,
+   "bytes": 734,
+   "raw_sha256": "320d444ee4f88fe85463b12e3d28ca08ef5de8a47d342da98a86ef8e3e39cd8f",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-37",
+   "path": "/api/stock/LRN/volatility/context",
+   "params": {
+    "date": "2025-01-24"
+   },
+   "event": {
+    "earnings_date": "2025-01-28",
+    "kind": "AMC",
+    "symbol": "LRN"
+   },
+   "retrieved_at_utc": "2026-10-30T13:07:25+00:00",
+   "status": 200,
+   "bytes": 739,
+   "raw_sha256": "27d9f6e6196f014476a7a12fdfb12b929b8355710c32308cac655c546b1c824a",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-38",
+   "path": "/api/stock/PI/volatility/context",
+   "params": {
+    "date": "2025-07-25"
+   },
+   "event": {
+    "earnings_date": "2025-07-30",
+    "kind": "AMC",
+    "symbol": "PI"
+   },
+   "retrieved_at_utc": "2026-10-30T13:07:27+00:00",
+   "status": 200,
+   "bytes": 721,
+   "raw_sha256": "f51b7e7f657db63595523f788b184958f8956bfc14d95c66acd0bd134a8e0591",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-39",
+   "path": "/api/stock/BRX/volatility/context",
+   "params": {
+    "date": "2024-10-25"
+   },
+   "event": {
+    "earnings_date": "2024-10-28",
+    "kind": "AMC",
+    "symbol": "BRX"
+   },
+   "retrieved_at_utc": "2026-10-30T13:07:30+00:00",
+   "status": 200,
+   "bytes": 748,
+   "raw_sha256": "804a4d44416fc0da5362c129496cc9c54e8108b2d3626e089417a8ec5018ae34",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  },
+  {
+   "id": "CX-40",
+   "path": "/api/stock/AVY/volatility/context",
+   "params": {
+    "date": "2025-01-27"
+   },
+   "event": {
+    "earnings_date": "2025-01-30",
+    "kind": "BMO",
+    "symbol": "AVY"
+   },
+   "retrieved_at_utc": "2026-10-30T13:07:33+00:00",
+   "status": 200,
+   "bytes": 746,
+   "raw_sha256": "2fa78d3cb9ee90d947e3a6509e0fe26bc090cb91824567ab34b804d8fca630ce",
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   }
+  }
+ ]
+}

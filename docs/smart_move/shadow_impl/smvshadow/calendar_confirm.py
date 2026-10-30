@@ -158,10 +158,16 @@ def evaluate(symbol, obs, now: datetime, today: date, *, prior_event_date: date 
              prior_prediction_exists: bool = False, company_evidence: dict | None = None, dependency=DEPENDENCY):
     """Deterministic calendar evaluation of ONE symbol's next event. Returns a dict; `no_trade_reasons` is empty only when eligible_for_shadow is True."""
     obs = [o for o in obs if o.symbol == symbol and o.observed_at <= now]
+    # A vendor row whose date was already in the past when it was retrieved is a stale vendor row (seen in real Finviz data), not a competing claim about the upcoming event:
+    # it is set aside and recorded, never used to confirm and never counted as a date conflict.
+    stale_rows = [o for o in obs if o.date < o.observed_at.astimezone(timezone.utc).date() - __import__("datetime").timedelta(days=1)]
+    obs = [o for o in obs if o not in stale_rows]
     ev = {"symbol": symbol, "status": UNKNOWN, "event_date": None, "kind": "UNKNOWN", "timing_status": cv.T_UNKNOWN, "confidence": None, "reasons": [], "no_trade_reasons": [],
           "eligible_for_shadow": False, "calendar_observed_at": None, "prediction_snapshot_at": prediction_snapshot_at, "moved_from": None, "dependency": None, "vendors": []}
+    ev["stale_vendor_rows"] = sorted({"%s:%s" % (o.source, o.date) for o in stale_rows})
     if not obs:
-        ev["reasons"] = ev["no_trade_reasons"] = ["NO_OBSERVATION"]
+        ev["reasons"] = ["NO_OBSERVATION"] + (["ONLY_STALE_VENDOR_ROWS"] if stale_rows else [])
+        ev["no_trade_reasons"] = ["NO_OBSERVATION"]
         return ev
     latest = _latest_per_source(obs)
     dates = sorted({o.date for o in latest.values()})

@@ -1,0 +1,96 @@
+{
+ "budget_cap": 10,
+ "frozen_for_today": "2026-10-30",
+ "max_possible_requests": 10,
+ "read_only": "GET only; no account, billing or configuration endpoint; nothing is written to any database",
+ "requests": [
+  {
+   "id": "UW-2026-10-30-premarket-p1",
+   "max_requests": 2,
+   "n": 1,
+   "page2_if_rows_equal": 100,
+   "params": {
+    "date": "2026-10-30",
+    "limit": 100,
+    "page": 1
+   },
+   "path": "/api/earnings/premarket",
+   "provider": "UNUSUAL_WHALES"
+  },
+  {
+   "id": "UW-2026-10-30-afterhours-p1",
+   "max_requests": 2,
+   "n": 2,
+   "page2_if_rows_equal": 100,
+   "params": {
+    "date": "2026-10-30",
+    "limit": 100,
+    "page": 1
+   },
+   "path": "/api/earnings/afterhours",
+   "provider": "UNUSUAL_WHALES"
+  },
+  {
+   "id": "UW-2026-11-02-premarket-p1",
+   "max_requests": 2,
+   "n": 3,
+   "page2_if_rows_equal": 100,
+   "params": {
+    "date": "2026-11-02",
+    "limit": 100,
+    "page": 1
+   },
+   "path": "/api/earnings/premarket",
+   "provider": "UNUSUAL_WHALES"
+  },
+  {
+   "id": "UW-2026-11-02-afterhours-p1",
+   "max_requests": 2,
+   "n": 4,
+   "page2_if_rows_equal": 100,
+   "params": {
+    "date": "2026-11-02",
+    "limit": 100,
+    "page": 1
+   },
+   "path": "/api/earnings/afterhours",
+   "provider": "UNUSUAL_WHALES"
+  },
+  {
+   "id": "FZ-A",
+   "max_requests": 1,
+   "n": 5,
+   "params": {
+    "c": "1,68",
+    "t": "<100 largest-market-cap tickers from the UW rows above>",
+    "v": "152"
+   },
+   "path": "export.ashx",
+   "provider": "FINVIZ_ELITE",
+   "ticker_rule": "unique symbols matching [A-Z]{1,5} from the Unusual Whales rows, ordered by marketcap descending then symbol, first 100"
+  },
+  {
+   "id": "FH-A",
+   "max_requests": 1,
+   "n": 6,
+   "params": {
+    "from": "2026-10-30",
+    "to": "2026-11-02"
+   },
+   "path": "/calendar/earnings",
+   "provider": "FINNHUB"
+  }
+ ],
+ "stop_rules": [
+  "401, 403 or 429 stops the run",
+  "any transport error stops the run",
+  "no retries",
+  "never more than 10 requests"
+ ],
+ "storage": "raw bodies gzip-compressed in a new local folder with SHA-256 and retrieval time; keys and tokens are never stored",
+ "trading_days": [
+  "2026-10-30",
+  "2026-11-02"
+ ],
+ "version": "smv-p1-1"
+}

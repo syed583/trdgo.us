@@ -72,3 +72,22 @@ def test_replay_rows_carry_no_outcome_fields():
     p40, sha = pre()
     r = rp.replay_event(p40, sha, "AAA", EVENT, "UNKNOWN", [], [], [], "c" * 64, "s" * 64, [])
     assert not any(k in r for k in ("move_pct", "direction", "outcome", "hit"))
+
+
+def test_sec_tagging_excludes_ambiguous_events(tmp_path):
+    def f(day, hhmm):                                                          # ET clock; January and May dates are winter/summer, so use fixed UTC offsets via the stored Z time
+        return day, hhmm
+    filings = [
+        {"filingDate": "2024-02-06", "acceptanceDateTime": "2024-02-06T12:30:00.000Z"},       # 07:30 ET premarket, alone -> BMO_CERTAIN
+        {"filingDate": "2024-05-02", "acceptanceDateTime": "2024-05-02T21:30:00.000Z"},       # 17:30 ET alone, no provider row -> AMC_UNCONFIRMED
+        {"filingDate": "2024-08-01", "acceptanceDateTime": "2024-08-01T17:00:00.000Z"},       # 13:00 ET -> DURING_MARKET
+        {"filingDate": "2024-11-05", "acceptanceDateTime": "2024-11-05T22:00:00.000Z"},       # 17:00 ET, provider agrees -> AMC_RECONCILED
+        {"filingDate": "2025-02-04", "acceptanceDateTime": "2025-02-04T22:00:00.000Z"},       # 17:00 ET, provider says 5 Feb premarket -> PROVIDER_MISMATCH
+        {"filingDate": "2025-05-20", "acceptanceDateTime": "2025-05-20T12:00:00.000Z"},       # two filings 10 days apart -> CLUSTER both
+        {"filingDate": "2025-05-30", "acceptanceDateTime": "2025-05-30T12:00:00.000Z"}]
+    p = tmp_path / "s.json"
+    p.write_text(json.dumps({"AAA": {"item_2_02_filings": filings}}))
+    uw = {"AAA": [(date(2024, 11, 5), "postmarket"), (date(2025, 2, 5), "premarket")]}
+    ok, amb = rp.load_sec_tagged(p, date(2025, 9, 30), uw)
+    assert [(d.isoformat(), t) for d, _, t in ok["AAA"]] == [("2024-02-06", "BMO_CERTAIN"), ("2024-05-02", "AMC_UNCONFIRMED"), ("2024-11-05", "AMC_RECONCILED")]
+    assert sorted((d.isoformat(), r) for d, r in amb["AAA"]) == [("2024-08-01", "DURING_MARKET"), ("2025-02-04", "PROVIDER_MISMATCH"), ("2025-05-20", "CLUSTER"), ("2025-05-30", "CLUSTER")]

@@ -64,6 +64,42 @@ def load_sec_history(sec_json, until: date, cluster_days=45):
     return out
 
 
+def load_sec_tagged(sec_json, until: date, uw_hist, cluster_days=45):
+    """EXPERIMENTAL SEC-derived prior events with an explicit confidence tag per event; ambiguous events are returned separately and are never used.
+    Tags: BMO_CERTAIN (accepted before 09:30 ET: the release cannot be later), AMC_RECONCILED (accepted at/after 16:00 ET AND the provider history has the same date and a postmarket label),
+    AMC_UNCONFIRMED (accepted at/after 16:00 ET, no provider row to reconcile: an earlier release is possible), and the ambiguous ones: DURING_MARKET (accepted 09:30-16:00),
+    CLUSTER (another 2.02 filing within `cluster_days`: re-furnishing or pre-announcement), PROVIDER_MISMATCH (a provider row within 3 days disagrees on date or side).
+    uw_hist: [(date, label)] of the same symbol from the saved provider history (dates inside the development window only)."""
+    from zoneinfo import ZoneInfo
+    et = ZoneInfo("America/New_York")
+    raw = json.loads(Path(sec_json).read_text(encoding="utf-8"))
+    kept, ambiguous = {}, {}
+    for sym, rec in raw.items():
+        fl = []
+        for f in rec.get("item_2_02_filings", []):
+            acc = datetime.fromisoformat(f["acceptanceDateTime"].replace("Z", "+00:00")).astimezone(et)
+            if acc.date() <= until:
+                fl.append((acc.date(), acc.time()))
+        fl.sort()
+        ok, amb = [], []
+        for i, (d, t) in enumerate(fl):
+            near = (i > 0 and (d - fl[i - 1][0]).days <= cluster_days) or (i + 1 < len(fl) and (fl[i + 1][0] - d).days <= cluster_days)
+            side = "premarket" if t < datetime.strptime("09:30", "%H:%M").time() else "postmarket" if t >= datetime.strptime("16:00", "%H:%M").time() else None
+            uw_near = [(ud, ul) for ud, ul in uw_hist.get(sym, []) if abs((ud - d).days) <= 3]
+            if side is None:
+                amb.append((d, "DURING_MARKET"))
+            elif near:
+                amb.append((d, "CLUSTER"))
+            elif uw_near and not any(ud == d and ul == side for ud, ul in uw_near):
+                amb.append((d, "PROVIDER_MISMATCH"))
+            elif side == "premarket":
+                ok.append((d, side, "BMO_CERTAIN"))
+            else:
+                ok.append((d, side, "AMC_RECONCILED" if any(ud == d and ul == side for ud, ul in uw_near) else "AMC_UNCONFIRMED"))
+        kept[sym], ambiguous[sym] = ok, amb
+    return kept, ambiguous
+
+
 def read_candles(path, until: date):
     rows = json.loads(Path(path).read_text(encoding="utf-8"))
     return [r for r in rows if date.fromisoformat(str(r["date"])[:10]) <= until]
@@ -79,7 +115,7 @@ def classify_event(row):
     return flags
 
 
-def replay_event(pre, pre_sha, sym, edate, kind, hist_rows, cand_rows, spy_rows, sha_cand, sha_spy, hindsight_flags):
+def replay_event(pre, pre_sha, sym, edate, kind, hist_rows, cand_rows, spy_rows, sha_cand, sha_spy, hindsight_flags, f7_context=None, f7_sha=None):
     plan = co.plan_event(edate, kind if kind in ("BMO", "AMC") else "UNKNOWN") if kind in ("BMO", "AMC") else None
     if plan is None:
         return {"symbol": sym, "earnings_date": str(edate), "kind": kind, "signal_continuation": "NO_TRADE", "signal_contrarian": "NO_TRADE", "reason_codes": ["UNKNOWN_TIMING"],
@@ -96,7 +132,7 @@ def replay_event(pre, pre_sha, sym, edate, kind, hist_rows, cand_rows, spy_rows,
             react.add(co.reaction_session(date.fromisoformat(r["report_date"]), k))
     ev = {5: ad.f5_price_technical(cand, spy, plan, capture_ts, react, sha_cand) if cand else missing(5, "saved.ohlc", "NO_SOURCE", capture_ts),
           3: ad.f3_reaction_history(prior, cand, edate, plan, capture_ts, sha_cand) if (prior and cand) else missing(3, "saved.earnings+ohlc", "INSUFFICIENT_HISTORY" if cand else "NO_SOURCE", capture_ts),
-          7: missing(7, "uw.volatility.context", "NOT_CAPTURED", capture_ts),
+          7: (ad.f7_volatility_context(f7_context, None, plan, capture_ts, f7_sha) if f7_context else missing(7, "uw.volatility.context", "NOT_CAPTURED", capture_ts)),
           8: ad.f8_sector_market(spy, None, plan, capture_ts, sha_spy) if spy else missing(8, "saved.ohlc:SPY", "NO_SOURCE", capture_ts)}
     timing_status = cv.T_CONFLICT if "LABEL_CONTRADICTED_BY_FILING_AFTER_THE_FACT" in hindsight_flags else cv.T_SINGLE
     out = {"symbol": sym, "earnings_date": str(edate), "kind": kind, "capture_ts_utc": capture_ts.isoformat(), "last_session": last.isoformat(), "hindsight_flags": hindsight_flags, "replayed": True}
