@@ -1,0 +1,317 @@
+{
+ "requests_sent": 8,
+ "results": [
+  {
+   "kind": "UW",
+   "endpoint": "/api/stock/AAPL/iv-rank?date=2026-06-01",
+   "requested_at_utc": "2026-10-30T08:22:35+00:00",
+   "status": 200,
+   "bytes": 639,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "coverage": {
+    "rows": 5,
+    "top_level_keys": [
+     "data"
+    ],
+    "row_keys": [
+     "close",
+     "date",
+     "iv_rank_1y",
+     "updated_at",
+     "volatility"
+    ],
+    "time_fields": {
+     "date": {
+      "min": "2026-05-26",
+      "max": "2026-06-01",
+      "n": 5
+     },
+     "updated_at": {
+      "min": "2026-05-26T22:35:02.981620Z",
+      "max": "2026-06-01T22:35:01.730089Z",
+      "n": 5
+     }
+    }
+   },
+   "purpose": "cat7 IV rank: depth 5 months back"
+  },
+  {
+   "kind": "UW",
+   "endpoint": "/api/stock/AAPL/volatility/term-structure?date=2026-09-02",
+   "requested_at_utc": "2026-10-30T08:22:37+00:00",
+   "status": 200,
+   "bytes": 4119,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "coverage": {
+    "rows": 23,
+    "top_level_keys": [
+     "data"
+    ],
+    "row_keys": [
+     "date",
+     "dte",
+     "expiry",
+     "implied_move",
+     "implied_move_perc",
+     "ticker",
+     "volatility"
+    ],
+    "time_fields": {
+     "date": {
+      "min": "2026-09-02",
+      "max": "2026-09-02",
+      "n": 23
+     }
+    }
+   },
+   "purpose": "cat7 term structure: depth 2 months back"
+  },
+  {
+   "kind": "UW",
+   "endpoint": "/api/option-activity/unusual?ticker_symbol=AAPL&date=2026-09-02&limit=50&unusual=true",
+   "requested_at_utc": "2026-10-30T08:22:40+00:00",
+   "status": 200,
+   "bytes": 20800,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "coverage": {
+    "rows": 18,
+    "top_level_keys": [
+     "data"
+    ],
+    "row_keys": [
+     "ask_side_perc_7_day",
+     "ask_side_volume",
+     "avg_price",
+     "bid_side_perc_7_day",
+     "bid_side_volume",
+     "chain_prev_close",
+     "close",
+     "cross_volume",
+     "days_of_oi_increases",
+     "days_of_vol_greater_than_oi",
+     "delta",
+     "er_time",
+     "expiry",
+     "floor_volume",
+     "gamma",
+     "high",
+     "is_new",
+     "issue_type",
+     "iv_change",
+     "last_fill",
+     "low",
+     "mid_volume",
+     "multileg_volume",
+     "next_earnings_date",
+     "no_side_volume",
+     "open",
+     "open_interest",
+     "option_symbol",
+     "option_type",
+     "option_watchlists",
+     "premium",
+     "prev_iv",
+     "prev_oi",
+     "roc",
+     "sector",
+     "stock_multi_leg_volume",
+     "stock_price",
+     "strike",
+     "sweep_volume",
+     "theta"
+    ],
+    "time_fields": {
+     "er_time": {
+      "min": "postmarket",
+      "max": "postmarket",
+      "n": 18
+     },
+     "next_earnings_date": {
+      "min": "2026-11-02",
+      "max": "2026-11-02",
+      "n": 18
+     }
+    }
+   },
+   "purpose": "cat1 unusual contracts: depth 2 months back"
+  },
+  {
+   "kind": "UW",
+   "endpoint": "/api/darkpool/AAPL?date=2026-09-02&limit=50",
+   "requested_at_utc": "2026-10-30T08:22:43+00:00",
+   "status": 200,
+   "bytes": 21914,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "coverage": {
+    "rows": 50,
+    "top_level_keys": [
+     "data"
+    ],
+    "row_keys": [
+     "canceled",
+     "executed_at",
+     "ext_hour_sold_codes",
+     "market_center",
+     "nbbo_ask",
+     "nbbo_ask_quantity",
+     "nbbo_bid",
+     "nbbo_bid_quantity",
+     "premium",
+     "price",
+     "sale_cond_codes",
+     "size",
+     "ticker",
+     "tracking_id",
+     "trade_code",
+     "trade_settlement",
+     "trf_executed_at",
+     "volume"
+    ],
+    "time_fields": {
+     "executed_at": {
+      "min": "2026-09-02T20:00:58Z",
+      "max": "2026-09-02T23:54:07Z",
+      "n": 50
+     },
+     "trf_executed_at": {
+      "min": "2026-09-02T20:00:58Z",
+      "max": "2026-09-02T23:54:07Z",
+      "n": 50
+     }
+    }
+   },
+   "purpose": "cat2 dark pool: depth 2 months back"
+  },
+  {
+   "kind": "UW",
+   "endpoint": "/api/institution/AAPL/ownership?date=2026-09-02&limit=20",
+   "requested_at_utc": "2026-10-30T08:22:45+00:00",
+   "status": 200,
+   "bytes": 11,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "coverage": {
+    "rows": 0,
+    "top_level_keys": [
+     "data"
+    ]
+   },
+   "purpose": "cat2 institutional holdings as of a past date"
+  },
+  {
+   "kind": "UW",
+   "endpoint": "/api/news/headlines?ticker=AAPL&limit=50",
+   "requested_at_utc": "2026-10-30T08:22:48+00:00",
+   "status": 200,
+   "bytes": 17334,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "coverage": {
+    "rows": 50,
+    "top_level_keys": [
+     "data"
+    ],
+    "row_keys": [
+     "created_at",
+     "headline",
+     "is_major",
+     "meta",
+     "sentiment",
+     "source",
+     "tags",
+     "tickers"
+    ],
+    "time_fields": {
+     "created_at": {
+      "min": "2026-10-06T12:10:00Z",
+      "max": "2026-10-29T17:17:00Z",
+      "n": 50
+     },
+     "sentiment": {
+      "min": "neutral",
+      "max": "neutral",
+      "n": 50
+     }
+    }
+   },
+   "purpose": "cat6 headlines: how far back 50 rows reach, timestamps"
+  },
+  {
+   "kind": "SEC",
+   "endpoint": "https://data.sec.gov/submissions/CIK0000320193.json",
+   "requested_at_utc": "2026-10-30T08:22:51+00:00",
+   "status": 200,
+   "bytes": 163586,
+   "limit_headers": {},
+   "coverage": {
+    "recent_filings": 1000,
+    "with_acceptanceDateTime": 1000,
+    "form_8K": 100,
+    "8K_item_2.02": 45,
+    "latest_2.02_acceptance": [
+     "2026-07-30T20:30:28.000Z",
+     "2026-04-30T20:30:41.000Z",
+     "2026-01-29T21:30:33.000Z",
+     "2025-10-30T20:30:35.000Z"
+    ],
+    "latest_2.02_filingDate": [
+     "2026-07-30",
+     "2026-04-30",
+     "2026-01-29",
+     "2025-10-30"
+    ],
+    "oldest_recent_filingDate": "2015-10-05",
+    "form4_with_acceptance": 601
+   },
+   "purpose": "8-K / Form 4 acceptanceDateTime and 8-K items"
+  },
+  {
+   "kind": "SEC",
+   "endpoint": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000320193.json",
+   "requested_at_utc": "2026-10-30T08:22:53+00:00",
+   "status": 200,
+   "bytes": 3789099,
+   "limit_headers": {},
+   "coverage": {
+    "EarningsPerShareDiluted": {
+     "facts": 338,
+     "with_filed": 338,
+     "filed_min": "2009-07-22",
+     "filed_max": "2026-07-31",
+     "has_form_and_fp": true
+    },
+    "Revenues": {
+     "facts": 11,
+     "with_filed": 11,
+     "filed_min": "2018-11-05",
+     "filed_max": "2018-11-05",
+     "has_form_and_fp": true
+    },
+    "RevenueFromContractWithCustomerExcludingAssessedTax": {
+     "facts": 117,
+     "with_filed": 117,
+     "filed_min": "2019-01-30",
+     "filed_max": "2026-07-31",
+     "has_form_and_fp": true
+    }
+   },
+   "purpose": "'filed' dates of reported EPS / revenue facts"
+  }
+ ]
+}
