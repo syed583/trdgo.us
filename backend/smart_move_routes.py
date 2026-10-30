@@ -456,8 +456,9 @@ def live(date_from: Optional[str] = None, date_to: Optional[str] = None, signal:
     if fd["freshness"]["calendar"]["state"] == "STALE":
         blockers.append({"code": "STALE_CALENDAR", "message": "The newest calendar evidence is %s h old (limit %s h): new signals are blocked until it is refreshed." % (fd["freshness"]["calendar"]["age_hours"], fd["freshness"]["calendar"]["limit_hours"])})
     stale_rows = [r for r in rows if r["blocked_by"]]
-    label = DATASET_LABELS["LIVE_CURRENT"] if svc.cfg.mode == "LIVE" else "SIMULATED PROVIDER: invented companies and prices in the real vendor formats. Not market data. Not real signals."
-    return {"status": "OK", "dataset": "LIVE_CURRENT", "label": label, "mode": svc.cfg.mode, "source": "LIVE_STORE", "as_of": _iso(now), "counts": {"total": len(rows), "filtered": len(f), "returned": len(_page(f, limit, offset)), "blocked": len(stale_rows)},
+    sim = any(r["evidence_mode"] == "SIMULATION" for r in rows) or svc.cfg.mode == "SIMULATION"
+    label = "SIMULATED PROVIDER: invented companies and prices in the real vendor formats. Not market data. Not real signals." if sim else DATASET_LABELS["LIVE_CURRENT"]
+    return {"status": "OK", "dataset": "LIVE_CURRENT", "label": label, "mode": "SIMULATION" if sim else svc.cfg.mode, "source": "LIVE_STORE", "as_of": _iso(now), "counts": {"total": len(rows), "filtered": len(f), "returned": len(_page(f, limit, offset)), "blocked": len(stale_rows)},
             "summary": _summary(f), "blockers": blockers, "feed_status": fd["status"], "rows": _page(f, limit, offset)}
 
 

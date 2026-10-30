@@ -1,0 +1,126 @@
+{
+ "retrieved_utc": "2026-10-30T15:13:47.577344+00:00",
+ "requests_sent_total": 13,
+ "requests_by_provider": {
+  "UNUSUAL_WHALES": 11,
+  "FINVIZ_ELITE": 1,
+  "FINNHUB": 1
+ },
+ "calendar_symbols_scored": 284,
+ "aapl": {
+  "earnings_date": "2026-11-02",
+  "kind": "AMC",
+  "available_points": 0,
+  "blocked_by": [],
+  "missing_factors": [
+   {
+    "factor": "F3",
+    "name": "Earnings-reaction history",
+    "reason": "NO_FRESH_HISTORY_OR_PRICE"
+   },
+   {
+    "factor": "F5",
+    "name": "Price / technical",
+    "reason": "NO_FRESH_PRICE_EVIDENCE"
+   },
+   {
+    "factor": "F7",
+    "name": "Volatility (skew)",
+    "reason": "NOT_CAPTURED_LIVE_IN_WINDOW"
+   },
+   {
+    "factor": "F8",
+    "name": "Sector / market",
+    "reason": "NO_FRESH_MARKET_EVIDENCE"
+   }
+  ]
+ },
+ "aapl_engine": {
+  "continuation": {
+   "signal": "NO_TRADE",
+   "bull": 0,
+   "bear": 0,
+   "available": 0,
+   "max": 40,
+   "reason_codes": [
+    "OUT_OF_WINDOW",
+    "ILLIQUID_OR_UNKNOWN",
+    "INSUFFICIENT_COVERAGE"
+   ],
+   "score_before_gate": "NO_TRADE"
+  },
+  "contrarian": {
+   "signal": "NO_TRADE",
+   "bull": 0,
+   "bear": 0,
+   "available": 0,
+   "max": 40,
+   "reason_codes": [
+    "OUT_OF_WINDOW",
+    "ILLIQUID_OR_UNKNOWN",
+    "INSUFFICIENT_COVERAGE"
+   ],
+   "score_before_gate": "NO_TRADE"
+  }
+ },
+ "aapl_calendar": {
+  "status_at_observation": "VENDOR_CONFIRMED",
+  "status_now": "VENDOR_CONFIRMED",
+  "reasons": [
+   "VENDOR_AGREEMENT_NOT_COMPANY_CONFIRMATION"
+  ],
+  "no_trade_reasons": [],
+  "eligible_for_shadow": true,
+  "vendors": [
+   "FINNHUB",
+   "FINVIZ",
+   "UNUSUAL_WHALES"
+  ],
+  "calendar_observed_at": "2026-10-30T15:14:00.226179+00:00",
+  "uw_flag": "company",
+  "dependency": {
+   "pair": [
+    "FINNHUB",
+    "UNUSUAL_WHALES"
+   ],
+   "status": "UNPROVEN_INDEPENDENCE",
+   "note": "Upstream of both calendars is not stated in the provider documents held; a shared upstream is possible. Agreement is vendor agreement only."
+  },
+  "stale_vendor_rows": [],
+  "note": "vendor agreement, not direct company confirmation"
+ },
+ "freshness": {
+  "calendar": {
+   "last": "2026-10-30T15:14:00.226179+00:00",
+   "age_hours": 0.0,
+   "limit_hours": 6.0,
+   "state": "FRESH"
+  },
+  "prices": {
+   "last": "2026-10-30T15:14:06.545786+00:00",
+   "state": "STALE",
+   "fresh_series": 0,
+   "series": 3,
+   "count": 3
+  },
+  "history": {
+   "last": "2026-10-30T15:14:08.359248+00:00",
+   "state": "FRESH",
+   "fresh_series": 1,
+   "series": 1,
+   "count": 1
+  },
+  "volatility": {
+   "last": "2026-10-30T15:14:10.049849+00:00",
+   "state": "FRESH",
+   "fresh_series": 1,
+   "series": 1,
+   "count": 1
+  }
+ },
+ "status_counts": {
+  "ESTIMATED": 117,
+  "VENDOR_CONFIRMED": 167
+ },
+ "ledger_denials": []
+}

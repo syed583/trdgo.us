@@ -1,0 +1,3 @@
+{"at": "2026-10-30T15:13:47.582921+00:00", "budget": 8, "event": "RUN_START", "manual": true, "mode": "LIVE", "scope": "calendar"}
+{"at": "2026-10-30T15:14:00.551032+00:00", "event": "RUN_END", "mode": "LIVE", "requests": 7, "scope": "calendar", "scored": 284}
+{"at": "2026-10-30T15:14:12.795627+00:00", "event": "KILL_SWITCH_ENGAGED", "mode": "LIVE", "reason": "first supervised run finished"}

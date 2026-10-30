@@ -165,16 +165,30 @@ def test_stale_calendar_blocks_new_signals(tmp_path):
 
 
 def test_stale_price_evidence_is_treated_as_missing(tmp_path):
-    svc, _, _ = make(tmp_path)
+    svc, _, clock = make(tmp_path)
     svc.run()
-    p = svc.store.root / "evidence.jsonl"
-    recs = [json.loads(x) for x in p.read_text().splitlines()]
-    for r in recs:
-        if r["kind"] == "ohlc" and r["symbol"] == "SIM00":
-            r["last_bar_date"] = "2026-10-29"
-    p.write_text("\n".join(json.dumps(r) for r in recs) + "\n")
+    assert all(r["available_points"] == 40 for r in rows_of(svc))
+    clock.sleep(10 * 3600 + 50 * 60)                                                # 16:55 ET: the 3 Nov session is now complete, the stored candles were fetched during it (partial bar)
     r0 = [r for r in rows_of(svc) if r["symbol"] == "SIM00"][0]
     assert {m["factor"] for m in r0["missing_factors"]} >= {"F5", "F3"} and r0["engine"]["continuation"]["signal"] == "NO_TRADE" and r0["available_points"] < 24
+
+
+def test_an_in_progress_bar_in_the_feed_does_not_make_the_series_stale_or_leak_into_the_score(tmp_path):
+    svc, prov, _ = make(tmp_path)
+    svc.run()
+    body = json.loads(svc.store.get(svc._latest("ohlc", "SIM00", {"timeframe": "3Y"})["raw_sha256"]))["data"]
+    assert max(r["date"] for r in body if r["market_time"] == "r") == "2026-11-03"       # the feed carries today's partial bar, like the real one
+    rec = svc._latest("ohlc", "SIM00", {"timeframe": "3Y"})
+    assert rec["last_bar_date"] == "2026-11-03" and L.rec_fresh(rec, "ohlc", svc.clock.now(), svc.cfg)
+    r0 = [r for r in rows_of(svc) if r["symbol"] == "SIM00"][0]
+    assert r0["available_points"] == 40
+
+
+def test_iv_rank_uses_the_latest_of_its_stamped_week_of_rows(tmp_path):
+    svc, _, _ = make(tmp_path)
+    svc.run()
+    rec = svc._latest("iv_rank", "SIM00", {"date": "2026-11-02"})
+    assert rec["data_date"] == "2026-11-02" and L.rec_fresh(rec, "iv_rank", svc.clock.now(), svc.cfg)
 
 
 def test_f7_only_from_a_prospective_capture_in_the_window(tmp_path):

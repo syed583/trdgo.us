@@ -80,7 +80,12 @@ class SimulatedProvider(Fetcher):
                 ser = make_series(symbol, start, exp, reactions=react, trend_from=exp - timedelta(days=30), trend_pct_per_day=m["trend"])
             else:
                 ser = make_series(symbol, start, exp, trend_from=exp - timedelta(days=30), trend_pct_per_day=0.1 if symbol == "SPY" else 0.0)
-            return json.dumps({"data": rows_from(ser)}).encode()
+            rows = rows_from(ser)
+            today = now.astimezone(co.ET).date()
+            if today > exp and co._mc().is_trading_day(today):          # like the real feed: a bar for the session still in progress is included
+                last = ser[max(ser)]
+                rows.append({"date": str(today), "market_time": "r", "open": last, "high": last, "low": last, "close": last, "volume": 1000})
+            return json.dumps({"data": rows}).encode()
         if kind == "earnings":
             m = self.syms[symbol]
             rows, _ = make_history(m["date"], m["kind"], m["hist"])
@@ -90,6 +95,15 @@ class SimulatedProvider(Fetcher):
             payload["data"]["date"] = params["date"]
             return json.dumps(payload).encode()
         if kind == "iv_rank":
-            stamp = datetime.combine(exp, datetime.min.time(), UTC).replace(hour=22, minute=30)
-            return json.dumps(iv_rank_payload(exp, stamp)).encode()
+            mc = co._mc()
+            days, d = [], exp
+            while len(days) < 5:
+                if mc.is_trading_day(d):
+                    days.append(d)
+                d -= timedelta(days=1)
+            rows = []
+            for d in sorted(days):
+                stamp = datetime.combine(d, datetime.min.time(), UTC).replace(hour=22, minute=35)
+                rows += iv_rank_payload(d, stamp)["data"]
+            return json.dumps({"data": rows}).encode()
         raise ValueError(kind)

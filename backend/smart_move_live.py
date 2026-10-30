@@ -229,7 +229,10 @@ def rec_fresh(rec: Optional[dict], kind: str, now: datetime, cfg: LiveConfig) ->
     if at > now:
         return False
     if kind == "ohlc":
-        return rec.get("last_bar_date") == expected_session(now).isoformat()
+        lb = rec.get("last_bar_date")
+        # the bar of the last completed session must be there AND must have been retrieved after that session was complete (a bar fetched during the session is partial);
+        # a bar for a session still in progress is allowed (the adapters cut at the usable session)
+        return bool(lb) and lb >= expected_session(now).isoformat() and co.last_completed_session_at(at) >= expected_session(now)
     if kind == "earnings":
         return now - at <= timedelta(days=cfg.history_max_age_days)
     if kind in ("vol_context", "iv_rank"):
@@ -409,13 +412,31 @@ class RefreshService:
         out.sort(key=lambda e: (e["plan"]["cutoff_utc"], hashlib.sha256(e["symbol"].encode()).hexdigest()))
         return out
 
+    def _derive(self, rec):
+        """Freshness fields are derived from the stored payload at read time (the first live run showed that a daily series carries today's in-progress bar and that iv-rank returns a
+        week of stamped rows), so the stored summary fields are informational only."""
+        out = dict(rec)
+        try:
+            rows = json.loads(self.store.get(rec["raw_sha256"])).get("data")
+            if rec["kind"] == "ohlc" and isinstance(rows, list):
+                reg = [r["date"][:10] for r in rows if str(r.get("market_time")) == "r"]
+                out["last_bar_date"] = max(reg) if reg else None
+            elif rec["kind"] == "vol_context":
+                d = rows if isinstance(rows, dict) else (rows[0] if isinstance(rows, list) and rows else None)
+                out["data_date"] = str(d.get("date"))[:10] if d else None
+            elif rec["kind"] == "iv_rank" and isinstance(rows, list) and rows:
+                out["data_date"] = max(str(r.get("date"))[:10] for r in rows)
+        except Exception:  # noqa: BLE001
+            out["parse_error"] = True
+        return out
+
     def _latest(self, kind, symbol, params=None):
         k = _key(kind, symbol, params)
         best = None
         for r in self.store.read("evidence"):
             if _key(r["kind"], r["symbol"], r["params"]) == k and (best is None or r["retrieved_at"] > best["retrieved_at"]):
                 best = r
-        return best
+        return self._derive(best) if best else None
 
     def plan_evidence(self, now) -> list:
         """What is missing or stale for the open events, in priority order (shared ETF/SPY candles first, then each event by deadline)."""
@@ -614,6 +635,12 @@ class LiveScorer:
         obj = json.loads(self.s.store.get(rec["raw_sha256"]))
         return obj.get("data"), rec["raw_sha256"]
 
+    @staticmethod
+    def _mode_of(raw_obs: list) -> str:
+        """LIVE only if every calendar observation of the row came from the live providers; SIMULATION if any came from the simulated one."""
+        modes = {r.get("mode") for r in raw_obs}
+        return "SIMULATION" if "SIMULATION" in modes else "LIVE" if modes == {"LIVE"} else "NONE"
+
     def score_all(self, now: datetime, persist: bool = False) -> list:
         pre, sha = sc.load_prereg()
         rows = []
@@ -628,7 +655,7 @@ class LiveScorer:
             etf = SECTOR_ETF.get(sector)
             row = {"dataset": "LIVE_CURRENT", "symbol": sym, "company": uw.get("company"), "sector": sector,
                    "sector_note": ("from the Unusual Whales row; mapped to " + etf) if etf else ("sector %r has no ETF mapping" % sector if sector else "no sector (not seen by Unusual Whales): F8 sector part unavailable"),
-                   "earnings_date": str(ev["event_date"]) if ev["event_date"] else None, "kind": ev["kind"], "evidence_mode": self.s.fetcher.mode if self.s.fetcher else "NONE",
+                   "earnings_date": str(ev["event_date"]) if ev["event_date"] else None, "kind": ev["kind"], "evidence_mode": self._mode_of(raw),
                    "calendar": {"status_at_observation": ev["status"], "status_now": ev["status"], "reasons": ev["reasons"], "no_trade_reasons": ev["no_trade_reasons"], "eligible_for_shadow": ev["eligible_for_shadow"],
                                 "vendors": ev["vendors"], "calendar_observed_at": ev["calendar_observed_at"].isoformat() if ev["calendar_observed_at"] else None, "uw_flag": uw.get("vendor_flag"),
                                 "dependency": ev["dependency"], "stale_vendor_rows": ev.get("stale_vendor_rows", []), "note": "vendor agreement, not direct company confirmation" if ev["status"] == cc.VENDOR_CONFIRMED else None},
@@ -705,6 +732,8 @@ class LiveScorer:
                     for f, e in sorted(evid.items()) if not e.usable]
             if evid[8].usable and evid[8].extracted.get("sector_rel20") is None:
                 miss.append({"factor": "F8", "name": "Sector part of F8", "reason": "NO_SECTOR_MAPPING_OR_ETF_EVIDENCE", "partial": True})
+            if any(e["mode"] == "SIMULATION" for e in used):
+                row["evidence_mode"] = "SIMULATION"
             row.update(available_points=preds["continuation"]["weight_available"], missing_factors=miss, blocked_by=sorted(set(blocked)), evidence=used,
                        subscores={v: preds[v]["explanation"]["subscores"] for v in preds}, capture_ts=now.isoformat(),
                        plan={"assumed_release_et": plan["assumed_release_et"].isoformat(), "window_start_utc": plan["window_start_utc"].isoformat(), "cutoff_utc": plan["cutoff_utc"].isoformat(), "basis": plan["basis"]})
