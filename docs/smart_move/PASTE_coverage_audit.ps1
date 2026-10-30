@@ -112,7 +112,7 @@ def main():
     if has("earnings_event_outcomes", "status"):
         s["earnings_event_outcomes_status"] = q("select status, count(*) from earnings_event_outcomes group by 1 order by 1")
     if has("price_bars", "timeframe"):
-        s["price_bars_by_timeframe"] = q("select timeframe, count(*), count(distinct symbol) from price_bars group by 1 order by 1")
+        s["price_bars_by_timeframe"] = q("select timeframe, count(*), count(distinct company_id) from price_bars group by 1 order by 1")
     if has("swr_cache", "cache_key", "updated_at"):
         s["swr_cache_by_prefix"] = q("select split_part(cache_key, ':', 1) || ':' || split_part(cache_key, ':', 2) as prefix, count(*), min(updated_at)::text, max(updated_at)::text from swr_cache group by 1 order by 2 desc limit 40")
 
@@ -135,7 +135,7 @@ if __name__ == "__main__":
   $cvText = $cvText -replace "`r`n", "`n"
   $cvBytes = [Text.Encoding]::ASCII.GetBytes($cvText)
   $cvHash = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($cvBytes)).Replace('-','').ToLower()
-  if ($cvHash -ne 'd2c28ab51b1089eeda9f79adb18a18665152532bb9445af817b0a1b36dc0803c') { Write-Host "STOPPED: pasted text altered (hash $cvHash) - nothing written" -ForegroundColor Red; return }
+  if ($cvHash -ne '7ebd07a85d845f63faaf2a97f5f29f15c4af5df54e3845dbaa02aa6a60ccce9a') { Write-Host "STOPPED: pasted text altered (hash $cvHash) - nothing written" -ForegroundColor Red; return }
   if (Test-Path $cvFile) { Write-Host "STOPPED: $cvFile already exists (never overwritten)" -ForegroundColor Red; return }
   New-Item -ItemType Directory -Force -Path $cvDir | Out-Null
   [IO.File]::WriteAllBytes($cvFile, $cvBytes)

@@ -107,7 +107,7 @@ def main():
     if has("earnings_event_outcomes", "status"):
         s["earnings_event_outcomes_status"] = q("select status, count(*) from earnings_event_outcomes group by 1 order by 1")
     if has("price_bars", "timeframe"):
-        s["price_bars_by_timeframe"] = q("select timeframe, count(*), count(distinct symbol) from price_bars group by 1 order by 1")
+        s["price_bars_by_timeframe"] = q("select timeframe, count(*), count(distinct company_id) from price_bars group by 1 order by 1")
     if has("swr_cache", "cache_key", "updated_at"):
         s["swr_cache_by_prefix"] = q("select split_part(cache_key, ':', 1) || ':' || split_part(cache_key, ':', 2) as prefix, count(*), min(updated_at)::text, max(updated_at)::text from swr_cache group by 1 order by 2 desc limit 40")
 
