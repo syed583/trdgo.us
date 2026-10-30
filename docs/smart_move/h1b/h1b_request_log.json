@@ -1,0 +1,2426 @@
+{
+ "manifest_sha256": "1da8d6b319710baf66e8f896e3d84179e8eaa677134dfc2e3bce0443f2cafd5f",
+ "uw_sent": 62,
+ "sec_sent": 48,
+ "uw_budget": 62,
+ "sec_budget": 51,
+ "stopped": null,
+ "requests": [
+  {
+   "provider": "UW",
+   "n": 1,
+   "symbol": "SPY",
+   "role": "benchmark",
+   "path": "/api/stock/SPY/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:34:00+00:00",
+   "status": 200,
+   "rows": 2258,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 752,
+    "pr": 753,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 2,
+   "symbol": "ATR",
+   "role": "sample",
+   "path": "/api/stock/ATR/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:34:04+00:00",
+   "status": 200,
+   "rows": 1585,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 729,
+    "pr": 103,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 3,
+   "symbol": "EXR",
+   "role": "sample",
+   "path": "/api/stock/EXR/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:34:07+00:00",
+   "status": 200,
+   "rows": 1621,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 738,
+    "pr": 130,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 4,
+   "symbol": "FSLR",
+   "role": "sample",
+   "path": "/api/stock/FSLR/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:34:10+00:00",
+   "status": 200,
+   "rows": 2245,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 750,
+    "pr": 742,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 5,
+   "symbol": "QCRH",
+   "role": "sample",
+   "path": "/api/stock/QCRH/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:34:12+00:00",
+   "status": 200,
+   "rows": 1559,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 732,
+    "pr": 74,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 6,
+   "symbol": "LBRT",
+   "role": "sample",
+   "path": "/api/stock/LBRT/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:34:15+00:00",
+   "status": 200,
+   "rows": 1954,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 732,
+    "pr": 469,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 7,
+   "symbol": "FSUN",
+   "role": "sample",
+   "path": "/api/stock/FSUN/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:34:18+00:00",
+   "status": 200,
+   "rows": 1101,
+   "first_row": "2024-07-12",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 467,
+    "pr": 71,
+    "r": 563
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 8,
+   "symbol": "CSGP",
+   "role": "sample",
+   "path": "/api/stock/CSGP/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:34:21+00:00",
+   "status": 200,
+   "rows": 1996,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 748,
+    "pr": 495,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 9,
+   "symbol": "BY",
+   "role": "sample",
+   "path": "/api/stock/BY/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:34:24+00:00",
+   "status": 200,
+   "rows": 1544,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 731,
+    "pr": 60,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 10,
+   "symbol": "TMUS",
+   "role": "sample",
+   "path": "/api/stock/TMUS/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:34:28+00:00",
+   "status": 200,
+   "rows": 2187,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 747,
+    "pr": 687,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 11,
+   "symbol": "RDDT",
+   "role": "sample",
+   "path": "/api/stock/RDDT/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:34:30+00:00",
+   "status": 200,
+   "rows": 1942,
+   "first_row": "2024-03-21",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 639,
+    "pr": 648,
+    "r": 655
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 12,
+   "symbol": "LRN",
+   "role": "sample",
+   "path": "/api/stock/LRN/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:34:34+00:00",
+   "status": 200,
+   "rows": 1757,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 731,
+    "pr": 273,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 13,
+   "symbol": "WM",
+   "role": "sample",
+   "path": "/api/stock/WM/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:34:36+00:00",
+   "status": 200,
+   "rows": 1965,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 740,
+    "pr": 472,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 14,
+   "symbol": "BNL",
+   "role": "sample",
+   "path": "/api/stock/BNL/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:34:39+00:00",
+   "status": 200,
+   "rows": 1643,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 726,
+    "pr": 164,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 15,
+   "symbol": "TSLA",
+   "role": "sample",
+   "path": "/api/stock/TSLA/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:34:42+00:00",
+   "status": 200,
+   "rows": 2258,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 752,
+    "pr": 753,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 16,
+   "symbol": "ROG",
+   "role": "sample",
+   "path": "/api/stock/ROG/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:34:45+00:00",
+   "status": 200,
+   "rows": 1561,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 728,
+    "pr": 80,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 17,
+   "symbol": "SPFI",
+   "role": "sample",
+   "path": "/api/stock/SPFI/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:34:49+00:00",
+   "status": 200,
+   "rows": 1520,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 720,
+    "pr": 47,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 18,
+   "symbol": "FFIV",
+   "role": "sample",
+   "path": "/api/stock/FFIV/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:34:52+00:00",
+   "status": 200,
+   "rows": 1770,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 746,
+    "pr": 271,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 19,
+   "symbol": "ESI",
+   "role": "sample",
+   "path": "/api/stock/ESI/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:34:55+00:00",
+   "status": 200,
+   "rows": 1671,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 727,
+    "pr": 191,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 20,
+   "symbol": "EXLS",
+   "role": "sample",
+   "path": "/api/stock/EXLS/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:34:58+00:00",
+   "status": 200,
+   "rows": 1832,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 746,
+    "pr": 333,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 21,
+   "symbol": "BRX",
+   "role": "sample",
+   "path": "/api/stock/BRX/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:35:01+00:00",
+   "status": 200,
+   "rows": 1643,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 732,
+    "pr": 158,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 22,
+   "symbol": "MUSA",
+   "role": "sample",
+   "path": "/api/stock/MUSA/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:35:04+00:00",
+   "status": 200,
+   "rows": 1632,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 725,
+    "pr": 154,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 23,
+   "symbol": "ZWS",
+   "role": "sample",
+   "path": "/api/stock/ZWS/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:35:07+00:00",
+   "status": 200,
+   "rows": 1566,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 731,
+    "pr": 82,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 24,
+   "symbol": "PI",
+   "role": "sample",
+   "path": "/api/stock/PI/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:35:10+00:00",
+   "status": 200,
+   "rows": 1751,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 734,
+    "pr": 264,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 25,
+   "symbol": "INBK",
+   "role": "sample",
+   "path": "/api/stock/INBK/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:35:13+00:00",
+   "status": 200,
+   "rows": 1451,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 625,
+    "pr": 73,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 26,
+   "symbol": "PFS",
+   "role": "sample",
+   "path": "/api/stock/PFS/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:35:16+00:00",
+   "status": 200,
+   "rows": 1593,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 734,
+    "pr": 106,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 27,
+   "symbol": "AVY",
+   "role": "sample",
+   "path": "/api/stock/AVY/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:35:19+00:00",
+   "status": 200,
+   "rows": 1633,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 738,
+    "pr": 142,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 28,
+   "symbol": "NVCR",
+   "role": "sample",
+   "path": "/api/stock/NVCR/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:35:22+00:00",
+   "status": 200,
+   "rows": 1987,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 739,
+    "pr": 495,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 29,
+   "symbol": "ALV",
+   "role": "sample",
+   "path": "/api/stock/ALV/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:35:25+00:00",
+   "status": 200,
+   "rows": 2185,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 727,
+    "pr": 705,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 30,
+   "symbol": "T",
+   "role": "sample",
+   "path": "/api/stock/T/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:35:28+00:00",
+   "status": 200,
+   "rows": 2257,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 751,
+    "pr": 753,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 31,
+   "symbol": "HAS",
+   "role": "sample",
+   "path": "/api/stock/HAS/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:35:31+00:00",
+   "status": 200,
+   "rows": 1860,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 747,
+    "pr": 360,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 32,
+   "symbol": "WT",
+   "role": "sample",
+   "path": "/api/stock/WT/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:35:34+00:00",
+   "status": 200,
+   "rows": 1783,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 730,
+    "pr": 300,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 33,
+   "symbol": "VRT",
+   "role": "sample",
+   "path": "/api/stock/VRT/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:35:37+00:00",
+   "status": 200,
+   "rows": 2245,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 742,
+    "pr": 750,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 34,
+   "symbol": "OTIS",
+   "role": "sample",
+   "path": "/api/stock/OTIS/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:35:40+00:00",
+   "status": 200,
+   "rows": 1764,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 746,
+    "pr": 265,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 35,
+   "symbol": "GE",
+   "role": "sample",
+   "path": "/api/stock/GE/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:35:43+00:00",
+   "status": 200,
+   "rows": 2238,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 743,
+    "pr": 742,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 36,
+   "symbol": "PRLB",
+   "role": "sample",
+   "path": "/api/stock/PRLB/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:35:47+00:00",
+   "status": 200,
+   "rows": 1591,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 731,
+    "pr": 107,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 37,
+   "symbol": "FTV",
+   "role": "sample",
+   "path": "/api/stock/FTV/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:35:49+00:00",
+   "status": 200,
+   "rows": 1650,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 745,
+    "pr": 152,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 38,
+   "symbol": "MO",
+   "role": "sample",
+   "path": "/api/stock/MO/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:35:52+00:00",
+   "status": 200,
+   "rows": 2246,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 745,
+    "pr": 748,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 39,
+   "symbol": "ICE",
+   "role": "sample",
+   "path": "/api/stock/ICE/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:35:56+00:00",
+   "status": 200,
+   "rows": 1808,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 747,
+    "pr": 308,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 40,
+   "symbol": "PCAR",
+   "role": "sample",
+   "path": "/api/stock/PCAR/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:35:59+00:00",
+   "status": 200,
+   "rows": 2003,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 748,
+    "pr": 502,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 41,
+   "symbol": "INCY",
+   "role": "sample",
+   "path": "/api/stock/INCY/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:36:01+00:00",
+   "status": 200,
+   "rows": 1939,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 748,
+    "pr": 438,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 42,
+   "symbol": "EDU",
+   "role": "sample",
+   "path": "/api/stock/EDU/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:36:05+00:00",
+   "status": 200,
+   "rows": 1995,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 725,
+    "pr": 517,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 43,
+   "symbol": "CNC",
+   "role": "sample",
+   "path": "/api/stock/CNC/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:36:07+00:00",
+   "status": 200,
+   "rows": 2021,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 747,
+    "pr": 521,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 44,
+   "symbol": "BLDR",
+   "role": "sample",
+   "path": "/api/stock/BLDR/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:36:10+00:00",
+   "status": 200,
+   "rows": 2003,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 741,
+    "pr": 509,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 45,
+   "symbol": "SW",
+   "role": "sample",
+   "path": "/api/stock/SW/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:36:14+00:00",
+   "status": 200,
+   "rows": 1671,
+   "first_row": "2024-07-08",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 572,
+    "pr": 517,
+    "r": 582
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 46,
+   "symbol": "FRBT",
+   "role": "sample",
+   "path": "/api/stock/FRBT/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:36:17+00:00",
+   "status": 200,
+   "rows": 201,
+   "first_row": "2026-06-11",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 97,
+    "pr": 6,
+    "r": 98
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 47,
+   "symbol": "KVUE",
+   "role": "sample",
+   "path": "/api/stock/KVUE/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:36:19+00:00",
+   "status": 200,
+   "rows": 2140,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 746,
+    "pr": 641,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 48,
+   "symbol": "IDCC",
+   "role": "sample",
+   "path": "/api/stock/IDCC/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:36:22+00:00",
+   "status": 200,
+   "rows": 1707,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 741,
+    "pr": 213,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 49,
+   "symbol": "ALGM",
+   "role": "sample",
+   "path": "/api/stock/ALGM/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:36:26+00:00",
+   "status": 200,
+   "rows": 2062,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 746,
+    "pr": 563,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 50,
+   "symbol": "GNRC",
+   "role": "sample",
+   "path": "/api/stock/GNRC/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:36:29+00:00",
+   "status": 200,
+   "rows": 1901,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 734,
+    "pr": 414,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 51,
+   "symbol": "SHW",
+   "role": "sample",
+   "path": "/api/stock/SHW/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:36:32+00:00",
+   "status": 200,
+   "rows": 1786,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 738,
+    "pr": 295,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 52,
+   "symbol": "XLK",
+   "role": "sector_etf",
+   "path": "/api/stock/XLK/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:36:35+00:00",
+   "status": 200,
+   "rows": 2240,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 744,
+    "pr": 743,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 53,
+   "symbol": "XLF",
+   "role": "sector_etf",
+   "path": "/api/stock/XLF/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:36:38+00:00",
+   "status": 200,
+   "rows": 2253,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 750,
+    "pr": 750,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 54,
+   "symbol": "XLV",
+   "role": "sector_etf",
+   "path": "/api/stock/XLV/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:36:42+00:00",
+   "status": 200,
+   "rows": 2133,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 736,
+    "pr": 644,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 55,
+   "symbol": "XLY",
+   "role": "sector_etf",
+   "path": "/api/stock/XLY/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:36:44+00:00",
+   "status": 200,
+   "rows": 2018,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 731,
+    "pr": 534,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 56,
+   "symbol": "XLP",
+   "role": "sector_etf",
+   "path": "/api/stock/XLP/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:36:48+00:00",
+   "status": 200,
+   "rows": 2116,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 738,
+    "pr": 625,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 57,
+   "symbol": "XLE",
+   "role": "sector_etf",
+   "path": "/api/stock/XLE/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:36:50+00:00",
+   "status": 200,
+   "rows": 2247,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 746,
+    "pr": 748,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 58,
+   "symbol": "XLI",
+   "role": "sector_etf",
+   "path": "/api/stock/XLI/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:36:53+00:00",
+   "status": 200,
+   "rows": 2080,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 735,
+    "pr": 592,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 59,
+   "symbol": "XLB",
+   "role": "sector_etf",
+   "path": "/api/stock/XLB/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:36:56+00:00",
+   "status": 200,
+   "rows": 1932,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 730,
+    "pr": 449,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 60,
+   "symbol": "XLU",
+   "role": "sector_etf",
+   "path": "/api/stock/XLU/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:37:00+00:00",
+   "status": 200,
+   "rows": 2194,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 742,
+    "pr": 699,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 61,
+   "symbol": "XLRE",
+   "role": "sector_etf",
+   "path": "/api/stock/XLRE/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:37:02+00:00",
+   "status": 200,
+   "rows": 2028,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 719,
+    "pr": 556,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "UW",
+   "n": 62,
+   "symbol": "XLC",
+   "role": "sector_etf",
+   "path": "/api/stock/XLC/ohlc/1d",
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "requested_at_utc": "2026-10-30T10:37:05+00:00",
+   "status": 200,
+   "rows": 1906,
+   "first_row": "2023-10-30",
+   "last_row": "2026-10-29",
+   "market_time_counts": {
+    "po": 724,
+    "pr": 429,
+    "r": 753
+   },
+   "row_keys": [
+    "close",
+    "date",
+    "high",
+    "low",
+    "market_time",
+    "open",
+    "total_volume",
+    "volume"
+   ]
+  },
+  {
+   "provider": "SEC",
+   "n": 1,
+   "symbol": "ATR",
+   "url": "https://data.sec.gov/submissions/CIK0000896622.json",
+   "requested_at_utc": "2026-10-30T10:37:08+00:00",
+   "status": 200,
+   "recent_filings": 1000
+  },
+  {
+   "provider": "SEC",
+   "n": 2,
+   "symbol": "EXR",
+   "url": "https://data.sec.gov/submissions/CIK0001289490.json",
+   "requested_at_utc": "2026-10-30T10:37:11+00:00",
+   "status": 200,
+   "recent_filings": 1002
+  },
+  {
+   "provider": "SEC",
+   "n": 3,
+   "symbol": "FSLR",
+   "url": "https://data.sec.gov/submissions/CIK0001274494.json",
+   "requested_at_utc": "2026-10-30T10:37:13+00:00",
+   "status": 200,
+   "recent_filings": 1000
+  },
+  {
+   "provider": "SEC",
+   "n": 4,
+   "symbol": "QCRH",
+   "url": "https://data.sec.gov/submissions/CIK0000906465.json",
+   "requested_at_utc": "2026-10-30T10:37:15+00:00",
+   "status": 200,
+   "recent_filings": 1013
+  },
+  {
+   "provider": "SEC",
+   "n": 5,
+   "symbol": "LBRT",
+   "url": "https://data.sec.gov/submissions/CIK0001694028.json",
+   "requested_at_utc": "2026-10-30T10:37:18+00:00",
+   "status": 200,
+   "recent_filings": 720
+  },
+  {
+   "provider": "SEC",
+   "n": 6,
+   "symbol": "FSUN",
+   "url": "https://data.sec.gov/submissions/CIK0001709442.json",
+   "requested_at_utc": "2026-10-30T10:37:20+00:00",
+   "status": 200,
+   "recent_filings": 254
+  },
+  {
+   "provider": "SEC",
+   "n": 7,
+   "symbol": "CSGP",
+   "url": "https://data.sec.gov/submissions/CIK0001057352.json",
+   "requested_at_utc": "2026-10-30T10:37:22+00:00",
+   "status": 200,
+   "recent_filings": 1000
+  },
+  {
+   "provider": "SEC",
+   "n": 8,
+   "symbol": "BY",
+   "url": "https://data.sec.gov/submissions/CIK0001702750.json",
+   "requested_at_utc": "2026-10-30T10:37:25+00:00",
+   "status": 200,
+   "recent_filings": 763
+  },
+  {
+   "provider": "SEC",
+   "n": 9,
+   "symbol": "TMUS",
+   "url": "https://data.sec.gov/submissions/CIK0001283699.json",
+   "requested_at_utc": "2026-10-30T10:37:27+00:00",
+   "status": 200,
+   "recent_filings": 1007
+  },
+  {
+   "provider": "SEC",
+   "n": 10,
+   "symbol": "RDDT",
+   "url": "https://data.sec.gov/submissions/CIK0001713445.json",
+   "requested_at_utc": "2026-10-30T10:37:30+00:00",
+   "status": 200,
+   "recent_filings": 498
+  },
+  {
+   "provider": "SEC",
+   "n": 11,
+   "symbol": "LRN",
+   "url": "https://data.sec.gov/submissions/CIK0001157408.json",
+   "requested_at_utc": "2026-10-30T10:37:32+00:00",
+   "status": 200,
+   "recent_filings": 1006
+  },
+  {
+   "provider": "SEC",
+   "n": 12,
+   "symbol": "WM",
+   "url": "https://data.sec.gov/submissions/CIK0000823768.json",
+   "requested_at_utc": "2026-10-30T10:37:35+00:00",
+   "status": 200,
+   "recent_filings": 1006
+  },
+  {
+   "provider": "SEC",
+   "n": 13,
+   "symbol": "BNL",
+   "url": "https://data.sec.gov/submissions/CIK0001424182.json",
+   "requested_at_utc": "2026-10-30T10:37:37+00:00",
+   "status": 200,
+   "recent_filings": 736
+  },
+  {
+   "provider": "SEC",
+   "n": 14,
+   "symbol": "ROG",
+   "url": "https://data.sec.gov/submissions/CIK0000084748.json",
+   "requested_at_utc": "2026-10-30T10:37:39+00:00",
+   "status": 200,
+   "recent_filings": 1000
+  },
+  {
+   "provider": "SEC",
+   "n": 15,
+   "symbol": "SPFI",
+   "url": "https://data.sec.gov/submissions/CIK0001163668.json",
+   "requested_at_utc": "2026-10-30T10:37:42+00:00",
+   "status": 200,
+   "recent_filings": 439
+  },
+  {
+   "provider": "SEC",
+   "n": 16,
+   "symbol": "FFIV",
+   "url": "https://data.sec.gov/submissions/CIK0001048695.json",
+   "requested_at_utc": "2026-10-30T10:37:44+00:00",
+   "status": 200,
+   "recent_filings": 1001
+  },
+  {
+   "provider": "SEC",
+   "n": 17,
+   "symbol": "ESI",
+   "url": "https://data.sec.gov/submissions/CIK0001590714.json",
+   "requested_at_utc": "2026-10-30T10:37:46+00:00",
+   "status": 200,
+   "recent_filings": 916
+  },
+  {
+   "provider": "SEC",
+   "n": 18,
+   "symbol": "EXLS",
+   "url": "https://data.sec.gov/submissions/CIK0001297989.json",
+   "requested_at_utc": "2026-10-30T10:37:49+00:00",
+   "status": 200,
+   "recent_filings": 1000
+  },
+  {
+   "provider": "SEC",
+   "n": 19,
+   "symbol": "BRX",
+   "url": "https://data.sec.gov/submissions/CIK0001581068.json",
+   "requested_at_utc": "2026-10-30T10:37:51+00:00",
+   "status": 200,
+   "recent_filings": 915
+  },
+  {
+   "provider": "SEC",
+   "n": 20,
+   "symbol": "MUSA",
+   "url": "https://data.sec.gov/submissions/CIK0001573516.json",
+   "requested_at_utc": "2026-10-30T10:37:53+00:00",
+   "status": 200,
+   "recent_filings": 1004
+  },
+  {
+   "provider": "SEC",
+   "n": 21,
+   "symbol": "ZWS",
+   "url": "https://data.sec.gov/submissions/CIK0001439288.json",
+   "requested_at_utc": "2026-10-30T10:37:56+00:00",
+   "status": 200,
+   "recent_filings": 1001
+  },
+  {
+   "provider": "SEC",
+   "n": 22,
+   "symbol": "PI",
+   "url": "https://data.sec.gov/submissions/CIK0001114995.json",
+   "requested_at_utc": "2026-10-30T10:37:58+00:00",
+   "status": 200,
+   "recent_filings": 1000
+  },
+  {
+   "provider": "SEC",
+   "n": 23,
+   "symbol": "INBK",
+   "url": "https://data.sec.gov/submissions/CIK0001562463.json",
+   "requested_at_utc": "2026-10-30T10:38:01+00:00",
+   "status": 200,
+   "recent_filings": 705
+  },
+  {
+   "provider": "SEC",
+   "n": 24,
+   "symbol": "PFS",
+   "url": "https://data.sec.gov/submissions/CIK0001178970.json",
+   "requested_at_utc": "2026-10-30T10:38:03+00:00",
+   "status": 200,
+   "recent_filings": 1001
+  },
+  {
+   "provider": "SEC",
+   "n": 25,
+   "symbol": "AVY",
+   "url": "https://data.sec.gov/submissions/CIK0000008818.json",
+   "requested_at_utc": "2026-10-30T10:38:05+00:00",
+   "status": 200,
+   "recent_filings": 1000
+  },
+  {
+   "provider": "SEC",
+   "n": 26,
+   "symbol": "NVCR",
+   "url": "https://data.sec.gov/submissions/CIK0001645113.json",
+   "requested_at_utc": "2026-10-30T10:38:08+00:00",
+   "status": 200,
+   "recent_filings": 1000
+  },
+  {
+   "provider": "SEC",
+   "n": 27,
+   "symbol": "ALV",
+   "url": "https://data.sec.gov/submissions/CIK0001034670.json",
+   "requested_at_utc": "2026-10-30T10:38:10+00:00",
+   "status": 200,
+   "recent_filings": 1004
+  },
+  {
+   "provider": "SEC",
+   "n": 28,
+   "symbol": "T",
+   "url": "https://data.sec.gov/submissions/CIK0000732717.json",
+   "requested_at_utc": "2026-10-30T10:38:12+00:00",
+   "status": 200,
+   "recent_filings": 1016
+  },
+  {
+   "provider": "SEC",
+   "n": 29,
+   "symbol": "HAS",
+   "url": "https://data.sec.gov/submissions/CIK0000046080.json",
+   "requested_at_utc": "2026-10-30T10:38:15+00:00",
+   "status": 200,
+   "recent_filings": 1000
+  },
+  {
+   "provider": "SEC",
+   "n": 30,
+   "symbol": "WT",
+   "url": "https://data.sec.gov/submissions/CIK0000880631.json",
+   "requested_at_utc": "2026-10-30T10:38:17+00:00",
+   "status": 200,
+   "recent_filings": 1000
+  },
+  {
+   "provider": "SEC",
+   "n": 31,
+   "symbol": "VRT",
+   "url": "https://data.sec.gov/submissions/CIK0001674101.json",
+   "requested_at_utc": "2026-10-30T10:38:20+00:00",
+   "status": 200,
+   "recent_filings": 880
+  },
+  {
+   "provider": "SEC",
+   "n": 32,
+   "symbol": "OTIS",
+   "url": "https://data.sec.gov/submissions/CIK0001781335.json",
+   "requested_at_utc": "2026-10-30T10:38:22+00:00",
+   "status": 200,
+   "recent_filings": 542
+  },
+  {
+   "provider": "SEC",
+   "n": 33,
+   "symbol": "PRLB",
+   "url": "https://data.sec.gov/submissions/CIK0001443669.json",
+   "requested_at_utc": "2026-10-30T10:38:25+00:00",
+   "status": 200,
+   "recent_filings": 899
+  },
+  {
+   "provider": "SEC",
+   "n": 34,
+   "symbol": "FTV",
+   "url": "https://data.sec.gov/submissions/CIK0001659166.json",
+   "requested_at_utc": "2026-10-30T10:38:27+00:00",
+   "status": 200,
+   "recent_filings": 1010
+  },
+  {
+   "provider": "SEC",
+   "n": 35,
+   "symbol": "MO",
+   "url": "https://data.sec.gov/submissions/CIK0000764180.json",
+   "requested_at_utc": "2026-10-30T10:38:29+00:00",
+   "status": 200,
+   "recent_filings": 1006
+  },
+  {
+   "provider": "SEC",
+   "n": 36,
+   "symbol": "ICE",
+   "url": "https://data.sec.gov/submissions/CIK0001571949.json",
+   "requested_at_utc": "2026-10-30T10:38:32+00:00",
+   "status": 200,
+   "recent_filings": 1008
+  },
+  {
+   "provider": "SEC",
+   "n": 37,
+   "symbol": "PCAR",
+   "url": "https://data.sec.gov/submissions/CIK0000075362.json",
+   "requested_at_utc": "2026-10-30T10:38:34+00:00",
+   "status": 200,
+   "recent_filings": 1001
+  },
+  {
+   "provider": "SEC",
+   "n": 38,
+   "symbol": "INCY",
+   "url": "https://data.sec.gov/submissions/CIK0000879169.json",
+   "requested_at_utc": "2026-10-30T10:38:36+00:00",
+   "status": 200,
+   "recent_filings": 1001
+  },
+  {
+   "provider": "SEC",
+   "n": 39,
+   "symbol": "EDU",
+   "url": "https://data.sec.gov/submissions/CIK0001372920.json",
+   "requested_at_utc": "2026-10-30T10:38:39+00:00",
+   "status": 200,
+   "recent_filings": 445
+  },
+  {
+   "provider": "SEC",
+   "n": 40,
+   "symbol": "CNC",
+   "url": "https://data.sec.gov/submissions/CIK0001071739.json",
+   "requested_at_utc": "2026-10-30T10:38:41+00:00",
+   "status": 200,
+   "recent_filings": 1001
+  },
+  {
+   "provider": "SEC",
+   "n": 41,
+   "symbol": "BLDR",
+   "url": "https://data.sec.gov/submissions/CIK0001316835.json",
+   "requested_at_utc": "2026-10-30T10:38:44+00:00",
+   "status": 200,
+   "recent_filings": 1001
+  },
+  {
+   "provider": "SEC",
+   "n": 42,
+   "symbol": "SW",
+   "url": "https://data.sec.gov/submissions/CIK0002005951.json",
+   "requested_at_utc": "2026-10-30T10:38:46+00:00",
+   "status": 200,
+   "recent_filings": 397
+  },
+  {
+   "provider": "SEC",
+   "n": 43,
+   "symbol": "FRBT",
+   "url": "https://data.sec.gov/submissions/CIK0001925062.json",
+   "requested_at_utc": "2026-10-30T10:38:48+00:00",
+   "status": 200,
+   "recent_filings": 55
+  },
+  {
+   "provider": "SEC",
+   "n": 44,
+   "symbol": "KVUE",
+   "url": "https://data.sec.gov/submissions/CIK0001944048.json",
+   "requested_at_utc": "2026-10-30T10:38:51+00:00",
+   "status": 200,
+   "recent_filings": 499
+  },
+  {
+   "provider": "SEC",
+   "n": 45,
+   "symbol": "IDCC",
+   "url": "https://data.sec.gov/submissions/CIK0001405495.json",
+   "requested_at_utc": "2026-10-30T10:38:53+00:00",
+   "status": 200,
+   "recent_filings": 1005
+  },
+  {
+   "provider": "SEC",
+   "n": 46,
+   "symbol": "ALGM",
+   "url": "https://data.sec.gov/submissions/CIK0000866291.json",
+   "requested_at_utc": "2026-10-30T10:38:55+00:00",
+   "status": 200,
+   "recent_filings": 528
+  },
+  {
+   "provider": "SEC",
+   "n": 47,
+   "symbol": "GNRC",
+   "url": "https://data.sec.gov/submissions/CIK0001474735.json",
+   "requested_at_utc": "2026-10-30T10:38:58+00:00",
+   "status": 200,
+   "recent_filings": 1000
+  },
+  {
+   "provider": "SEC",
+   "n": 48,
+   "symbol": "SHW",
+   "url": "https://data.sec.gov/submissions/CIK0000089800.json",
+   "requested_at_utc": "2026-10-30T10:39:00+00:00",
+   "status": 200,
+   "recent_filings": 1004
+  }
+ ]
+}

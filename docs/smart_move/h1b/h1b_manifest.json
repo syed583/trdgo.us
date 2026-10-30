@@ -1,0 +1,1193 @@
+{
+ "budget": {
+  "sec_max": 51,
+  "uw_max": 62
+ },
+ "frozen_at_utc": "2026-10-30T10:32:47+00:00",
+ "h1a_manifest_sha256": "4131c93c2fb1bd92715202ce32586ce04a5e0194f28ce279ddd362a72748c079",
+ "sec_cached": [
+  {
+   "cache_file": "1fcc706c14d082b1cc9a1abf25f2779e3aa6d6f7d448708d951f5d60e300082c.json.gz",
+   "cache_file_sha256": "213641c954420c3729f63e4d82cdf4c0e8139af2d7ab548edb76eaf438086550",
+   "cache_mtime_utc": "2026-10-27T11:21:30+00:00",
+   "cik": "0001318605",
+   "last_past_event": "2026-10-21",
+   "symbol": "TSLA"
+  },
+  {
+   "cache_file": "926e2626570c3940f8aa214014f4f51cfb8f3f1d47d91dbfd8b161986a0774c7.json.gz",
+   "cache_file_sha256": "cdd1b4a524a7d04bc9023521b67652bdde658b3a231c6c73c3ffdd072b167f7e",
+   "cache_mtime_utc": "2026-10-27T12:11:00+00:00",
+   "cik": "0000040545",
+   "last_past_event": "2026-10-20",
+   "symbol": "GE"
+  }
+ ],
+ "sec_requests": [
+  {
+   "cik": "0000896622",
+   "last_past_event": "2026-10-29",
+   "n": 1,
+   "reason": "no cached copy",
+   "symbol": "ATR",
+   "url": "https://data.sec.gov/submissions/CIK0000896622.json"
+  },
+  {
+   "cik": "0001289490",
+   "last_past_event": "2026-10-27",
+   "n": 2,
+   "reason": "no cached copy",
+   "symbol": "EXR",
+   "url": "https://data.sec.gov/submissions/CIK0001289490.json"
+  },
+  {
+   "cik": "0001274494",
+   "last_past_event": "2026-10-29",
+   "n": 3,
+   "reason": "no cached copy",
+   "symbol": "FSLR",
+   "url": "https://data.sec.gov/submissions/CIK0001274494.json"
+  },
+  {
+   "cik": "0000906465",
+   "last_past_event": "2026-10-20",
+   "n": 4,
+   "reason": "cached copy older than last past event + 2 days",
+   "symbol": "QCRH",
+   "url": "https://data.sec.gov/submissions/CIK0000906465.json"
+  },
+  {
+   "cik": "0001694028",
+   "last_past_event": "2026-10-21",
+   "n": 5,
+   "reason": "no cached copy",
+   "symbol": "LBRT",
+   "url": "https://data.sec.gov/submissions/CIK0001694028.json"
+  },
+  {
+   "cik": "0001709442",
+   "last_past_event": "2026-10-26",
+   "n": 6,
+   "reason": "no cached copy",
+   "symbol": "FSUN",
+   "url": "https://data.sec.gov/submissions/CIK0001709442.json"
+  },
+  {
+   "cik": "0001057352",
+   "last_past_event": "2026-10-27",
+   "n": 7,
+   "reason": "no cached copy",
+   "symbol": "CSGP",
+   "url": "https://data.sec.gov/submissions/CIK0001057352.json"
+  },
+  {
+   "cik": "0001702750",
+   "last_past_event": "2026-10-22",
+   "n": 8,
+   "reason": "cached copy older than last past event + 2 days",
+   "symbol": "BY",
+   "url": "https://data.sec.gov/submissions/CIK0001702750.json"
+  },
+  {
+   "cik": "0001283699",
+   "last_past_event": "2026-10-28",
+   "n": 9,
+   "reason": "cached copy older than last past event + 2 days",
+   "symbol": "TMUS",
+   "url": "https://data.sec.gov/submissions/CIK0001283699.json"
+  },
+  {
+   "cik": "0001713445",
+   "last_past_event": "2026-10-29",
+   "n": 10,
+   "reason": "no cached copy",
+   "symbol": "RDDT",
+   "url": "https://data.sec.gov/submissions/CIK0001713445.json"
+  },
+  {
+   "cik": "0001157408",
+   "last_past_event": "2026-10-20",
+   "n": 11,
+   "reason": "no cached copy",
+   "symbol": "LRN",
+   "url": "https://data.sec.gov/submissions/CIK0001157408.json"
+  },
+  {
+   "cik": "0000823768",
+   "last_past_event": "2026-10-27",
+   "n": 12,
+   "reason": "no cached copy",
+   "symbol": "WM",
+   "url": "https://data.sec.gov/submissions/CIK0000823768.json"
+  },
+  {
+   "cik": "0001424182",
+   "last_past_event": "2026-10-28",
+   "n": 13,
+   "reason": "no cached copy",
+   "symbol": "BNL",
+   "url": "https://data.sec.gov/submissions/CIK0001424182.json"
+  },
+  {
+   "cik": "0000084748",
+   "last_past_event": "2026-10-27",
+   "n": 14,
+   "reason": "no cached copy",
+   "symbol": "ROG",
+   "url": "https://data.sec.gov/submissions/CIK0000084748.json"
+  },
+  {
+   "cik": "0001163668",
+   "last_past_event": "2026-10-22",
+   "n": 15,
+   "reason": "no cached copy",
+   "symbol": "SPFI",
+   "url": "https://data.sec.gov/submissions/CIK0001163668.json"
+  },
+  {
+   "cik": "0001048695",
+   "last_past_event": "2026-10-27",
+   "n": 16,
+   "reason": "no cached copy",
+   "symbol": "FFIV",
+   "url": "https://data.sec.gov/submissions/CIK0001048695.json"
+  },
+  {
+   "cik": "0001590714",
+   "last_past_event": "2026-10-21",
+   "n": 17,
+   "reason": "no cached copy",
+   "symbol": "ESI",
+   "url": "https://data.sec.gov/submissions/CIK0001590714.json"
+  },
+  {
+   "cik": "0001297989",
+   "last_past_event": "2026-10-27",
+   "n": 18,
+   "reason": "no cached copy",
+   "symbol": "EXLS",
+   "url": "https://data.sec.gov/submissions/CIK0001297989.json"
+  },
+  {
+   "cik": "0001581068",
+   "last_past_event": "2026-10-26",
+   "n": 19,
+   "reason": "cached copy older than last past event + 2 days",
+   "symbol": "BRX",
+   "url": "https://data.sec.gov/submissions/CIK0001581068.json"
+  },
+  {
+   "cik": "0001573516",
+   "last_past_event": "2026-10-28",
+   "n": 20,
+   "reason": "no cached copy",
+   "symbol": "MUSA",
+   "url": "https://data.sec.gov/submissions/CIK0001573516.json"
+  },
+  {
+   "cik": "0001439288",
+   "last_past_event": "2026-10-27",
+   "n": 21,
+   "reason": "no cached copy",
+   "symbol": "ZWS",
+   "url": "https://data.sec.gov/submissions/CIK0001439288.json"
+  },
+  {
+   "cik": "0001114995",
+   "last_past_event": "2026-10-28",
+   "n": 22,
+   "reason": "no cached copy",
+   "symbol": "PI",
+   "url": "https://data.sec.gov/submissions/CIK0001114995.json"
+  },
+  {
+   "cik": "0001562463",
+   "last_past_event": "2026-10-29",
+   "n": 23,
+   "reason": "no cached copy",
+   "symbol": "INBK",
+   "url": "https://data.sec.gov/submissions/CIK0001562463.json"
+  },
+  {
+   "cik": "0001178970",
+   "last_past_event": "2026-10-28",
+   "n": 24,
+   "reason": "no cached copy",
+   "symbol": "PFS",
+   "url": "https://data.sec.gov/submissions/CIK0001178970.json"
+  },
+  {
+   "cik": "0000008818",
+   "last_past_event": "2026-10-29",
+   "n": 25,
+   "reason": "no cached copy",
+   "symbol": "AVY",
+   "url": "https://data.sec.gov/submissions/CIK0000008818.json"
+  },
+  {
+   "cik": "0001645113",
+   "last_past_event": "2026-10-29",
+   "n": 26,
+   "reason": "no cached copy",
+   "symbol": "NVCR",
+   "url": "https://data.sec.gov/submissions/CIK0001645113.json"
+  },
+  {
+   "cik": "0001034670",
+   "last_past_event": "2026-10-23",
+   "n": 27,
+   "reason": "cached copy older than last past event + 2 days",
+   "symbol": "ALV",
+   "url": "https://data.sec.gov/submissions/CIK0001034670.json"
+  },
+  {
+   "cik": "0000732717",
+   "last_past_event": "2026-10-21",
+   "n": 28,
+   "reason": "cached copy older than last past event + 2 days",
+   "symbol": "T",
+   "url": "https://data.sec.gov/submissions/CIK0000732717.json"
+  },
+  {
+   "cik": "0000046080",
+   "last_past_event": "2026-10-20",
+   "n": 29,
+   "reason": "cached copy older than last past event + 2 days",
+   "symbol": "HAS",
+   "url": "https://data.sec.gov/submissions/CIK0000046080.json"
+  },
+  {
+   "cik": "0000880631",
+   "last_past_event": "2026-07-31",
+   "n": 30,
+   "reason": "no cached copy",
+   "symbol": "WT",
+   "url": "https://data.sec.gov/submissions/CIK0000880631.json"
+  },
+  {
+   "cik": "0001674101",
+   "last_past_event": "2026-10-28",
+   "n": 31,
+   "reason": "cached copy older than last past event + 2 days",
+   "symbol": "VRT",
+   "url": "https://data.sec.gov/submissions/CIK0001674101.json"
+  },
+  {
+   "cik": "0001781335",
+   "last_past_event": "2026-10-28",
+   "n": 32,
+   "reason": "no cached copy",
+   "symbol": "OTIS",
+   "url": "https://data.sec.gov/submissions/CIK0001781335.json"
+  },
+  {
+   "cik": "0001443669",
+   "last_past_event": "2026-10-29",
+   "n": 33,
+   "reason": "no cached copy",
+   "symbol": "PRLB",
+   "url": "https://data.sec.gov/submissions/CIK0001443669.json"
+  },
+  {
+   "cik": "0001659166",
+   "last_past_event": "2026-10-28",
+   "n": 34,
+   "reason": "no cached copy",
+   "symbol": "FTV",
+   "url": "https://data.sec.gov/submissions/CIK0001659166.json"
+  },
+  {
+   "cik": "0000764180",
+   "last_past_event": "2026-10-29",
+   "n": 35,
+   "reason": "no cached copy",
+   "symbol": "MO",
+   "url": "https://data.sec.gov/submissions/CIK0000764180.json"
+  },
+  {
+   "cik": "0001571949",
+   "last_past_event": "2026-10-29",
+   "n": 36,
+   "reason": "no cached copy",
+   "symbol": "ICE",
+   "url": "https://data.sec.gov/submissions/CIK0001571949.json"
+  },
+  {
+   "cik": "0000075362",
+   "last_past_event": "2026-10-27",
+   "n": 37,
+   "reason": "no cached copy",
+   "symbol": "PCAR",
+   "url": "https://data.sec.gov/submissions/CIK0000075362.json"
+  },
+  {
+   "cik": "0000879169",
+   "last_past_event": "2026-10-29",
+   "n": 38,
+   "reason": "no cached copy",
+   "symbol": "INCY",
+   "url": "https://data.sec.gov/submissions/CIK0000879169.json"
+  },
+  {
+   "cik": "0001372920",
+   "last_past_event": "2026-10-28",
+   "n": 39,
+   "reason": "no cached copy",
+   "symbol": "EDU",
+   "url": "https://data.sec.gov/submissions/CIK0001372920.json"
+  },
+  {
+   "cik": "0001071739",
+   "last_past_event": "2026-10-27",
+   "n": 40,
+   "reason": "no cached copy",
+   "symbol": "CNC",
+   "url": "https://data.sec.gov/submissions/CIK0001071739.json"
+  },
+  {
+   "cik": "0001316835",
+   "last_past_event": "2026-10-29",
+   "n": 41,
+   "reason": "no cached copy",
+   "symbol": "BLDR",
+   "url": "https://data.sec.gov/submissions/CIK0001316835.json"
+  },
+  {
+   "cik": "0002005951",
+   "last_past_event": "2026-10-28",
+   "n": 42,
+   "reason": "no cached copy",
+   "symbol": "SW",
+   "url": "https://data.sec.gov/submissions/CIK0002005951.json"
+  },
+  {
+   "cik": "0001925062",
+   "last_past_event": "2026-10-29",
+   "n": 43,
+   "reason": "no cached copy",
+   "symbol": "FRBT",
+   "url": "https://data.sec.gov/submissions/CIK0001925062.json"
+  },
+  {
+   "cik": "0001944048",
+   "last_past_event": "2026-08-06",
+   "n": 44,
+   "reason": "no cached copy",
+   "symbol": "KVUE",
+   "url": "https://data.sec.gov/submissions/CIK0001944048.json"
+  },
+  {
+   "cik": "0001405495",
+   "last_past_event": "2026-10-29",
+   "n": 45,
+   "reason": "no cached copy",
+   "symbol": "IDCC",
+   "url": "https://data.sec.gov/submissions/CIK0001405495.json"
+  },
+  {
+   "cik": "0000866291",
+   "last_past_event": "2026-10-29",
+   "n": 46,
+   "reason": "no cached copy",
+   "symbol": "ALGM",
+   "url": "https://data.sec.gov/submissions/CIK0000866291.json"
+  },
+  {
+   "cik": "0001474735",
+   "last_past_event": "2026-10-28",
+   "n": 47,
+   "reason": "no cached copy",
+   "symbol": "GNRC",
+   "url": "https://data.sec.gov/submissions/CIK0001474735.json"
+  },
+  {
+   "cik": "0000089800",
+   "last_past_event": "2026-10-27",
+   "n": 48,
+   "reason": "no cached copy",
+   "symbol": "SHW",
+   "url": "https://data.sec.gov/submissions/CIK0000089800.json"
+  }
+ ],
+ "sec_rules": {
+  "agent": "US-Stock Reader personal research (jeetubajaj@gmail.com)",
+  "kept": "8-K filings with Item 2.02: accession, filingDate, acceptanceDateTime, items; the earliest filingDate in the recent list; tickers field",
+  "pace_seconds": 2,
+  "recorded_as": "SEC_ACCEPTANCE_TIME (a filing fact, never a public release timestamp)"
+ },
+ "sec_ticker_map": {
+  "file": "ace4a0fb8e9e22bbcc3aac993c3d786cd9ad1d6184ae5640bed2a7a320809f3c.json.gz",
+  "mapping": {
+   "ALGM": "0000866291",
+   "ALV": "0001034670",
+   "ATR": "0000896622",
+   "AVY": "0000008818",
+   "BLDR": "0001316835",
+   "BNL": "0001424182",
+   "BRX": "0001581068",
+   "BY": "0001702750",
+   "CNC": "0001071739",
+   "CSGP": "0001057352",
+   "EDU": "0001372920",
+   "ESI": "0001590714",
+   "EXLS": "0001297989",
+   "EXR": "0001289490",
+   "FFIV": "0001048695",
+   "FRBT": "0001925062",
+   "FSLR": "0001274494",
+   "FSUN": "0001709442",
+   "FTV": "0001659166",
+   "GE": "0000040545",
+   "GNRC": "0001474735",
+   "HAS": "0000046080",
+   "ICE": "0001571949",
+   "IDCC": "0001405495",
+   "INBK": "0001562463",
+   "INCY": "0000879169",
+   "KVUE": "0001944048",
+   "LBRT": "0001694028",
+   "LRN": "0001157408",
+   "MO": "0000764180",
+   "MUSA": "0001573516",
+   "NVCR": "0001645113",
+   "OTIS": "0001781335",
+   "PCAR": "0000075362",
+   "PFS": "0001178970",
+   "PI": "0001114995",
+   "PRLB": "0001443669",
+   "QCRH": "0000906465",
+   "RDDT": "0001713445",
+   "ROG": "0000084748",
+   "SHW": "0000089800",
+   "SPFI": "0001163668",
+   "SW": "0002005951",
+   "T": "0000732717",
+   "TMUS": "0001283699",
+   "TSLA": "0001318605",
+   "VRT": "0001674101",
+   "WM": "0000823768",
+   "WT": "0000880631",
+   "ZWS": "0001439288"
+  },
+  "mtime_utc": "2026-10-29T08:08:41+00:00",
+  "sha256": "84288e6e5d0154cdfe5a6123f9b568ca0a58b2524746f691b1e87ff9480f7f2d",
+  "source": "application disk cache (read only)",
+  "unmapped": []
+ },
+ "stop_conditions": [
+  "HTTP status other than 200",
+  "401/403/429 or concurrency refusal",
+  "answer is not JSON",
+  "UW rows empty or a row without close/date",
+  "UW answer with 2,500 rows (cap reached)",
+  "SPY first row after 2024-09-02 or last row before 2026-10-27",
+  "SEC answer without filings.recent or whose tickers do not contain the symbol (recorded; stops after 3)"
+ ],
+ "totals": {
+  "sec_from_cache": 2,
+  "sec_requests": 48,
+  "sec_unmapped": 0,
+  "uw_requests": 62
+ },
+ "uw_requests": [
+  {
+   "n": 1,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/SPY/ohlc/1d",
+   "role": "benchmark",
+   "symbol": "SPY"
+  },
+  {
+   "n": 2,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/ATR/ohlc/1d",
+   "role": "sample",
+   "symbol": "ATR"
+  },
+  {
+   "n": 3,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/EXR/ohlc/1d",
+   "role": "sample",
+   "symbol": "EXR"
+  },
+  {
+   "n": 4,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/FSLR/ohlc/1d",
+   "role": "sample",
+   "symbol": "FSLR"
+  },
+  {
+   "n": 5,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/QCRH/ohlc/1d",
+   "role": "sample",
+   "symbol": "QCRH"
+  },
+  {
+   "n": 6,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/LBRT/ohlc/1d",
+   "role": "sample",
+   "symbol": "LBRT"
+  },
+  {
+   "n": 7,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/FSUN/ohlc/1d",
+   "role": "sample",
+   "symbol": "FSUN"
+  },
+  {
+   "n": 8,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/CSGP/ohlc/1d",
+   "role": "sample",
+   "symbol": "CSGP"
+  },
+  {
+   "n": 9,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/BY/ohlc/1d",
+   "role": "sample",
+   "symbol": "BY"
+  },
+  {
+   "n": 10,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/TMUS/ohlc/1d",
+   "role": "sample",
+   "symbol": "TMUS"
+  },
+  {
+   "n": 11,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/RDDT/ohlc/1d",
+   "role": "sample",
+   "symbol": "RDDT"
+  },
+  {
+   "n": 12,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/LRN/ohlc/1d",
+   "role": "sample",
+   "symbol": "LRN"
+  },
+  {
+   "n": 13,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/WM/ohlc/1d",
+   "role": "sample",
+   "symbol": "WM"
+  },
+  {
+   "n": 14,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/BNL/ohlc/1d",
+   "role": "sample",
+   "symbol": "BNL"
+  },
+  {
+   "n": 15,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/TSLA/ohlc/1d",
+   "role": "sample",
+   "symbol": "TSLA"
+  },
+  {
+   "n": 16,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/ROG/ohlc/1d",
+   "role": "sample",
+   "symbol": "ROG"
+  },
+  {
+   "n": 17,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/SPFI/ohlc/1d",
+   "role": "sample",
+   "symbol": "SPFI"
+  },
+  {
+   "n": 18,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/FFIV/ohlc/1d",
+   "role": "sample",
+   "symbol": "FFIV"
+  },
+  {
+   "n": 19,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/ESI/ohlc/1d",
+   "role": "sample",
+   "symbol": "ESI"
+  },
+  {
+   "n": 20,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/EXLS/ohlc/1d",
+   "role": "sample",
+   "symbol": "EXLS"
+  },
+  {
+   "n": 21,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/BRX/ohlc/1d",
+   "role": "sample",
+   "symbol": "BRX"
+  },
+  {
+   "n": 22,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/MUSA/ohlc/1d",
+   "role": "sample",
+   "symbol": "MUSA"
+  },
+  {
+   "n": 23,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/ZWS/ohlc/1d",
+   "role": "sample",
+   "symbol": "ZWS"
+  },
+  {
+   "n": 24,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/PI/ohlc/1d",
+   "role": "sample",
+   "symbol": "PI"
+  },
+  {
+   "n": 25,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/INBK/ohlc/1d",
+   "role": "sample",
+   "symbol": "INBK"
+  },
+  {
+   "n": 26,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/PFS/ohlc/1d",
+   "role": "sample",
+   "symbol": "PFS"
+  },
+  {
+   "n": 27,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/AVY/ohlc/1d",
+   "role": "sample",
+   "symbol": "AVY"
+  },
+  {
+   "n": 28,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/NVCR/ohlc/1d",
+   "role": "sample",
+   "symbol": "NVCR"
+  },
+  {
+   "n": 29,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/ALV/ohlc/1d",
+   "role": "sample",
+   "symbol": "ALV"
+  },
+  {
+   "n": 30,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/T/ohlc/1d",
+   "role": "sample",
+   "symbol": "T"
+  },
+  {
+   "n": 31,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/HAS/ohlc/1d",
+   "role": "sample",
+   "symbol": "HAS"
+  },
+  {
+   "n": 32,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/WT/ohlc/1d",
+   "role": "sample",
+   "symbol": "WT"
+  },
+  {
+   "n": 33,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/VRT/ohlc/1d",
+   "role": "sample",
+   "symbol": "VRT"
+  },
+  {
+   "n": 34,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/OTIS/ohlc/1d",
+   "role": "sample",
+   "symbol": "OTIS"
+  },
+  {
+   "n": 35,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/GE/ohlc/1d",
+   "role": "sample",
+   "symbol": "GE"
+  },
+  {
+   "n": 36,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/PRLB/ohlc/1d",
+   "role": "sample",
+   "symbol": "PRLB"
+  },
+  {
+   "n": 37,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/FTV/ohlc/1d",
+   "role": "sample",
+   "symbol": "FTV"
+  },
+  {
+   "n": 38,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/MO/ohlc/1d",
+   "role": "sample",
+   "symbol": "MO"
+  },
+  {
+   "n": 39,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/ICE/ohlc/1d",
+   "role": "sample",
+   "symbol": "ICE"
+  },
+  {
+   "n": 40,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/PCAR/ohlc/1d",
+   "role": "sample",
+   "symbol": "PCAR"
+  },
+  {
+   "n": 41,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/INCY/ohlc/1d",
+   "role": "sample",
+   "symbol": "INCY"
+  },
+  {
+   "n": 42,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/EDU/ohlc/1d",
+   "role": "sample",
+   "symbol": "EDU"
+  },
+  {
+   "n": 43,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/CNC/ohlc/1d",
+   "role": "sample",
+   "symbol": "CNC"
+  },
+  {
+   "n": 44,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/BLDR/ohlc/1d",
+   "role": "sample",
+   "symbol": "BLDR"
+  },
+  {
+   "n": 45,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/SW/ohlc/1d",
+   "role": "sample",
+   "symbol": "SW"
+  },
+  {
+   "n": 46,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/FRBT/ohlc/1d",
+   "role": "sample",
+   "symbol": "FRBT"
+  },
+  {
+   "n": 47,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/KVUE/ohlc/1d",
+   "role": "sample",
+   "symbol": "KVUE"
+  },
+  {
+   "n": 48,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/IDCC/ohlc/1d",
+   "role": "sample",
+   "symbol": "IDCC"
+  },
+  {
+   "n": 49,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/ALGM/ohlc/1d",
+   "role": "sample",
+   "symbol": "ALGM"
+  },
+  {
+   "n": 50,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/GNRC/ohlc/1d",
+   "role": "sample",
+   "symbol": "GNRC"
+  },
+  {
+   "n": 51,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/SHW/ohlc/1d",
+   "role": "sample",
+   "symbol": "SHW"
+  },
+  {
+   "n": 52,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/XLK/ohlc/1d",
+   "role": "sector_etf",
+   "symbol": "XLK"
+  },
+  {
+   "n": 53,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/XLF/ohlc/1d",
+   "role": "sector_etf",
+   "symbol": "XLF"
+  },
+  {
+   "n": 54,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/XLV/ohlc/1d",
+   "role": "sector_etf",
+   "symbol": "XLV"
+  },
+  {
+   "n": 55,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/XLY/ohlc/1d",
+   "role": "sector_etf",
+   "symbol": "XLY"
+  },
+  {
+   "n": 56,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/XLP/ohlc/1d",
+   "role": "sector_etf",
+   "symbol": "XLP"
+  },
+  {
+   "n": 57,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/XLE/ohlc/1d",
+   "role": "sector_etf",
+   "symbol": "XLE"
+  },
+  {
+   "n": 58,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/XLI/ohlc/1d",
+   "role": "sector_etf",
+   "symbol": "XLI"
+  },
+  {
+   "n": 59,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/XLB/ohlc/1d",
+   "role": "sector_etf",
+   "symbol": "XLB"
+  },
+  {
+   "n": 60,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/XLU/ohlc/1d",
+   "role": "sector_etf",
+   "symbol": "XLU"
+  },
+  {
+   "n": 61,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/XLRE/ohlc/1d",
+   "role": "sector_etf",
+   "symbol": "XLRE"
+  },
+  {
+   "n": 62,
+   "params": {
+    "end_date": "2026-10-29",
+    "limit": 2500,
+    "timeframe": "3Y"
+   },
+   "path": "/api/stock/XLC/ohlc/1d",
+   "role": "sector_etf",
+   "symbol": "XLC"
+  }
+ ],
+ "uw_rules": {
+  "adjustment": "NOT documented by the provider; no adjustment applied by us; splits/discontinuities are detected afterwards and the affected events flagged, never repaired",
+  "base": "https://api.unusualwhales.com",
+  "endpoint": "GET /api/stock/{ticker}/ohlc/1d",
+  "params": {
+   "end_date": "2026-10-29",
+   "limit": 2500,
+   "timeframe": "3Y"
+  },
+  "required_coverage_spy": {
+   "first_row_on_or_before": "2024-09-02",
+   "last_row_on_or_after": "2026-10-27"
+  },
+  "row_order": "oldest first (spec)",
+  "rows_kept": "all rows, with market_time; strict analysis uses market_time 'r' only (regular session)"
+ },
+ "version": "smv-h1b-1"
+}

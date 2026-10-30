@@ -1,0 +1,1166 @@
+[
+ {
+  "symbol": "ALGM",
+  "rows": 2062,
+  "market_time_counts": {
+   "pr": 563,
+   "po": 746,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "ALV",
+  "rows": 2185,
+  "market_time_counts": {
+   "pr": 705,
+   "po": 727,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "ATR",
+  "rows": 1585,
+  "market_time_counts": {
+   "po": 729,
+   "r": 753,
+   "pr": 103
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "AVY",
+  "rows": 1633,
+  "market_time_counts": {
+   "po": 738,
+   "r": 753,
+   "pr": 142
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "BLDR",
+  "rows": 2003,
+  "market_time_counts": {
+   "pr": 509,
+   "po": 741,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "BNL",
+  "rows": 1643,
+  "market_time_counts": {
+   "pr": 164,
+   "po": 726,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "BRX",
+  "rows": 1643,
+  "market_time_counts": {
+   "po": 732,
+   "r": 753,
+   "pr": 158
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "BY",
+  "rows": 1544,
+  "market_time_counts": {
+   "po": 731,
+   "r": 753,
+   "pr": 60
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "CNC",
+  "rows": 2021,
+  "market_time_counts": {
+   "pr": 521,
+   "po": 747,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": [
+   {
+    "from": "2025-07-01",
+    "to": "2025-07-02",
+    "ratio": 0.5963
+   }
+  ]
+ },
+ {
+  "symbol": "CSGP",
+  "rows": 1996,
+  "market_time_counts": {
+   "pr": 495,
+   "po": 748,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "EDU",
+  "rows": 1995,
+  "market_time_counts": {
+   "pr": 517,
+   "po": 725,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "ESI",
+  "rows": 1671,
+  "market_time_counts": {
+   "pr": 191,
+   "po": 727,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "EXLS",
+  "rows": 1832,
+  "market_time_counts": {
+   "pr": 333,
+   "po": 746,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "EXR",
+  "rows": 1621,
+  "market_time_counts": {
+   "po": 738,
+   "r": 753,
+   "pr": 130
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "FFIV",
+  "rows": 1770,
+  "market_time_counts": {
+   "pr": 271,
+   "po": 746,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "FRBT",
+  "rows": 201,
+  "market_time_counts": {
+   "pr": 6,
+   "po": 97,
+   "r": 98
+  },
+  "regular_days": 98,
+  "first": "2026-06-11",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 98,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "FSLR",
+  "rows": 2245,
+  "market_time_counts": {
+   "pr": 742,
+   "po": 750,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "FSUN",
+  "rows": 1101,
+  "market_time_counts": {
+   "po": 467,
+   "r": 563,
+   "pr": 71
+  },
+  "regular_days": 563,
+  "first": "2024-07-12",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 578,
+  "missing_sessions": 15,
+  "missing_list": [
+   "2024-07-16",
+   "2024-07-17",
+   "2024-07-18",
+   "2024-07-19",
+   "2024-07-22",
+   "2024-07-23",
+   "2024-07-24",
+   "2024-07-25",
+   "2024-07-26",
+   "2024-07-29",
+   "2024-07-30",
+   "2024-08-01"
+  ],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "FTV",
+  "rows": 1650,
+  "market_time_counts": {
+   "po": 745,
+   "r": 753,
+   "pr": 152
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "GE",
+  "rows": 2238,
+  "market_time_counts": {
+   "pr": 742,
+   "po": 743,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "GNRC",
+  "rows": 1901,
+  "market_time_counts": {
+   "pr": 414,
+   "po": 734,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "HAS",
+  "rows": 1860,
+  "market_time_counts": {
+   "pr": 360,
+   "po": 747,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "ICE",
+  "rows": 1808,
+  "market_time_counts": {
+   "pr": 308,
+   "po": 747,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "IDCC",
+  "rows": 1707,
+  "market_time_counts": {
+   "po": 741,
+   "r": 753,
+   "pr": 213
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "INBK",
+  "rows": 1451,
+  "market_time_counts": {
+   "po": 625,
+   "r": 753,
+   "pr": 73
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "INCY",
+  "rows": 1939,
+  "market_time_counts": {
+   "pr": 438,
+   "po": 748,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "KVUE",
+  "rows": 2140,
+  "market_time_counts": {
+   "po": 746,
+   "r": 753,
+   "pr": 641
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "LBRT",
+  "rows": 1954,
+  "market_time_counts": {
+   "pr": 469,
+   "po": 732,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "LRN",
+  "rows": 1757,
+  "market_time_counts": {
+   "po": 731,
+   "r": 753,
+   "pr": 273
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": [
+   {
+    "from": "2024-10-22",
+    "to": "2024-10-23",
+    "ratio": 1.3911
+   },
+   {
+    "from": "2025-10-28",
+    "to": "2025-10-29",
+    "ratio": 0.4563
+   }
+  ]
+ },
+ {
+  "symbol": "MO",
+  "rows": 2246,
+  "market_time_counts": {
+   "pr": 748,
+   "po": 745,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "MUSA",
+  "rows": 1632,
+  "market_time_counts": {
+   "po": 725,
+   "r": 753,
+   "pr": 154
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "NVCR",
+  "rows": 1987,
+  "market_time_counts": {
+   "pr": 495,
+   "po": 739,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": [
+   {
+    "from": "2024-11-29",
+    "to": "2024-12-02",
+    "ratio": 1.4895
+   }
+  ]
+ },
+ {
+  "symbol": "OTIS",
+  "rows": 1764,
+  "market_time_counts": {
+   "po": 746,
+   "r": 753,
+   "pr": 265
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "PCAR",
+  "rows": 2003,
+  "market_time_counts": {
+   "pr": 502,
+   "po": 748,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "PFS",
+  "rows": 1593,
+  "market_time_counts": {
+   "pr": 106,
+   "po": 734,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "PI",
+  "rows": 1751,
+  "market_time_counts": {
+   "pr": 264,
+   "po": 734,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "PRLB",
+  "rows": 1591,
+  "market_time_counts": {
+   "po": 731,
+   "r": 753,
+   "pr": 107
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": [
+   {
+    "from": "2024-10-31",
+    "to": "2024-11-01",
+    "ratio": 1.3869
+   }
+  ]
+ },
+ {
+  "symbol": "QCRH",
+  "rows": 1559,
+  "market_time_counts": {
+   "po": 732,
+   "r": 753,
+   "pr": 74
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "RDDT",
+  "rows": 1942,
+  "market_time_counts": {
+   "pr": 648,
+   "po": 639,
+   "r": 655
+  },
+  "regular_days": 655,
+  "first": "2024-03-21",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 655,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": [
+   {
+    "from": "2024-10-29",
+    "to": "2024-10-30",
+    "ratio": 1.4197
+   }
+  ]
+ },
+ {
+  "symbol": "ROG",
+  "rows": 1561,
+  "market_time_counts": {
+   "po": 728,
+   "r": 753,
+   "pr": 80
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "SHW",
+  "rows": 1786,
+  "market_time_counts": {
+   "pr": 295,
+   "po": 738,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "SPFI",
+  "rows": 1520,
+  "market_time_counts": {
+   "po": 720,
+   "r": 753,
+   "pr": 47
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "SPY",
+  "rows": 2258,
+  "market_time_counts": {
+   "pr": 753,
+   "po": 752,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "SW",
+  "rows": 1671,
+  "market_time_counts": {
+   "po": 572,
+   "r": 582,
+   "pr": 517
+  },
+  "regular_days": 582,
+  "first": "2024-07-08",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 582,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "T",
+  "rows": 2257,
+  "market_time_counts": {
+   "pr": 753,
+   "po": 751,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "TMUS",
+  "rows": 2187,
+  "market_time_counts": {
+   "pr": 687,
+   "po": 747,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "TSLA",
+  "rows": 2258,
+  "market_time_counts": {
+   "pr": 753,
+   "po": 752,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "VRT",
+  "rows": 2245,
+  "market_time_counts": {
+   "pr": 750,
+   "po": 742,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "WM",
+  "rows": 1965,
+  "market_time_counts": {
+   "pr": 472,
+   "po": 740,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "WT",
+  "rows": 1783,
+  "market_time_counts": {
+   "po": 730,
+   "r": 753,
+   "pr": 300
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "XLB",
+  "rows": 1932,
+  "market_time_counts": {
+   "pr": 449,
+   "po": 730,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "XLC",
+  "rows": 1906,
+  "market_time_counts": {
+   "pr": 429,
+   "po": 724,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "XLE",
+  "rows": 2247,
+  "market_time_counts": {
+   "pr": 748,
+   "po": 746,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "XLF",
+  "rows": 2253,
+  "market_time_counts": {
+   "pr": 750,
+   "po": 750,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "XLI",
+  "rows": 2080,
+  "market_time_counts": {
+   "pr": 592,
+   "po": 735,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "XLK",
+  "rows": 2240,
+  "market_time_counts": {
+   "pr": 743,
+   "po": 744,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "XLP",
+  "rows": 2116,
+  "market_time_counts": {
+   "pr": 625,
+   "po": 738,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "XLRE",
+  "rows": 2028,
+  "market_time_counts": {
+   "pr": 556,
+   "po": 719,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "XLU",
+  "rows": 2194,
+  "market_time_counts": {
+   "pr": 699,
+   "po": 742,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "XLV",
+  "rows": 2133,
+  "market_time_counts": {
+   "pr": 644,
+   "po": 736,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "XLY",
+  "rows": 2018,
+  "market_time_counts": {
+   "pr": 534,
+   "po": 731,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ },
+ {
+  "symbol": "ZWS",
+  "rows": 1566,
+  "market_time_counts": {
+   "pr": 82,
+   "po": 731,
+   "r": 753
+  },
+  "regular_days": 753,
+  "first": "2023-10-30",
+  "last": "2026-10-29",
+  "dup_regular_rows": 0,
+  "expected_sessions": 753,
+  "missing_sessions": 0,
+  "missing_list": [],
+  "non_trading_day_rows": [],
+  "jumps": []
+ }
+]

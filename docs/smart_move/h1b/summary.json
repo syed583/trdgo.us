@@ -1,0 +1,177 @@
+{
+ "requests": {
+  "uw_sent": 62,
+  "sec_sent": 48,
+  "stopped": null
+ },
+ "events": {
+  "dated_total": 477,
+  "past": 441,
+  "upcoming": 36,
+  "undated_rows_preserved": 11
+ },
+ "status_counts": {
+  "PENDING_REACTION": 4,
+  "GRADED": 434,
+  "PENDING_TIMING": 3
+ },
+ "graded": 434,
+ "direction_counts": {
+  "NEUTRAL": 33,
+  "SELL": 192,
+  "BUY": 209
+ },
+ "move_pct": {
+  "median_abs": 4.37,
+  "mean": 0.68,
+  "p10": -8.32,
+  "p90": 10.06
+ },
+ "provider_1d_vs_phase2a": {
+  "n": 434,
+  "same_sign": 434,
+  "median_abs_diff_pct_points": 0.0,
+  "within_0.15": 434,
+  "within_1.0": 434
+ },
+ "provider_definition_test": {
+  "BMO": {
+   "n": 221,
+   "A_phase2a": {
+    "median_abs_diff": 0.0,
+    "within_0.15": 221
+   },
+   "B_day_close_to_next_close": {
+    "n": 211,
+    "median_abs_diff": 4.822,
+    "within_0.15": 3
+   },
+   "C_prev_close_to_day_close": {
+    "n": 221,
+    "median_abs_diff": 0.003,
+    "within_0.15": 221
+   },
+   "D_prev_close_to_day_open": {
+    "n": 221,
+    "median_abs_diff": 2.751,
+    "within_0.15": 7
+   }
+  },
+  "AMC": {
+   "n": 213,
+   "A_phase2a": {
+    "median_abs_diff": 0.0,
+    "within_0.15": 213
+   },
+   "B_day_close_to_next_close": {
+    "n": 213,
+    "median_abs_diff": 0.003,
+    "within_0.15": 213
+   },
+   "C_prev_close_to_day_close": {
+    "n": 213,
+    "median_abs_diff": 4.535,
+    "within_0.15": 3
+   },
+   "D_day_close_to_next_open": {
+    "n": 213,
+    "median_abs_diff": 2.612,
+    "within_0.15": 8
+   }
+  }
+ },
+ "timing_vs_sec": {
+  "provider_label_consistent_with_sec_window": 406,
+  "provider_unknown": 3,
+  "inconsistent:AMC_vs_sec_OTHER_HOURS": 1,
+  "no_sec_2_02_match": 11,
+  "inconsistent:AMC_vs_sec_DURING_MARKET": 8,
+  "inconsistent:BMO_vs_sec_DURING_MARKET": 1,
+  "inconsistent:AMC_vs_sec_BMO": 1,
+  "inconsistent:BMO_vs_sec_AMC": 5,
+  "inconsistent:BMO_vs_sec_OTHER_HOURS": 5
+ },
+ "sec_evidence_tiers": {
+  "NOT_CONTRADICTED_AMC": 215,
+  "UNVERIFIED_LABEL_UNKNOWN": 3,
+  "SUPPORTS_BMO_ACCEPTED_BEFORE_OPEN": 211,
+  "UNVERIFIED_NO_SEC_2_02_MATCH": 11,
+  "UNINFORMATIVE_LATE_FILING": 1
+ },
+ "sec_offsets": {
+  "0": 409,
+  "1": 9,
+  "-1": 10,
+  "-3": 1
+ },
+ "sec_filings_coverage": {
+  "symbols_with_sec_data": 50,
+  "symbols_history_reaches_2024_10": 49,
+  "symbols_with_extra_history_pages": 33
+ },
+ "label_conflicts": 9,
+ "price": {
+  "symbols": 62,
+  "with_split_like_jump": [
+   "CNC",
+   "LRN",
+   "NVCR",
+   "PRLB",
+   "RDDT"
+  ],
+  "symbols_with_missing_sessions": [
+   [
+    "FSUN",
+    15
+   ]
+  ],
+  "symbols_first_row_after_2024-09-02": [
+   [
+    "FRBT",
+    "2026-06-11"
+   ]
+  ],
+  "dup_regular_rows_total": 0,
+  "market_time_counts_example": {
+   "pr": 563,
+   "po": 746,
+   "r": 753
+  },
+  "rows_example": 2062,
+  "row_keys": [
+   "close",
+   "date",
+   "high",
+   "low",
+   "market_time",
+   "open",
+   "total_volume",
+   "volume"
+  ]
+ },
+ "pit": {
+  "events_with_both_closes": 434,
+  "events_near_price_jump": 4,
+  "events_with_sec_match": 429,
+  "events_with_unknown_provider_label": 3
+ },
+ "strict_candidate_events": {
+  "count": 418,
+  "symbols": 49,
+  "by_kind": {
+   "AMC": 208,
+   "BMO": 210
+  },
+  "by_quarter": {
+   "2024Q4": 44,
+   "2025Q1": 47,
+   "2025Q2": 47,
+   "2025Q3": 47,
+   "2025Q4": 46,
+   "2026Q1": 47,
+   "2026Q2": 48,
+   "2026Q3": 49,
+   "2026Q4": 43
+  }
+ }
+}
