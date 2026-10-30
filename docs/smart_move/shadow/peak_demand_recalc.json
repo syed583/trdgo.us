@@ -1,0 +1,268 @@
+{
+ "method": "see module docstring",
+ "sample_seasons": {
+  "2024-Q4": {
+   "events": 49,
+   "active_days": 14,
+   "peak_day_events": 10
+  },
+  "2025-Q1": {
+   "events": 49,
+   "active_days": 20,
+   "peak_day_events": 5
+  },
+  "2025-Q2": {
+   "events": 49,
+   "active_days": 12,
+   "peak_day_events": 10
+  },
+  "2025-Q3": {
+   "events": 49,
+   "active_days": 14,
+   "peak_day_events": 12
+  },
+  "2025-Q4": {
+   "events": 49,
+   "active_days": 11,
+   "peak_day_events": 11
+  },
+  "2026-Q1": {
+   "events": 49,
+   "active_days": 18,
+   "peak_day_events": 6
+  },
+  "2026-Q2": {
+   "events": 49,
+   "active_days": 11,
+   "peak_day_events": 15
+  },
+  "2026-Q3": {
+   "events": 50,
+   "active_days": 13,
+   "peak_day_events": 11
+  },
+  "2026-Q4": {
+   "events": 48,
+   "active_days": 8,
+   "peak_day_events": 14
+  }
+ },
+ "scenarios": {
+  "N=590": {
+   "estimator_A_scaling": {
+    "peak_day_events_mean": 126,
+    "peak_day_events_range": [
+     60,
+     181
+    ],
+    "coverage_by_core_cap": {
+     "30": 0.528,
+     "70": 0.817,
+     "115": 0.953,
+     "170": 0.998,
+     "230": 1.0
+    },
+    "cap_for_80pct": 70,
+    "cap_for_95pct": 115
+   },
+   "estimator_B_symbol_bootstrap_95pct_interval": {
+    "peak_day_events": [
+     118,
+     168
+    ],
+    "coverage_by_core_cap": {
+     "30": [
+      0.428,
+      0.535
+     ],
+     "70": [
+      0.72,
+      0.853
+     ],
+     "115": [
+      0.88,
+      0.972
+     ],
+     "170": [
+      0.964,
+      1.0
+     ],
+     "230": [
+      0.992,
+      1.0
+     ]
+    }
+   },
+   "peak_requests_per_day_by_plan": {
+    "approved_30_full_capture_only": 564,
+    "core70+full0": 374,
+    "core115+full0": 599,
+    "core115+full30": 989,
+    "core170+full30": 1264
+   }
+  },
+  "N=878": {
+   "estimator_A_scaling": {
+    "peak_day_events_mean": 187,
+    "peak_day_events_range": [
+     90,
+     269
+    ],
+    "coverage_by_core_cap": {
+     "30": 0.404,
+     "70": 0.692,
+     "115": 0.846,
+     "170": 0.951,
+     "230": 0.992
+    },
+    "cap_for_80pct": 100,
+    "cap_for_95pct": 170
+   },
+   "estimator_B_symbol_bootstrap_95pct_interval": {
+    "peak_day_events": [
+     178,
+     248
+    ],
+    "coverage_by_core_cap": {
+     "30": [
+      0.312,
+      0.391
+     ],
+     "70": [
+      0.574,
+      0.706
+     ],
+     "115": [
+      0.753,
+      0.875
+     ],
+     "170": [
+      0.878,
+      0.97
+     ],
+     "230": [
+      0.947,
+      0.999
+     ]
+    }
+   },
+   "peak_requests_per_day_by_plan": {
+    "approved_30_full_capture_only": 564,
+    "core70+full0": 374,
+    "core115+full0": 599,
+    "core115+full30": 989,
+    "core170+full30": 1264
+   }
+  },
+  "N=1000": {
+   "estimator_A_scaling": {
+    "peak_day_events_mean": 213,
+    "peak_day_events_range": [
+     102,
+     306
+    ],
+    "coverage_by_core_cap": {
+     "30": 0.365,
+     "70": 0.639,
+     "115": 0.807,
+     "170": 0.918,
+     "230": 0.983
+    },
+    "cap_for_80pct": 115,
+    "cap_for_95pct": 195
+   },
+   "estimator_B_symbol_bootstrap_95pct_interval": {
+    "peak_day_events": [
+     204,
+     282
+    ],
+    "coverage_by_core_cap": {
+     "30": [
+      0.279,
+      0.351
+     ],
+     "70": [
+      0.527,
+      0.654
+     ],
+     "115": [
+      0.705,
+      0.833
+     ],
+     "170": [
+      0.837,
+      0.943
+     ],
+     "230": [
+      0.921,
+      0.989
+     ]
+    }
+   },
+   "peak_requests_per_day_by_plan": {
+    "approved_30_full_capture_only": 564,
+    "core70+full0": 374,
+    "core115+full0": 599,
+    "core115+full30": 989,
+    "core170+full30": 1264
+   }
+  },
+  "N=1200": {
+   "estimator_A_scaling": {
+    "peak_day_events_mean": 256,
+    "peak_day_events_range": [
+     122,
+     367
+    ],
+    "coverage_by_core_cap": {
+     "30": 0.318,
+     "70": 0.574,
+     "115": 0.752,
+     "170": 0.87,
+     "230": 0.949
+    },
+    "cap_for_80pct": 135,
+    "cap_for_95pct": 235
+   },
+   "estimator_B_symbol_bootstrap_95pct_interval": {
+    "peak_day_events": [
+     243,
+     341
+    ],
+    "coverage_by_core_cap": {
+     "30": [
+      0.241,
+      0.302
+     ],
+     "70": [
+      0.469,
+      0.588
+     ],
+     "115": [
+      0.643,
+      0.773
+     ],
+     "170": [
+      0.78,
+      0.9
+     ],
+     "230": [
+      0.874,
+      0.967
+     ]
+    }
+   },
+   "peak_requests_per_day_by_plan": {
+    "approved_30_full_capture_only": 564,
+    "core70+full0": 374,
+    "core115+full0": 599,
+    "core115+full30": 989,
+    "core170+full30": 1264
+   }
+  }
+ },
+ "arithmetic_check": {
+  "tiered_115_core_30_full": 989,
+  "approved_30_full": 564
+ }
+}

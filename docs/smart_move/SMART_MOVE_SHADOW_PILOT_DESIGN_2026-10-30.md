@@ -25,6 +25,8 @@ Design and preparation only. Roadmap committed locally as **`3533133a`** (hash a
 Findings that change the plan: (1) flow alerts, one-minute net premium and greek flow, analyst actions and headline timing are **stamped and reachable in the past** (>= 58 days / 15 months / 3 months for a liquid name), so F1, F4 (analysts) and F6 (timing) are not forward-only after all, but the consensus itself is; (2) volatility context and interpolated IV are available a year back (dated); (3) institutional ownership works with a date range and `filing_date`; (4) the dark-pool tape is too heavy for a full day; (5) sentiment is unusable; (6) provider "current" metadata inside historical rows (`next_earnings_date`) must be dropped; (7) everything is one liquid symbol; a thin-name check is a pre-activation gate.
 
 ## B. Revised provider cost and peak-demand budget
+> **ERRATUM 2026-10-31:** the row "warmed names, about 590" below treats the warmer's rolling 10-trading-day queue (343 / 446 / 594 names on different days) as a season size, and the "95 % at 115 per day" conclusion built on it is not supported for the 878-name universe. See `EVENT_COUNT_AND_PEAK_DEMAND_RECALC_2026-10-31.md` (about 85 % at 115 per day, about 170 per day needed for 95 %, 1,264 requests on peak days).
+
 Method: the 441 historical events of the 50-name pilot sample give the share of an earnings season falling on each day; scaled to the universe sizes below. **This is an estimate from a sample of 50 names**; the exact daily counts for the 878 current names can be read from the database with one read-only count query (not run).
 | Universe per season | Expected peak-day events | Coverage with the approved 30 events/day ceiling | Ceiling needed for 80 % / 95 % |
 |---|---|---|---|
