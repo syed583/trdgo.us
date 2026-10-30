@@ -1,0 +1,173 @@
+{
+ "F3": {
+  "consistency_signal": {
+   "max_points": 7,
+   "moderate_share": 0.625,
+   "points": {
+    "moderate": 3,
+    "strong": 7
+   },
+   "rule": "share UP >= strong -> bull 7; >= moderate -> bull 3; share DOWN >= strong -> bear 7; >= moderate -> bear 3",
+   "strong_share": 0.75
+  },
+  "direction": "the stock's own reaction tendency; not affected by the variant",
+  "history": "last up to 8 earlier reactions (at least 4 required, else MISSING), next-session close-to-close, flat band 0.5 percent",
+  "mean_signal": {
+   "max_points": 8,
+   "moderate_pct": 1.5,
+   "points": {
+    "moderate": 4,
+    "strong": 8
+   },
+   "rule": "mean > +strong -> bull 8; > +moderate -> bull 4; < -strong -> bear 8; < -moderate -> bear 4",
+   "strong_pct": 3.0
+  }
+ },
+ "F5": {
+  "direction": "positive values count toward bull in the continuation variant and toward bear in the contrarian variant; negative values the reverse",
+  "extension": {
+   "feature": "close against the 50-session mean",
+   "max_points": 3,
+   "points": {
+    "strong": 3
+   },
+   "strong_pct": 8.0
+  },
+  "relative_strength": {
+   "feature": "rel20 against SPY",
+   "max_points": 3,
+   "moderate_pct": 1.5,
+   "points": {
+    "moderate": 1,
+    "strong": 3
+   },
+   "strong_pct": 3.0
+  },
+  "trend": {
+   "feature": "ret20",
+   "max_points": 4,
+   "moderate_pct": 2.5,
+   "points": {
+    "moderate": 2,
+    "strong": 4
+   },
+   "strong_pct": 5.0
+  }
+ },
+ "F7": {
+  "enabled": true,
+  "max_points": 10,
+  "otherwise": "MISSING with the failing condition as reason",
+  "per_event_conditions": [
+   "context.date equals the expected session",
+   "iv_rank row updated_at (when present) is not after the cutoff",
+   "snapshot status OK and captured inside the window"
+  ],
+  "recorded_not_applied": "ratio of implied_move_perc to the mean absolute prior reaction is recorded for analysis only",
+  "signal": "option skew label of volatility/context captured in the window: call_rich -> bull 10, put_rich -> bear 10, flat -> available with 0 points",
+  "variant_effect": "none (the provider defined skew label is the same in both variants)",
+  "verification_scope": "verified on one liquid symbol (AAPL): volatility/context and interpolated-iv one year back, iv-rank stamped two years; thin names unverified, so a thin-name check in the first shadow week is an activation gate"
+ },
+ "F8": {
+  "direction": "as F5 (variant dependent)",
+  "market": {
+   "feature": "SPY ret20",
+   "max_points": 2,
+   "points": 2,
+   "strong_pct": 3.0
+  },
+  "sector": {
+   "feature": "sector ETF ret20 minus SPY ret20",
+   "max_points": 3,
+   "points": 3,
+   "strong_pct": 2.0
+  },
+  "sector_map": "symbol to sector SPDR from a frozen mapping file; an unmapped symbol has the sector sub-signal MISSING"
+ },
+ "approval": "activation of any capture or scoring job needs the written approvals listed in section F of the shadow pilot design document",
+ "decision": {
+  "BUY": "bull >= 14 and bear <= 4 and bull - bear >= 10",
+  "SELL": "bear >= 14 and bull <= 4 and bear - bull >= 10",
+  "bear_total": "sum of bear points",
+  "bull_total": "sum of bull points",
+  "coverage": "available weight / 40",
+  "min_coverage": 0.6,
+  "otherwise": "NO_TRADE",
+  "reason_codes": [
+   "RULE",
+   "INSUFFICIENT_COVERAGE",
+   "BELOW_MARGIN",
+   "CONFLICT",
+   "ILLIQUID_OR_UNKNOWN",
+   "UNKNOWN_TIMING",
+   "TIMING_CONTRADICTED",
+   "STALE_EVIDENCE",
+   "OUT_OF_WINDOW",
+   "NOT_TRADABLE",
+   "SUSPECT_WINDOW"
+  ],
+  "threshold_origin": "14 = 35 percent of 40, 4 = 10 percent, margin 10 = 25 percent: declared from the design, not tuned on any outcome"
+ },
+ "evaluation": {
+  "claims": "no accuracy claim from the shadow period alone",
+  "data": "shadow predictions only, graded afterwards from earnings_event_outcomes (next-session close-to-close, flat band 0.5 percent)",
+  "minimum_before_any_claim": "at least 100 decided calls per variant over at least 8 earnings weeks, and the evidence audit passed; below that only descriptive reporting",
+  "report": [
+   "decided calls and coverage",
+   "BUY, SELL, NO_TRADE by UP, FLAT, DOWN matrices",
+   "strict and direction-only hit rates with Wilson intervals (z 1.96 and Bonferroni z 2.2414)",
+   "net returns with week-cluster bootstrap",
+   "cost x0-x3 and slippage x1-x3 sensitivity",
+   "market-adjusted returns",
+   "benchmarks: always BUY, always SELL, momentum sign, previous-reaction sign, coverage-matched random"
+  ]
+ },
+ "event_eligibility": {
+  "cutoff": "earliest plausible release (event label nominal BMO 06:00 or AMC 16:00 America/New_York, or the SEC acceptance time if earlier) minus exactly 24 absolute hours, stored in UTC and America/New_York",
+  "entry": "market-on-close order at the base session close; the order deadline (10 minutes before that close) must be after the cutoff",
+  "liquidity_gate": "adv20 (20-session mean of close*volume) at least 20,000,000 USD, else NO_TRADE",
+  "timing": "EXPLORATORY_UNCERTAIN categories only (BMO with SEC acceptance before the open; AMC not contradicted); always labelled timing-uncertain",
+  "window": "capture and prediction between release minus 48 h and the cutoff; later predictions are out-of-window and excluded from evaluation"
+ },
+ "evidence_rules": {
+  "freshness": "a snapshot classified STALE_AGE is dropped (MISSING, reason STALE_AGE); LAST_SESSION_WEEKEND and LAST_SESSION_HOLIDAY evidence is used and labelled",
+  "missing": "missing evidence earns no points and does not count toward coverage; never neutral, never imputed",
+  "priors": "only reactions whose reaction close + 45 minutes precede the cutoff, recomputed from regular-session candles (never from provider move fields)",
+  "suspect_windows": "a close-to-close move above 25 percent on a session that is not a reaction session of the same symbol marks windows suspect; features whose window contains one are missing"
+ },
+ "factors": {
+  "F3_historical_reaction": 15,
+  "F5_price_technical": 10,
+  "F7_implied_volatility": 10,
+  "F8_sector_market": 5,
+  "not_scored_in_this_version": [
+   "F1 options flow (20)",
+   "F2 dark pool and institutional (15)",
+   "F4 estimate revisions (15)",
+   "F6 news, guidance, sentiment (10)"
+  ],
+  "note": "their evidence may be captured but contributes no points and no coverage; the 40-point score is never scaled to 100",
+  "total_max": 40
+ },
+ "frozen_at_utc": "2026-10-30T11:27:21+00:00",
+ "inputs_sha256": {
+  "baseline/prereg_baseline_v1.json": "9316348ba0d290342c7cefb551ec973b463029e1371a3db8a81a18493f8ff77e",
+  "verify/verify_manifest.json": "5a399388f43aae11583c75c6c274633cdb307ef7b997c8a4e2fee2ed6fed9220",
+  "verify/verify_results.json": "5dd5a94e38f82f47d0c294be4190239785ed2d13977b2d520608b3b0b6938d02"
+ },
+ "outputs": {
+  "per_prediction": "bull_points, bear_points, weight_available, weight_max=40, coverage, per-factor breakdown with snapshot ids and missing reasons, reason codes, variant, prereg hash, config hash",
+  "scaling": "FORBIDDEN: the partial score is never scaled to 100"
+ },
+ "purpose": "Initial 40-point Smart Move scoring version. SHADOW ONLY: no live signal, nothing shown to trading, no order. Prospective evaluation only: no historical, validation or test data of the baseline study is opened or used.",
+ "sealing": {
+  "baseline_validation_and_test": "remain sealed and are not used for this version",
+  "historical_backtest": "not performed for this version (inputs lack point-in-time proof)"
+ },
+ "variants": {
+  "continuation": "price and market directional sub-signals point in the direction of the move",
+  "contrarian": "the same sub-signals with BUY and SELL swapped",
+  "rule": "both variants are recorded for every event in parallel; neither is chosen as winner; direction is never flipped after seeing shadow results; Bonferroni (2 variants) applies to their intervals"
+ },
+ "version": "smv-score40-prereg-1"
+}

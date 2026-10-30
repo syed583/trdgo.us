@@ -1,0 +1,317 @@
+{
+ "base": "https://api.unusualwhales.com",
+ "budget": 15,
+ "evidence_classes": [
+  "VERIFIED_STAMPED_HISTORY (rows for the past date carry their own timestamps inside the requested window)",
+  "DATED_NOT_STAMPED (rows for the date but no per-row timestamp)",
+  "NOT_AVAILABLE_AS_OF (empty or outside the window)",
+  "TIER_BLOCKED (403)",
+  "UNVERIFIED (error or ambiguous)"
+ ],
+ "limitations": "one liquid symbol (AAPL) only: thin names are untested",
+ "provider": "Unusual Whales",
+ "requests": [
+  {
+   "expect": {
+    "fields_if_200": [
+     "date",
+     "horizon",
+     "eps_estimate_average",
+     "revenue_estimate_average"
+    ],
+    "question": "does the account include Advanced+ and is there an as-of date per row?",
+    "status": [
+     200,
+     403
+    ]
+   },
+   "id": "V1",
+   "n": 1,
+   "params": {},
+   "path": "/api/companies/AAPL/earnings-estimates",
+   "purpose": "plan tier for the estimates endpoint; fields; meaning of date/horizon"
+  },
+  {
+   "expect": {
+    "fields_if_200": [
+     "created_at",
+     "total_ask_side_prem",
+     "total_bid_side_prem",
+     "alert_rule",
+     "option_chain"
+    ],
+    "status": [
+     200
+    ],
+    "time_field": "created_at"
+   },
+   "id": "V2a",
+   "n": 2,
+   "params": {
+    "limit": 50,
+    "ticker_symbol": "AAPL"
+   },
+   "path": "/api/option-trades/flow-alerts",
+   "purpose": "latest flow alerts: created_at stamps, payload size"
+  },
+  {
+   "expect": {
+    "question": "rows only inside the window, or empty (not retained)?",
+    "status": [
+     200
+    ],
+    "time_field": "created_at",
+    "window_utc": [
+     "2026-09-02T00:00:00Z",
+     "2026-09-03T00:00:00Z"
+    ]
+   },
+   "id": "V2b",
+   "n": 3,
+   "params": {
+    "limit": 50,
+    "newer_than": "2026-09-02T00:00:00Z",
+    "older_than": "2026-09-03T00:00:00Z",
+    "ticker_symbol": "AAPL"
+   },
+   "path": "/api/option-trades/flow-alerts",
+   "purpose": "time filter honoured about 58 days back?"
+  },
+  {
+   "expect": {
+    "status": [
+     200
+    ],
+    "time_field": "tape_time|timestamp",
+    "window_day": "2026-09-02"
+   },
+   "id": "V3a",
+   "n": 4,
+   "params": {
+    "date": "2026-09-02"
+   },
+   "path": "/api/stock/AAPL/net-prem-ticks",
+   "purpose": "stamped intraday series for a past day"
+  },
+  {
+   "expect": {
+    "status": [
+     200
+    ],
+    "time_field": "timestamp",
+    "window_day": "2026-09-02"
+   },
+   "id": "V3b",
+   "n": 5,
+   "params": {
+    "date": "2026-09-02"
+   },
+   "path": "/api/stock/AAPL/greek-flow",
+   "purpose": "per-minute greek flow for a past day"
+  },
+  {
+   "expect": {
+    "status": [
+     200
+    ],
+    "time_field": "hr_min",
+    "window_day": "2026-09-02"
+   },
+   "id": "V3c",
+   "n": 6,
+   "params": {
+    "date": "2026-09-02"
+   },
+   "path": "/api/stock/AAPL/options-pulse",
+   "purpose": "Nasdaq Options Pulse intraday series for a past day"
+  },
+  {
+   "expect": {
+    "fields_if_200": [
+     "report_date",
+     "filing_date",
+     "units_change"
+    ],
+    "question": "non-empty, and filing_date later than report_date?",
+    "status": [
+     200
+    ]
+   },
+   "id": "V4",
+   "n": 7,
+   "params": {
+    "end_date": "2025-10-31",
+    "limit": 20,
+    "start_date": "2025-09-01"
+   },
+   "path": "/api/institution/AAPL/ownership",
+   "purpose": "institutional ownership by report-date range; filing_date vs report_date"
+  },
+  {
+   "expect": {
+    "reference_first_page_range": [
+     "2026-10-06T12:10:00Z",
+     "2026-10-29T17:17:00Z"
+    ],
+    "status": [
+     200
+    ],
+    "time_field": "created_at"
+   },
+   "id": "V5a",
+   "n": 8,
+   "params": {
+    "limit": 100,
+    "page": 1,
+    "ticker": "AAPL"
+   },
+   "path": "/api/news/headlines",
+   "purpose": "headline depth: second page"
+  },
+  {
+   "expect": {
+    "status": [
+     200
+    ],
+    "time_field": "created_at"
+   },
+   "id": "V5b",
+   "n": 9,
+   "params": {
+    "limit": 100,
+    "page": 2,
+    "ticker": "AAPL"
+   },
+   "path": "/api/news/headlines",
+   "purpose": "headline depth: third page"
+  },
+  {
+   "expect": {
+    "fields_if_200": [
+     "iv30",
+     "iv_rank",
+     "iv_percentile",
+     "skew",
+     "term_structure",
+     "date"
+    ],
+    "status": [
+     200
+    ],
+    "window_day": "2025-10-01"
+   },
+   "id": "V6a",
+   "n": 10,
+   "params": {
+    "date": "2025-10-01"
+   },
+   "path": "/api/stock/AAPL/volatility/context",
+   "purpose": "dated volatility context one year back (iv30, rank, skew, implied move)"
+  },
+  {
+   "expect": {
+    "fields_if_200": [
+     "date",
+     "days",
+     "implied_move_perc",
+     "volatility"
+    ],
+    "status": [
+     200
+    ],
+    "window_day": "2025-10-01"
+   },
+   "id": "V6b",
+   "n": 11,
+   "params": {
+    "date": "2025-10-01"
+   },
+   "path": "/api/stock/AAPL/interpolated-iv",
+   "purpose": "dated interpolated IV one year back"
+  },
+  {
+   "expect": {
+    "status": [
+     200
+    ]
+   },
+   "id": "V7a",
+   "n": 12,
+   "params": {
+    "date": "2026-09-02"
+   },
+   "path": "/api/darkpool/AAPL/price-levels",
+   "purpose": "dark-pool price-level concentration for a past day"
+  },
+  {
+   "expect": {
+    "status": [
+     200
+    ],
+    "time_field": "executed_at",
+    "window_utc": [
+     "2026-09-02T14:30:00Z",
+     "2026-09-02T15:30:00Z"
+    ]
+   },
+   "id": "V7b",
+   "n": 13,
+   "params": {
+    "date": "2026-09-02",
+    "limit": 500,
+    "newer_than": "2026-09-02T14:30:00Z",
+    "older_than": "2026-09-02T15:30:00Z"
+   },
+   "path": "/api/darkpool/AAPL",
+   "purpose": "one-hour window of prints: window filter and prints per hour (cost of a full day)"
+  },
+  {
+   "expect": {
+    "fields_if_200": [
+     "timestamp",
+     "action",
+     "firm",
+     "target",
+     "recommendation"
+    ],
+    "status": [
+     200
+    ],
+    "time_field": "timestamp"
+   },
+   "id": "V8a",
+   "n": 14,
+   "params": {
+    "limit": 100,
+    "ticker": "AAPL"
+   },
+   "path": "/api/screener/analysts",
+   "purpose": "latest analyst actions: timestamp, target, firm"
+  },
+  {
+   "expect": {
+    "status": [
+     200
+    ],
+    "time_field": "timestamp",
+    "window_before_utc": "2025-10-01T00:00:00Z"
+   },
+   "id": "V8b",
+   "n": 15,
+   "params": {
+    "limit": 100,
+    "older_than": "2025-10-01T00:00:00Z",
+    "ticker": "AAPL"
+   },
+   "path": "/api/screener/analysts",
+   "purpose": "analyst depth one year back"
+  }
+ ],
+ "stop_rules": [
+  "401 or 429 stops the run",
+  "3 consecutive failures stop the run",
+  "no retries; at most 15 requests"
+ ],
+ "symbol": "AAPL",
+ "version": "smv-verify-1"
+}

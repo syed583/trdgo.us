@@ -1,0 +1,925 @@
+{
+ "manifest_sha256": "5a399388f43aae11583c75c6c274633cdb307ef7b997c8a4e2fee2ed6fed9220",
+ "requests_sent": 15,
+ "budget": 15,
+ "stopped": null,
+ "results": [
+  {
+   "n": 1,
+   "id": "V1",
+   "path": "/api/companies/AAPL/earnings-estimates",
+   "params": {},
+   "requested_at_utc": "2026-10-30T11:20:12+00:00",
+   "status": 200,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "bytes": 16067,
+   "raw_sha256": "d83adf9ad81f4fe062d6957bdebccd326198f509bcfa24ff1e7e631daa95ffcc",
+   "summary": {
+    "top_level_keys": [
+     "data"
+    ],
+    "rows": 41,
+    "row_keys": [
+     "date",
+     "eps_estimate_analyst_count",
+     "eps_estimate_average",
+     "eps_estimate_high",
+     "eps_estimate_low",
+     "eps_estimate_revision_down_last_week",
+     "eps_estimate_revision_up_last_week",
+     "horizon",
+     "revenue_estimate_analyst_count",
+     "revenue_estimate_average",
+     "revenue_estimate_high",
+     "revenue_estimate_low"
+    ],
+    "time_fields": {
+     "date": {
+      "min": "2017-06-30",
+      "max": "2027-09-30",
+      "n": 41
+     }
+    },
+    "first_row_sample": {
+     "date": "2027-09-30",
+     "horizon": "fiscal year",
+     "eps_estimate_analyst_count": "40.0",
+     "eps_estimate_average": "9.5635",
+     "eps_estimate_high": "10.67",
+     "eps_estimate_low": "8.5",
+     "eps_estimate_revision_down_last_week": "None",
+     "eps_estimate_revision_up_last_week": "None",
+     "revenue_estimate_analyst_count": "40.0",
+     "revenue_estimate_average": "527257593570.0",
+     "revenue_estimate_high": "594863000000.0",
+     "revenue_estimate_low": "485693900000.0"
+    },
+    "checks": {
+     "expected_fields_present": {
+      "date": true,
+      "horizon": true,
+      "eps_estimate_average": true,
+      "revenue_estimate_average": true
+     }
+    }
+   }
+  },
+  {
+   "n": 2,
+   "id": "V2a",
+   "path": "/api/option-trades/flow-alerts",
+   "params": {
+    "limit": 50,
+    "ticker_symbol": "AAPL"
+   },
+   "requested_at_utc": "2026-10-30T11:20:15+00:00",
+   "status": 200,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "bytes": 54327,
+   "raw_sha256": "40c1b2ed21ace9c3510252e858f222d99ac94ff5c94b206c9e59aaa631b77598",
+   "summary": {
+    "top_level_keys": [
+     "data",
+     "newer_than",
+     "older_than"
+    ],
+    "rows": 50,
+    "row_keys": [
+     "alert_rule",
+     "all_opening_trades",
+     "ask",
+     "bid",
+     "created_at",
+     "delta",
+     "end_time",
+     "er_time",
+     "expiry",
+     "expiry_count",
+     "gamma",
+     "has_floor",
+     "has_multileg",
+     "has_singleleg",
+     "has_sweep",
+     "id",
+     "issue_type",
+     "iv",
+     "iv_end",
+     "iv_start",
+     "marketcap",
+     "next_earnings_date",
+     "open_interest",
+     "option_chain",
+     "price",
+     "rho",
+     "rule_id",
+     "sector",
+     "start_time",
+     "strike",
+     "theo",
+     "theta",
+     "ticker",
+     "total_ask_side_prem",
+     "total_bid_side_prem",
+     "total_premium",
+     "total_size",
+     "trade_count",
+     "type",
+     "underlying_price",
+     "vega",
+     "volume",
+     "volume_oi_ratio"
+    ],
+    "time_fields": {
+     "created_at": {
+      "min": "2026-10-29T19:49:47.519936Z",
+      "max": "2026-10-29T20:08:33.997815Z",
+      "n": 50
+     },
+     "end_time": {
+      "min": "1793303381400",
+      "max": "1793304507458",
+      "n": 50
+     },
+     "start_time": {
+      "min": "1793303379767",
+      "max": "1793304505952",
+      "n": 50
+     }
+    },
+    "first_row_sample": {
+     "total_premium": "10414",
+     "total_size": "208",
+     "end_time": "1793304507458",
+     "expiry_count": "1",
+     "volume_oi_ratio": "2.52979790875416",
+     "gamma": "0.07245346527276317",
+     "theta": "-0.608081686598883",
+     "ticker": "AAPL",
+     "delta": "0.21716835027691622",
+     "iv_end": "0.211182115467578",
+     "issue_type": "Common Stock",
+     "underlying_price": "351.99"
+    },
+    "checks": {
+     "expected_fields_present": {
+      "created_at": true,
+      "total_ask_side_prem": true,
+      "total_bid_side_prem": true,
+      "alert_rule": true,
+      "option_chain": true
+     }
+    }
+   }
+  },
+  {
+   "n": 3,
+   "id": "V2b",
+   "path": "/api/option-trades/flow-alerts",
+   "params": {
+    "limit": 50,
+    "newer_than": "2026-09-02T00:00:00Z",
+    "older_than": "2026-09-03T00:00:00Z",
+    "ticker_symbol": "AAPL"
+   },
+   "requested_at_utc": "2026-10-30T11:20:17+00:00",
+   "status": 200,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "bytes": 27662,
+   "raw_sha256": "12e4b261d9813493ac72b8fd6f6f47d6046648bef5761c56c044fa1e58a3e908",
+   "summary": {
+    "top_level_keys": [
+     "data",
+     "newer_than",
+     "older_than"
+    ],
+    "rows": 28,
+    "row_keys": [
+     "alert_rule",
+     "all_opening_trades",
+     "ask",
+     "bid",
+     "created_at",
+     "delta",
+     "end_time",
+     "er_time",
+     "expiry",
+     "expiry_count",
+     "gamma",
+     "has_floor",
+     "has_multileg",
+     "has_singleleg",
+     "has_sweep",
+     "id",
+     "issue_type",
+     "iv",
+     "iv_end",
+     "iv_start",
+     "marketcap",
+     "next_earnings_date",
+     "open_interest",
+     "option_chain",
+     "price",
+     "rho",
+     "rule_id",
+     "sector",
+     "start_time",
+     "strike",
+     "theo",
+     "theta",
+     "ticker",
+     "total_ask_side_prem",
+     "total_bid_side_prem",
+     "total_premium",
+     "total_size",
+     "trade_count",
+     "type",
+     "underlying_price",
+     "vega",
+     "volume",
+     "volume_oi_ratio"
+    ],
+    "time_fields": {
+     "created_at": {
+      "min": "2026-09-02T13:30:24.892312Z",
+      "max": "2026-09-02T19:51:42.925394Z",
+      "n": 28
+     },
+     "end_time": {
+      "min": "1788355816588",
+      "max": "1788378680746",
+      "n": 28
+     },
+     "start_time": {
+      "min": "1788355816483",
+      "max": "1788378680633",
+      "n": 28
+     }
+    },
+    "first_row_sample": {
+     "price": "1.52",
+     "strike": "322.5",
+     "theta": "None",
+     "marketcap": "5092055343800",
+     "has_sweep": "True",
+     "bid": "1.49",
+     "iv_end": "0.27580694788722",
+     "has_multileg": "False",
+     "rho": "None",
+     "has_singleleg": "True",
+     "start_time": "1788378680633",
+     "iv_start": "0.27580694788722"
+    },
+    "checks": {
+     "all_inside_window": true
+    }
+   }
+  },
+  {
+   "n": 4,
+   "id": "V3a",
+   "path": "/api/stock/AAPL/net-prem-ticks",
+   "params": {
+    "date": "2026-09-02"
+   },
+   "requested_at_utc": "2026-10-30T11:20:20+00:00",
+   "status": 200,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "bytes": 136670,
+   "raw_sha256": "3317e8dd17ef601d94bb9492afa51ed7c3bfd9489a4945fc72c9359230526d77",
+   "summary": {
+    "top_level_keys": [
+     "data"
+    ],
+    "rows": 390,
+    "row_keys": [
+     "call_volume",
+     "call_volume_ask_side",
+     "call_volume_bid_side",
+     "date",
+     "net_call_premium",
+     "net_call_volume",
+     "net_delta",
+     "net_put_premium",
+     "net_put_volume",
+     "put_volume",
+     "put_volume_ask_side",
+     "put_volume_bid_side",
+     "tape_time"
+    ],
+    "time_fields": {
+     "date": {
+      "min": "2026-09-02",
+      "max": "2026-09-02",
+      "n": 390
+     },
+     "tape_time": {
+      "min": "2026-09-02T13:30:00.000000Z",
+      "max": "2026-09-02T19:59:00.000000Z",
+      "n": 390
+     }
+    },
+    "first_row_sample": {
+     "date": "2026-09-02",
+     "call_volume": "24790",
+     "put_volume": "8134",
+     "call_volume_ask_side": "12136",
+     "call_volume_bid_side": "11149",
+     "put_volume_ask_side": "4483",
+     "put_volume_bid_side": "3231",
+     "tape_time": "2026-09-02T13:30:00.000000Z",
+     "net_call_volume": "987",
+     "net_call_premium": "905557.00",
+     "net_put_volume": "1252",
+     "net_put_premium": "639829.00"
+    },
+    "checks": {
+     "all_time_values_inside_requested_day_utc_plus_1": true
+    }
+   }
+  },
+  {
+   "n": 5,
+   "id": "V3b",
+   "path": "/api/stock/AAPL/greek-flow",
+   "params": {
+    "date": "2026-09-02"
+   },
+   "requested_at_utc": "2026-10-30T11:20:23+00:00",
+   "status": 200,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "bytes": 177737,
+   "raw_sha256": "d14735c01f181f4d3831483a057d2240f7158c0d86a03bbb8a7f5f0312da1ffc",
+   "summary": {
+    "top_level_keys": [
+     "data"
+    ],
+    "rows": 390,
+    "row_keys": [
+     "dir_delta_flow",
+     "dir_vega_flow",
+     "otm_dir_delta_flow",
+     "otm_dir_vega_flow",
+     "otm_total_delta_flow",
+     "otm_total_vega_flow",
+     "ticker",
+     "timestamp",
+     "total_delta_flow",
+     "total_vega_flow",
+     "transactions",
+     "volume"
+    ],
+    "time_fields": {
+     "timestamp": {
+      "min": "2026-09-02T13:30:00Z",
+      "max": "2026-09-02T19:59:00Z",
+      "n": 390
+     }
+    },
+    "first_row_sample": {
+     "timestamp": "2026-09-02T13:30:00Z",
+     "ticker": "AAPL",
+     "transactions": "6868",
+     "volume": "32924",
+     "dir_delta_flow": "-13031.731507942953409000",
+     "dir_vega_flow": "48373.9498786469042126100",
+     "otm_dir_delta_flow": "-35447.929509198269059000",
+     "otm_dir_vega_flow": "31429.9072794267999785100",
+     "otm_total_delta_flow": "311070.692537142459164200",
+     "otm_total_vega_flow": "216047.3303317587653216100",
+     "total_delta_flow": "647547.706798097886814200",
+     "total_vega_flow": "284252.3693423968246239100"
+    },
+    "checks": {
+     "all_time_values_inside_requested_day_utc_plus_1": true
+    }
+   }
+  },
+  {
+   "n": 6,
+   "id": "V3c",
+   "path": "/api/stock/AAPL/options-pulse",
+   "params": {
+    "date": "2026-09-02"
+   },
+   "requested_at_utc": "2026-10-30T11:20:25+00:00",
+   "status": 200,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "bytes": 5274,
+   "raw_sha256": "c0a63d10f4f1dfde28f6008d27f3c53883b7ad27f79e354b15854a93c22247b5",
+   "summary": {
+    "top_level_keys": [
+     "data",
+     "date"
+    ],
+    "rows": 39,
+    "row_keys": [
+     "call_txn",
+     "hr_min",
+     "intvl_sntm_score",
+     "put_txn",
+     "sntm_score",
+     "trd_dt",
+     "undly"
+    ],
+    "time_fields": {
+     "hr_min": {
+      "min": "0940",
+      "max": "1600",
+      "n": 39
+     }
+    },
+    "first_row_sample": {
+     "put_txn": "9563",
+     "call_txn": "18387",
+     "sntm_score": "0.32",
+     "trd_dt": "2026-09-02",
+     "undly": "AAPL",
+     "hr_min": "0940",
+     "intvl_sntm_score": "0.32"
+    },
+    "checks": {
+     "all_time_values_inside_requested_day_utc_plus_1": true
+    }
+   }
+  },
+  {
+   "n": 7,
+   "id": "V4",
+   "path": "/api/institution/AAPL/ownership",
+   "params": {
+    "end_date": "2025-10-31",
+    "limit": 20,
+    "start_date": "2025-09-01"
+   },
+   "requested_at_utc": "2026-10-30T11:20:28+00:00",
+   "status": 200,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "bytes": 9537,
+   "raw_sha256": "e3f53fd02be91ea56ebd425c8fdc6893ff130589595dc679a0ba66d22c49a3c9",
+   "summary": {
+    "top_level_keys": [
+     "data"
+    ],
+    "rows": 20,
+    "row_keys": [
+     "avg_price",
+     "cik",
+     "filing_date",
+     "first_buy",
+     "historical_units",
+     "inst_share_value",
+     "inst_value",
+     "name",
+     "people",
+     "report_date",
+     "shares_outstanding",
+     "short_name",
+     "tags",
+     "units",
+     "units_changed",
+     "value"
+    ],
+    "time_fields": {
+     "filing_date": {
+      "min": "2025-11-03",
+      "max": "2026-05-27",
+      "n": 20
+     },
+     "report_date": {
+      "min": "2025-09-30",
+      "max": "2025-09-30",
+      "n": 20
+     }
+    },
+    "first_row_sample": {
+     "name": "VANGUARD GROUP INC",
+     "value": "356336138233",
+     "units": "1399427162",
+     "tags": "[]",
+     "cik": "0000102909",
+     "avg_price": "38.18",
+     "filing_date": "2025-11-07",
+     "short_name": "Vanguard",
+     "report_date": "2025-09-30",
+     "shares_outstanding": "14594180000",
+     "people": "[]",
+     "historical_units": "[1399427162, 1415932804, 1400790809, 139"
+    },
+    "checks": {
+     "expected_fields_present": {
+      "report_date": true,
+      "filing_date": true,
+      "units_change": false
+     }
+    }
+   }
+  },
+  {
+   "n": 8,
+   "id": "V5a",
+   "path": "/api/news/headlines",
+   "params": {
+    "limit": 100,
+    "page": 1,
+    "ticker": "AAPL"
+   },
+   "requested_at_utc": "2026-10-30T11:20:33+00:00",
+   "status": 200,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "bytes": 11035,
+   "raw_sha256": "b0a55256ac22f96ce414c453261ff6cc215486473a98588dd47a50cad5cb3183",
+   "summary": {
+    "top_level_keys": [
+     "data"
+    ],
+    "rows": 29,
+    "row_keys": [
+     "created_at",
+     "headline",
+     "is_major",
+     "meta",
+     "sentiment",
+     "source",
+     "tags",
+     "tickers"
+    ],
+    "time_fields": {
+     "created_at": {
+      "min": "2026-07-30T17:52:44Z",
+      "max": "2026-08-26T07:50:57Z",
+      "n": 29
+     }
+    },
+    "first_row_sample": {
+     "meta": "{'AAPL': {'curr': {'c': '309.2', 'date':",
+     "source": "Tradex",
+     "created_at": "2026-08-26T07:50:57Z",
+     "tags": "[]",
+     "tickers": "['AAPL']",
+     "headline": "Apple\u2019s $AAPL iPhone 17 was the world\u2019s ",
+     "is_major": "True",
+     "sentiment": "neutral"
+    },
+    "checks": {}
+   }
+  },
+  {
+   "n": 9,
+   "id": "V5b",
+   "path": "/api/news/headlines",
+   "params": {
+    "limit": 100,
+    "page": 2,
+    "ticker": "AAPL"
+   },
+   "requested_at_utc": "2026-10-30T11:20:35+00:00",
+   "status": 200,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "bytes": 11,
+   "raw_sha256": "8fe32e407a1038ee38753b70e5374b3a46d6ae9d5f16cd5b73c53abaca8f5ed0",
+   "summary": {
+    "top_level_keys": [
+     "data"
+    ],
+    "rows": 0,
+    "object_keys": [
+     "data"
+    ],
+    "first_row_sample": {
+     "data": "[]"
+    },
+    "checks": {}
+   }
+  },
+  {
+   "n": 10,
+   "id": "V6a",
+   "path": "/api/stock/AAPL/volatility/context",
+   "params": {
+    "date": "2025-10-01"
+   },
+   "requested_at_utc": "2026-10-30T11:20:38+00:00",
+   "status": 200,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "bytes": 734,
+   "raw_sha256": "b9d76aedbf6c06b1e3e6c07c54bcc592bc3c71efe41b2698f1f3d12575929f78",
+   "summary": {
+    "top_level_keys": [
+     "data"
+    ],
+    "rows": 0,
+    "object_keys": [
+     "data"
+    ],
+    "first_row_sample": {
+     "data": "{'date': '2025-10-01', 'ticker': 'AAPL', 'skew': {'label': '"
+    },
+    "checks": {}
+   }
+  },
+  {
+   "n": 11,
+   "id": "V6b",
+   "path": "/api/stock/AAPL/interpolated-iv",
+   "params": {
+    "date": "2025-10-01"
+   },
+   "requested_at_utc": "2026-10-30T11:20:41+00:00",
+   "status": 200,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "bytes": 921,
+   "raw_sha256": "1d5713feb3e378570a09186184b026d4e2a9e923fc413ae791e201d93812600a",
+   "summary": {
+    "top_level_keys": [
+     "data"
+    ],
+    "rows": 9,
+    "row_keys": [
+     "date",
+     "days",
+     "implied_move_perc",
+     "percentile",
+     "volatility"
+    ],
+    "time_fields": {
+     "date": {
+      "min": "2025-10-01",
+      "max": "2025-10-01",
+      "n": 9
+     }
+    },
+    "first_row_sample": {
+     "date": "2025-10-01",
+     "days": "1",
+     "percentile": "0.18",
+     "volatility": "0.26",
+     "implied_move_perc": "0.012"
+    },
+    "checks": {
+     "all_time_values_inside_requested_day_utc_plus_1": true,
+     "expected_fields_present": {
+      "date": true,
+      "days": true,
+      "implied_move_perc": true,
+      "volatility": true
+     }
+    }
+   }
+  },
+  {
+   "n": 12,
+   "id": "V7a",
+   "path": "/api/darkpool/AAPL/price-levels",
+   "params": {
+    "date": "2026-09-02"
+   },
+   "requested_at_utc": "2026-10-30T11:20:43+00:00",
+   "status": 200,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "bytes": 1059,
+   "raw_sha256": "e7b3b0982b68e6a2379e3240711349254bb957562623647d0216d15102aa4994",
+   "summary": {
+    "top_level_keys": [
+     "data",
+     "date"
+    ],
+    "rows": 15,
+    "row_keys": [
+     "dark_pool_volume",
+     "price",
+     "regular_volume"
+    ],
+    "time_fields": {},
+    "first_row_sample": {
+     "price": "305.5",
+     "dark_pool_volume": "16",
+     "regular_volume": "0"
+    },
+    "checks": {}
+   }
+  },
+  {
+   "n": 13,
+   "id": "V7b",
+   "path": "/api/darkpool/AAPL",
+   "params": {
+    "date": "2026-09-02",
+    "limit": 500,
+    "newer_than": "2026-09-02T14:30:00Z",
+    "older_than": "2026-09-02T15:30:00Z"
+   },
+   "requested_at_utc": "2026-10-30T11:20:46+00:00",
+   "status": 200,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "bytes": 208460,
+   "raw_sha256": "373ec69c0817993095965730a292546d0064bfeb17ac098bd9430d8b4a9bc4e9",
+   "summary": {
+    "top_level_keys": [
+     "data"
+    ],
+    "rows": 500,
+    "row_keys": [
+     "canceled",
+     "executed_at",
+     "ext_hour_sold_codes",
+     "market_center",
+     "nbbo_ask",
+     "nbbo_ask_quantity",
+     "nbbo_bid",
+     "nbbo_bid_quantity",
+     "premium",
+     "price",
+     "sale_cond_codes",
+     "size",
+     "ticker",
+     "tracking_id",
+     "trade_code",
+     "trade_settlement",
+     "trf_executed_at",
+     "volume"
+    ],
+    "time_fields": {
+     "executed_at": {
+      "min": "2026-09-02T14:47:20Z",
+      "max": "2026-09-02T15:29:53Z",
+      "n": 500
+     },
+     "trf_executed_at": {
+      "min": "2026-09-02T14:47:20Z",
+      "max": "2026-09-02T15:29:53Z",
+      "n": 500
+     }
+    },
+    "first_row_sample": {
+     "size": "425",
+     "ticker": "AAPL",
+     "price": "325.9953",
+     "volume": "11333884",
+     "executed_at": "2026-09-02T15:29:53Z",
+     "canceled": "False",
+     "premium": "138548.0025",
+     "sale_cond_codes": "average_price_trade",
+     "nbbo_bid": "326.39",
+     "nbbo_ask": "326.44",
+     "ext_hour_sold_codes": "None",
+     "market_center": "L"
+    },
+    "checks": {
+     "all_inside_window": true
+    }
+   }
+  },
+  {
+   "n": 14,
+   "id": "V8a",
+   "path": "/api/screener/analysts",
+   "params": {
+    "limit": 100,
+    "ticker": "AAPL"
+   },
+   "requested_at_utc": "2026-10-30T11:20:49+00:00",
+   "status": 200,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "bytes": 19741,
+   "raw_sha256": "d6714b7f45a80fe9667bbc6b38b3979ef78d85b20e47b9ba59a3ddb4006851a0",
+   "summary": {
+    "top_level_keys": [
+     "data"
+    ],
+    "rows": 100,
+    "row_keys": [
+     "action",
+     "analyst_name",
+     "firm",
+     "recommendation",
+     "sector",
+     "target",
+     "ticker",
+     "timestamp"
+    ],
+    "time_fields": {
+     "timestamp": {
+      "min": "2025-09-04T17:58:02.000000Z",
+      "max": "2026-10-20T18:01:21.000000Z",
+      "n": 100
+     }
+    },
+    "first_row_sample": {
+     "timestamp": "2026-10-20T18:01:21.000000Z",
+     "ticker": "AAPL",
+     "action": "maintained",
+     "target": "283.0000",
+     "sector": "Technology",
+     "recommendation": "hold",
+     "analyst_name": "Craig Moffett",
+     "firm": "MoffettNathanson"
+    },
+    "checks": {
+     "expected_fields_present": {
+      "timestamp": true,
+      "action": true,
+      "firm": true,
+      "target": true,
+      "recommendation": true
+     }
+    }
+   }
+  },
+  {
+   "n": 15,
+   "id": "V8b",
+   "path": "/api/screener/analysts",
+   "params": {
+    "limit": 100,
+    "older_than": "2025-10-01T00:00:00Z",
+    "ticker": "AAPL"
+   },
+   "requested_at_utc": "2026-10-30T11:20:51+00:00",
+   "status": 200,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "bytes": 19581,
+   "raw_sha256": "c21c62416be4b1f37a09b96e65c88139329cc1ea842e4a83d0e6c772b37f0d24",
+   "summary": {
+    "top_level_keys": [
+     "data"
+    ],
+    "rows": 100,
+    "row_keys": [
+     "action",
+     "analyst_name",
+     "firm",
+     "recommendation",
+     "sector",
+     "target",
+     "ticker",
+     "timestamp"
+    ],
+    "time_fields": {
+     "timestamp": {
+      "min": "2024-07-18T00:29:33.000000Z",
+      "max": "2025-09-26T16:00:12.000000Z",
+      "n": 100
+     }
+    },
+    "first_row_sample": {
+     "timestamp": "2025-09-26T16:00:12.000000Z",
+     "ticker": "AAPL",
+     "action": "maintained",
+     "target": "290.0000",
+     "sector": "Technology",
+     "recommendation": "buy",
+     "analyst_name": "Amit Daryanani",
+     "firm": "Evercore ISI Group"
+    },
+    "checks": {
+     "all_before_cutoff": true
+    }
+   }
+  }
+ ]
+}
