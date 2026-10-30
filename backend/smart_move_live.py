@@ -254,6 +254,7 @@ class RefreshService:
         self._last_manual = None
         self._thread = None
         self._stop = threading.Event()
+        self.focus = None                       # optional set of symbols: when set, evidence is collected only for these (a supervised run)
         self.gov = self._new_governor()
         self._seed_counts()
 
@@ -403,12 +404,16 @@ class RefreshService:
         out = []
         for sym, pairs in self._calobs().items():
             ev = cc.evaluate(sym, [o for o, _ in pairs], now, now.astimezone(co.ET).date())
-            if not ev["eligible_for_shadow"]:
+            if not ev["eligible_for_shadow"] or (self.focus is not None and sym not in self.focus):
                 continue
             plan = co.plan_event(ev["event_date"], ev["kind"])
             if plan["window_start_utc"] <= now <= plan["cutoff_utc"]:
                 sector = next((r["sector"] for _, r in pairs if r.get("sector")), None)
-                out.append({"symbol": sym, "event_date": ev["event_date"], "kind": ev["kind"], "plan": plan, "sector": sector, "etf": SECTOR_ETF.get(sector)})
+                try:
+                    cap = max(float(r["marketcap"]) for _, r in pairs if r.get("marketcap"))
+                except ValueError:
+                    cap = 0.0
+                out.append({"symbol": sym, "event_date": ev["event_date"], "kind": ev["kind"], "plan": plan, "sector": sector, "etf": SECTOR_ETF.get(sector), "marketcap": cap})
         out.sort(key=lambda e: (e["plan"]["cutoff_utc"], hashlib.sha256(e["symbol"].encode()).hexdigest()))
         return out
 
