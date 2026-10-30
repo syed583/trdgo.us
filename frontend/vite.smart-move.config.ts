@@ -7,11 +7,11 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: '127.0.0.1',
-    port: 5191,
+    port: Number(process.env.SM_VITE_PORT || 5191),
     strictPort: true,
     proxy: {
-      '/api': { target: 'http://127.0.0.1:8791', changeOrigin: true },
-      '/auth': { target: 'http://127.0.0.1:8791', changeOrigin: true },
+      '/api': { target: `http://127.0.0.1:${process.env.SM_API_PORT || 8791}`, changeOrigin: true },
+      '/auth': { target: `http://127.0.0.1:${process.env.SM_API_PORT || 8791}`, changeOrigin: true },
     },
   },
 })

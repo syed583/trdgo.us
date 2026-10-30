@@ -38,7 +38,7 @@ def test_meta_is_read_only_labelled_and_hash_checked():
     m = client.get("/api/smart-move/meta").json()
     assert m["status"] == "OK" and m["read_only"] is True and m["live_predictions"] is False and "No live signals" in m["disclaimer"]
     assert m["engine"]["prereg_sha256"] == "b25bd8d7889461561405ad8ec3c225b00a9202e9c75bf4b88e3e14ef7e31eb87" and m["engine"]["max_points"] == 40
-    assert m["pack"]["integrity_verified"] and set(m["datasets"]) == {"CURRENT_CALENDAR", "HISTORICAL_REPLAY", "SYNTHETIC"} and len(m["limitations"]) >= 6
+    assert m["pack"]["integrity_verified"] and set(m["datasets"]) == {"LIVE_CURRENT", "CURRENT_CALENDAR", "HISTORICAL_REPLAY", "SYNTHETIC"} and len(m["limitations"]) >= 6
     assert m["current_calendar"]["stale"] is False and 0 <= m["current_calendar"]["evidence_age_hours"] < 1 and m["current_calendar"]["symbols"] == 271
 
 

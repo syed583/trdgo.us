@@ -41,3 +41,6 @@ tools/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Smart Move live store (local, created by the refresh service)
+backend/.smart_move_live/

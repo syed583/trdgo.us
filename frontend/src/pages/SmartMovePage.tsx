@@ -1,16 +1,17 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AlertTriangle, Clock, FlaskConical, Info, RefreshCw, Search, ShieldAlert, X } from 'lucide-react';
+import { AlertTriangle, Clock, FlaskConical, Info, Power, RefreshCw, Search, ShieldAlert, X } from 'lucide-react';
 import type { PageContext } from '../App';
-import { smartMoveApi } from '../api/client';
+import { smartMoveApi, smartMoveLive } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import { PageHead } from './shared';
 import './smart-move.css';
 
-type Dataset = 'calendar' | 'replay' | 'synthetic';
+type Dataset = 'live' | 'calendar' | 'replay' | 'synthetic';
 
 const DATASETS: { id: Dataset; label: string; kind: string }[] = [
-  { id: 'calendar', label: 'Current calendar', kind: 'CURRENT_CALENDAR' },
+  { id: 'live', label: 'Live current', kind: 'LIVE_CURRENT' },
+  { id: 'calendar', label: 'Saved calendar (30 Oct)', kind: 'CURRENT_CALENDAR' },
   { id: 'replay', label: 'Historical replay', kind: 'HISTORICAL_REPLAY' },
   { id: 'synthetic', label: 'Synthetic examples', kind: 'SYNTHETIC' },
 ];
@@ -73,7 +74,7 @@ function State({ icon, title, children, action }: { icon: React.ReactNode; title
 
 export default function SmartMovePage({ ctx }: { ctx: PageContext }) {
   const [sp, setSp] = useSearchParams();
-  const dataset = (sp.get('set') as Dataset) || 'calendar';
+  const dataset = (sp.get('set') as Dataset) || 'live';
   const selected = sp.get('symbol') || '';
   const experiment = sp.get('exp') || 'primary';
   const setExperiment = (v: string) => pick('exp', v === 'primary' ? '' : v);
@@ -97,9 +98,21 @@ export default function SmartMovePage({ ctx }: { ctx: PageContext }) {
   }, [filters, dataset, experiment]);
 
   const list = useApi<any>(
-    (s) => (dataset === 'calendar' ? smartMoveApi.calendar(query, s) : dataset === 'replay' ? smartMoveApi.replay(query, s) : smartMoveApi.synthetic(query, s)),
-    [dataset, query],
+    (s) => (dataset === 'live' ? smartMoveLive.live(query, s) : dataset === 'calendar' ? smartMoveApi.calendar(query, s) : dataset === 'replay' ? smartMoveApi.replay(query, s) : smartMoveApi.synthetic(query, s)),
+    [dataset, query], { refreshMs: dataset === 'live' ? 30_000 : undefined },
   );
+  const feed = useApi<any>((s) => smartMoveLive.feed(s), [], { refreshMs: 15_000 });
+  const [action, setAction] = useState<string>('');
+  const doRefresh = async () => {
+    setAction('Refreshing…');
+    const out = await smartMoveLive.refresh('all');
+    setAction(out.status === 'OK' || out.status === 'STARTED' ? `Refresh ${String(out.status).toLowerCase()}${out.requests != null ? ` · ${out.requests} requests` : ''}` : `Refused: ${(out.blockers || []).map((b: any) => b.code).join(', ') || out.status}`);
+    feed.refresh(); list.refresh();
+  };
+  const doKill = async () => {
+    if (!window.confirm('Engage the kill switch? No further provider request can be sent until it is released locally.')) return;
+    await smartMoveLive.kill(); setAction('Kill switch engaged'); feed.refresh();
+  };
   const detail = useApi<any>((s) => (selected ? smartMoveApi.stock(selected, s) : Promise.resolve(null)), [selected]);
 
   const d = list.data;
@@ -120,7 +133,9 @@ export default function SmartMovePage({ ctx }: { ctx: PageContext }) {
       <div className="sm-banner" role="note">
         <ShieldAlert size={16} />
         <div>
-          <b>Not live signals.</b> This page shows what the frozen engine produced from saved evidence. It makes no prediction about the market and no accuracy claim.
+          {dataset === 'live'
+            ? <><b>Current-evidence view.</b> Signals appear only when the refresh service has collected fresh, complete evidence; otherwise you see NO TRADE and the exact blocker. Shadow research output, not trading advice, no accuracy claim.</>
+            : <><b>Not live signals.</b> This page shows what the frozen engine produced from saved evidence. It makes no prediction about the market and no accuracy claim.</>}
           {m?.engine?.prereg_sha256 && <span className="sm-hash"> Engine pre-registration {m.engine.prereg_sha256.slice(0, 12)}…</span>}
         </div>
       </div>
@@ -131,13 +146,16 @@ export default function SmartMovePage({ ctx }: { ctx: PageContext }) {
         </State>
       )}
 
-      {m && (
+      {m && dataset === 'calendar' && (
         <div className={`sm-fresh ${stale ? 'stale' : ''}`}>
           <Clock size={14} />
           <span>Current-calendar evidence saved {fmtTime(m.current_calendar.last_retrieved_utc)} — <b>{m.current_calendar.evidence_age_hours} h old</b>
             {stale ? ' · STALE: older than the 24 h calendar limit, so these dates and statuses must be refreshed before any use.' : ' · inside the freshness limit.'}</span>
         </div>
       )}
+
+      {feed.data && <FeedBar f={feed.data} action={action} onRefresh={doRefresh} onKill={doKill} />}
+      {feed.error && <div className="sm-fresh stale"><AlertTriangle size={14} /> Feed status unavailable: {feed.error}</div>}
 
       <div className="sm-tabs" role="tablist">
         {DATASETS.map((t) => (
@@ -203,6 +221,15 @@ export default function SmartMovePage({ ctx }: { ctx: PageContext }) {
 
       {d && !list.error && (
         <>
+          {dataset === 'live' && d.mode === 'SIMULATION' && (
+            <div className="sm-banner sim" role="alert"><AlertTriangle size={16} /><div><b>SIMULATED PROVIDER.</b> These companies, prices and signals are invented to exercise the pipeline. They are not market data and not signals.</div></div>
+          )}
+          {dataset === 'live' && d.blockers?.length > 0 && (
+            <div className="sm-blockers" role="status">
+              <div className="sm-blockers-title"><ShieldAlert size={14} /> {d.counts.total ? 'Why signals may be blocked' : 'Why there are no live signals'}</div>
+              <ul>{d.blockers.map((b: any, i: number) => <li key={i}><code>{b.code}</code> {b.message}</li>)}</ul>
+            </div>
+          )}
           <div className="sm-summary">
             <div className="sm-card"><div className="sm-card-k">Events shown</div><div className="sm-card-v">{d.counts.filtered}<small> of {d.counts.total}</small></div></div>
             {(['continuation', 'contrarian'] as const).map((v) => (
@@ -220,8 +247,8 @@ export default function SmartMovePage({ ctx }: { ctx: PageContext }) {
           </div>
 
           {rows.length === 0 ? (
-            <State icon={<Search size={20} />} title="No events match these filters" action={<button className="ghost-btn" onClick={clear}>Clear filters</button>}>
-              The saved dataset has {d.counts.total} events; none satisfy the current filters.
+            <State icon={<Search size={20} />} title={d.counts.total ? 'No events match these filters' : dataset === 'live' ? 'No live evidence collected yet' : 'No events'} action={d.counts.total ? <button className="ghost-btn" onClick={clear}>Clear filters</button> : undefined}>
+              {d.counts.total ? <>The dataset has {d.counts.total} events; none satisfy the current filters.</> : <>The live store is empty. No signal can exist until evidence has been collected by the refresh service.</>}
             </State>
           ) : (
             <div className="sm-table-wrap">
@@ -229,7 +256,7 @@ export default function SmartMovePage({ ctx }: { ctx: PageContext }) {
                 <thead>
                   <tr>
                     <th>Symbol</th><th>Company</th><th>Earnings</th><th>Time</th><th>Calendar status</th><th>Points /40</th>
-                    <th>Continuation</th><th>Contrarian</th><th>Missing evidence</th><th>Source · observed</th>
+                    <th>Continuation</th><th>Contrarian</th><th>Missing evidence</th>{dataset === 'live' && <th>Gate</th>}<th>Source · observed</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -248,8 +275,9 @@ export default function SmartMovePage({ ctx }: { ctx: PageContext }) {
                       <td><Variant v={r.engine.continuation} /></td>
                       <td><Variant v={r.engine.contrarian} /></td>
                       <td><Missing list={r.missing_factors} /></td>
+                      {dataset === 'live' && <td>{r.blocked_by?.length ? <div className="sm-chips">{r.blocked_by.slice(0, 3).map((b: string) => <span key={b} className="sm-chip">{b}</span>)}</div> : <span className="sm-none">open</span>}</td>}
                       <td className="sm-src">
-                        {r.dataset === 'CURRENT_CALENDAR' ? <>{r.calendar.vendors.map((x: string) => x.replace('_', ' ')).join(' + ')}<small>{fmtTime(r.calendar.calendar_observed_at)}</small></>
+                        {r.dataset === 'LIVE_CURRENT' ? <>{r.evidence_mode === 'SIMULATION' ? 'SIMULATED' : 'live store'}<small>{fmtTime(r.capture_ts || r.calendar.calendar_observed_at)}</small></> : r.dataset === 'CURRENT_CALENDAR' ? <>{r.calendar.vendors.map((x: string) => x.replace('_', ' ')).join(' + ')}<small>{fmtTime(r.calendar.calendar_observed_at)}</small></>
                           : r.dataset === 'HISTORICAL_REPLAY' ? <>saved candles<small>capture {fmtTime(r.observed_at)}</small></> : <>synthetic<small>invented</small></>}
                       </td>
                     </tr>
@@ -278,8 +306,33 @@ export default function SmartMovePage({ ctx }: { ctx: PageContext }) {
 
 function Detail({ data }: { data: any }) {
   const cur = data.current_calendar?.[0];
+  const live = data.live_current?.[0];
   return (
     <div className="sm-detail-body">
+      {live && (
+        <section>
+          <h3>Live current evidence <span className={`badge ${live.evidence_mode === 'SIMULATION' ? 'red' : 'blue'}`}>{live.evidence_mode === 'SIMULATION' ? 'SIMULATED PROVIDER · not real' : 'LIVE STORE'}</span></h3>
+          <div className="sm-two">
+            {(['continuation', 'contrarian'] as const).map((v) => (
+              <div key={v} className="sm-engine">
+                <div className="sm-engine-head"><b>{v}</b><Pill signal={live.engine[v].signal} /></div>
+                <div className="sm-engine-pts">bull {live.engine[v].bull} · bear {live.engine[v].bear} · available {live.engine[v].available}/40</div>
+                <div className="sm-codes">{live.engine[v].reason_codes.map((c: string) => <span key={c} className="sm-code">{c}</span>)}</div>
+                <table className="sm-mini"><tbody>{Object.entries(live.subscores?.[v] || {}).map(([k, x]: any) => (
+                  <tr key={k} className={x.available ? '' : 'miss'}><td>{k}</td><td>{x.available ? `${x.bull}↑ ${x.bear}↓ / ${x.weight}` : `missing${x.missing ? ': ' + x.missing : ''}`}</td></tr>
+                ))}</tbody></table>
+              </div>
+            ))}
+          </div>
+          {live.blocked_by?.length > 0 && <p className="sm-note warn">Blocked by: {live.blocked_by.join(', ')}</p>}
+          <h4>Evidence used (retrieval time · SHA-256)</h4>
+          <table className="sm-mini"><tbody>{(live.evidence || []).map((e: any, i: number) => (
+            <tr key={i}><td>{e.kind} {e.symbol}</td><td>{fmtTime(e.retrieved_at)}</td><td>{e.fresh ? 'fresh' : 'STALE'}</td><td className="mono">{e.raw_sha256.slice(0, 10)}…</td></tr>
+          ))}</tbody></table>
+          <ul className="sm-miss">{live.missing_factors.map((m: any, i: number) => <li key={i}><b>{m.factor}</b> {m.name} — {m.reason}</li>)}</ul>
+          <p className="sm-note"><Info size={12} /> Experimental SEC-derived F3: {live.exploratory?.sec_f3?.available ? 'available' : `not available (${live.exploratory?.sec_f3?.reason})`} — kept separate from the primary model.</p>
+        </section>
+      )}
       {cur ? (
         <section>
           <h3>Current calendar observation <span className="badge gray">CURRENT CALENDAR · not a prediction</span></h3>
@@ -333,6 +386,37 @@ function Detail({ data }: { data: any }) {
         </section>
       )}
       <section className="sm-lim"><h4>Limitations</h4><ul>{data.limitations.map((l: string, i: number) => <li key={i}>{l}</li>)}</ul></section>
+    </div>
+  );
+}
+
+
+function ago(iso?: string | null): string {
+  if (!iso) return 'never';
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 90) return `${mins} min ago`;
+  return `${(mins / 60).toFixed(1)} h ago`;
+}
+
+const FEED_TONE: Record<string, string> = { OK: 'green', REFRESHING: 'blue', DEGRADED: 'amber', STALE: 'red', NOT_AUTHORIZED: 'gray', DISABLED_KILL_SWITCH: 'gray', PROVIDER_STOPPED: 'red' };
+
+function FeedBar({ f, action, onRefresh, onKill }: { f: any; action: string; onRefresh: () => void; onKill: () => void }) {
+  const blocked = f.kill_switch || f.authorized_daily <= 0;
+  return (
+    <div className="sm-feed" aria-label="Feed status">
+      <div className="sm-feed-cell"><span>Feed status</span><b><span className={`badge ${FEED_TONE[f.status] || 'gray'}`}>{String(f.status).replace(/_/g, ' ')}</span></b>
+        <small>{f.mode === 'SIMULATION' ? 'simulated provider' : f.auto_refresh ? 'automatic refresh ON' : 'automatic refresh OFF'}</small></div>
+      <div className="sm-feed-cell"><span>Last updated</span><b>{f.last_updated ? fmtTime(f.last_updated) : 'never'}</b><small>{f.last_updated ? ago(f.last_updated) : 'no evidence collected'}</small></div>
+      <div className="sm-feed-cell"><span>Next refresh</span><b>{f.next_refresh ? fmtTime(f.next_refresh) : 'not scheduled'}</b><small title={f.next_refresh_note}>{f.next_refresh ? 'calendar due; evidence when stale' : 'blocked'}</small></div>
+      <div className="sm-feed-cell"><span>Requests today</span><b>{f.requests_today} <small>of {f.authorized_daily} authorized</small></b><small>ceiling {f.planning_ceiling} · this hour {f.requests_this_hour}</small></div>
+      <div className="sm-feed-cell"><span>Freshness</span>
+        <div className="sm-chips">{Object.entries(f.freshness || {}).map(([k, v]: any) => <span key={k} className={`sm-chip ${v.state === 'FRESH' ? 'ok' : v.state === 'PARTIAL' ? 'partial' : ''}`} title={`${k}: ${v.state}`}>{k} {String(v.state).toLowerCase()}</span>)}</div></div>
+      <div className="sm-feed-actions">
+        <button className="ghost-btn" onClick={onRefresh} disabled={blocked} title={blocked ? 'Refresh is disabled: kill switch engaged or no authorization' : 'Manual refresh under the same request limits'}><RefreshCw size={13} /> Refresh now</button>
+        <button className="ghost-btn danger" onClick={onKill} disabled={f.kill_switch} title="Engage the kill switch"><Power size={13} /> Kill switch</button>
+        {action && <span className="sm-action">{action}</span>}
+      </div>
     </div>
   );
 }

@@ -88,3 +88,14 @@
   .sm-two, .sm-kv { grid-template-columns: 1fr; }
   .sm-filters label, .sm-filters input, .sm-filters select { min-width: 0; width: 100%; }
 }
+
+.sm-banner.sim { background: var(--red-bg); border-color: var(--red); margin: 0 0 10px; } .sm-banner.sim svg { color: var(--red); }
+.sm-blockers { background: var(--panel); border: 1px solid var(--amber); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 12.5px; }
+.sm-blockers-title { display: flex; gap: 6px; align-items: center; font-weight: 700; margin-bottom: 6px; } .sm-blockers ul { margin: 0; padding-left: 18px; line-height: 1.55; color: var(--text-dim); }
+.sm-blockers code { background: var(--panel-3); border-radius: 4px; padding: 0 5px; font-size: 11px; color: var(--text); }
+.sm-feed { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: flex-start; padding: 10px 14px; margin-bottom: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
+.sm-feed-cell { display: flex; flex-direction: column; gap: 2px; min-width: 130px; } .sm-feed-cell span { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-mute); }
+.sm-feed-cell b { font-size: 13px; } .sm-feed-cell small { color: var(--text-mute); font-size: 11px; font-weight: 400; }
+.sm-feed-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .sm-action { font-size: 12px; color: var(--text-dim); }
+.ghost-btn.danger { color: var(--red); } .ghost-btn:disabled { opacity: .45; cursor: not-allowed; }
+.sm-chip.ok { background: var(--green-bg); color: var(--green); }

@@ -22,7 +22,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+import threading
+
+from fastapi import APIRouter, Body, HTTPException, Query
 
 ROOT = Path(__file__).resolve().parents[1]
 ENGINE_DIR = ROOT / "docs" / "smart_move" / "shadow_impl"
@@ -44,6 +46,7 @@ EXPERIMENTS = {
     "sec_moderate_f7": {"key": "B_moderate_adds_AMC_unconfirmed | F7_sensitivity_on_P2_events", "label": "Sensitivity: SEC-moderate + F7 (40 P2 events). Exploratory; F7 UNVERIFIED.", "primary": False, "exploratory": True, "f7": True},
 }
 DATASET_LABELS = {
+    "LIVE_CURRENT": "Current evidence from the live store (the refresh service). If this server runs the SIMULATED provider every row says so; if refresh is disabled the page shows the exact blockers instead of signals.",
     "CURRENT_CALENDAR": "Current calendar observation (saved). Not a prediction: no price evidence is saved for these names.",
     "HISTORICAL_REPLAY": "Historical replay of the frozen engine on saved development-period data. Not a live prediction; the event date and label are as stored after the fact.",
     "SYNTHETIC": "Synthetic example (invented data) that exercises the engine mechanics. Not real.",
@@ -368,12 +371,119 @@ def stock(symbol: str):
     reps = []
     for exp in EXPERIMENTS:
         reps += [r for r in _replay_rows(exp) if r["symbol"] == sym]
-    if not cur and not reps:
+    import smart_move_live as L
+    svc = live_service()
+    live_rows = [r for r in L.LiveScorer(svc).score_all(svc.clock.now()) if r["symbol"] == sym]
+    if not cur and not reps and not live_rows:
         raise HTTPException(status_code=404, detail={"status": "UNKNOWN_SYMBOL", "message": "%s is not in any saved Smart Move dataset" % sym})
     cur_out = []
     for r in cur:
         r2 = dict(r)
         r2["calendar"] = dict(r["calendar"], **_status_now(r, now))
         cur_out.append(r2)
-    return {"status": "OK", "symbol": sym, "source": "SAVED_EVIDENCE_PACK", "as_of": _iso(now), "current_calendar": cur_out, "historical_replay": reps,
+    return {"status": "OK", "symbol": sym, "source": "SAVED_EVIDENCE_PACK", "as_of": _iso(now), "current_calendar": cur_out, "live_current": live_rows, "historical_replay": reps,
             "labels": {"current_calendar": DATASET_LABELS["CURRENT_CALENDAR"], "historical_replay": DATASET_LABELS["HISTORICAL_REPLAY"]}, "limitations": LIMITATIONS}
+
+
+# ----------------------------------------------------------------------------- live layer (current evidence + governed refresh)
+_service = None
+_service_lock = threading.Lock()
+
+
+def _warmer_usage(ts):
+    """Requests the existing warmer used this hour, when it runs in this same process; 0 otherwise (the governor still keeps its reservation for the warmer)."""
+    try:
+        import local_warmer
+        return int(local_warmer._state.get("hour_calls", 0))
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def live_service():
+    """The one refresh service of this process. LIVE by default with the kill switch engaged and zero authorization; SMART_MOVE_MODE=SIMULATION attaches the fake provider."""
+    global _service
+    with _service_lock:
+        if _service is None:
+            import smart_move_live as L
+            mode = os.getenv("SMART_MOVE_MODE", "LIVE").upper()
+            cfg = L.LiveConfig(mode=mode)
+            fetcher, clock = None, L.SystemClock()
+            if mode == "SIMULATION":
+                import tempfile
+                import smart_move_sim as S
+                if os.getenv("SMART_MOVE_SIM_NOW"):
+                    clock = L.OffsetClock(datetime.fromisoformat(os.environ["SMART_MOVE_SIM_NOW"]))
+                cfg.store_dir = Path(os.getenv("SMART_MOVE_LIVE_DIR") or tempfile.mkdtemp(prefix="smart_move_sim_"))
+                cfg.refresh_enabled, cfg.spacing_s = True, 0.0
+                cfg.authorized_daily = int(os.getenv("SMART_MOVE_AUTHORIZED_DAILY") or 1700)
+                fetcher = S.SimulatedProvider(clock)
+            elif cfg.refresh_enabled and cfg.authorized_daily > 0:
+                fetcher = L.InfraFetcher()
+            _service = L.RefreshService(cfg, fetcher, clock, existing_usage_fn=_warmer_usage)
+            if os.getenv("SMART_MOVE_AUTO_REFRESH") == "1" and fetcher is not None and _service.enabled:
+                _service.start_auto()
+        return _service
+
+
+def reset_live_service():
+    global _service
+    with _service_lock:
+        if _service is not None:
+            _service.stop_auto()
+        _service = None
+
+
+@router.get("/feed")
+def feed():
+    return {"status": "OK", **live_service().feed()}
+
+
+@router.get("/live")
+def live(date_from: Optional[str] = None, date_to: Optional[str] = None, signal: Optional[str] = Query(None, pattern="^(BUY|SELL|NO_TRADE)$"), variant: Optional[str] = Query(None, pattern="^(any|continuation|contrarian)$"),
+         status: Optional[str] = None, missing: Optional[str] = Query(None, pattern="^F[0-9]+$"), q: Optional[str] = None, kind: Optional[str] = Query(None, pattern="^(BMO|AMC|UNKNOWN)$"),
+         limit: int = Query(500, ge=1, le=1000), offset: int = Query(0, ge=0)):
+    svc = live_service()
+    import smart_move_live as L
+    now = svc.clock.now()
+    rows = L.LiveScorer(svc).score_all(now)
+    f = _filter(rows, date_from=date_from, date_to=date_to, signal=signal, variant=variant, status=status, missing=missing, q=q, kind=kind)
+    fd = svc.feed()
+    blockers = list(fd["blockers"])
+    if not rows:
+        blockers.append({"code": "NO_LIVE_EVIDENCE", "message": "No calendar evidence has been collected by the refresh service yet, so there is nothing to score."})
+    elif not any(r["calendar"]["eligible_for_shadow"] for r in rows):
+        blockers.append({"code": "NO_ELIGIBLE_EVENT", "message": "None of the %d collected events is vendor-confirmed with known timing and a fresh calendar." % len(rows)})
+    if fd["freshness"]["calendar"]["state"] == "STALE":
+        blockers.append({"code": "STALE_CALENDAR", "message": "The newest calendar evidence is %s h old (limit %s h): new signals are blocked until it is refreshed." % (fd["freshness"]["calendar"]["age_hours"], fd["freshness"]["calendar"]["limit_hours"])})
+    stale_rows = [r for r in rows if r["blocked_by"]]
+    label = DATASET_LABELS["LIVE_CURRENT"] if svc.cfg.mode == "LIVE" else "SIMULATED PROVIDER: invented companies and prices in the real vendor formats. Not market data. Not real signals."
+    return {"status": "OK", "dataset": "LIVE_CURRENT", "label": label, "mode": svc.cfg.mode, "source": "LIVE_STORE", "as_of": _iso(now), "counts": {"total": len(rows), "filtered": len(f), "returned": len(_page(f, limit, offset)), "blocked": len(stale_rows)},
+            "summary": _summary(f), "blockers": blockers, "feed_status": fd["status"], "rows": _page(f, limit, offset)}
+
+
+@router.post("/refresh")
+def refresh(body: dict = Body(default={})):
+    """Manual refresh. Obeys exactly the same governor as the automatic one (kill switch, authorization, ceiling, shared hourly caps, spacing, retry limit) plus a minimum gap between manual runs."""
+    svc = live_service()
+    scope = body.get("scope", "all")
+    if scope not in ("all", "calendar", "prices"):
+        raise HTTPException(status_code=422, detail="scope must be all, calendar or prices")
+    mx = body.get("max_requests")
+    mx = int(mx) if mx is not None else None
+    now = svc.clock.now()
+    hard = [b for b in svc.blockers(now) if b["code"] in ("KILL_SWITCH", "NOT_AUTHORIZED", "NO_FETCHER", "PROVIDER_STOP")]
+    if hard:
+        svc.log("MANUAL_REFRESH_REFUSED", blockers=[b["code"] for b in hard])
+        raise HTTPException(status_code=403, detail={"status": "REFRESH_REFUSED", "blockers": hard, "requests_sent": 0})
+    if svc.cfg.mode == "SIMULATION":
+        return {"status": "OK", **svc.manual_refresh(scope, mx)}
+    threading.Thread(target=svc.manual_refresh, args=(scope, mx), daemon=True, name="smart-move-manual-refresh").start()
+    return {"status": "STARTED", "scope": scope, "note": "running in the background under the same request limits; watch /feed"}
+
+
+@router.post("/refresh/kill")
+def kill(body: dict = Body(default={})):
+    """Engages the kill switch. Releasing it is deliberately not possible from here: remove the KILL file / change the configuration locally."""
+    svc = live_service()
+    svc.engage_kill_switch(str(body.get("reason") or "manual via API"))
+    return {"status": "OK", "kill_switch": True, "note": "no further request can be sent until the switch is released locally"}

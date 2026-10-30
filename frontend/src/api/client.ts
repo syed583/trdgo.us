@@ -1017,3 +1017,19 @@ export const smartMoveApi = {
   synthetic: (query: string, s?: AbortSignal) => request<any>(`/api/smart-move/synthetic?${query}`, s),
   stock: (symbol: string, s?: AbortSignal) => request<any>(`/api/smart-move/stock/${encodeURIComponent(symbol)}`, s),
 };
+
+/** Smart Move live layer: feed status, current scoring and the governed manual refresh / kill switch (the only POST routes; they act on the local live store only). */
+async function smPost(path: string, body: unknown): Promise<any> {
+  const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body ?? {}),
+  });
+  const json = await response.json().catch(() => null);
+  if (!response.ok) return { status: json?.detail?.status || 'ERROR', http: response.status, ...(typeof json?.detail === 'object' ? json.detail : { message: String(json?.detail || '') }) };
+  return json;
+}
+export const smartMoveLive = {
+  feed: (s?: AbortSignal) => request<any>('/api/smart-move/feed', s),
+  live: (query: string, s?: AbortSignal) => request<any>(`/api/smart-move/live?${query}`, s),
+  refresh: (scope: string) => smPost('/api/smart-move/refresh', { scope }),
+  kill: () => smPost('/api/smart-move/refresh/kill', { reason: 'engaged from the Smart Move page' }),
+};

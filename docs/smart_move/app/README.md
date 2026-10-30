@@ -40,3 +40,18 @@ The top-right "FEED OFFLINE", the "view-only account" strip and any 404 in the b
 | Current calendar | the 271 symbols the three vendors returned on 2026-10-30 09:01–09:03 ET; calendar status by the vendor rules; engine run with the evidence that exists (no price history saved, so NO TRADE with reasons) | "Not a prediction" |
 | Historical replay | 186 development-period events replayed from saved candles; **primary** = pre-registered provider history, F7 absent; SEC-derived F3 and the F7 sensitivity are separate, flagged EXPLORATORY / F7 UNVERIFIED | "Not a live prediction" |
 | Synthetic examples | 28 invented events that exercise the engine mechanics | "Not real" |
+
+## Live current evidence and governed refresh (added)
+The default tab, **Live current**, scores events from the live store (`backend/.smart_move_live/`, git-ignored) with the same frozen engine, using only evidence the refresh service retrieved at or before the scoring time. It never uses the saved pack, the replay or the SEC-derived F3 as current evidence (SEC-F3 is shown as a separate, unavailable experimental line). F7 counts only when it was captured prospectively inside the event window; stale or missing evidence blocks BUY/SELL and the page lists the exact blocker.
+
+**Everything is OFF by default** (`feed` shows DISABLED KILL SWITCH, authorization 0, nothing scheduled):
+| Setting | Default | Meaning |
+|---|---|---|
+| `SMART_MOVE_REFRESH_ENABLED` | unset (kill switch engaged) | must be `1` to allow any request |
+| `SMART_MOVE_AUTHORIZED_DAILY` | `0` | requests per day the owner has approved; the 1,700 planning ceiling bounds it but is not a grant |
+| `SMART_MOVE_AUTO_REFRESH` | unset | `1` starts the background loop (every 5 min: calendar every 6 h, evidence when stale and a window is open) |
+| `SMART_MOVE_MODE` | `LIVE` | `SIMULATION` attaches the fake provider (every row labelled SIMULATED) |
+Controls: `POST /api/smart-move/refresh` (manual; max 50 requests, at most one per minute, same governor) and `POST /api/smart-move/refresh/kill` (engages the kill switch; releasing it is only possible locally by removing `KILL` from the live store or changing the settings). The governor enforces authorization, the daily ceiling, the shared 400/h live-hours cap with the warmer (300 reserved, the warmer's own counter is read when it runs in the same process), 2 s spacing, one retry, 429/401 stop for the day, and an append-only ledger (`requests.jsonl`, `ledger.jsonl`, `log.jsonl`).
+
+Demonstration without any provider: `SMART_MOVE_MODE=SIMULATION SMART_MOVE_SIM_NOW=2026-11-03T11:05:00+00:00 python -m uvicorn smart_move_local_server:app --port 8792` and `SM_VITE_PORT=5192 SM_API_PORT=8792 npx vite --config vite.smart-move.config.ts`, then open http://127.0.0.1:5192/smart-move and press "Refresh now" (two presses a minute apart complete the collection). `SMART_MOVE_CALENDAR_INTERVAL_H=0.08` makes the calendar go stale after about five minutes to show the stale state.
+Tests: `docs/smart_move/app/tests/test_live.py` (18) and `e2e_check.py --sim-page http://127.0.0.1:5192` (31 checks).
