@@ -1,0 +1,170 @@
+{
+ "note": "fake clock and fake provider; planning evidence only",
+ "runs": {
+  "warmer_at_cap_406_live": {
+   "authorized_daily": 1700,
+   "core_endpoint_calls": 1004,
+   "daily_authorization_respected": true,
+   "events_not_scheduled_capacity": 0,
+   "events_scheduled": 250,
+   "finished_at_utc": "2026-11-04T05:36:12+00:00",
+   "full_extra_calls": 780,
+   "full_tier_processed": 60,
+   "full_tier_scheduled": 60,
+   "hours_used": [
+    [
+     "2026-11-03 20",
+     697
+    ],
+    [
+     "2026-11-04 00",
+     1087
+    ]
+   ],
+   "ledger_counts": {
+    "WAIT_NEXT_HOUR": 14
+   },
+   "max_day_requests": 1087,
+   "max_live_hour_requests": 0,
+   "max_off_hour_requests": 1087,
+   "missed_deadline": 0,
+   "processed": 250,
+   "requests_per_et_day": {
+    "2026-11-03": 697,
+    "2026-11-04": 1087
+   },
+   "requests_total": 1784,
+   "shared_hourly_limits_respected": true,
+   "warmer_live_per_hour": 406,
+   "warmer_off_per_hour": 1000
+  },
+  "warmer_at_cap_authorized_1000": {
+   "authorized_daily": 1000,
+   "core_endpoint_calls": 1004,
+   "daily_authorization_respected": true,
+   "events_not_scheduled_capacity": 0,
+   "events_scheduled": 250,
+   "finished_at_utc": "2026-11-04T05:33:10+00:00",
+   "full_extra_calls": 494,
+   "full_tier_processed": 60,
+   "full_tier_scheduled": 60,
+   "hours_used": [
+    [
+     "2026-11-03 20",
+     502
+    ],
+    [
+     "2026-11-04 00",
+     996
+    ]
+   ],
+   "ledger_counts": {
+    "DENIED_CORE_RESERVATION": 286,
+    "WAIT_NEXT_HOUR": 14
+   },
+   "max_day_requests": 996,
+   "max_live_hour_requests": 0,
+   "max_off_hour_requests": 996,
+   "missed_deadline": 0,
+   "processed": 250,
+   "requests_per_et_day": {
+    "2026-11-03": 502,
+    "2026-11-04": 996
+   },
+   "requests_total": 1498,
+   "shared_hourly_limits_respected": true,
+   "warmer_live_per_hour": 406,
+   "warmer_off_per_hour": 1000
+  },
+  "warmer_idle_300_live": {
+   "authorized_daily": 1700,
+   "core_endpoint_calls": 1004,
+   "daily_authorization_respected": true,
+   "events_not_scheduled_capacity": 0,
+   "events_scheduled": 250,
+   "finished_at_utc": "2026-11-04T05:36:12+00:00",
+   "full_extra_calls": 780,
+   "full_tier_processed": 60,
+   "full_tier_scheduled": 60,
+   "hours_used": [
+    [
+     "2026-11-03 06",
+     87
+    ],
+    [
+     "2026-11-03 07",
+     85
+    ],
+    [
+     "2026-11-03 08",
+     97
+    ],
+    [
+     "2026-11-03 09",
+     100
+    ],
+    [
+     "2026-11-03 10",
+     100
+    ],
+    [
+     "2026-11-03 11",
+     100
+    ],
+    [
+     "2026-11-03 12",
+     100
+    ],
+    [
+     "2026-11-03 13",
+     28
+    ],
+    [
+     "2026-11-04 00",
+     1087
+    ]
+   ],
+   "ledger_counts": {
+    "WAIT_NEXT_HOUR": 7
+   },
+   "max_day_requests": 1087,
+   "max_live_hour_requests": 100,
+   "max_off_hour_requests": 1087,
+   "missed_deadline": 0,
+   "processed": 250,
+   "requests_per_et_day": {
+    "2026-11-03": 697,
+    "2026-11-04": 1087
+   },
+   "requests_total": 1784,
+   "shared_hourly_limits_respected": true,
+   "warmer_live_per_hour": 300,
+   "warmer_off_per_hour": 1000
+  },
+  "zero_authorization": {
+   "authorized_daily": 0,
+   "core_endpoint_calls": 0,
+   "daily_authorization_respected": true,
+   "events_not_scheduled_capacity": 0,
+   "events_scheduled": 250,
+   "finished_at_utc": "2026-11-04T05:00:00+00:00",
+   "full_extra_calls": 0,
+   "full_tier_processed": 0,
+   "full_tier_scheduled": 60,
+   "hours_used": [],
+   "ledger_counts": {
+    "MISSED_DEADLINE": 250
+   },
+   "max_day_requests": 0,
+   "max_live_hour_requests": 0,
+   "max_off_hour_requests": 0,
+   "missed_deadline": 250,
+   "processed": 0,
+   "requests_per_et_day": {},
+   "requests_total": 0,
+   "shared_hourly_limits_respected": true,
+   "warmer_live_per_hour": 406,
+   "warmer_off_per_hour": 1000
+  }
+ }
+}

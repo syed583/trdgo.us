@@ -1,0 +1,763 @@
+{
+ "P1_calendar_tier_A_minimum": {
+  "max_requests": 10,
+  "note": "dates are for a run on 2026-10-30; regenerate on the run day; Finviz ticker list comes from the VPS event list",
+  "requests": [
+   {
+    "id": "UW-001",
+    "max_requests": 2,
+    "method": "GET",
+    "pages_expected": "1 (2 if the first page returns 100 rows; then page=2, counted in the cap)",
+    "params": {
+     "date": "2026-10-30",
+     "limit": 100,
+     "page": 1
+    },
+    "path": "/api/earnings/premarket",
+    "provider": "UNUSUAL_WHALES",
+    "tier": "A_0_3_days"
+   },
+   {
+    "id": "UW-002",
+    "max_requests": 2,
+    "method": "GET",
+    "pages_expected": "1 (2 if the first page returns 100 rows; then page=2, counted in the cap)",
+    "params": {
+     "date": "2026-10-30",
+     "limit": 100,
+     "page": 1
+    },
+    "path": "/api/earnings/afterhours",
+    "provider": "UNUSUAL_WHALES",
+    "tier": "A_0_3_days"
+   },
+   {
+    "id": "UW-003",
+    "max_requests": 2,
+    "method": "GET",
+    "pages_expected": "1 (2 if the first page returns 100 rows; then page=2, counted in the cap)",
+    "params": {
+     "date": "2026-11-02",
+     "limit": 100,
+     "page": 1
+    },
+    "path": "/api/earnings/premarket",
+    "provider": "UNUSUAL_WHALES",
+    "tier": "A_0_3_days"
+   },
+   {
+    "id": "UW-004",
+    "max_requests": 2,
+    "method": "GET",
+    "pages_expected": "1 (2 if the first page returns 100 rows; then page=2, counted in the cap)",
+    "params": {
+     "date": "2026-11-02",
+     "limit": 100,
+     "page": 1
+    },
+    "path": "/api/earnings/afterhours",
+    "provider": "UNUSUAL_WHALES",
+    "tier": "A_0_3_days"
+   },
+   {
+    "id": "FZ-A",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "c": "1,68",
+     "t": "<=100 tickers of the tier-A events, from the VPS event list",
+     "v": 152
+    },
+    "path": "export.ashx",
+    "provider": "FINVIZ_ELITE",
+    "tier": "A_0_3_days"
+   },
+   {
+    "id": "FH-A",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "from": "2026-10-30",
+     "to": "2026-11-02"
+    },
+    "path": "/calendar/earnings",
+    "provider": "FINNHUB",
+    "tier": "A_0_3_days"
+   }
+  ]
+ },
+ "P2_recommended_40_event_context_sample": {
+  "max_requests": 40,
+  "requests": [
+   {
+    "event": {
+     "earnings_date": "2025-05-08",
+     "kind": "BMO",
+     "symbol": "ALGM"
+    },
+    "id": "CX-01",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-05-05"
+    },
+    "path": "/api/stock/ALGM/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-07-31",
+     "kind": "AMC",
+     "symbol": "RDDT"
+    },
+    "id": "CX-02",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-07-28"
+    },
+    "path": "/api/stock/RDDT/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-07-23",
+     "kind": "BMO",
+     "symbol": "OTIS"
+    },
+    "id": "CX-03",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-07-18"
+    },
+    "path": "/api/stock/OTIS/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-04-24",
+     "kind": "AMC",
+     "symbol": "BY"
+    },
+    "id": "CX-04",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-04-21"
+    },
+    "path": "/api/stock/BY/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-04-29",
+     "kind": "BMO",
+     "symbol": "MO"
+    },
+    "id": "CX-05",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-04-25"
+    },
+    "path": "/api/stock/MO/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-02-05",
+     "kind": "AMC",
+     "symbol": "MUSA"
+    },
+    "id": "CX-06",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-01-31"
+    },
+    "path": "/api/stock/MUSA/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-04-30",
+     "kind": "AMC",
+     "symbol": "BNL"
+    },
+    "id": "CX-07",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-04-25"
+    },
+    "path": "/api/stock/BNL/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-04-23",
+     "kind": "AMC",
+     "symbol": "INBK"
+    },
+    "id": "CX-08",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-04-17"
+    },
+    "path": "/api/stock/INBK/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-02-12",
+     "kind": "BMO",
+     "symbol": "GNRC"
+    },
+    "id": "CX-09",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-02-07"
+    },
+    "path": "/api/stock/GNRC/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-04-24",
+     "kind": "AMC",
+     "symbol": "SPFI"
+    },
+    "id": "CX-10",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-04-21"
+    },
+    "path": "/api/stock/SPFI/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-01-28",
+     "kind": "AMC",
+     "symbol": "FFIV"
+    },
+    "id": "CX-11",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-01-24"
+    },
+    "path": "/api/stock/FFIV/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-07-28",
+     "kind": "AMC",
+     "symbol": "WM"
+    },
+    "id": "CX-12",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-07-25"
+    },
+    "path": "/api/stock/WM/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-02-25",
+     "kind": "AMC",
+     "symbol": "EXR"
+    },
+    "id": "CX-13",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-02-21"
+    },
+    "path": "/api/stock/EXR/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-05-01",
+     "kind": "AMC",
+     "symbol": "RDDT"
+    },
+    "id": "CX-14",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-04-28"
+    },
+    "path": "/api/stock/RDDT/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-04-22",
+     "kind": "AMC",
+     "symbol": "ZWS"
+    },
+    "id": "CX-15",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-04-17"
+    },
+    "path": "/api/stock/ZWS/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2024-10-29",
+     "kind": "AMC",
+     "symbol": "EXR"
+    },
+    "id": "CX-16",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2024-10-25"
+    },
+    "path": "/api/stock/EXR/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-02-19",
+     "kind": "AMC",
+     "symbol": "ROG"
+    },
+    "id": "CX-17",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-02-14"
+    },
+    "path": "/api/stock/ROG/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-05-01",
+     "kind": "BMO",
+     "symbol": "BLDR"
+    },
+    "id": "CX-18",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-04-28"
+    },
+    "path": "/api/stock/BLDR/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-05-02",
+     "kind": "BMO",
+     "symbol": "PRLB"
+    },
+    "id": "CX-19",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-04-29"
+    },
+    "path": "/api/stock/PRLB/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-01-29",
+     "kind": "BMO",
+     "symbol": "TMUS"
+    },
+    "id": "CX-20",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-01-24"
+    },
+    "path": "/api/stock/TMUS/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2024-10-29",
+     "kind": "BMO",
+     "symbol": "INCY"
+    },
+    "id": "CX-21",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2024-10-25"
+    },
+    "path": "/api/stock/INCY/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-01-31",
+     "kind": "BMO",
+     "symbol": "WT"
+    },
+    "id": "CX-22",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-01-28"
+    },
+    "path": "/api/stock/WT/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-07-31",
+     "kind": "BMO",
+     "symbol": "IDCC"
+    },
+    "id": "CX-23",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-07-28"
+    },
+    "path": "/api/stock/IDCC/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-04-24",
+     "kind": "AMC",
+     "symbol": "TMUS"
+    },
+    "id": "CX-24",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-04-21"
+    },
+    "path": "/api/stock/TMUS/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2024-10-30",
+     "kind": "AMC",
+     "symbol": "MUSA"
+    },
+    "id": "CX-25",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2024-10-25"
+    },
+    "path": "/api/stock/MUSA/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2024-10-31",
+     "kind": "BMO",
+     "symbol": "ALGM"
+    },
+    "id": "CX-26",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2024-10-28"
+    },
+    "path": "/api/stock/ALGM/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-05-02",
+     "kind": "BMO",
+     "symbol": "WT"
+    },
+    "id": "CX-27",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-04-29"
+    },
+    "path": "/api/stock/WT/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-07-23",
+     "kind": "AMC",
+     "symbol": "TSLA"
+    },
+    "id": "CX-28",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-07-18"
+    },
+    "path": "/api/stock/TSLA/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-04-23",
+     "kind": "BMO",
+     "symbol": "T"
+    },
+    "id": "CX-29",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-04-17"
+    },
+    "path": "/api/stock/T/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-05-01",
+     "kind": "BMO",
+     "symbol": "ICE"
+    },
+    "id": "CX-30",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-04-28"
+    },
+    "path": "/api/stock/ICE/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-04-29",
+     "kind": "AMC",
+     "symbol": "FSLR"
+    },
+    "id": "CX-31",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-04-25"
+    },
+    "path": "/api/stock/FSLR/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-07-30",
+     "kind": "AMC",
+     "symbol": "ESI"
+    },
+    "id": "CX-32",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-07-25"
+    },
+    "path": "/api/stock/ESI/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-02-25",
+     "kind": "AMC",
+     "symbol": "FSLR"
+    },
+    "id": "CX-33",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-02-21"
+    },
+    "path": "/api/stock/FSLR/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-02-19",
+     "kind": "AMC",
+     "symbol": "BNL"
+    },
+    "id": "CX-34",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-02-14"
+    },
+    "path": "/api/stock/BNL/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-02-25",
+     "kind": "AMC",
+     "symbol": "EXLS"
+    },
+    "id": "CX-35",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-02-21"
+    },
+    "path": "/api/stock/EXLS/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-04-23",
+     "kind": "AMC",
+     "symbol": "PI"
+    },
+    "id": "CX-36",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-04-17"
+    },
+    "path": "/api/stock/PI/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-01-28",
+     "kind": "AMC",
+     "symbol": "LRN"
+    },
+    "id": "CX-37",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-01-24"
+    },
+    "path": "/api/stock/LRN/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-07-30",
+     "kind": "AMC",
+     "symbol": "PI"
+    },
+    "id": "CX-38",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-07-25"
+    },
+    "path": "/api/stock/PI/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2024-10-28",
+     "kind": "AMC",
+     "symbol": "BRX"
+    },
+    "id": "CX-39",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2024-10-25"
+    },
+    "path": "/api/stock/BRX/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   },
+   {
+    "event": {
+     "earnings_date": "2025-01-30",
+     "kind": "BMO",
+     "symbol": "AVY"
+    },
+    "id": "CX-40",
+    "max_requests": 1,
+    "method": "GET",
+    "params": {
+     "date": "2025-01-27"
+    },
+    "path": "/api/stock/AVY/volatility/context",
+    "provider": "UNUSUAL_WHALES",
+    "purpose": "F7 real-format and point-in-time calendar record (next earnings date and time as known on that session) for a dev event"
+   }
+  ],
+  "selection": "first 40 of the replay-B events with F3 and F5 usable, ordered by SHA-256('smv-live-verification-1|symbol|date'); chosen without any outcome"
+ },
+ "P3_optional_provider_history": {
+  "max_requests": 50,
+  "only_if": "the SEC-derived prior events (replay B) are not accepted as the F3 history source",
+  "requests": "50 x GET /api/earnings/{ticker}?limit=24 for the 50 H1a symbols, raw saved without dropping older rows"
+ },
+ "P4_optional_sector_mapping": {
+  "max_requests": 50,
+  "requests": "50 x one company-info request per symbol, or an owner-supplied mapping file at zero requests"
+ },
+ "manifest_version": 2,
+ "rules": {
+  "payloads": "stored raw in the hashed payload store before parsing",
+  "per_symbol_fallback": "none",
+  "retries": "at most 1 for transient errors",
+  "secrets": "never logged or written to the manifest",
+  "spacing_seconds": 2,
+  "stop_on": [
+   "401",
+   "403",
+   "429"
+  ]
+ },
+ "status": "PROPOSED - NOT EXECUTED - needs owner approval",
+ "totals": {
+  "all_options": 150,
+  "minimum_P1": 10,
+  "recommended_P1_P2": 50
+ }
+}
