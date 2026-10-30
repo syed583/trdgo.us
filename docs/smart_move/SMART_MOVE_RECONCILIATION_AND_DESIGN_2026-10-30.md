@@ -1,5 +1,7 @@
 # Smart Move - reconciliation with production coverage, Track F / Track H design, budgets (2026-10-30)
 
+> **ERRATUM 2026-10-30 (owner decisions):** SEC 8-K Item 2.02 acceptance time is a *filing acceptance time*, not a verified public release timestamp; wherever this document says "verified release time" read "SEC acceptance time (supporting evidence only)". Table prefix `sm_` is replaced by `smv_`; capture scheduling, pilot and evaluation rules are superseded by `SMART_MOVE_PILOT_AND_SCHEDULING_DESIGN_2026-10-30.md`.
+
 Design only. No code written, no migration, no provider request, no database access by me (the production numbers are the owner's pasted read-only audit), existing models and the pending 669217f3 deployment untouched. Code facts below come from reading `feature/smart-move` (= `fix/earnings-freshness-evidence` + docs): `earnings_outcomes.py`, `db_cache.py`, `models.py`, `models_snapshots.py`, `tab_b_service.py`, `earnings_signal_history_service.py`.
 
 ## 1. Reconciliation (what the production audit changed)
@@ -58,7 +60,7 @@ Limits to respect:
 Pattern: the verified append-only design of the evidence tables (content-addressed rows, UPDATE/DELETE/TRUNCATE rejected by triggers). Four tables, all names prefixed `sm_`, none touching existing tables:
 
 1. `sm_event_versions` (event registry; a correction is a new version, never an update)
-   `symbol, earnings_date, version, timing_label (BMO|AMC|UNKNOWN), timing_source (PROVIDER|SEC_8K|MANUAL), timing_status (PROVISIONAL|VERIFIED_SEC|UNKNOWN), release_ts_utc NULL, cutoff_ts_utc, sec_accession NULL, recorded_at` - PK (symbol, earnings_date, version).
+   `symbol, earnings_date, version, timing_label (BMO|AMC|UNKNOWN), timing_source (PROVIDER|SEC_ACCEPTANCE_TIME|MANUAL), timing_status (PROVISIONAL|SEC_ACCEPTANCE_TIME|UNKNOWN), release_ts_utc NULL, cutoff_ts_utc, sec_accession NULL, recorded_at` - PK (symbol, earnings_date, version).
 2. `sm_input_snapshots` (one row per category x source per capture, content-addressed)
    `snapshot_id = sha256(payload)`, `symbol, earnings_date, category (1-8), source_name (e.g. uw.iv_rank), request_hash (endpoint + parameters, no secrets), provider_as_of NULL, as_of_quality (PROVIDER_STAMPED | FETCH_TIME_ONLY | DERIVED_FROM_STAMPED), fetched_at_utc, status (OK | MISSING), missing_reason NULL, payload (compressed JSON of the exact reduced fields used), payload_bytes`.
    Missing-data reason codes (never an imputed value): `NO_SOURCE`, `NOT_AVAILABLE_AS_OF`, `PROVIDER_EMPTY`, `HTTP_ERROR`, `TIMEOUT`, `BUDGET_STOP`, `INSUFFICIENT_HISTORY`, `UNINFORMATIVE_FIELD`, `UNKNOWN_TIMING`, `FLAG_OFF`.
@@ -72,7 +74,7 @@ Per-category capture (reduced fields only): 1 unusual contracts (top 25 + totals
 
 ## 7. Track H backtest design (separate code, tables and reports from Track F; never pooled)
 * **Universe and events:** app universe (~590 names) x UW earnings history (<=24 quarters). Keep events with a known BMO/AMC label; classify each against the SEC Item 2.02 acceptance time (ET): 16:00-20:00 -> AMC, 04:00-09:30 -> BMO, otherwise AMBIGUOUS (excluded). Label/SEC mismatches excluded and counted.
-* **Cutoff:** T = release - 24 h, with release = SEC acceptance time when present (`VERIFIED_SEC`), else nominal BMO 06:00 / AMC 16:00 ET (`PROVISIONAL`). Results are reported separately for the two classes.
+* **Cutoff:** T = release - 24 h, with release = SEC acceptance time when present (`SEC_ACCEPTANCE_TIME`), else nominal BMO 06:00 / AMC 16:00 ET (`PROVISIONAL`). Results are reported separately for the two classes.
 * **Features at T (only data whose stamp <= T):** cat 3 prior events whose reaction close precedes T; cat 5 and 8 candles whose session had closed; cat 7 iv-rank row dated before T (its stamp is ~22:35Z of its own day); earnings-history `expected_move_perc` only for the event itself if it is published before T (otherwise excluded). Cat 1, 2, 4, 6 are absent, so coverage <= 40 %.
 * **Label:** the Phase 2A rule `reaction_window` (BMO previous close -> earnings-day close; AMC earnings-day close -> next close), regular-session closes, flat band +-0.5 % = no move. Named "next-session close-to-close" in every table. It is not an immediate reaction.
 * **Decision:** thresholds and margins pre-registered in a hash-stamped file before any result is seen; NO TRADE for low coverage, conflict, below margin, illiquid, unknown timing.
@@ -83,7 +85,7 @@ Per-category capture (reduced fields only): 1 unusual contracts (top 25 + totals
 ## 8. Storage, request budget, frequency (estimates; nothing implemented)
 **Track F storage (compressed, deduplicated by content hash):** about 60 KB raw per captured event (unusual 8, dark pool 5, term structure 4, iv-rank 1, headlines 7, 60 bars 6, earnings history 10, peers/ETF bars shared across events) -> roughly 12-15 KB per event-capture after gzip, plus about 2 KB per prediction row. App universe ~590 names x 4 = ~2,400 events/year: **about 35 MB/year for one capture per event, about 70 MB/year for two** (today's full logical dump is 74 MB). Tables are created only when the flag is on.
 **Track F requests:** most inputs already sit in warmed caches (`earn:equity`, `uw:unusual`, candles), so new requests are about 4-5 per captured event (iv-rank, term-structure, headlines, dark pool, earnings history if not cached). One capture per event in the 24-48 h window: about 12,000 UW requests/year; in peak season (about 1,500 events in 11 days) about 700/day, roughly +4-7 % on the current 10-18 k/day, below the plan's limits (probe showed 1,000,000/min) but it shares the token and the 3-concurrent rule with the live engine and another local app, so Smart Move runs at background priority with a hard daily cap. SEC: one submissions request per company per quarter plus one per event on release day, about 3,000/year, free, under 10 requests/s.
-**Capture frequency:** one daily job after the close (about 17:30 ET): events whose cutoff is 24-48 h away get a prediction; a second job on release day reads SEC acceptance times and writes a new event version (VERIFIED_SEC). No 12-hour loop; flag off by default.
+**Capture frequency:** one daily job after the close (about 17:30 ET): events whose cutoff is 24-48 h away get a prediction; a second job on release day reads SEC acceptance times and writes a new event version (SEC_ACCEPTANCE_TIME). No 12-hour loop; flag off by default.
 **Track H budget (phased):**
 * H0 depth probe, 6 UW requests: iv-rank and term-structure at 2025-10-01, 2025-04-01 and 2024-10-01 for one symbol, to learn how far volatility history reaches before sizing anything.
 * H1 pilot, 50 symbols: 50 SEC submissions + 50 UW earnings-history + 50 UW daily-candles + 3 ETF candles = 50 SEC (free) + 103 UW requests.
@@ -99,3 +101,14 @@ Per-category capture (reduced fields only): 1 unusual contracts (top 25 + totals
 7. **Existing-model comparison:** read-only join to `model_predictions` for baselines (no copy)?
 8. **Commit** of these docs and the coverage-script fix on `feature/smart-move` (local only)?
 9. **Cache `sm:*` keys** (58 each, written about 15 Oct): trace their origin (read-only code search in other branches) before Smart Move uses the prefix `sm_`?
+
+## 10. H0 depth probe result (approved and run 2026-10-30, 6 UW requests, all 200, no retry; file `depth_probe_results_20261030-140424.json`, script `scripts/depth_probe.py`)
+| Request (AAPL) | Time UTC | Rows | Coverage |
+|---|---|---|---|
+| iv-rank date=2025-10-01 | 10:04:24 | 5 | 2025-09-25..10-01, each row `updated_at` ~22:35Z of its own day |
+| term-structure date=2025-10-01 | 10:04:27 | 21 expiries | dated 2025-10-01 |
+| iv-rank date=2025-04-01 | 10:04:30 | 5 | 2025-03-26..04-01, daily stamps |
+| term-structure date=2025-04-01 | 10:04:32 | 20 | dated 2025-04-01 |
+| iv-rank date=2024-10-01 | 10:04:35 | 5 | 2024-09-25..10-01, daily stamps |
+| term-structure date=2024-10-01 | 10:04:37 | 20 | dated 2024-10-01 |
+Result: for AAPL, IV-rank and term-structure history is reachable **at least 2 years back** with per-day stamps (iv-rank). Limits: one symbol (a very liquid name) only; each iv-rank call returns about 5 trading days, so one request per event (or per 5 days); term-structure rows carry a date but no `updated_at`, so their as-of quality is "dated, not stamped"; smaller or thinly traded names are untested. Category 7 can therefore be backtested to at least 2024-10 for liquid names, subject to a per-symbol check in the H1 pilot. Total approved request usage so far: 12 UW + 2 SEC. Budget now exhausted again.

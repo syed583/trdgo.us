@@ -1,0 +1,218 @@
+{
+ "requests_sent": 6,
+ "results": [
+  {
+   "kind": "UW",
+   "endpoint": "/api/stock/AAPL/iv-rank?date=2025-10-01",
+   "requested_at_utc": "2026-10-30T10:04:24+00:00",
+   "status": 200,
+   "bytes": 643,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "coverage": {
+    "rows": 5,
+    "top_level_keys": [
+     "data"
+    ],
+    "row_keys": [
+     "close",
+     "date",
+     "iv_rank_1y",
+     "updated_at",
+     "volatility"
+    ],
+    "time_fields": {
+     "date": {
+      "min": "2025-09-25",
+      "max": "2025-10-01",
+      "n": 5
+     },
+     "updated_at": {
+      "min": "2025-09-25T22:35:03.330590Z",
+      "max": "2025-10-01T22:35:08.730322Z",
+      "n": 5
+     }
+    }
+   },
+   "purpose": "iv-rank depth at 2025-10-01"
+  },
+  {
+   "kind": "UW",
+   "endpoint": "/api/stock/AAPL/volatility/term-structure?date=2025-10-01",
+   "requested_at_utc": "2026-10-30T10:04:27+00:00",
+   "status": 200,
+   "bytes": 3763,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "coverage": {
+    "rows": 21,
+    "top_level_keys": [
+     "data"
+    ],
+    "row_keys": [
+     "date",
+     "dte",
+     "expiry",
+     "implied_move",
+     "implied_move_perc",
+     "ticker",
+     "volatility"
+    ],
+    "time_fields": {
+     "date": {
+      "min": "2025-10-01",
+      "max": "2025-10-01",
+      "n": 21
+     }
+    }
+   },
+   "purpose": "term-structure depth at 2025-10-01"
+  },
+  {
+   "kind": "UW",
+   "endpoint": "/api/stock/AAPL/iv-rank?date=2025-04-01",
+   "requested_at_utc": "2026-10-30T10:04:30+00:00",
+   "status": 200,
+   "bytes": 783,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "coverage": {
+    "rows": 5,
+    "top_level_keys": [
+     "data"
+    ],
+    "row_keys": [
+     "close",
+     "date",
+     "iv_rank_1y",
+     "updated_at",
+     "volatility"
+    ],
+    "time_fields": {
+     "date": {
+      "min": "2025-03-26",
+      "max": "2025-04-01",
+      "n": 5
+     },
+     "updated_at": {
+      "min": "2025-03-26T22:35:12.796562Z",
+      "max": "2025-04-01T22:35:23.865890Z",
+      "n": 5
+     }
+    }
+   },
+   "purpose": "iv-rank depth at 2025-04-01"
+  },
+  {
+   "kind": "UW",
+   "endpoint": "/api/stock/AAPL/volatility/term-structure?date=2025-04-01",
+   "requested_at_utc": "2026-10-30T10:04:32+00:00",
+   "status": 200,
+   "bytes": 3585,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "coverage": {
+    "rows": 20,
+    "top_level_keys": [
+     "data"
+    ],
+    "row_keys": [
+     "date",
+     "dte",
+     "expiry",
+     "implied_move",
+     "implied_move_perc",
+     "ticker",
+     "volatility"
+    ],
+    "time_fields": {
+     "date": {
+      "min": "2025-04-01",
+      "max": "2025-04-01",
+      "n": 20
+     }
+    }
+   },
+   "purpose": "term-structure depth at 2025-04-01"
+  },
+  {
+   "kind": "UW",
+   "endpoint": "/api/stock/AAPL/iv-rank?date=2024-10-01",
+   "requested_at_utc": "2026-10-30T10:04:35+00:00",
+   "status": 200,
+   "bytes": 780,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "coverage": {
+    "rows": 5,
+    "top_level_keys": [
+     "data"
+    ],
+    "row_keys": [
+     "close",
+     "date",
+     "iv_rank_1y",
+     "updated_at",
+     "volatility"
+    ],
+    "time_fields": {
+     "date": {
+      "min": "2024-09-25",
+      "max": "2024-10-01",
+      "n": 5
+     },
+     "updated_at": {
+      "min": "2024-09-25T22:35:09.440439Z",
+      "max": "2024-10-01T22:35:11.607456Z",
+      "n": 5
+     }
+    }
+   },
+   "purpose": "iv-rank depth at 2024-10-01"
+  },
+  {
+   "kind": "UW",
+   "endpoint": "/api/stock/AAPL/volatility/term-structure?date=2024-10-01",
+   "requested_at_utc": "2026-10-30T10:04:37+00:00",
+   "status": 200,
+   "bytes": 3582,
+   "limit_headers": {
+    "x-uw-req-per-minute-remaining": "1000000",
+    "x-uw-req-per-minute-reset": "60000"
+   },
+   "coverage": {
+    "rows": 20,
+    "top_level_keys": [
+     "data"
+    ],
+    "row_keys": [
+     "date",
+     "dte",
+     "expiry",
+     "implied_move",
+     "implied_move_perc",
+     "ticker",
+     "volatility"
+    ],
+    "time_fields": {
+     "date": {
+      "min": "2024-10-01",
+      "max": "2024-10-01",
+      "n": 20
+     }
+    }
+   },
+   "purpose": "term-structure depth at 2024-10-01"
+  }
+ ]
+}

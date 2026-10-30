@@ -1,5 +1,7 @@
 # Earnings Smart Move AI - coverage findings and implementation plan (2026-10-30)
 
+> **ERRATUM 2026-10-30 (owner decisions):** SEC 8-K Item 2.02 acceptance time is a *filing acceptance time*, not a verified public release timestamp; wherever this document says "verified release time" read "SEC acceptance time (supporting evidence only)". Table prefix `sm_` is replaced by `smv_`; capture scheduling, pilot and evaluation rules are superseded by `SMART_MOVE_PILOT_AND_SCHEDULING_DESIGN_2026-10-30.md`.
+
 Branch `feature/smart-move` (from `fix/earnings-freshness-evidence` @ 31f71e5c), worktree `scratchpad/wt_smart`. Nothing committed, pushed, deployed or run against production. No scoring code written. Existing models, pinned files, production configuration and the pending earnings deployment untouched.
 
 ## A. Provider history probe (approved: max 6 UW + 2 SEC) - executed once, no retry
@@ -36,7 +38,7 @@ Historically testable weight: categories 3, 5, 7, 8 = 40 of 100 points (plus a p
 
 ## C. Rules adopted (from your instructions)
 * Missing data = not counted, no neutral points. Each category returns `bull_pts`, `bear_pts`, `weight`, `available`. Coverage = available weight / 100. NO TRADE reasons: INSUFFICIENT_COVERAGE, CONFLICT, BELOW_MARGIN, ILLIQUID, UNKNOWN_TIMING. Weights are provisional (marked `PROVISIONAL_UNVALIDATED` in the stored config) and thresholds are fixed before any test.
-* Cutoff: verified 8-K acceptance time when it exists (label `VERIFIED_SEC`), otherwise conservative nominal (BMO 06:00 / AMC 16:00 ET, label `PROVISIONAL`); features must be stamped at least 24 h before it. IV-rank values are used only from the previous day or earlier (their stamp is ~22:35Z of the same day).
+* Cutoff: verified 8-K acceptance time when it exists (label `SEC_ACCEPTANCE_TIME`), otherwise conservative nominal (BMO 06:00 / AMC 16:00 ET, label `PROVISIONAL`); features must be stamped at least 24 h before it. IV-rank values are used only from the previous day or earlier (their stamp is ~22:35Z of the same day).
 * Outcome label for Track H: next-session close-to-close move, named exactly that in every table and report. It is **not** an immediate-reaction measure; immediate reaction (+5/15/30/60 min) is only collected forward (Track F) from verified release times, and only where minute data exists.
 * Track H and Track F use separate code paths, tables and report sections and are never pooled.
 * Stored per prediction (immutable, append-only, triggers on UPDATE/DELETE/TRUNCATE as in the verified evidence DDL): input snapshot (content hash, as-of stamps), predicted_at, model_version, config hash, reason codes, explanation.
