@@ -1,0 +1,30 @@
+{
+ "dated_events": 477,
+ "past_dated": 441,
+ "upcoming": 36,
+ "undated_rows": 11,
+ "total_provider_rows": 488,
+ "categories": {
+  "PENDING_REACTION": 4,
+  "EXPLORATORY_UNCERTAIN_AMC_NOT_CONTRADICTED": 211,
+  "UPCOMING_NOT_SCORED": 36,
+  "UNKNOWN_TIMING": 3,
+  "EXPLORATORY_UNCERTAIN_BMO_FILING_BOUND": 208,
+  "EXCLUDED_NO_DEFENSIBLE_CUTOFF_EVIDENCE": 12,
+  "EXCLUDED_ENTRY_BEFORE_CUTOFF_NOT_TRADABLE": 3,
+  "VERIFIED_PUBLIC_RELEASE": 0,
+  "UNDATED_PROVIDER_ROWS_MISSING": 11
+ },
+ "sum_of_past_categories": 441,
+ "exploratory_total": 419,
+ "cutoffs": {
+  "events": 422,
+  "cutoff_not_before_entry": 3,
+  "flags": {
+   "WEEKEND_OR_HOLIDAY_BETWEEN_LAST_SESSION_AND_CUTOFF": 145,
+   "CUTOFF_ON_NON_TRADING_DAY": 38,
+   "CUTOFF_NOT_BEFORE_ENTRY": 3,
+   "RELEASE_BOUND_BY_SEC_ACCEPTANCE_EARLIER_THAN_NOMINAL": 11
+  }
+ }
+}

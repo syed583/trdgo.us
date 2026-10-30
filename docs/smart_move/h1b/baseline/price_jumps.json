@@ -1,0 +1,501 @@
+{
+ "jumps_over_25pct": [
+  [
+   "CNC",
+   "2025-07-01",
+   "2025-07-02",
+   -40.4
+  ],
+  [
+   "FTV",
+   "2025-06-27",
+   "2025-06-30",
+   -27.2
+  ],
+  [
+   "LBRT",
+   "2025-10-16",
+   "2025-10-17",
+   28.3
+  ],
+  [
+   "LRN",
+   "2024-10-22",
+   "2024-10-23",
+   39.1
+  ],
+  [
+   "LRN",
+   "2025-10-28",
+   "2025-10-29",
+   -54.4
+  ],
+  [
+   "NVCR",
+   "2024-11-29",
+   "2024-12-02",
+   49.0
+  ],
+  [
+   "NVCR",
+   "2026-02-24",
+   "2026-02-25",
+   27.7
+  ],
+  [
+   "NVCR",
+   "2026-04-29",
+   "2026-04-30",
+   27.5
+  ],
+  [
+   "NVCR",
+   "2026-07-22",
+   "2026-07-23",
+   28.4
+  ],
+  [
+   "PI",
+   "2024-04-24",
+   "2024-04-25",
+   28.6
+  ],
+  [
+   "PI",
+   "2025-07-30",
+   "2025-07-31",
+   26.5
+  ],
+  [
+   "PRLB",
+   "2023-11-02",
+   "2023-11-03",
+   30.4
+  ],
+  [
+   "PRLB",
+   "2024-10-31",
+   "2024-11-01",
+   38.7
+  ],
+  [
+   "PRLB",
+   "2026-02-05",
+   "2026-02-06",
+   28.0
+  ],
+  [
+   "RDDT",
+   "2024-03-22",
+   "2024-03-25",
+   30.0
+  ],
+  [
+   "RDDT",
+   "2024-10-29",
+   "2024-10-30",
+   42.0
+  ],
+  [
+   "VRT",
+   "2025-01-24",
+   "2025-01-27",
+   -29.9
+  ]
+ ],
+ "investigated": [
+  {
+   "symbol": "CNC",
+   "from": "2025-07-01",
+   "to": "2025-07-02",
+   "close_ratio": 0.5963,
+   "ret_pct": -40.4,
+   "open_gap_pct": -34.1,
+   "day_range_pct": 11.9,
+   "volume_vs_20d_avg": 23.68,
+   "spy_ret_pct": 0.45,
+   "sector_etf": "XLV",
+   "sector_ret_pct": -0.99,
+   "drift_after_pct": {
+    "5": -3.7,
+    "20": -22.8
+   },
+   "integer_split_ratio": false,
+   "earnings_event_within_3_days": []
+  },
+  {
+   "symbol": "FTV",
+   "from": "2025-06-27",
+   "to": "2025-06-30",
+   "close_ratio": 0.7281,
+   "ret_pct": -27.2,
+   "open_gap_pct": -27.3,
+   "day_range_pct": 4.8,
+   "volume_vs_20d_avg": 4.1,
+   "spy_ret_pct": 0.48,
+   "sector_etf": "XLI",
+   "sector_ret_pct": 0.5,
+   "drift_after_pct": {
+    "5": 1.3,
+    "20": -2.3
+   },
+   "integer_split_ratio": false,
+   "earnings_event_within_3_days": []
+  },
+  {
+   "symbol": "LBRT",
+   "from": "2025-10-16",
+   "to": "2025-10-17",
+   "close_ratio": 1.2831,
+   "ret_pct": 28.3,
+   "open_gap_pct": -2.9,
+   "day_range_pct": 35.8,
+   "volume_vs_20d_avg": 5.91,
+   "spy_ret_pct": 0.57,
+   "sector_etf": "XLE",
+   "sector_ret_pct": 0.82,
+   "drift_after_pct": {
+    "5": 7.0,
+    "20": 3.9
+   },
+   "integer_split_ratio": false,
+   "earnings_event_within_3_days": [
+    [
+     "2025-10-16",
+     "postmarket",
+     "28.31",
+     "28.31"
+    ]
+   ]
+  },
+  {
+   "symbol": "LRN",
+   "from": "2024-10-22",
+   "to": "2024-10-23",
+   "close_ratio": 1.3911,
+   "ret_pct": 39.1,
+   "open_gap_pct": 31.1,
+   "day_range_pct": 8.4,
+   "volume_vs_20d_avg": 6.39,
+   "spy_ret_pct": -0.91,
+   "sector_etf": "XLY",
+   "sector_ret_pct": -1.57,
+   "drift_after_pct": {
+    "5": 4.9,
+    "20": 14.6
+   },
+   "integer_split_ratio": false,
+   "earnings_event_within_3_days": [
+    [
+     "2024-10-22",
+     "postmarket",
+     "39.11",
+     "39.11"
+    ]
+   ]
+  },
+  {
+   "symbol": "LRN",
+   "from": "2025-10-28",
+   "to": "2025-10-29",
+   "close_ratio": 0.4563,
+   "ret_pct": -54.4,
+   "open_gap_pct": -44.6,
+   "day_range_pct": 26.4,
+   "volume_vs_20d_avg": 32.36,
+   "spy_ret_pct": 0.05,
+   "sector_etf": "XLY",
+   "sector_ret_pct": -0.82,
+   "drift_after_pct": {
+    "5": 2.6,
+    "20": -8.9
+   },
+   "integer_split_ratio": false,
+   "earnings_event_within_3_days": [
+    [
+     "2025-10-28",
+     "postmarket",
+     "-54.37",
+     "-54.37"
+    ]
+   ]
+  },
+  {
+   "symbol": "NVCR",
+   "from": "2024-11-29",
+   "to": "2024-12-02",
+   "close_ratio": 1.4895,
+   "ret_pct": 49.0,
+   "open_gap_pct": 41.0,
+   "day_range_pct": 26.3,
+   "volume_vs_20d_avg": 14.95,
+   "spy_ret_pct": 0.18,
+   "sector_etf": "XLV",
+   "sector_ret_pct": -0.18,
+   "drift_after_pct": {
+    "5": -4.0,
+    "20": -0.2
+   },
+   "integer_split_ratio": false,
+   "earnings_event_within_3_days": []
+  },
+  {
+   "symbol": "NVCR",
+   "from": "2026-02-24",
+   "to": "2026-02-25",
+   "close_ratio": 1.2768,
+   "ret_pct": 27.7,
+   "open_gap_pct": 6.9,
+   "day_range_pct": 23.7,
+   "volume_vs_20d_avg": 3.15,
+   "spy_ret_pct": 0.84,
+   "sector_etf": "XLV",
+   "sector_ret_pct": -0.03,
+   "drift_after_pct": {
+    "5": -10.5,
+    "20": -22.5
+   },
+   "integer_split_ratio": false,
+   "earnings_event_within_3_days": [
+    [
+     "2026-02-26",
+     "premarket",
+     "-8.27",
+     "-8.27"
+    ]
+   ]
+  },
+  {
+   "symbol": "NVCR",
+   "from": "2026-04-29",
+   "to": "2026-04-30",
+   "close_ratio": 1.2749,
+   "ret_pct": 27.5,
+   "open_gap_pct": 12.0,
+   "day_range_pct": 16.7,
+   "volume_vs_20d_avg": 7.02,
+   "spy_ret_pct": 0.99,
+   "sector_etf": "XLV",
+   "sector_ret_pct": 2.21,
+   "drift_after_pct": {
+    "5": 10.7,
+    "20": 12.0
+   },
+   "integer_split_ratio": false,
+   "earnings_event_within_3_days": [
+    [
+     "2026-04-30",
+     "premarket",
+     "27.49",
+     "27.49"
+    ]
+   ]
+  },
+  {
+   "symbol": "NVCR",
+   "from": "2026-07-22",
+   "to": "2026-07-23",
+   "close_ratio": 1.2839,
+   "ret_pct": 28.4,
+   "open_gap_pct": 15.6,
+   "day_range_pct": 14.2,
+   "volume_vs_20d_avg": 6.13,
+   "spy_ret_pct": -1.23,
+   "sector_etf": "XLV",
+   "sector_ret_pct": 1.26,
+   "drift_after_pct": {
+    "5": -23.8,
+    "20": -11.1
+   },
+   "integer_split_ratio": false,
+   "earnings_event_within_3_days": [
+    [
+     "2026-07-23",
+     "premarket",
+     "28.39",
+     "28.39"
+    ]
+   ]
+  },
+  {
+   "symbol": "PI",
+   "from": "2024-04-24",
+   "to": "2024-04-25",
+   "close_ratio": 1.2865,
+   "ret_pct": 28.6,
+   "open_gap_pct": 7.7,
+   "day_range_pct": 20.4,
+   "volume_vs_20d_avg": 13.39,
+   "spy_ret_pct": -0.38,
+   "sector_etf": "XLK",
+   "sector_ret_pct": -0.22,
+   "drift_after_pct": {
+    "5": 2.7,
+    "20": 8.3
+   },
+   "integer_split_ratio": false,
+   "earnings_event_within_3_days": []
+  },
+  {
+   "symbol": "PI",
+   "from": "2025-07-30",
+   "to": "2025-07-31",
+   "close_ratio": 1.2649,
+   "ret_pct": 26.5,
+   "open_gap_pct": 18.6,
+   "day_range_pct": 15.7,
+   "volume_vs_20d_avg": 6.55,
+   "spy_ret_pct": -0.38,
+   "sector_etf": "XLK",
+   "sector_ret_pct": -0.73,
+   "drift_after_pct": {
+    "5": 2.1,
+    "20": 23.3
+   },
+   "integer_split_ratio": false,
+   "earnings_event_within_3_days": [
+    [
+     "2025-07-30",
+     "postmarket",
+     "26.49",
+     "26.49"
+    ]
+   ]
+  },
+  {
+   "symbol": "PRLB",
+   "from": "2023-11-02",
+   "to": "2023-11-03",
+   "close_ratio": 1.3041,
+   "ret_pct": 30.4,
+   "open_gap_pct": 20.4,
+   "day_range_pct": 12.5,
+   "volume_vs_20d_avg": 4.71,
+   "spy_ret_pct": 0.91,
+   "sector_etf": "XLI",
+   "sector_ret_pct": 0.88,
+   "drift_after_pct": {
+    "5": 9.1,
+    "20": 17.1
+   },
+   "integer_split_ratio": false,
+   "earnings_event_within_3_days": []
+  },
+  {
+   "symbol": "PRLB",
+   "from": "2024-10-31",
+   "to": "2024-11-01",
+   "close_ratio": 1.3869,
+   "ret_pct": 38.7,
+   "open_gap_pct": 23.2,
+   "day_range_pct": 16.9,
+   "volume_vs_20d_avg": 13.44,
+   "spy_ret_pct": 0.42,
+   "sector_etf": "XLI",
+   "sector_ret_pct": 0.13,
+   "drift_after_pct": {
+    "5": 2.6,
+    "20": 8.8
+   },
+   "integer_split_ratio": false,
+   "earnings_event_within_3_days": [
+    [
+     "2024-11-01",
+     "premarket",
+     "38.69",
+     "38.69"
+    ]
+   ]
+  },
+  {
+   "symbol": "PRLB",
+   "from": "2026-02-05",
+   "to": "2026-02-06",
+   "close_ratio": 1.2799,
+   "ret_pct": 28.0,
+   "open_gap_pct": 9.8,
+   "day_range_pct": 18.6,
+   "volume_vs_20d_avg": 5.51,
+   "spy_ret_pct": 1.92,
+   "sector_etf": "XLI",
+   "sector_ret_pct": 2.86,
+   "drift_after_pct": {
+    "5": 0.5,
+    "20": -14.3
+   },
+   "integer_split_ratio": false,
+   "earnings_event_within_3_days": [
+    [
+     "2026-02-06",
+     "premarket",
+     "27.99",
+     "27.99"
+    ]
+   ]
+  },
+  {
+   "symbol": "RDDT",
+   "from": "2024-03-22",
+   "to": "2024-03-25",
+   "close_ratio": 1.3,
+   "ret_pct": 30.0,
+   "open_gap_pct": 2.4,
+   "day_range_pct": 34.4,
+   "volume_vs_20d_avg": 0.71,
+   "spy_ret_pct": -0.28,
+   "sector_etf": "XLC",
+   "sector_ret_pct": -0.34,
+   "drift_after_pct": {
+    "5": -15.6,
+    "20": -28.4
+   },
+   "integer_split_ratio": false,
+   "earnings_event_within_3_days": []
+  },
+  {
+   "symbol": "RDDT",
+   "from": "2024-10-29",
+   "to": "2024-10-30",
+   "close_ratio": 1.4197,
+   "ret_pct": 42.0,
+   "open_gap_pct": 28.3,
+   "day_range_pct": 13.6,
+   "volume_vs_20d_avg": 8.62,
+   "spy_ret_pct": -0.3,
+   "sector_etf": "XLC",
+   "sector_ret_pct": 0.61,
+   "drift_after_pct": {
+    "5": 4.3,
+    "20": 20.7
+   },
+   "integer_split_ratio": false,
+   "earnings_event_within_3_days": [
+    [
+     "2024-10-29",
+     "postmarket",
+     "41.97",
+     "41.97"
+    ]
+   ]
+  },
+  {
+   "symbol": "VRT",
+   "from": "2025-01-24",
+   "to": "2025-01-27",
+   "close_ratio": 0.7012,
+   "ret_pct": -29.9,
+   "open_gap_pct": -20.0,
+   "day_range_pct": 22.6,
+   "volume_vs_20d_avg": 8.58,
+   "spy_ret_pct": -1.41,
+   "sector_etf": "XLI",
+   "sector_ret_pct": -1.34,
+   "drift_after_pct": {
+    "5": 9.7,
+    "20": -10.4
+   },
+   "integer_split_ratio": false,
+   "earnings_event_within_3_days": []
+  }
+ ]
+}
