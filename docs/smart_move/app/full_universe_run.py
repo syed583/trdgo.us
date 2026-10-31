@@ -66,6 +66,7 @@ def main():
     ap.add_argument("--cap", type=int, default=700)
     ap.add_argument("--batch-size", type=int, default=20)
     ap.add_argument("--plan-only", action="store_true")
+    ap.add_argument("--lift-hourly-cap", action="store_true", help="owner-approved for THIS run only: lifts our own shared hourly cap; the overall --cap, 2 s pacing and the stop on 401/429 stay")
     ap.add_argument("--resume", action="store_true")
     a = ap.parse_args()
     out, seed_store, seed_rep = Path(a.out_dir), Path(a.seed_store), json.loads(Path(a.seed_report).read_text(encoding="utf-8"))
@@ -104,10 +105,12 @@ def main():
     events = svc.eligible_events(now)                                           # vendor-confirmed, window open now
     universe = len(events)
     todo = [e for e in events if e["symbol"] not in reused]
-    todo.sort(key=lambda e: (0 if e["kind"] == "AMC" else 1, -e["marketcap"], e["symbol"]))   # after-close names first: they are the ones that can still be traded before the announcement
-    batches = [todo[i:i + a.batch_size] for i in range(0, len(todo), a.batch_size)]
+    todo.sort(key=lambda e: (e["plan"]["cutoff_utc"], -e["marketcap"], e["symbol"]))          # windows that close soonest first, then the largest market cap
+    prior = {r["symbol"] for r in (json.loads((out / "rows.json").read_text(encoding="utf-8")) if (out / "rows.json").exists() else [])}   # published by an earlier part of THIS run
+    left_todo = [e for e in todo if e["symbol"] not in prior]
+    batches = [left_todo[i:i + a.batch_size] for i in range(0, len(left_todo), a.batch_size)]
     # exact plan: what the planner would request for these names, given the seeded evidence (no request is made here)
-    svc.focus = {e["symbol"] for e in todo}
+    svc.focus = {e["symbol"] for e in left_todo}
     plan = svc.plan_evidence(now)
     by_kind = {}
     for t in plan:
@@ -116,7 +119,7 @@ def main():
     obs = svc.store.read("cal_obs")
     if obs:
         calendar_age_h = round((now - max(datetime.fromisoformat(o["observed_at"]) for o in obs)).total_seconds() / 3600, 2)
-    summary = {"now_utc": now.isoformat(), "universe_open_window_events": universe, "already_evaluated_reused": len(reused), "remaining": len(todo),
+    summary = {"now_utc": now.isoformat(), "universe_open_window_events": universe, "already_evaluated_reused": len(reused), "remaining": len(left_todo), "published_earlier_in_this_run": len(prior),
                "remaining_by_kind": {k: sum(1 for e in todo if e["kind"] == k) for k in ("AMC", "BMO")}, "planned_requests": len(plan), "planned_by_kind": by_kind,
                "batches": len(batches), "cap": a.cap, "calendar_age_hours": calendar_age_h, "credentials_present": creds}
     print(json.dumps(summary, default=str), flush=True)
@@ -131,7 +134,7 @@ def main():
         sys.exit(6)
     ck = json.loads(ckpt_path.read_text(encoding="utf-8")) if a.resume else {"done_symbols": [], "batches_done": 0}
     rep = {"task": TASK, "started_utc": now.isoformat(), "status": "IN_PROGRESS", "mode": "LIVE", "cap_total": a.cap, "universe": universe, "reused_from_earlier_run": len(reused),
-           "batches_planned": len(batches), "batches_done": ck["batches_done"], "errors": [], "stop_events": [], "attempts_total": 0, "requests_by_provider": {}, "plan": summary, "kill_switch_final": {"engaged": True}}
+           "batches_planned": ck.get("batches_done", 0) + len(batches), "batches_done": ck["batches_done"], "errors": [], "stop_events": [], "attempts_total": 0, "requests_by_provider": {}, "plan": summary, "kill_switch_final": {"engaged": True}}
     new_rows = {r["symbol"]: r for r in (json.loads((out / "rows.json").read_text(encoding="utf-8")) if (out / "rows.json").exists() else [])}
 
     def publish(status):
@@ -148,8 +151,6 @@ def main():
     try:
         publish("IN_PROGRESS")
         for i, batch in enumerate(batches):
-            if i < ck["batches_done"]:
-                continue
             names = {e["symbol"] for e in batch}
             used = len(svc.store.read("requests"))
             if used >= a.cap:
@@ -160,6 +161,8 @@ def main():
                     svc.store.kill_file.unlink()
                 svc.cfg.refresh_enabled, svc.cfg.authorized_daily = True, a.cap
                 svc.gov.authorized_daily, svc.gov.enabled = a.cap, True
+                if a.lift_hourly_cap:
+                    svc.gov.hourly_shared_cap = svc.gov.offhours_hourly_cap = 10 ** 6; svc.gov.reserve_existing_hourly = svc.gov.reserve_existing_offhours = 0
                 svc.focus = names
                 left = a.cap - used
                 svc.refresh_evidence([left])
@@ -172,7 +175,7 @@ def main():
                 svc.engage_kill_switch("batch %d finished" % (i + 1))
                 svc.cfg.refresh_enabled = False
             stops = [e["type"] for e in svc.store.read("ledger") if e["type"].startswith(STOP_PREFIXES)]
-            ck["batches_done"] = i if stops else i + 1
+            ck["batches_done"] = ck.get("batches_done", 0) + (0 if stops else 1)
             rep.update(batches_done=ck["batches_done"], stop_events=stops)
             last = svc.store.state().get("last_error")
             if stops:
