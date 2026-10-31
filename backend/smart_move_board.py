@@ -73,7 +73,7 @@ def classify(engine: Optional[dict], *, evaluated: bool, missing, plan: Optional
         if plan is None or start is None or cutoff is None:
             return {"status": "DATA_INCOMPLETE", "why": "no usable event plan: release timing unknown"}
         if now > cutoff:
-            return {"status": "DATA_INCOMPLETE", "why": "the capture window closed and nothing was captured for this event"}
+            return {"status": "DATA_INCOMPLETE", "why": "EXPIRED: the capture window closed and nothing was captured for this event"}
         if now < start:
             return {"status": "PENDING", "why": "capture window opens %s UTC" % start.strftime("%Y-%m-%d %H:%M")}
         return {"status": "PENDING", "why": "window is open; not captured or evaluated yet" + ("" if calendar_ok else " (calendar must be refreshed first)")}

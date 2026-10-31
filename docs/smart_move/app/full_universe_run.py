@@ -164,18 +164,20 @@ def main():
                 left = a.cap - used
                 svc.refresh_evidence([left])
                 rows = [r for r in L.LiveScorer(svc).score_all(svc.clock.now(), persist=True) if r["symbol"] in names]
-                for r in rows:
-                    new_rows[r["symbol"]] = result_row(r, svc, L)
+                stops_now = [e["type"] for e in svc.store.read("ledger") if e["type"].startswith(STOP_PREFIXES)]
+                if not stops_now:                                            # a batch interrupted by a stop is not published: its evidence is incomplete and the batch is redone on resume
+                    for r in rows:
+                        new_rows[r["symbol"]] = result_row(r, svc, L)
             finally:
                 svc.engage_kill_switch("batch %d finished" % (i + 1))
                 svc.cfg.refresh_enabled = False
             stops = [e["type"] for e in svc.store.read("ledger") if e["type"].startswith(STOP_PREFIXES)]
-            ck["batches_done"] = i + 1
-            rep.update(batches_done=i + 1, stop_events=stops)
+            ck["batches_done"] = i if stops else i + 1
+            rep.update(batches_done=ck["batches_done"], stop_events=stops)
             last = svc.store.state().get("last_error")
             if stops:
                 rep["errors"].append(last or {"error": "stop event"})
-                status = "STOPPED_ON_PROVIDER_ERROR"
+                status = "PAUSED_HOURLY_CAP" if set(stops) == {"DENIED_HOURLY_SHARED_CAP"} else "STOPPED_ON_PROVIDER_ERROR"      # our own hourly cap is a pause, not a provider failure
                 publish(status)
                 break
             publish("IN_PROGRESS")
@@ -190,7 +192,7 @@ def main():
         rep["kill_switch_final"] = {"engaged": svc.kill_engaged and kill.exists(), "kill_file": str(kill), "content": json.loads(kill.read_text()) if kill.exists() else None}
         publish(status if status != "OK" else "OK")
     print("finished", status, "requests", len(svc.store.read("requests")), flush=True)
-    sys.exit(0 if status in ("OK", "CAP_REACHED") else 5)
+    sys.exit(0 if status in ("OK", "CAP_REACHED", "PAUSED_HOURLY_CAP") else 5)
 
 
 if __name__ == "__main__":
