@@ -44,7 +44,7 @@ def test_time_guards_send_nothing(tmp_path):
 
 
 def test_windows_not_open_sends_nothing_and_still_reports(tmp_path):
-    svc, prov, _ = seeded(tmp_path, T0 + timedelta(hours=26))
+    svc, prov, _ = seeded(tmp_path, T0 + timedelta(days=40))
     out = tmp_path / "closed"
     out.mkdir()
     rep = SR.execute(out, svc)

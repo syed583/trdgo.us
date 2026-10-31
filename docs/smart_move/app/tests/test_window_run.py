@@ -31,7 +31,7 @@ def seeded(tmp_path, start, fetcher=None):
 
 
 def test_nothing_is_sent_while_no_window_is_open(tmp_path):
-    svc, prov, _ = seeded(tmp_path, T0 + timedelta(hours=26))         # after the windows of the simulated events have closed
+    svc, prov, _ = seeded(tmp_path, T0 + timedelta(days=40))          # far after every simulated event: nothing is open, nothing is stale-and-near, so not one request
     rep = W.collect(svc)
     assert rep["status"] == "WINDOWS_NOT_OPEN" and rep["requests_sent"] == 0 and prov.calls == []
     assert svc.kill_engaged and svc.store.read("requests") == []
@@ -102,3 +102,22 @@ def test_weekend_rehearsal_friday_close_evidence_is_enough_inside_the_saturday_w
     assert sum(1 for c in prov.calls if c[0] in ("uw_calendar", "finviz_calendar", "finnhub_calendar")) <= 5      # one trading day ahead: 2 UW (+1 page), Finviz, Finnhub
     assert all(r["available_points"] == 40 for r in rep["results"]) and all(r["calendar_status"] == "VENDOR_CONFIRMED" for r in rep["results"])
     assert all(r["capture_ts"] and r["hours_to_cutoff"] > 0 for r in rep["results"])
+
+
+def test_a_stale_saved_calendar_triggers_the_run_own_refresh_instead_of_a_silent_exit(tmp_path):
+    """Regression for the 2026-10-31 run: saved rows older than the 6 h limit made every window look unknown, so the run exited with 0 requests before its calendar refresh."""
+    svc, prov, _ = seeded(tmp_path, T0 + timedelta(hours=8))
+    rep = W.collect(svc)
+    assert rep["precheck_events_with_open_window"] == 0 and rep["precheck_stale_events_within_two_days"] > 0       # the saved data alone showed nothing open
+    assert rep["status"] == "OK" and rep["attempts_total"] <= 60 and 0 < len(prov.calls) <= 60                     # the refresh ran, then evidence for the open windows
+    assert len(rep["selected"]) <= 10 and rep["results"] and all(r["capture_ts"] for r in rep["results"])
+
+
+def test_after_a_refresh_with_no_open_window_the_run_stops_without_evidence_requests(tmp_path):
+    svc, prov, _ = seeded(tmp_path, T0 + timedelta(hours=8))
+    real_eligible = svc.eligible_events
+    svc.eligible_events = lambda now: []                        # the refreshed calendar confirms nothing with an open window
+    rep = W.collect(svc)
+    assert rep["status"] == "WINDOWS_NOT_OPEN" and rep["selected"] == [] and rep["results"] == []
+    assert all(c[0] not in ("earnings", "vol_context", "iv_rank") for c in prov.calls) and len(prov.calls) <= 12
+    assert real_eligible

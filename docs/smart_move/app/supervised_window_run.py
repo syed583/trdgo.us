@@ -31,19 +31,24 @@ def collect(svc, *, max_names=MAX_NAMES, total_cap=CAP_TOTAL):
     report = {"started_utc": now.isoformat(), "cap_total": total_cap, "max_names": max_names, "mode": svc.cfg.mode}
     # 0. precheck from saved observations: no request
     pre = svc._calobs()
-    open_now, upcoming = [], []
+    open_now, upcoming, stale_near = [], [], []
+    today = now.astimezone(co.ET).date()
     for sym, pairs in pre.items():
-        ev = cc.evaluate(sym, [o for o, _ in pairs], now, now.astimezone(co.ET).date())
+        ev = cc.evaluate(sym, [o for o, _ in pairs], now, today)
         if ev["event_date"] and ev["kind"] in ("BMO", "AMC"):
             plan = co.plan_event(ev["event_date"], ev["kind"])
             if plan["window_start_utc"] <= now <= plan["cutoff_utc"]:
                 open_now.append(sym)
             elif plan["window_start_utc"] > now:
                 upcoming.append(plan["window_start_utc"])
+        elif ev["event_date"] and ev["status"] == cc.STALE and 0 <= (ev["event_date"] - today).days <= 2:
+            stale_near.append(sym)           # a saved row too old to count: its timing is unknown until the calendar is refreshed, so it says nothing about the window
     report["precheck_events_with_open_window"] = len(open_now)
-    if not open_now:
+    report["precheck_stale_events_within_two_days"] = len(stale_near)
+    if not open_now and not stale_near:
         report.update(status="WINDOWS_NOT_OPEN", requests_sent=0, next_window_opens_utc=min(upcoming).isoformat() if upcoming else None)
         return report
+    # Saved calendar rows that are too old cannot show an open window; the run's own calendar refresh (inside the same cap) decides. Nothing else is sent unless an open window exists after it.
     svc.cfg.authorized_daily = total_cap
     svc.gov.authorized_daily = total_cap
     svc.cfg.refresh_enabled = True
@@ -60,6 +65,11 @@ def collect(svc, *, max_names=MAX_NAMES, total_cap=CAP_TOTAL):
     events.sort(key=lambda e: (-e["marketcap"], e["symbol"]))
     chosen = events[:max_names]
     report["eligible_open_window_events_after_calendar"] = len(events)
+    if not events:                                    # the refreshed calendar shows no vendor-confirmed event with an open window: stop; no evidence request is made
+        report.update(status="WINDOWS_NOT_OPEN", selected=[], results=[], requests_sent=len(svc.store.read("requests")), attempts_total=svc.gov.used_day.get(svc.clock.now().astimezone(L.gv.ET).strftime("%Y-%m-%d"), 0),
+                      requests_by_provider=svc.feed()["requests_today_by_provider"], failed_attempts=sum(1 for e in svc.store.read("ledger") if e["type"] == "PROVIDER_FAILURE"),
+                      finished_utc=svc.clock.now().isoformat())
+        return report
     report["selected"] = [{"symbol": e["symbol"], "kind": e["kind"], "event_date": str(e["event_date"]), "marketcap": e["marketcap"], "sector": e["sector"], "window_cutoff_utc": e["plan"]["cutoff_utc"].isoformat()} for e in chosen]
     svc.focus = {e["symbol"] for e in chosen}
     # 3. evidence for exactly these names, within what is left of the cap (every attempt counts)
