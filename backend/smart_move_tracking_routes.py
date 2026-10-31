@@ -39,7 +39,8 @@ def _data():
 def status():
     preds, outs, stores, track = _data()
     return {"read_only": True, "sends_requests": False, "demo": os.getenv("SMART_MOVE_TRACKING_DEMO") == "1", "prediction_stores": len(stores), "tracking_dir_set": bool(track),
-            "prediction_versions": len(preds), "outcomes": len(outs), "modes": sorted({(p.get("mode") or "LIVE") for p in preds}),
+            "prediction_versions": len(preds), "outcomes": len(outs),
+            "by_mode": {m: {"prediction_versions": sum(1 for p in preds if (p.get("mode") or "LIVE") == m), "outcomes": sum(1 for o in outs if o.get("mode") == m)} for m in ("LIVE", "SIMULATION")}, "modes": sorted({(p.get("mode") or "LIVE") for p in preds}),
             "message": None if preds else "No stored predictions yet. They appear here after the live layer or the scheduled run saves them."}
 
 

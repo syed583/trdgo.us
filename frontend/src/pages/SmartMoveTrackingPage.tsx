@@ -68,8 +68,8 @@ export default function SmartMoveTrackingPage({ ctx }: { ctx: PageContext }) {
       </div>
 
       <div className="sm-summary">
-        <div className="sm-card"><div className="sm-card-k">Prediction versions saved</div><div className="sm-card-v">{st?.prediction_versions ?? '—'}</div></div>
-        <div className="sm-card"><div className="sm-card-k">Outcomes recorded</div><div className="sm-card-v">{st?.outcomes ?? '—'}</div></div>
+        <div className="sm-card"><div className="sm-card-k">Prediction versions saved</div><div className="sm-card-v">{st?.by_mode?.[mode]?.prediction_versions ?? '—'}</div></div>
+        <div className="sm-card"><div className="sm-card-k">Outcomes recorded</div><div className="sm-card-v">{st?.by_mode?.[mode]?.outcomes ?? '—'}</div></div>
         <div className="sm-card"><div className="sm-card-k">Accuracy claim</div><div className="sm-card-v">{acc.data ? (acc.data.claim_allowed ? 'allowed' : 'not allowed') : '—'}</div></div>
       </div>
 
