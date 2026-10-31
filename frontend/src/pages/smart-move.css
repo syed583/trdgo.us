@@ -99,3 +99,40 @@
 .sm-feed-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .sm-action { font-size: 12px; color: var(--text-dim); }
 .ghost-btn.danger { color: var(--red); } .ghost-btn:disabled { opacity: .45; cursor: not-allowed; }
 .sm-chip.ok { background: var(--green-bg); color: var(--green); }
+
+/* Earnings board: status colours. Green and red only for a valid engine BUY / SELL; yellow for missing data; grey for an explicit NO TRADE or not yet evaluated. */
+.sm-bd-counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 10px 0 12px; }
+.sm-bd-count { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer; border-left-width: 4px; }
+.sm-bd-count.total { cursor: default; border-left-color: var(--border); }
+.sm-bd-count .n { font-size: 22px; font-weight: 800; line-height: 1.1; }
+.sm-bd-count .l { font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--text-dim); }
+.sm-bd-count.on { outline: 2px solid var(--accent); }
+.sm-bd-count.buy { border-left-color: var(--green); } .sm-bd-count.sell { border-left-color: var(--red); }
+.sm-bd-count.no_trade, .sm-bd-count.pending { border-left-color: var(--text-mute); }
+.sm-bd-count.data_incomplete { border-left-color: var(--amber); }
+.sm-bd-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 800; letter-spacing: .03em; padding: 3px 10px; border-radius: 999px; width: fit-content; }
+.sm-bd-pill i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; display: inline-block; }
+.sm-bd-pill.small { font-size: 10px; padding: 1px 7px; } .sm-bd-pill.small i { width: 6px; height: 6px; }
+.sm-bd-pill.buy { background: var(--green-bg); color: var(--green); }
+.sm-bd-pill.sell { background: var(--red-bg); color: var(--red); }
+.sm-bd-pill.no_trade { background: var(--panel-3); color: var(--text-dim); }
+.sm-bd-pill.data_incomplete { background: var(--amber-bg); color: var(--amber); }
+.sm-bd-pill.pending { background: transparent; color: var(--text-mute); border: 1px dashed var(--border); }
+.sm-bd-table tr.sm-bd-row { border-left: 4px solid transparent; }
+.sm-bd-table tr.buy { box-shadow: inset 4px 0 0 var(--green); background: var(--green-bg); }
+.sm-bd-table tr.sell { box-shadow: inset 4px 0 0 var(--red); background: var(--red-bg); }
+.sm-bd-table tr.data_incomplete { box-shadow: inset 4px 0 0 var(--amber); }
+.sm-bd-table tr.no_trade, .sm-bd-table tr.pending { box-shadow: inset 4px 0 0 var(--text-mute); }
+.sm-bd-other { display: flex; gap: 6px; align-items: center; }
+.sm-bd-sim { margin-left: 6px; font-size: 9px; }
+.sm-bd-of { color: var(--text-mute); font-size: 12px; }
+.sm-bd-factors { display: flex; gap: 4px; }
+.sm-bd-factor { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; border: 1px solid var(--border); color: var(--text-mute); }
+.sm-bd-factor.available { background: var(--green-bg); color: var(--green); border-color: transparent; }
+.sm-bd-factor.partial { background: var(--amber-bg); color: var(--amber); border-color: transparent; }
+.sm-bd-factor.missing { background: var(--red-bg); color: var(--red); border-color: transparent; text-decoration: line-through; }
+.sm-bd-factor.not_captured { border-style: dashed; }
+.sm-bd-asof { margin-left: auto; font-size: 12px; color: var(--text-dim); }
+.sm-bd-detail td { background: var(--panel-2); cursor: default; }
+.sm-bd-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; font-size: 12.5px; }
+.sm-bd-grid h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-mute); }

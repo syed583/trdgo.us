@@ -1041,3 +1041,8 @@ export const smartMoveTracking = {
   accuracy: (mode: string, s?: AbortSignal) => request<any>(`/api/smart-move/tracking/accuracy?mode=${encodeURIComponent(mode)}`, s),
   report: (s?: AbortSignal) => request<any>('/api/smart-move/tracking/report', s),
 };
+
+/** Smart Move earnings board: eligible upcoming events with an honest status (read only; saved data; no provider request). */
+export const smartMoveBoard = {
+  board: (query: string, s?: AbortSignal) => request<any>(`/api/smart-move/board?${query}`, s),
+};
