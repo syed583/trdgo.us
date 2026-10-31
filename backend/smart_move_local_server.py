@@ -8,9 +8,11 @@ nothing (there is nothing else to grant on this server) and exists only for loca
 from fastapi import FastAPI
 
 from smart_move_routes import router
+from smart_move_tracking_routes import router as tracking_router
 
 app = FastAPI(title="Smart Move (local, read-only, saved evidence)", docs_url="/docs")
 app.include_router(router)
+app.include_router(tracking_router)
 
 
 @app.get("/auth/me")

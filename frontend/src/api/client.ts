@@ -1033,3 +1033,11 @@ export const smartMoveLive = {
   refresh: (scope: string) => smPost('/api/smart-move/refresh', { scope }),
   kill: () => smPost('/api/smart-move/refresh/kill', { reason: 'engaged from the Smart Move page' }),
 };
+
+/** Smart Move tracking: saved prediction history, outcome tracking and reports (read only; no provider request). */
+export const smartMoveTracking = {
+  status: (s?: AbortSignal) => request<any>('/api/smart-move/tracking/status', s),
+  history: (query: string, s?: AbortSignal) => request<any>(`/api/smart-move/tracking/history?${query}`, s),
+  accuracy: (mode: string, s?: AbortSignal) => request<any>(`/api/smart-move/tracking/accuracy?mode=${encodeURIComponent(mode)}`, s),
+  report: (s?: AbortSignal) => request<any>('/api/smart-move/tracking/report', s),
+};

@@ -45,6 +45,7 @@ const META_DETAIL = { base: '/meta', title: 'Meta', detail: (s: string, sig?: Ab
 const CHATGPT_DETAIL = { base: '/chatgpt', title: 'ChatGPT', detail: (s: string, sig?: AbortSignal) => api2.chatgptDetail(s, sig) };
 const OptionScannerPage = lazy(() => import('./pages/OptionScannerPage'));
 const SmartMovePage = lazy(() => import('./pages/SmartMovePage'));
+const SmartMoveTrackingPage = lazy(() => import('./pages/SmartMoveTrackingPage'));
 const UnusualActivityPage = lazy(() => import('./pages/UnusualActivityPage'));
 const InstitutionalPage = lazy(() => import('./pages/InstitutionalPage'));
 const StrategyTradesPage = lazy(() => import('./pages/StrategyTradesPage'));
@@ -405,6 +406,7 @@ function Shell() {
           <Route path="/unusual-activity" element={<UnusualActivityPage ctx={ctx} />} />
           <Route path="/pre-earnings-direction" element={<PreEarningsDirectionPage ctx={ctx} />} />
           <Route path="/smart-move" element={<SmartMovePage ctx={ctx} />} />
+          <Route path="/smart-move/tracking" element={<SmartMoveTrackingPage ctx={ctx} />} />
           <Route path="/earnings-equity" element={<EarningsEquityPage ctx={ctx} />} />
           <Route path="/earnings-equity/:symbol" element={<EarningsEquityPage ctx={ctx} />} />
           <Route path="/earnings-options" element={<EarningsOptionsPage ctx={ctx} />} />
