@@ -162,3 +162,21 @@ def test_the_board_cannot_reach_a_provider_the_scorer_or_a_writer():
     src = "".join((ROOT / "backend" / f).read_text() for f in ("smart_move_board.py", "smart_move_board_routes.py"))
     for forbidden in ("unusualwhales_service", "finnhub_service", "finviz_service", "InfraFetcher", "httpx", "urlopen", "requests.", "scorer.score", "sc.score", "write_text", "open(", "engage_kill_switch", ".append(\"predictions\""):
         assert forbidden not in src, forbidden
+
+
+def test_window_phase_blocker_and_summary_never_claim_an_evaluation(tmp_path, monkeypatch):
+    assert [B.window_phase(PLAN, t) for t in (BEFORE, INSIDE, AFTER)] == ["AHEAD", "OPEN", "CLOSED"] and B.window_phase(None, INSIDE) == "UNKNOWN"
+    assert B.blocker(True, "OPEN", True, True) is None
+    assert "not opened" in B.blocker(False, "AHEAD", True, False) and "Missed" in B.blocker(False, "CLOSED", True, False)
+    assert "no scheduled collection" in B.blocker(False, "OPEN", True, False) and "not tested" in B.blocker(False, "OPEN", True, True)
+    monkeypatch.setenv("SMART_MOVE_RUN_ROOT", str(tmp_path))
+    c = TestClient(srv.app)
+    monkeypatch.setenv("SMART_MOVE_BOARD_NOW", "2026-11-01T12:00:00+00:00")
+    r = c.get("/api/smart-move/board").json()
+    s = r["summary"]
+    assert s["evaluated"] == 0 and s["not_evaluated"] == s["total"] and s["no_capture"] == s["total"] and r["scheduled_test"]["state"] == "NOT_FOUND_AFTER_START_TIME"
+    assert r["scheduled_test"]["max_provider_attempts"] == 60 and r["scheduled_test"]["max_stocks"] == 10 and r["scheduled_test"]["recurring"] is False
+    assert s["window_open_no_prediction"] + s["window_closed_missed"] + s["window_ahead"] == s["total"]
+    assert all(x["blocker"] for x in r["rows"]) and all(x["evaluated"] is False for x in r["rows"])
+    monkeypatch.setenv("SMART_MOVE_BOARD_NOW", "2026-10-31T12:00:00+00:00")
+    assert c.get("/api/smart-move/board").json()["scheduled_test"]["state"] == "NOT_STARTED_YET"

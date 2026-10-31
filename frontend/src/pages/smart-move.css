@@ -136,3 +136,11 @@
 .sm-bd-detail td { background: var(--panel-2); cursor: default; }
 .sm-bd-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; font-size: 12.5px; }
 .sm-bd-grid h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-mute); }
+
+.sm-bd-summary { border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; margin: 10px 0; background: var(--panel); font-size: 13px; display: grid; gap: 6px; }
+.sm-bd-sumgrid { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--text-dim); } .sm-bd-sumgrid b { color: var(--text); }
+.sm-bd-sched, .sm-bd-next { color: var(--text-dim); }
+.sm-bd-win small { white-space: nowrap; }
+.sm-bd-cd { font-weight: 700; font-size: 12px; font-variant-numeric: tabular-nums; display: block; }
+.sm-bd-cd.open { color: var(--green); } .sm-bd-cd.closed, .sm-bd-cd.unknown { color: var(--amber); } .sm-bd-cd.ahead { color: var(--text); } .sm-bd-cd.done { color: var(--text-dim); }
+.sm-bd-blocker { color: var(--amber); }

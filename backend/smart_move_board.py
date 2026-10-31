@@ -127,6 +127,30 @@ def load_run_results(run_root) -> dict:
     return out
 
 
+def window_phase(plan, now) -> str:
+    start, cutoff = _dt((plan or {}).get("window_start_utc")), _dt((plan or {}).get("cutoff_utc"))
+    if start is None or cutoff is None:
+        return "UNKNOWN"
+    return "AHEAD" if now < start else "OPEN" if now <= cutoff else "CLOSED"
+
+
+def blocker(evaluated: bool, phase: str, calendar_ok: bool, any_run: bool) -> Optional[str]:
+    """Why a stock has no prediction. Only for stocks with no evaluation; explains the blocker, never invents a result."""
+    if evaluated:
+        return None
+    if phase == "AHEAD":
+        return "Waiting: the capture window has not opened. Nothing can be captured before it opens."
+    if phase == "UNKNOWN":
+        return "Blocked: release timing (BMO/AMC) is unknown, so no window can be computed."
+    if phase == "CLOSED":
+        return "Missed: the window closed and no collection captured this stock. A prediction made now would be after the cut-off and cannot count."
+    if not calendar_ok:
+        return "Window open, no prediction: calendar status is not confirmed; the calendar must be refreshed first, and no collection is running."
+    return ("Window open, no prediction: no scheduled collection has captured this stock. The one-time test covers at most 10 stocks and no recurring collection is enabled; "
+            "this stock is predicted only if the test selected it." if not any_run else
+            "Window open, no prediction: a run report exists but did not include this stock (not tested). No recurring collection is enabled.")
+
+
 def build_board(saved_rows: list, live_rows: list, run_results: dict, *, now: datetime, variant: str = "continuation") -> dict:
     """saved_rows: saved-calendar rows (smart_move_routes.current_rows). live_rows: LiveScorer rows. run_results: load_run_results()."""
     live = {(r["symbol"], r["earnings_date"]): r for r in live_rows if r.get("earnings_date") and r.get("capture_ts")}
@@ -164,7 +188,8 @@ def build_board(saved_rows: list, live_rows: list, run_results: dict, *, now: da
                      reason_codes=list(e.get("reason_codes") or []) if evaluated else [])
             variants[v] = c
         last_dt = _dt(last)
-        rows.append({"symbol": s["symbol"], "company": s.get("company"), "earnings_date": s["earnings_date"], "release": _release_label(s.get("kind"), plan),
+        phase = window_phase(plan, now)
+        rows.append({"phase": phase, "blocker": blocker(evaluated, phase, calendar_ok, bool(run_results)), "evaluated": evaluated, "symbol": s["symbol"], "company": s.get("company"), "earnings_date": s["earnings_date"], "release": _release_label(s.get("kind"), plan),
                      "window": {"start_utc": (plan or {}).get("window_start_utc"), "cutoff_utc": (plan or {}).get("cutoff_utc")},
                      "status": variants[variant]["status"], "status_why": variants[variant]["why"], "variants": variants,
                      "points": {"available": avail if evaluated else None, "max": 40, "bull": variants[variant]["bull"], "bear": variants[variant]["bear"], "min_to_decide": MIN_AVAILABLE},
@@ -174,7 +199,17 @@ def build_board(saved_rows: list, live_rows: list, run_results: dict, *, now: da
     order = {"BUY": 0, "SELL": 1, "NO_TRADE": 2, "DATA_INCOMPLETE": 3, "PENDING": 4}
     rows.sort(key=lambda r: (r["earnings_date"], order[r["status"]], r["symbol"]))
     counts = {s: sum(1 for r in rows if r["status"] == s) for s in STATUSES}
-    return {"as_of": now.isoformat(), "variant": variant, "counts": counts, "total": len(rows), "rows": rows,
+    ev = [r for r in rows if r["evaluated"]]
+    summary = {"total": len(rows), "evaluated": len(ev), "not_evaluated": len(rows) - len(ev),
+               "evaluated_real": sum(1 for r in ev if r["evidence_mode"] != "SIMULATION"), "evaluated_simulated": sum(1 for r in ev if r["evidence_mode"] == "SIMULATION"),
+               "complete_data": sum(1 for r in ev if r["points"]["available"] is not None and r["points"]["available"] >= MIN_AVAILABLE and not any(f["state"] == "MISSING" for f in r["factors"])),
+               "incomplete_data": sum(1 for r in ev if r["status"] == "DATA_INCOMPLETE" or any(f["state"] == "MISSING" for f in r["factors"])),
+               "no_capture": sum(1 for r in rows if not r["evaluated"]),
+               "window_open_no_prediction": sum(1 for r in rows if r["phase"] == "OPEN" and not r["evaluated"]),
+               "window_ahead": sum(1 for r in rows if r["phase"] == "AHEAD"), "window_closed_missed": sum(1 for r in rows if r["phase"] == "CLOSED" and not r["evaluated"])}
+    upcoming = sorted(t for t in (_dt(r["window"]["start_utc"]) for r in rows if r["phase"] == "AHEAD") if t)
+    summary["next_window_opens_utc"] = upcoming[0].isoformat() if upcoming else None
+    return {"as_of": now.isoformat(), "summary": summary, "variant": variant, "counts": counts, "total": len(rows), "rows": rows,
             "sources": {"run_reports": len(run_results), "live_rows": len(live), "saved_calendar_rows": len(saved_rows)}}
 
 

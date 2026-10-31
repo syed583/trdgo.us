@@ -35,6 +35,19 @@ def _live_rows(now):
         return []
 
 
+SCHEDULED_TEST = {"task": "SmartMove_OneTime_20261031_1705ET", "planned_start_utc": "2026-10-31T21:05:00+00:00", "latest_start_utc": "2026-11-01T19:00:00+00:00",
+                  "max_provider_attempts": 60, "max_stocks": 10, "run_folder": "run_20261031_1705ET", "recurring": False}
+
+
+def _scheduled_test(root, now):
+    """Facts from the run folder only (never the Task Scheduler, never a trigger). The task's own state is verified outside this page."""
+    folder = os.path.join(root, SCHEDULED_TEST["run_folder"])
+    rep = os.path.join(folder, "audit_report.json")
+    start = datetime.fromisoformat(SCHEDULED_TEST["planned_start_utc"])
+    state = "REPORT_SAVED" if os.path.isfile(rep) else "RUNNING_OR_INCOMPLETE" if os.path.isdir(folder) else "NOT_STARTED_YET" if now < start else "NOT_FOUND_AFTER_START_TIME"
+    return dict(SCHEDULED_TEST, state=state, report_saved=os.path.isfile(rep))
+
+
 @router.get("/board")
 def board(variant: str = Query("continuation", pattern="^(continuation|contrarian)$"), status: Optional[str] = Query(None, pattern="^(BUY|SELL|NO_TRADE|DATA_INCOMPLETE|PENDING)$"),
           kind: Optional[str] = Query(None, pattern="^(BMO|AMC)$"), q: Optional[str] = Query(None, max_length=40)):
@@ -49,6 +62,6 @@ def board(variant: str = Query("continuation", pattern="^(continuation|contraria
     if q:
         t = q.strip().lower()
         rows = [r for r in rows if t in r["symbol"].lower() or t in (r["company"] or "").lower()]
-    out.update(rows=rows, shown=len(rows), clock_override=forced, read_only=True, sends_requests=False,
+    out.update(scheduled_test=_scheduled_test(root, now), rows=rows, shown=len(rows), clock_override=forced, read_only=True, sends_requests=False,
                notice="Shadow research only; no trade is placed. A status other than BUY or SELL is never a prediction. Missing data is shown as DATA INCOMPLETE, never as neutral.")
     return out
