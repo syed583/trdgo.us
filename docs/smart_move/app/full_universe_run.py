@@ -153,6 +153,7 @@ def main():
         for i, batch in enumerate(batches):
             names = {e["symbol"] for e in batch}
             used = len(svc.store.read("requests"))
+            ledger0 = len(svc.store.read("ledger"))                       # only stop/denial events raised inside THIS batch count
             if used >= a.cap:
                 status = "CAP_REACHED"
                 break
@@ -167,14 +168,14 @@ def main():
                 left = a.cap - used
                 svc.refresh_evidence([left])
                 rows = [r for r in L.LiveScorer(svc).score_all(svc.clock.now(), persist=True) if r["symbol"] in names]
-                stops_now = [e["type"] for e in svc.store.read("ledger") if e["type"].startswith(STOP_PREFIXES)]
+                stops_now = [e["type"] for e in svc.store.read("ledger")[ledger0:] if e["type"].startswith(STOP_PREFIXES)]
                 if not stops_now:                                            # a batch interrupted by a stop is not published: its evidence is incomplete and the batch is redone on resume
                     for r in rows:
                         new_rows[r["symbol"]] = result_row(r, svc, L)
             finally:
                 svc.engage_kill_switch("batch %d finished" % (i + 1))
                 svc.cfg.refresh_enabled = False
-            stops = [e["type"] for e in svc.store.read("ledger") if e["type"].startswith(STOP_PREFIXES)]
+            stops = [e["type"] for e in svc.store.read("ledger")[ledger0:] if e["type"].startswith(STOP_PREFIXES)]
             ck["batches_done"] = ck.get("batches_done", 0) + (0 if stops else 1)
             rep.update(batches_done=ck["batches_done"], stop_events=stops)
             last = svc.store.state().get("last_error")
