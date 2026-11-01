@@ -129,6 +129,8 @@ def page2(r, lim):
     s += [Paragraph("5. Defects and required actions", H)]
     d = r["defects"][:lim]
     s += [tbl([hdr(["Sev.", "Component", "Defect", "Required action"])] + [[pill(x["severity"]), x["component"], P(x["defect"]), P(x["action"])] for x in d], [12 * mm, 20 * mm, 76 * mm, 66 * mm])]
+    if len(r["defects"]) > len(d):
+        s += [P("<b>+%d further item(s) not shown here (lower severity, listed in the JSON audit record):</b> %s" % (len(r["defects"]) - len(d), "; ".join("%s: %s" % (x["component"], x["defect"][:70]) for x in r["defects"][lim:lim + 3])))]
     s += [Spacer(1, 3), tbl([[pill(r["verdict"]), P("<b>Final readiness verdict: %s</b> - live activation is not approved. Reasons: %s" % (r["verdict"], "; ".join(x.rstrip(".") for x in r["verdict_reasons"][:3])))]], [20 * mm, 154 * mm], head=False, zebra=False)]
     return s
 
@@ -156,7 +158,7 @@ def render(rec: dict, pdf_path) -> dict:
             c.drawString(m, 9 * mm, "Run %s | audit hash %s | shadow research, not investment advice | page %d of 2" % (rid, h[:32], d.page))
             c.restoreState()
         doc.addPageTemplates([PageTemplate(id="p", frames=[Frame(m, m + 4 * mm, fw, fh, leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)], onPage=footer)])
-        story = [KeepInFrame(fw, fh, page1(rec, lim), mode="error"), PageBreak(), KeepInFrame(fw, fh, page2(rec, lim), mode="error")]
+        story = [KeepInFrame(fw, fh, page1(rec, 8), mode="error"), PageBreak(), KeepInFrame(fw, fh, page2(rec, lim), mode="error")]
         try:
             doc.build(story)
         except (LayoutError, Exception) as e:       # noqa: BLE001  overflow -> shorter lists, never smaller text

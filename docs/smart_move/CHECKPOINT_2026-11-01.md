@@ -42,3 +42,11 @@ then wire the Board UI to `removed_events`/`registry` fields in `frontend/src/pa
 ## Still open
 - scheduler_tick execution path (full_universe_run seed arguments) never run live; needs a reviewed seed-store convention before enabling.
 - Provider limits/renewal unverified; outcome collection never run live; no outcomes yet so no accuracy claim.
+
+---
+## Update (third phase): V2, audit, final QA — committed
+- V2 (experimental, `backend/smart_move_v2*.py`): 10 factors, config hash, independent Continuation/Contrarian, never normalised; on the saved 122-stock run max evidence is 55/100 (60 needed) so every V2 result is NO TRADE / UNAVAILABLE. Data audit: `docs/smart_move/V2_DATA_AVAILABILITY.md`. V1 vs V2: INCONCLUSIVE (no outcomes).
+- Audit: `backend/smart_move_audit.py` (JSON), `smart_move_audit_pdf.py` (two A4 pages, enforced), `smart_move_audit_run.py`, routes in `smart_move_v2_audit_routes.py` (`POST /api/smart-move/audits/generate`, `GET /audits`, `GET /audits/{name}.pdf|json`, `GET /v2`). Generated: `docs/smart_move/audits/audit_run_20261101_full_universe_20261101T101441Z.{pdf,json}` (copy; originals in `C:\Users\initi\SmartMoveRun\audits`). Verified backup: `C:\Users\initi\SmartMoveRun\backups\run_20261101_full_universe_20261101T095303Z`.
+- Tick `--execute` path: seeds from the newest earlier run, resumes an interrupted folder, no-op when finished, exit 5 on provider stop, refused without all three switches; mock-tested.
+- QA: Smart Move suite 143 passed/1 skipped; tsc + build clean; main-repo backend suite 1262 passed/4 skipped; worktree-only backend failures are environment (missing gitignored .env.dev, tests from another branch).
+- Open: owner decisions listed in the V2 doc; collection of analyst/flow/short data (needs approval); outcome collection live; provider dashboard checks.
