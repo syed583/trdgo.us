@@ -71,3 +71,17 @@ def board(variant: str = Query("continuation", pattern="^(continuation|contraria
     out.update(scheduled_test=_scheduled_test(root, now), rows=rows, shown=len(rows), clock_override=forced, read_only=True, sends_requests=False,
                notice="Shadow research only; no trade is placed. A status other than BUY or SELL is never a prediction. Missing data is shown as DATA INCOMPLETE, never as neutral.")
     return out
+
+
+@router.get("/health")
+def health():
+    """Read-only integrity report for the newest run folder: kill switch, duplicates, evidence hashes, registry reconciliation. Sends nothing."""
+    import smart_move_health as H
+    now, _ = _now()
+    root = os.getenv("SMART_MOVE_RUN_ROOT") or DEFAULT_RUN_ROOT
+    reports = B.load_run_reports(root)
+    if not reports:
+        return {"ok": False, "checks": [{"check": "run_folder_found", "ok": False, "detail": root}], "read_only": True}
+    reg = B.derive_registry(R.current_rows(), reports)
+    out = H.health(os.path.join(root, reports[-1][0]), reg, now=now)
+    return dict(out, read_only=True, sends_requests=False)
