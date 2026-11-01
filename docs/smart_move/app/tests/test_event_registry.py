@@ -65,3 +65,29 @@ def test_reconcile_never_drops_a_prediction_and_counts_match_the_universe(tmp_pa
     assert len(rec["live"]) + len(rec["historical"]) + len(rec["orphan"]) == 3
     assert [p["symbol"] for p in rec["historical"]] == ["APPS"] and [p["symbol"] for p in rec["orphan"]] == ["ZZZ"]
     assert rec["universe"] == 2 and rec["current_without_prediction"] == ["ROKU"]
+
+
+def test_board_universe_matches_registry_and_removed_event_is_listed_not_counted():
+    import smart_move_board as B
+    now = datetime(2026, 11, 1, 12, tzinfo=timezone.utc)
+
+    def saved(sym, elig=True):
+        return {"symbol": sym, "company": sym, "earnings_date": "2026-11-02", "kind": "AMC", "plan": None, "sector": None,
+                "calendar": {"eligible_for_shadow": elig, "status_at_observation": "VENDOR_CONFIRMED", "calendar_observed_at": "2026-10-30T15:00:00+00:00"}}
+
+    def res(sym):
+        return {"symbol": sym, "earnings_date": "2026-11-02", "kind": "AMC", "calendar_status": "VENDOR_CONFIRMED", "capture_ts": "2026-10-31T21:30:00+00:00",
+                "continuation": {"signal": "NO_TRADE", "bull": 3, "bear": 3, "reason_codes": ["BELOW_MARGIN"]}, "contrarian": {"signal": "NO_TRADE", "bull": 3, "bear": 3, "reason_codes": ["BELOW_MARGIN"]},
+                "available_points": 40, "missing_factors": []}
+    names = ["S%03d" % i for i in range(120)]
+    rows = [saved("APPS")] + [saved(n) for n in names] + [saved("GRAB", elig=False)]
+    # a full-universe run lists the 120 names plus GRAB, and no longer lists APPS
+    run = {"results": [res(n) for n in names + ["GRAB"]], "updated_utc": "2026-10-31T22:00:00+00:00"}
+    reg = B.derive_registry(rows, [("run_x", run)])
+    out = B.build_board(rows, [], {(n, "2026-11-02"): res(n) for n in names + ["GRAB"]}, now=now, registry=reg)
+    assert out["total"] == len(reg.current()) == 121
+    assert "APPS" not in {r["symbol"] for r in out["rows"]} and "GRAB" in {r["symbol"] for r in out["rows"]}
+    assert [x["symbol"] for x in out["removed_events"]] == ["APPS"]
+    # a small (partial) run never removes anything
+    reg2 = B.derive_registry(rows, [("run_y", {"results": [res("S000")], "updated_utc": "2026-10-31T22:00:00+00:00"})])
+    assert "APPS" in reg2.current()

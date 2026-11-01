@@ -127,6 +127,39 @@ def load_run_results(run_root) -> dict:
     return out
 
 
+def load_run_reports(run_root) -> list:
+    """[(folder name, report)] oldest first by started_utc. Read only."""
+    out = []
+    root = Path(run_root) if run_root else None
+    if root and root.is_dir():
+        for d in (p for p in root.iterdir() if p.is_dir() and p.name.startswith("run_") and not p.is_symlink()):
+            try:
+                out.append((d.name, json.loads((d / "audit_report.json").read_text(encoding="utf-8"))))
+            except (OSError, ValueError):
+                continue
+    return sorted(out, key=lambda t: str(t[1].get("started_utc") or ""))
+
+
+def derive_registry(saved_rows: list, reports: list):
+    """In-memory event registry: the saved calendar first (at its observation time), then every real run report in order.
+    A run that covered the whole open-window universe is a complete snapshot (symbols it no longer lists are REMOVED); smaller runs are partial."""
+    from smart_move_event_registry import EventRegistry
+    reg = EventRegistry(None)
+    saved = [s for s in saved_rows if s.get("earnings_date") and s["calendar"].get("eligible_for_shadow")]
+    if saved:
+        obs = max((s["calendar"].get("calendar_observed_at") or "") for s in saved) or "1970-01-01T00:00:00+00:00"
+        reg.apply_snapshot([{"symbol": s["symbol"], "earnings_date": s["earnings_date"], "kind": s.get("kind"), "confirmed": True} for s in saved], obs, complete=True)
+    for name, rep in reports:
+        if rep.get("simulation") or not rep.get("results"):
+            continue
+        evs = [{"symbol": r["symbol"], "earnings_date": str(r["earnings_date"])[:10], "kind": r.get("kind"), "confirmed": r.get("calendar_status") in ("VENDOR_CONFIRMED", "COMPANY_VERIFIED")}
+               for r in rep["results"] if r.get("earnings_date") and r.get("capture_ts")]
+        full = len(evs) >= 100 and not rep.get("not_evaluated")
+        ts = rep.get("updated_utc") or rep.get("started_utc") or max(str(r["capture_ts"]) for r in rep["results"] if r.get("capture_ts"))
+        reg.apply_snapshot(evs, ts, complete=full)
+    return reg
+
+
 def window_phase(plan, now) -> str:
     start, cutoff = _dt((plan or {}).get("window_start_utc")), _dt((plan or {}).get("cutoff_utc"))
     if start is None or cutoff is None:
@@ -151,15 +184,30 @@ def blocker(evaluated: bool, phase: str, calendar_ok: bool, any_run: bool) -> Op
             "Window open, no prediction: a run report exists but did not include this stock (not tested). No recurring collection is enabled.")
 
 
-def build_board(saved_rows: list, live_rows: list, run_results: dict, *, now: datetime, variant: str = "continuation") -> dict:
+def build_board(saved_rows: list, live_rows: list, run_results: dict, *, now: datetime, variant: str = "continuation", registry=None, plan_fn=None) -> dict:
     """saved_rows: saved-calendar rows (smart_move_routes.current_rows). live_rows: LiveScorer rows. run_results: load_run_results()."""
     live = {(r["symbol"], r["earnings_date"]): r for r in live_rows if r.get("earnings_date") and r.get("capture_ts")}
     rows = []
+    cur = registry.current() if registry is not None else None
+    removed = []
+    if cur is not None:                                          # events the registry knows that the saved calendar does not (e.g. newly confirmed by a later run) become rows too
+        have = {(s["symbol"], s.get("earnings_date")) for s in saved_rows if s["calendar"].get("eligible_for_shadow")}
+        saved_rows = list(saved_rows)
+        for sym, v in cur.items():
+            if (sym, v["earnings_date"]) in have:
+                continue
+            r = run_results.get((sym, v["earnings_date"])) or {}
+            plan = plan_fn(v["earnings_date"], v.get("kind")) if plan_fn and v.get("kind") in ("BMO", "AMC") else None
+            saved_rows.append({"symbol": sym, "company": r.get("company"), "sector": None, "earnings_date": v["earnings_date"], "kind": v.get("kind"), "plan": plan,
+                               "calendar": {"eligible_for_shadow": True, "status_at_observation": r.get("calendar_status"), "calendar_observed_at": v["observed_ts"]}})
     for s in saved_rows:
         cal = s["calendar"]
         if not cal.get("eligible_for_shadow") or not s.get("earnings_date"):
             continue
         key = (s["symbol"], s["earnings_date"])
+        if cur is not None and (s["symbol"] not in cur or cur[s["symbol"]]["earnings_date"] != s["earnings_date"]):
+            removed.append({"symbol": s["symbol"], "earnings_date": s["earnings_date"], "why": "no longer in the current event registry (removed or rescheduled)"})
+            continue
         if key[1] < now.astimezone(_et()).date().isoformat():
             continue                                              # past events are not upcoming
         plan = s.get("plan")
@@ -210,6 +258,7 @@ def build_board(saved_rows: list, live_rows: list, run_results: dict, *, now: da
     upcoming = sorted(t for t in (_dt(r["window"]["start_utc"]) for r in rows if r["phase"] == "AHEAD") if t)
     summary["next_window_opens_utc"] = upcoming[0].isoformat() if upcoming else None
     return {"as_of": now.isoformat(), "summary": summary, "variant": variant, "counts": counts, "total": len(rows), "rows": rows,
+            "removed_events": removed, "registry": {"current": len(cur)} if cur is not None else None,
             "sources": {"run_reports": len(run_results), "live_rows": len(live), "saved_calendar_rows": len(saved_rows)}}
 
 

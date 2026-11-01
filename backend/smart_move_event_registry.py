@@ -22,15 +22,16 @@ def _iso(x) -> str:
 
 class EventRegistry:
     def __init__(self, path):
-        self.path = Path(path)
+        self.path = Path(path) if path else None             # None = in-memory (derived views never write)
         self.versions: list = []                      # every version ever recorded, in order
-        if self.path.exists():
+        if self.path and self.path.exists():
             self.versions = [json.loads(l) for l in self.path.read_text(encoding="utf-8").splitlines() if l.strip()]
 
     def _append(self, v: dict) -> dict:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(v, sort_keys=True) + "\n")
+        if self.path:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with self.path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(v, sort_keys=True) + "\n")
         self.versions.append(v)
         return v
 

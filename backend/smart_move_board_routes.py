@@ -53,7 +53,13 @@ def board(variant: str = Query("continuation", pattern="^(continuation|contraria
           kind: Optional[str] = Query(None, pattern="^(BMO|AMC)$"), q: Optional[str] = Query(None, max_length=40)):
     now, forced = _now()
     root = os.getenv("SMART_MOVE_RUN_ROOT") or DEFAULT_RUN_ROOT
-    out = B.build_board(R.current_rows(), _live_rows(now), B.load_run_results(root), now=now, variant=variant)
+    saved = R.current_rows()
+    reg = B.derive_registry(saved, B.load_run_reports(root))
+    try:
+        plan_fn = lambda d, k: R._engine()[3].plan_event(datetime.fromisoformat(d).date(), k)  # noqa: E731
+    except Exception:  # noqa: BLE001
+        plan_fn = None
+    out = B.build_board(saved, _live_rows(now), B.load_run_results(root), now=now, variant=variant, registry=reg, plan_fn=plan_fn)
     rows = out["rows"]
     if status:
         rows = [r for r in rows if r["status"] == status]
