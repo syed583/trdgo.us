@@ -110,6 +110,7 @@ def test_routes_generate_list_retrieve_and_refuse_path_tricks(tmp_path, monkeypa
     monkeypatch.setenv("SMART_MOVE_V2_DIR", str(tmp_path / "v2"))
     monkeypatch.setenv("SMART_MOVE_BACKUP_DIR", str(tmp_path / "bk"))
     monkeypatch.setenv("SMART_MOVE_TRACKING_DIR", str(tmp_path / "trk"))
+    monkeypatch.setenv("SMART_MOVE_V2_RUNS_DIR", str(tmp_path / "no_v2_runs"))
     c = TestClient(srv.app)
     g = c.post("/api/smart-move/audits/generate").json()
     assert g["ok"] and g["pages"] == 2 and g["verdict"] in ("PARTIAL", "BLOCKED")

@@ -98,9 +98,14 @@ def page1(r, lim):
               [20 * mm, 26 * mm, 18 * mm, 18 * mm, 20 * mm, 72 * mm])]
     dg = r["disagreements"]
     s += [P("Model disagreements (Continuation BUY vs Contrarian SELL or the reverse): <b>%d</b> %s" % (dg["count"], ("- " + ", ".join(dg["symbols"][:lim * 2])) if dg["symbols"] else ""))]
+    sd = (r["v2"] or {}).get("signal_differences")
+    if sd:
+        s += [P("V1 (original, Oct 31 capture) to V2 (new capture) signal changes: " + " | ".join("%s: %s" % (v, ", ".join("%s %d" % (k.replace("None", "none"), n) for k, n in sorted(c.items()))) for v, c in sd["v1_original_vs_v2"].items()) + ("; opposite directions: %s" % ", ".join(sd["opposite"][:6]) if sd["opposite"] else "; no opposite BUY/SELL pairs") + ".")]
+    cl = (r["v2"] or {}).get("collection")
     pv = r["provider"]
     s += [Paragraph("5. Provider freshness and readiness", H),
-          P("Latest evidence retrieved: <b>%s</b>. Last run: %s (%s), %s attempts of cap %s (%s%%), %d errors, %d 401/429 stops." %
+          P((("V2 collection (one-time, real provider): <b>%d stocks</b>, %s attempts of cap %s, run %s, last collection <b>%s</b>, kill switch %s.<br/>" % (cl["stocks_collected"], cl["attempts_total"], cl["cap"], cl["status"], cl["last_collection_utc"] or NA, "engaged" if cl["kill_switch_final"] else "NOT ENGAGED")) if cl else "") +
+            "Latest evidence retrieved: <b>%s</b>. V1 run: %s (%s), %s attempts of cap %s (%s%%), %d errors, %d 401/429 stops." %
             (pv["latest_evidence_retrieved_utc"] or NA, pv["run_updated_utc"] or NA, pv["run_status"], pv["attempts_total"], pv["cap"], pv["budget_utilisation_pct"], pv["errors"], pv["stop_events_401_429"])),
           Spacer(1, 2), tbl([[pill(r["verdict"]), P("<b>Readiness: %s.</b> %s" % (r["verdict"], " ".join("(%d) %s." % (i + 1, x.rstrip(".")) for i, x in enumerate(r["verdict_reasons"][:3]))))]], [20 * mm, 150 * mm], head=False, zebra=False),
           P("Shadow research only. Not investment advice. No broker connection or order is possible from this system.")]
@@ -109,6 +114,7 @@ def page1(r, lim):
 
 def page2(r, lim):
     v2, pv, ops = r["v2"], r["provider"], r["operations"]
+    cl = v2.get("collection")
     s = [Paragraph("TECHNICAL VALIDATION AND PROBLEM AUDIT", TITLE), Spacer(1, 2), Paragraph("1. V2 factor coverage (all 10 parameters)", H)]
     rows = [hdr(["Factor", "Pts", "Stocks with data", "Data", "Source / endpoint", "Note"])]
     for f in v2["factors"]:
@@ -120,6 +126,10 @@ def page2(r, lim):
     w, lq = r["windows"], r["liquidity"]
     s += [tbl([hdr(["Item", "Value"]),
                ["Attempts / by provider", "%s attempts (%s) | errors %d | 401/429 %d | budget %s%% of cap %s" % (pv["attempts_total"], ", ".join("%s %s" % kv for kv in (pv["by_provider"] or {}).items()), pv["errors"], pv["stop_events_401_429"], pv["budget_utilisation_pct"], pv["cap"])],
+               ] + ([["V2 collection", P("%d stocks | attempts %s of %s | by kind %s | probe %s endpoints: %s | failures %d | stop events %d | open-window events %s, window closed %d, expired before collection %d" % (
+                   (cl or {}).get("stocks_collected", 0), (cl or {}).get("attempts_total"), (cl or {}).get("cap"), (cl or {}).get("by_kind"), (cl or {}).get("probe_symbol"),
+                   "; ".join("%s %s" % kv for kv in ((cl or {}).get("endpoint_access") or {}).items()), (cl or {}).get("failures", 0), len((cl or {}).get("stop_events") or []),
+                   (cl or {}).get("open_window_events"), len((cl or {}).get("window_closed") or []), len((cl or {}).get("expired_before_collection") or [])))]] if cl else []) + [
                ["Subscription / limits", P(pv["subscription"] + ". " + pv["limits"])],
                ["Capture windows", P("evaluated %d | open, no prediction %d | closed and missed %d | not yet open %d" % (w["evaluated"], w["open_without_prediction"], w["late_or_expired"], w["ahead"]))],
                ["Liquidity / entry (V1)", P(" | ".join("%s: %d" % (k, v) for k, v in lq.items()))]], [36 * mm, 138 * mm])]

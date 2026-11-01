@@ -31,7 +31,7 @@ CONFIG = {
     "options_flow": {"lookback_days": 5, "min_alerts": 3, "min_attributed_premium_usd": 500_000, "sweep_weight": 1.5, "min_volume_oi_ratio": 1.0, "strong_net_ratio": 0.5, "moderate_net_ratio": 0.25,
                      "moderate_fraction": 0.5, "basis": "ask-side call + bid-side put premium vs bid-side call + ask-side put premium; multi-leg excluded; expiry on/after the earnings date"},
     "implied_vs_hist": {"min_reported_moves": 4, "rich_ratio": 1.25, "cheap_ratio": 0.8, "basis": "MAGNITUDE ONLY: risk/uncertainty evidence, no directional points, not counted toward the directional minimum"},
-    "short_inst": {"si_float_high_pct": 15.0, "si_change_pct": 10.0, "snapshot_min_gap_days": 10, "inst_net_pct_of_shares": 0.5, "basis": "high short interest alone gives no direction; high AND rising = bearish crowding; falling = ambiguous (covering/squeeze) = no direction; institutional net 13F unit change"},
+    "short_inst": {"si_float_high_pct": 15.0, "si_change_pct": 10.0, "snapshot_min_gap_days": 10, "publication_lag_days": 12, "inst_net_pct_of_shares": 0.5, "basis": "high short interest alone gives no direction; high AND rising = bearish crowding; falling = ambiguous (covering/squeeze) = no direction; institutional net 13F unit change"},
     "rel_strength": {"window_sessions": 5, "threshold_pct": 2.0, "basis": "5-session return vs SPY and vs sector ETF on the last common completed session; window differs from V1's 20-session F5/F8 to limit overlap"},
     "news_guidance": {"sentiment_semantics_verified": False, "lookback_days": 7, "net_major_min": 2, "points": 10, "basis": "BLOCKED until the meaning of the UW headline `sentiment` field is verified on a saved sample; only headlines stamped before BOTH the capture and the release time can count"},
 }
@@ -159,8 +159,8 @@ def analyst(est_snapshots, actions, capture_ts: datetime, variant: str) -> dict:
             if not t or t > capture_ts or (capture_ts - t).days > cfg["action_lookback_days"]:
                 continue
             a = str(r.get("action", "")).lower()
-            up += a in ("upgrade", "initiated", "raised")
-            dn += a in ("downgrade", "lowered")
+            up += a in ("upgraded", "upgrade")                     # UW action words seen in real data: upgraded, downgraded, maintained, reiterated; "maintained"/"reiterated" are neutral
+            dn += a in ("downgraded", "downgrade")
         detail.update(upgrades=up, downgrades=dn)
         sg = _flip(1 if up - dn >= cfg["net_actions_min"] else -1 if up - dn <= -cfg["net_actions_min"] else 0, variant)
         bull += cfg["action_points"] if sg > 0 else 0
@@ -222,9 +222,11 @@ def short_inst(short_snaps, own_rows, capture_ts: datetime, variant: str) -> dic
     half = WEIGHTS["SHORT_INST"] / 2
     bull = bear = 0.0
     avail_pts, detail = 0, {}
-    snaps = sorted([s for s in (short_snaps or []) if _ts(s.get("market_date")) and _ts(s["market_date"]) <= capture_ts], key=lambda s: str(s["market_date"]))
-    if len(snaps) >= 2 and (_ts(snaps[-1]["market_date"]) - _ts(snaps[0]["market_date"])).days >= cfg["snapshot_min_gap_days"]:
-        a, b = snaps[-1], snaps[0]
+    # a settlement date is published about 8 business days later: only rows at least `publication_lag_days` old count, so nothing the market could not yet see is used
+    lag = timedelta(days=cfg["publication_lag_days"])
+    snaps = sorted([s for s in (short_snaps or []) if _ts(s.get("market_date")) and _ts(s["market_date"]) <= capture_ts - lag], key=lambda s: str(s["market_date"]))
+    if len(snaps) >= 2 and (_ts(snaps[-1]["market_date"]) - _ts(snaps[-2]["market_date"])).days >= cfg["snapshot_min_gap_days"]:
+        a, b = snaps[-1], snaps[-2]                             # the latest published settlement vs the one before it
         si = _f(a.get("si_float"))
         pct = si * 100 if si is not None and si <= 1 else si
         s1, s0 = _f(a.get("short_interest")), _f(b.get("short_interest"))
@@ -241,14 +243,14 @@ def short_inst(short_snaps, own_rows, capture_ts: datetime, variant: str) -> dic
         sh = next((_f(r.get("shares_outstanding")) for r in rows if _f(r.get("shares_outstanding"))), None)
         if rows and sh:
             avail_pts += half
-            net = sum(_f(r.get("units_change")) or 0 for r in rows) / sh * 100
+            net = sum((_f(r.get("units_changed")) if r.get("units_changed") is not None else _f(r.get("units_change"))) or 0 for r in rows) / sh * 100
             detail["institutional_net_pct_of_shares"] = round(net, 3)
             sg = _flip(1 if net >= cfg["inst_net_pct_of_shares"] else -1 if net <= -cfg["inst_net_pct_of_shares"] else 0, variant)
             bull += half if sg > 0 else 0
             bear += half if sg < 0 else 0
     if not avail_pts:
         return _factor("SHORT_INST", 0, 0, False, reason="NEEDS_TWO_SNAPSHOTS_10_DAYS_APART_OR_OWNERSHIP_DATA", snapshots=len(snaps))
-    return _factor("SHORT_INST", bull, bear, True, available_points=avail_pts, note="FINRA short interest and 13F data are delayed; filing_date/market_date used as the stamp", **detail)
+    return _factor("SHORT_INST", bull, bear, True, available_points=avail_pts, note="FINRA short interest (settlement date + publication lag) and 13F data are delayed; 13F coverage is partial until the filing deadline (early-filer bias)", **detail)
 
 
 # ---------------------------------------------------------------- news / guidance (BLOCKED until sentiment semantics are verified)
@@ -290,7 +292,9 @@ def explain(r: dict) -> str:
     parts = ["%s %+g/%g" % (f["factor"], f["bull"] - f["bear"], f.get("available_points", f["max"])) for f in drivers]
     why = {"INSUFFICIENT_COVERAGE": "only %g of the required 60 DIRECTIONAL points have data" % r["directional_available_points"], "BELOW_MARGIN": "evidence does not clear the BUY/SELL margin",
            "RULE": "evidence clears the experimental rule", "BLOCKED_BY_V1_GATE": "blocked by V1 eligibility gate(s): " + ", ".join(r.get("inherited_gates", []))}
-    return "; ".join(why.get(c, c) for c in r["reason_codes"][:2]) + ". Largest net factors: " + (", ".join(parts) if parts else "none") + ". Missing: " + (", ".join(m["factor"] for m in r["missing"]) or "none") + "."
+    partial = ["%s (%g of %g pts)" % (f["factor"], f["max"] - f["available_points"], f["max"]) for f in r["factors"] if f["available"] and f.get("available_points", f["max"]) < f["max"]]
+    return ("; ".join(why.get(c, c) for c in r["reason_codes"][:2]) + ". Largest net factors: " + (", ".join(parts) if parts else "none") + ". Missing: " + (", ".join(m["factor"] for m in r["missing"]) or "none")
+            + (". Partly missing: " + ", ".join(partial) if partial else "") + ".")
 
 
 def score(factors: list, *, v1_gates: list, variant: str) -> dict:

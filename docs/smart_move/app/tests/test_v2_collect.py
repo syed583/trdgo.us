@@ -16,10 +16,10 @@ UTC = timezone.utc
 T0 = datetime(2026, 11, 1, 12, tzinfo=UTC)
 
 BODIES = {
-    "uw_analysts": {"data": [{"action": "upgrade", "timestamp": "2026-10-30T10:00:00+00:00", "ticker": "A"}]},
+    "uw_analysts": {"data": [{"action": "upgraded", "timestamp": "2026-10-30T10:00:00+00:00", "ticker": "A"}]},
     "uw_estimates": {"data": {"estimates": [{"date": "2026-12-31", "horizon": "quarter", "eps_estimate_average": 1.5, "revenue_estimate_average": 100.0}]}},
     "uw_flow_alerts": {"data": [{"created_at": "2026-10-31T15:00:00+00:00", "type": "call", "total_ask_side_prem": 300000}]},
-    "uw_short_float": {"data": {"market_date": "2026-10-15", "si_float": 0.2, "short_interest": 1000000, "days_to_cover": 4}},
+    "uw_short_float": {"data": [{"market_date": "2026-10-15", "si_float": 0.2, "short_interest": 1000000, "days_to_cover": 4}, {"market_date": "2026-09-30", "si_float": 0.18, "short_interest": 900000, "days_to_cover": 4}]},
     "uw_inst_own": {"data": [{"filing_date": "2026-09-30", "units_change": 100, "shares_outstanding": 1000000}]},
     "uw_news": {"data": [{"created_at": "2026-10-31T15:00:00+00:00"}]},
 }
@@ -122,3 +122,15 @@ def test_real_service_path_the_governor_enforces_the_kill_switch_and_the_authori
     assert f.n == 3 and acc2["ok"] == 3 and acc2["failed"] == 2                        # the authorization cap of 3 stops the rest
     assert len(svc.store.read("ledger")) >= 3
     assert any(e["kind"] == "uw_flow_alerts" for e in svc.store.read("requests")) or any(e["kind"] == "uw_analysts" for e in svc.store.read("requests"))
+
+
+def test_repeat_plan_lists_what_adds_information_and_never_manufactures_history(tmp_path):
+    svc = FakeSvc(tmp_path, gv.FakeClock(T0))
+    C.run(svc, C.plan(["A"], svc.store, T0), max_requests=10)
+    p = C.repeat_plan(svc.store, ["A", "NEW"], T0 + timedelta(hours=1))
+    a, n = p["by_symbol"]["A"], p["by_symbol"]["NEW"]
+    assert a["uw_estimates"]["snapshots"] == 1 and a["uw_estimates"]["due_now"] is False and a["uw_estimates"]["next_useful"].startswith("2026-11-08")      # a second snapshot is needed a week later
+    assert a["uw_inst_own"]["next_useful"].startswith("2026-12-01") and all(v["next_useful"] == "now" for v in n.values())
+    assert p["requests_due_now"] == 5 and "plan only" in p["note"]
+    later = C.repeat_plan(svc.store, ["A"], T0 + timedelta(days=9))
+    assert later["by_symbol"]["A"]["uw_estimates"]["due_now"] is True and later["by_symbol"]["A"]["uw_inst_own"]["due_now"] is False

@@ -40,7 +40,7 @@ def _sha(obj) -> str:
     return hashlib.sha256(json.dumps(obj, sort_keys=True, default=str).encode()).hexdigest()
 
 
-def build(run_root, *, now: datetime, v2_file=None, tests: Optional[dict] = None, backup_root=None, saved_rows=None, plan_fn=None, outcomes: Optional[list] = None) -> dict:
+def build(run_root, *, now: datetime, v2_file=None, tests: Optional[dict] = None, backup_root=None, saved_rows=None, plan_fn=None, outcomes: Optional[list] = None, v2_collection: Optional[dict] = None) -> dict:
     reports = B.load_run_reports(run_root)
     if not reports:
         return {"ok": False, "error": "no run report found", "generated_utc": now.isoformat()}
@@ -103,6 +103,30 @@ def build(run_root, *, now: datetime, v2_file=None, tests: Optional[dict] = None
         for k, w in V2.WEIGHTS.items():
             src = FACTOR_SOURCES[k]
             v2["factors"].append({"factor": k, "points": w, "stocks_with_data": None, "stocks": None, "data_status": src[1], "source": src[0], "note": src[2] + "; V2 run file " + NA})
+    # ---- the one-time V2 collection run (real provider requests), from its own report
+    coll = None
+    if v2_collection:
+        pr = (v2_collection.get("phases") or {}).get("probe") or {}
+        coll = {"stocks_collected": len(v2_collection.get("collected_symbols") or []), "attempts_total": v2_collection.get("attempts_total"), "cap": v2_collection.get("cap"),
+                "by_kind": v2_collection.get("kinds"), "probe_symbol": pr.get("symbol"), "endpoint_access": {k: ("OK (%s rows)" % v["rows"] if v["status"] == "OK" else "FAILED " + str(v.get("invalid_reason"))) for k, v in (pr.get("by_kind") or {}).items()},
+                "failures": len(v2_collection.get("failures") or []), "stop_events": v2_collection.get("stop_events") or [], "status": v2_collection.get("status_full") or v2_collection.get("status_probe"),
+                "window_closed": (v2_collection.get("universe") or {}).get("window_closed_since_v1_run", []), "expired_before_collection": v2_collection.get("expired_before_collection", []),
+                "open_window_events": (v2_collection.get("universe") or {}).get("open_window_events"), "kill_switch_final": (v2_collection.get("kill_switch_final") or {}).get("engaged"),
+                "first_collection_utc": ((v2_collection.get("phases") or {}).get("full_start") or {}).get("at"), "last_collection_utc": ((v2_collection.get("phases") or {}).get("full_end") or {}).get("at")}
+        v2["collection"] = coll
+    diffs = None
+    if v2_events:
+        diffs = {"v1_original_vs_v2": {}, "opposite": []}
+        for v in ("continuation", "contrarian"):
+            c = Counter()
+            for sym, e in v2_events.items():
+                o = (e.get("v1_original") or {}).get(v, {}).get("signal")
+                s2 = e["v2"][v]["signal"]
+                c["%s->%s" % (o, s2)] += 1
+                if o in ("BUY", "SELL") and s2 in ("BUY", "SELL") and o != s2:
+                    diffs["opposite"].append("%s %s" % (sym, v))
+            diffs["v1_original_vs_v2"][v] = dict(c)
+        v2["signal_differences"] = diffs
     # ---- outcomes / accuracy
     outs = [o for o in (outcomes or []) if o.get("mode", "LIVE") == "LIVE" and o.get("move_pct") is not None]
     omap = {(o["symbol"], str(o["earnings_date"])[:10]): o["move_pct"] for o in outs}
@@ -138,6 +162,8 @@ def build(run_root, *, now: datetime, v2_file=None, tests: Optional[dict] = None
     if not outs:
         d("HIGH", "outcomes", "No outcome has ever been collected or graded; accuracy is unknown", "Run outcome collection after the reaction sessions close (needs separate live approval)")
     dm = v2.get("directional_available_max")
+    if coll and coll["stop_events"]:
+        d("CRITICAL", "provider", "V2 collection stopped on provider event(s): %s" % ", ".join(coll["stop_events"]), "Investigate the 401/429 before any further request")
     if dm is None or dm < V2.CONFIG["decision"]["min_directional_available"]:
         d("HIGH", "V2 data", "V2 directional evidence reaches at most %s points (60 needed); analyst, flow, short/institutional never collected; news/guidance BLOCKED" % (("%g" % dm) if dm is not None else NA), "Authorize V2 evidence collection; verify the news sentiment field")
     d("MED", "scheduler", "scheduler_tick --execute is tested with mocks only; never run live", "Review seed-store convention, then a supervised first execution")

@@ -9,6 +9,7 @@ import smart_move_board as B
 from smart_move_board_routes import DEFAULT_RUN_ROOT, _now
 
 router = APIRouter(prefix="/api/smart-move", tags=["smart-move-v2-audit"])
+BASEDIR = r"C:\Users\initi\SmartMoveRun"
 
 
 def _dirs():
@@ -21,6 +22,20 @@ def _latest_v2():
     import json as _j
     files = sorted(glob.glob(os.path.join(_dirs()["v2"], "v2_run_*.json")))
     return (files[-1], _j.load(open(files[-1], encoding="utf-8"))) if files else (None, None)
+
+
+def _latest_collection():
+    import glob
+    fs = sorted(glob.glob(os.path.join(os.getenv("SMART_MOVE_V2_RUNS_DIR") or os.path.join(os.getenv("SMART_MOVE_BASE") or BASEDIR, "v2_runs"), "*", "report.json")))
+    return fs[-1] if fs else None
+
+
+@router.get("/v2/collection")
+def v2_collection():
+    """Report of the newest one-time V2 collection run (provider access, attempts, errors, kill switch)."""
+    import json as _j
+    f = _latest_collection()
+    return {"available": f is not None, "report": _j.load(open(f, encoding="utf-8")) if f else None}
 
 
 @router.get("/v2")
@@ -41,7 +56,7 @@ def v2_predictions(variant: str = Query("continuation", pattern="^(continuation|
                     "validated_real_data_signal": x.get("validated_real_data_signal", False), "reason_codes": x["reason_codes"], "missing": [{"factor": m["factor"], "reason": m["reason"], "data_status": m["data_status"]} for m in x["missing"]],
                     "factors": [{"factor": q["factor"], "bull": q["bull"], "bear": q["bear"], "available": q["available"], "max": q["max"]} for q in x["factors"]]})
     return {"available": True, "status": body["status"], "version": body["version"], "config_hash": body["config_hash"], "audit_hash": body.get("audit_hash"), "source_run": body["source_run"], "as_of": body["as_of"],
-            "usable_for_decisions": False, "banner": "EXPERIMENTAL / UNAVAILABLE FOR DECISIONS: weights and thresholds are unvalidated hypotheses; saved evidence covers at most 55 of 100 points, so no V2 BUY/SELL can be produced; missing data is never a signal.",
+            "usable_for_decisions": False, "banner": "EXPERIMENTAL / NOT VALIDATED: weights and thresholds are unvalidated hypotheses. V2 uses real saved evidence, but news/guidance is BLOCKED and analyst estimate revisions need a second consensus snapshot, so no stock has all 100 points. A V2 BUY/SELL requires 60 directional points and passes the V1 eligibility gates; otherwise DATA INCOMPLETE. Missing data is never a signal.",
             "variant": variant, "events": out}
 
 
@@ -79,7 +94,7 @@ def audits_generate():
     d = _dirs()
     f, _b = _latest_v2()
     tests = os.path.join(d["audits"], "test_results.json")
-    return AR.generate(os.getenv("SMART_MOVE_RUN_ROOT") or DEFAULT_RUN_ROOT, d["audits"], now=now, v2_file=f, tests_file=tests if os.path.exists(tests) else None, backup_root=d["backups"])
+    return AR.generate(os.getenv("SMART_MOVE_RUN_ROOT") or DEFAULT_RUN_ROOT, d["audits"], now=now, v2_file=f, tests_file=tests if os.path.exists(tests) else None, backup_root=d["backups"], v2_collection_file=_latest_collection())
 
 
 @router.get("/audits/{name}.{ext}")
@@ -92,3 +107,18 @@ def audits_get(name: str, ext: str):
     if not os.path.isfile(p):
         raise HTTPException(404, "unknown audit")
     return FileResponse(p, media_type="application/pdf" if ext == "pdf" else "application/json", filename=name + "." + ext)
+
+
+@router.get("/v2/repeat-plan")
+def v2_repeat_plan():
+    """What repeated collections would add information, per stock (plan only; nothing is scheduled or requested)."""
+    import glob
+    import smart_move_live as L
+    import smart_move_v2_collect as C
+    now, _ = _now()
+    dirs = sorted(glob.glob(os.path.join(os.getenv("SMART_MOVE_V2_RUNS_DIR") or os.path.join(os.getenv("SMART_MOVE_BASE") or BASEDIR, "v2_runs"), "*", "store")))
+    if not dirs:
+        return {"available": False, "message": "no V2 collection store yet"}
+    st = L.LiveStore(dirs[-1])
+    syms = sorted({r["symbol"] for r in C._records(st)})
+    return dict(C.repeat_plan(st, syms, now), available=True)

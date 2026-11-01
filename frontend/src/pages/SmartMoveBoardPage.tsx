@@ -65,6 +65,31 @@ function StatusPill({ status, small }: { status: Status; small?: boolean }) {
   return <span className={`sm-bd-pill ${status.toLowerCase()} ${small ? 'small' : ''}`}><i />{STATUS_LABEL[status]}</span>;
 }
 
+function V2Panel({ v2, other, variant, coll, v1rows }: { v2: any; other: any; variant: string; coll: any; v1rows: any[] }) {
+  if (!v2?.available) return null;
+  const ev: any[] = v2.events || [];
+  const cnt: Record<string, number> = {};
+  ev.forEach((e) => { cnt[e.display_status] = (cnt[e.display_status] || 0) + 1; });
+  const real = ev.filter((e) => e.signal === 'BUY' || e.signal === 'SELL');
+  const v1by: Record<string, any> = {};
+  v1rows.forEach((r) => { v1by[r.symbol] = r; });
+  const dis = ev.filter((e) => { const r = v1by[e.symbol]; return r && (r.status === 'BUY' || r.status === 'SELL') && (e.signal === 'BUY' || e.signal === 'SELL') && r.status !== e.signal; }).map((e) => e.symbol);
+  const maxDir = ev.reduce((m, e) => Math.max(m, e.directional_available_points ?? 0), 0);
+  const elig = ev.filter((e) => e.eligibility && e.eligibility.liquidity_ok && e.eligibility.entry_ok && e.eligibility.capture_window_ok).length;
+  return (
+    <div className="sm-bd-summary" role="region" aria-label="V2 summary">
+      <div className="sm-bd-sumhead"><b>V2 (100 points, EXPERIMENTAL)</b> · {variant} · BUY {cnt.BUY || 0} · SELL {cnt.SELL || 0} · NO TRADE {cnt.NO_TRADE || 0} · DATA INCOMPLETE {cnt.DATA_INCOMPLETE || 0} · of {ev.length} stocks</div>
+      <div className="sm-bd-sumgrid">
+        <span>Best directional evidence <b>{maxDir}/100</b> (60 needed)</span><span>Capture/liquidity eligible <b>{elig}</b></span><span>V1 vs V2 opposite BUY/SELL <b>{dis.length}</b>{dis.length ? ` (${dis.slice(0, 5).join(', ')})` : ''}</span>
+        <span>Real V2 BUY/SELL (not validated) <b>{real.length}</b></span>
+        {coll && <span>Collected <b>{(coll.collected_symbols || []).length}</b> stocks · attempts <b>{coll.attempts_total}</b>/{coll.cap} · errors <b>{(coll.failures || []).length}</b> · stop events <b>{(coll.stop_events || []).length}</b></span>}
+        {coll && <span>Collection run <b>{coll.status_full || coll.status_probe}</b> · last {fmtExact(coll.phases?.full_end?.at || coll.phases?.full_start?.at)} · kill switch <b>{coll.kill_switch_final?.engaged ? 'engaged' : 'NOT engaged'}</b></span>}
+      </div>
+      <div className="sm-bd-next">{v2.banner} {other?.events ? `Other variant: BUY ${other.events.filter((e: any) => e.signal === 'BUY').length}, SELL ${other.events.filter((e: any) => e.signal === 'SELL').length}.` : ''}</div>
+    </div>
+  );
+}
+
 function OpsPanel({ ops, error }: { ops: any; error?: string | null }) {
   if (error) return <div className="sm-fresh stale"><AlertTriangle size={14} /> Operations status unavailable: {error}</div>;
   if (!ops) return null;
@@ -113,6 +138,8 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
   const ops = useApi<any>((s) => smartMoveBoard.ops(s), [], { refreshMs: 30_000 });
   const v2 = useApi<any>((s) => smartMoveBoard.v2(variant, s), [variant], { refreshMs: 30_000 });
   const audits = useApi<any>((s) => smartMoveBoard.audits(s), [auditMsg], { refreshMs: 60_000 });
+  const coll = useApi<any>((s) => smartMoveBoard.v2Collection(s), [], { refreshMs: 60_000 });
+  const v2c = useApi<any>((s) => smartMoveBoard.v2(variant === 'continuation' ? 'contrarian' : 'continuation', s), [variant], { refreshMs: 60_000 });
   const outcomes = useApi<any>((s) => smartMoveTracking.outcomes(s), [], { refreshMs: 60_000 });
   const v2By: Record<string, any> = {};
   (v2.data?.events || []).forEach((e: any) => { v2By[`${e.symbol}|${e.earnings_date}`] = e; });
@@ -183,6 +210,7 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
         {auditMsg && <span className="sm-bd-asof">{auditMsg}</span>}
       </div>
       {model === 'V2' && <div className="sm-banner" role="note"><AlertTriangle size={16} /><div>{v2.data?.banner || 'V2 results are not available.'} Config hash {String(v2.data?.config_hash || '').slice(0, 12)}. Missing factors are never turned into signals.</div></div>}
+      <V2Panel v2={v2.data} other={v2c.data} variant={variant} coll={coll.data?.report} v1rows={allRows} />
       <OpsPanel ops={ops.data} error={ops.error} />
       {(d?.removed_events?.length > 0 || d?.rescheduled_events?.length > 0) && (
         <div className="sm-fresh" role="note">

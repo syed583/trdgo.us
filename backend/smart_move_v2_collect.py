@@ -136,7 +136,37 @@ def load_inputs(store, symbol: str, capture_ts: datetime) -> dict:
     if by.get("uw_short_float"):
         snaps = []
         for r in by["uw_short_float"]:
-            for x in (_rows(store, r, "uw_short_float") or [])[:1]:
-                snaps.append(dict(x, captured_at=r["retrieved_at"]))
+            snaps = _rows(store, r, "uw_short_float") or []        # the endpoint returns the whole dated history (semi-monthly settlements), so one response is enough; the newest response wins
         out["short_snaps"] = snaps
     return out
+
+
+# ---------------------------------------------------------------- what future collections are needed (a plan only; nothing here schedules or requests)
+NEEDS = {
+    "uw_estimates": "a second consensus snapshot at least 7 days after the first (the endpoint gives no revision history for most stocks), so revisions can be measured",
+    "uw_flow_alerts": "a fresh pull on each day inside the capture window (alerts are a rolling window of the most recent trades)",
+    "uw_short_float": "no repeat needed for the history (the endpoint returns the dated settlement history); refresh about every 15 days for the newest settlement",
+    "uw_inst_own": "a refresh after the 13F deadline (45 days after quarter end) because early filers bias the net change; about every 30 days",
+    "uw_analysts": "a fresh pull on each day inside the capture window (rating actions are dated)",
+}
+
+
+def repeat_plan(store, symbols: Iterable[str], now: datetime) -> dict:
+    """Per symbol and kind: when it was last collected and the earliest time a repeat adds information. Pure; derived from the saved evidence records."""
+    out, due_now = {}, 0
+    for sym in symbols:
+        recs = [r for r in _records(store, symbol=sym) if r["status"] == "OK"]
+        row = {}
+        for kind in CORE:
+            ks = [r for r in recs if r["kind"] == kind]
+            if not ks:
+                row[kind] = {"last": None, "next_useful": "now", "need": NEEDS[kind]}
+                due_now += 1
+                continue
+            last = datetime.fromisoformat(max(r["retrieved_at"] for r in ks))
+            nxt = last + timedelta(days={"uw_estimates": 7, "uw_flow_alerts": 1, "uw_short_float": 15, "uw_inst_own": 30, "uw_analysts": 1}[kind])
+            row[kind] = {"last": last.isoformat(), "snapshots": len(ks), "next_useful": nxt.isoformat(), "due_now": nxt <= now, "need": NEEDS[kind]}
+            due_now += nxt <= now
+        out[sym] = row
+    return {"as_of": now.isoformat(), "symbols": len(out), "requests_due_now": due_now, "by_symbol": out,
+            "note": "plan only; recurring live collection is not activated. Revision measurement needs the second estimates snapshot (>= 7 days after the first)."}

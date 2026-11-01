@@ -30,9 +30,13 @@ def _close_series(rows):
     return {d: v[3] for d, v in ad.regular_series(rows).items()}
 
 
-def run(run_dir, as_of: datetime, *, extra: dict | None = None, v2_store=None) -> dict:
+def run(run_dir, as_of: datetime, *, extra: dict | None = None, v2_store=None, store_dir=None, v1_report=None) -> dict:
     """extra: optional per-symbol inputs (the dict shape of smart_move_v2_collect.load_inputs); v2_store: a LiveStore holding saved V2 evidence, read AS OF each stock's capture time."""
-    src = Path(run_dir) / "store"
+    src = Path(store_dir) if store_dir else Path(run_dir) / "store"            # store_dir: a store with the REFRESHED calendar and the V2 evidence (the V2 collection run's store)
+    v1_orig = {}
+    rp = Path(v1_report) if v1_report else Path(run_dir) / "audit_report.json"
+    if rp.exists():
+        v1_orig = {r["symbol"]: r for r in json.loads(rp.read_text(encoding="utf-8")).get("results", [])}
     tmp = Path(tempfile.mkdtemp(prefix="sm_v2_"))
     try:
         shutil.copytree(src, tmp / "store")
@@ -68,7 +72,9 @@ def run(run_dir, as_of: datetime, *, extra: dict | None = None, v2_store=None) -
                 facs.append(V2.short_inst(ex.get("short_snaps"), ex.get("inst"), cap_dt, v))
                 facs.append(V2.news_guidance(ex.get("news"), (r.get("plan") or {}).get("assumed_release_utc") and datetime.fromisoformat(r["plan"]["assumed_release_utc"]) or None, cap_dt, v))
                 res[v] = V2.score(facs, v1_gates=gates, variant=v)
-            out.append({"symbol": sym, "earnings_date": ed, "kind": r.get("kind"), "capture_ts": r["capture_ts"],
+            o = v1_orig.get(sym)
+            out.append({"v1_original": {"capture_ts": o["capture_ts"], "continuation": {k: o["continuation"][k] for k in ("signal", "bull", "bear", "available")}, "contrarian": {k: o["contrarian"][k] for k in ("signal", "bull", "bear", "available")}} if o else None,
+                        "symbol": sym, "earnings_date": ed, "kind": r.get("kind"), "capture_ts": r["capture_ts"],
                         "eligibility": {"liquidity_ok": "ILLIQUID_OR_UNKNOWN" not in gates, "entry_ok": "NOT_TRADABLE" not in gates, "capture_window_ok": "OUT_OF_WINDOW" not in gates and "UNKNOWN_TIMING" not in gates, "v1_gates": gates}, "v1": {v: {k: r["engine"][v][k] for k in ("signal", "bull", "bear", "available")} for v in r["engine"]}, "v2": res,
                         "evidence": [{k: e[k] for k in ("kind", "symbol", "retrieved_at", "raw_sha256")} for e in r["evidence"]]})
         body = {"model": "V2", "version": V2.VERSION, "status": V2.STATUS, "config_hash": V2.CONFIG_HASH, "source_run": Path(run_dir).name, "as_of": as_of.isoformat(), "events": out, "simulation": False}
@@ -88,6 +94,8 @@ def main(argv=None):
     ap.add_argument("--run-dir", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--as-of")
+    ap.add_argument("--store-dir", help="store holding the refreshed calendar and the V2 evidence (defaults to <run-dir>/store)")
+    ap.add_argument("--v1-report", help="the original V1 audit_report.json (defaults to <run-dir>/audit_report.json)")
     a = ap.parse_args(argv)
     out = Path(a.out)
     if out.exists():
@@ -95,7 +103,11 @@ def main(argv=None):
         return 3
     rep = json.loads((Path(a.run_dir) / "audit_report.json").read_text(encoding="utf-8"))
     as_of = datetime.fromisoformat(a.as_of) if a.as_of else max(datetime.fromisoformat(r["capture_ts"]) for r in rep["results"]) + __import__("datetime").timedelta(seconds=60)
-    body = run(a.run_dir, as_of)
+    v2s = None
+    if a.store_dir:
+        import smart_move_live as L2
+        v2s = L2.LiveStore(a.store_dir)
+    body = run(a.run_dir, as_of, v2_store=v2s, store_dir=a.store_dir, v1_report=a.v1_report)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(body, default=str, indent=1), encoding="utf-8")
     print("wrote", out, "events", len(body["events"]))

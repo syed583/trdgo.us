@@ -65,7 +65,7 @@ def test_analyst_needs_a_prior_snapshot_and_never_uses_a_future_one():
 
 
 def test_analyst_rating_actions_count_only_before_capture_and_within_30_days():
-    acts = [{"action": "upgrade", "timestamp": iso(CAP - timedelta(days=2))}] * 2 + [{"action": "upgrade", "timestamp": iso(CAP + timedelta(hours=1))}] * 4 + [{"action": "upgrade", "timestamp": iso(CAP - timedelta(days=60))}] * 4
+    acts = [{"action": "upgraded", "timestamp": iso(CAP - timedelta(days=2))}] * 2 + [{"action": "maintained", "timestamp": iso(CAP - timedelta(days=2))}] * 5 + [{"action": "upgraded", "timestamp": iso(CAP + timedelta(hours=1))}] * 4 + [{"action": "upgraded", "timestamp": iso(CAP - timedelta(days=60))}] * 4
     r = V.analyst(None, acts, CAP, "continuation")
     assert r["available"] and r["upgrades"] == 2 and r["bull"] == 5 and r["available_points"] == 5
 
@@ -114,7 +114,7 @@ def test_implied_move_is_magnitude_only_and_does_not_count_toward_directional_co
 
 # ------------------------------------------------------------------ short interest / institutions
 def ss(si0, si1, f1=0.20, gap=14, dtc=5.0):
-    d1 = CAP - timedelta(days=1)
+    d1 = CAP - timedelta(days=13)                                                # published: the settlement is older than the 12-day publication lag
     return [{"market_date": (d1 - timedelta(days=gap)).date().isoformat(), "si_float": f1, "short_interest": si0, "days_to_cover": dtc},
             {"market_date": d1.date().isoformat(), "si_float": f1, "short_interest": si1, "days_to_cover": dtc}]
 
@@ -127,11 +127,14 @@ def test_high_short_interest_alone_is_not_a_signal_only_high_and_rising_is_beari
     assert falling["available"] and falling["bull"] == falling["bear"] == 0                            # covering/squeeze is ambiguous: no direction
     low = V.short_inst(ss(100, 120, f1=0.03), None, CAP, "continuation")
     assert low["bull"] == low["bear"] == 0
+    unpublished = ss(100, 115)
+    unpublished[1]["market_date"] = (CAP - timedelta(days=3)).date().isoformat()          # settled 3 days ago: not yet published, must not count
+    assert not V.short_inst(unpublished, None, CAP, "continuation")["available"]
     assert V.short_inst(ss(100, 115), None, CAP, "contrarian")["bull"] == 2.5
 
 
 def test_institutional_net_change_uses_only_filings_before_capture():
-    own = [{"units_change": 600_000, "shares_outstanding": 100_000_000, "filing_date": iso(CAP - timedelta(days=5))}, {"units_change": -9_000_000, "shares_outstanding": 100_000_000, "filing_date": iso(CAP + timedelta(days=1))}]
+    own = [{"units_changed": "600000", "shares_outstanding": "100000000", "filing_date": iso(CAP - timedelta(days=5))}, {"units_changed": "-9000000", "shares_outstanding": "100000000", "filing_date": iso(CAP + timedelta(days=1))}]
     r = V.short_inst(None, own, CAP, "continuation")
     assert r["available"] and r["bull"] == 2.5 and r["institutional_net_pct_of_shares"] == 0.6 and r["available_points"] == 2.5
 
@@ -164,10 +167,10 @@ def full_factors(variant="continuation", direction=1):
     trend = {d0 + timedelta(days=i): 100 + i * 2 * direction for i in range(30)}
     flat = {d0 + timedelta(days=i): 100 for i in range(30)}
     s = snaps(1.0, 1.1 if direction > 0 else 0.9, 100, 105 if direction > 0 else 95)
-    act = "upgrade" if direction > 0 else "downgrade"
+    act = "upgraded" if direction > 0 else "downgraded"
     acts = [{"action": act, "timestamp": iso(CAP - timedelta(days=3))}] * 2
     flow = [alert("call" if direction > 0 else "put", ask=300_000)] * 3
-    own = [{"units_change": 1_000_000 * direction, "shares_outstanding": 100_000_000, "filing_date": iso(CAP - timedelta(days=5))}]
+    own = [{"units_changed": str(1_000_000 * direction), "shares_outstanding": "100000000", "filing_date": iso(CAP - timedelta(days=5))}]
     return V.from_v1(v1_sub(direction > 0)) + [V.implied_vs_hist(erows, ED), V.rel_strength(trend, flat, flat, d0 + timedelta(days=29), variant), V.analyst(s, acts, CAP, variant),
                                               V.options_flow(flow, ED, CAP, variant), V.short_inst(ss(100, 115 if direction < 0 else 80), own, CAP, variant), V.news_guidance(None, None, CAP, variant)]
 
