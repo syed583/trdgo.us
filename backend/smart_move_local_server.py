@@ -15,6 +15,8 @@ app = FastAPI(title="Smart Move (local, read-only, saved evidence)", docs_url="/
 app.include_router(router)
 app.include_router(tracking_router)
 app.include_router(board_router)
+from smart_move_v2_audit_routes import router as v2_audit_router  # noqa: E402
+app.include_router(v2_audit_router)
 
 
 @app.get("/auth/me")

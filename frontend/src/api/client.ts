@@ -1048,4 +1048,11 @@ export const smartMoveTracking = {
 export const smartMoveBoard = {
   board: (query: string, s?: AbortSignal) => request<any>(`/api/smart-move/board?${query}`, s),
   ops: (s?: AbortSignal) => request<any>('/api/smart-move/ops', s),
+  v2: (variant: string, s?: AbortSignal) => request<any>(`/api/smart-move/v2?variant=${encodeURIComponent(variant)}`, s),
+  audits: (s?: AbortSignal) => request<any>('/api/smart-move/audits', s),
+  generateAudit: async () => {
+    const r = await fetch('/api/smart-move/audits/generate', { method: 'POST' });
+    if (!r.ok) throw new Error(`audit failed (${r.status})`);
+    return r.json();
+  },
 };

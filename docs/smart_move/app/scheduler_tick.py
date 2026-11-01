@@ -63,17 +63,48 @@ def main(argv=None):
     return 0
 
 
-def run_actions(result, run_root, now):
-    """Carries out COLLECT in a new folder via full_universe_run.py; calendar refresh happens inside that program. Outcome fetching runs through the governor-bound RefreshService."""
+def seed_from_latest(run_root):
+    """The seed for a new collection is the newest earlier run folder that has a store and a report (copied, never written). None when there is none."""
+    import smart_move_board as B
+    for name, rep in reversed(B.load_run_reports(run_root)):
+        d = Path(run_root) / name
+        if (d / "store" / "cal_obs.jsonl").exists() and (d / "store" / "evidence.jsonl").exists() and (d / "store" / "payloads").is_dir() and rep.get("results"):
+            return d / "store", d / "audit_report.json"
+    return None
+
+
+def build_collect_command(act, run_root, now):
+    seed = seed_from_latest(run_root)
+    if seed is None:
+        return None
+    out = Path(run_root) / ("run_%s_auto" % now.strftime("%Y%m%d_%H%M"))
+    # cap: the planned requests plus a small allowance for retries; never above the governor's own planning ceiling
+    cap = min(int(act.get("requests", 0)) + 25, 1700)
+    return [sys.executable, str(HERE / "full_universe_run.py"), "--out-dir", str(out), "--seed-store", str(seed[0]), "--seed-report", str(seed[1]), "--cap", str(cap), "--batch-size", "20"], out
+
+
+def run_actions(result, run_root, now, runner=None):
+    """Carries out COLLECT / REFRESH_CALENDAR through full_universe_run.py in a NEW folder (it refuses an existing one, resumes only with --resume, engages the kill switch after every batch).
+    A folder left unfinished by an interrupted tick is resumed instead of restarted. `runner` replaces subprocess.run in tests."""
     import subprocess
+    runner = runner or (lambda cmd: subprocess.run(cmd, check=False).returncode)
+    done = False
     for act in result["actions"]:
-        if act["action"] in ("COLLECT", "REFRESH_CALENDAR"):
-            out = Path(run_root) / ("run_%s_auto" % now.strftime("%Y%m%d_%H%M"))
-            cmd = [sys.executable, str(HERE / "full_universe_run.py"), "--out-dir", str(out), "--seed-store", str(Path(run_root).parent / "seed_store"),
-                   "--seed-report", str(Path(run_root).parent / "seed_report.json"), "--cap", str(act.get("requests", 700) + 50), "--batch-size", "20"]
-            rc = subprocess.run(cmd, check=False).returncode
-            if rc not in (0,):
-                return 5
+        if act["action"] not in ("COLLECT", "REFRESH_CALENDAR") or done:
+            continue
+        built = build_collect_command(act, run_root, now)
+        if built is None:
+            print(json.dumps({"refused": "no earlier run folder with a store to seed from"}))
+            return 2
+        cmd, out = built
+        if (out / "checkpoint.json").exists() and not (out / "audit_report.json").exists():
+            cmd = cmd + ["--resume"]
+        elif out.exists():
+            return 0                                              # this minute's folder already exists and is finished: a repeated tick does nothing
+        rc = runner(cmd)
+        done = True                                               # one collection per tick
+        if rc not in (0,):
+            return 5
     return 0
 
 

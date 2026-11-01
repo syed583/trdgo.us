@@ -66,3 +66,54 @@ def test_deploy_files_are_disabled():
     x = (d / "SmartMove_Tick.task.xml").read_text()
     assert x.count("<Enabled>false</Enabled>") == 2 and "--execute" not in x.split("<Arguments>")[1].split("</Arguments>")[0]
     assert "WantedBy" in (d / "smartmove-tick.timer").read_text() and "enable --now" in (d / "smartmove-tick.timer").read_text() and "--execute" not in (d / "smartmove-tick.service").read_text().split("ExecStart")[1]
+
+
+def _seeded_root(tmp_path):
+    d = tmp_path / "run_old"
+    (d / "store" / "payloads").mkdir(parents=True)
+    for n in ("cal_obs.jsonl", "evidence.jsonl"):
+        (d / "store" / n).write_text("")
+    (d / "audit_report.json").write_text(json.dumps({"started_utc": "2026-10-31T21:00:00+00:00", "results": [{"symbol": "A", "earnings_date": "2026-11-02", "capture_ts": "x"}]}))
+    return tmp_path
+
+
+def test_execute_path_builds_real_argument_paths_budget_and_runs_one_collection_per_tick(tmp_path):
+    root = _seeded_root(tmp_path)
+    now = datetime(2026, 11, 2, 12, tzinfo=UTC)
+    res = {"actions": [{"action": "COLLECT", "symbols": ["A"], "requests": 60}, {"action": "COLLECT", "symbols": ["B"], "requests": 60}]}
+    seen = []
+
+    def runner(cmd):
+        seen.append(cmd)
+        return 0
+    assert ST.run_actions(res, root, now, runner=runner) == 0 and len(seen) == 1
+    c = seen[0]
+    assert c[c.index("--seed-store") + 1] == str(root / "run_old" / "store") and c[c.index("--seed-report") + 1] == str(root / "run_old" / "audit_report.json")
+    assert c[c.index("--out-dir") + 1] == str(root / "run_20261102_1200_auto") and int(c[c.index("--cap") + 1]) == 85 and "--resume" not in c
+
+
+def test_execute_refuses_without_a_seed_resumes_an_interrupted_folder_and_ignores_a_finished_one(tmp_path):
+    now = datetime(2026, 11, 2, 12, tzinfo=UTC)
+    res = {"actions": [{"action": "COLLECT", "symbols": ["A"], "requests": 60}]}
+    called = []
+    assert ST.run_actions(res, tmp_path, now, runner=lambda c: called.append(c) or 0) == 2 and called == []          # nothing to seed from: nothing is sent
+    root = _seeded_root(tmp_path / "r")
+    out = root / "run_20261102_1200_auto"
+    out.mkdir()
+    (out / "checkpoint.json").write_text("{}")
+    cmds = []
+    ST.run_actions(res, root, now, runner=lambda c: cmds.append(c) or 0)
+    assert cmds[0][-1] == "--resume"                                                                               # interrupted: continue, never restart
+    (out / "audit_report.json").write_text("{}")
+    cmds.clear()
+    assert ST.run_actions(res, root, now, runner=lambda c: cmds.append(c) or 0) == 0 and cmds == []              # finished: a repeated tick is a no-op
+
+
+def test_a_provider_stop_in_the_collector_returns_exit_5_and_the_cli_never_executes_by_default(tmp_path, monkeypatch):
+    root = _seeded_root(tmp_path)
+    res = {"actions": [{"action": "COLLECT", "symbols": ["A"], "requests": 10}]}
+    assert ST.run_actions(res, root, datetime(2026, 11, 2, 13, tzinfo=UTC), runner=lambda c: 5) == 5
+    monkeypatch.delenv("SMART_MOVE_LIVE_COLLECTION", raising=False)
+    import subprocess
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not run")))
+    assert ST.main(["--run-root", str(root), "--now", "2026-11-02T12:00:00+00:00", "--execute"]) == 2

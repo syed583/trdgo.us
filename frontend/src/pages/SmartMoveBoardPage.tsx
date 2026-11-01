@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, Clock, FlaskConical, RefreshCw, Search, ShieldAlert, X } from 'lucide-react';
 import type { PageContext } from '../App';
-import { smartMoveBoard } from '../api/client';
+import { smartMoveBoard, smartMoveTracking } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import { PageHead } from './shared';
 import './smart-move.css';
@@ -95,6 +95,8 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
   const [sector, setSector] = useState('');
   const [date, setDate] = useState('');
   const [evidenceF, setEvidenceF] = useState('');
+  const [model, setModel] = useState<'V1' | 'V2'>('V1');
+  const [auditMsg, setAuditMsg] = useState('');
   const [open, setOpen] = useState('');
   const [, setTick] = useState(0);
   useEffect(() => { const id = setInterval(() => setTick((x) => x + 1), 1000); return () => clearInterval(id); }, []);
@@ -109,6 +111,17 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
   const board = useApi<any>((s) => smartMoveBoard.board(query, s), [query], { refreshMs: 30_000 });
   const d = board.data;
   const ops = useApi<any>((s) => smartMoveBoard.ops(s), [], { refreshMs: 30_000 });
+  const v2 = useApi<any>((s) => smartMoveBoard.v2(variant, s), [variant], { refreshMs: 30_000 });
+  const audits = useApi<any>((s) => smartMoveBoard.audits(s), [auditMsg], { refreshMs: 60_000 });
+  const outcomes = useApi<any>((s) => smartMoveTracking.outcomes(s), [], { refreshMs: 60_000 });
+  const v2By: Record<string, any> = {};
+  (v2.data?.events || []).forEach((e: any) => { v2By[`${e.symbol}|${e.earnings_date}`] = e; });
+  const outBy: Record<string, any> = {};
+  (outcomes.data?.rows || []).forEach((o: any) => { outBy[`${o.symbol}|${o.earnings_date}`] = o; });
+  const generate = async () => {
+    setAuditMsg('Generating…');
+    try { const r = await smartMoveBoard.generateAudit(); setAuditMsg(r.ok ? `Audit saved: ${r.verdict}, ${r.pages} pages, hash ${String(r.audit_hash).slice(0, 12)}` : 'Audit failed'); } catch (e: any) { setAuditMsg(String(e.message || e)); }
+  };
   const allRows: any[] = d?.rows || [];
   const sectors = Array.from(new Set(allRows.map((r) => r.sector).filter(Boolean))).sort() as string[];
   const dates = Array.from(new Set(allRows.map((r) => r.earnings_date))).sort() as string[];
@@ -160,6 +173,16 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
           )}
         </div>
       )}
+      <div className="sm-fresh" role="group" aria-label="Model and audit">
+        <b>Model</b>
+        <button className={`sm-tab ${model === 'V1' ? 'on' : ''}`} onClick={() => setModel('V1')}>V1 · 40 points (frozen)</button>
+        <button className={`sm-tab ${model === 'V2' ? 'on' : ''}`} onClick={() => setModel('V2')}>V2 · 100 points (EXPERIMENTAL, unavailable for decisions)</button>
+        <span style={{ flex: 1 }} />
+        <button className="ghost-btn" onClick={generate} title="Builds the audit record and the two-page PDF from saved data; sends no provider request">Generate audit</button>
+        {audits.data?.audits?.length > 0 && <a className="ghost-btn" href={`/api/smart-move/audits/${audits.data.audits[audits.data.audits.length - 1].file}.pdf`} target="_blank" rel="noreferrer">Latest audit PDF</a>}
+        {auditMsg && <span className="sm-bd-asof">{auditMsg}</span>}
+      </div>
+      {model === 'V2' && <div className="sm-banner" role="note"><AlertTriangle size={16} /><div>{v2.data?.banner || 'V2 results are not available.'} Config hash {String(v2.data?.config_hash || '').slice(0, 12)}. Missing factors are never turned into signals.</div></div>}
       <OpsPanel ops={ops.data} error={ops.error} />
       {(d?.removed_events?.length > 0 || d?.rescheduled_events?.length > 0) && (
         <div className="sm-fresh" role="note">
@@ -206,7 +229,7 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
       {rows.length > 0 && (
         <div className="sm-table-wrap">
           <table className="sm-table sm-bd-table">
-            <thead><tr><th>Stock</th><th>Earnings</th><th>Capture window (Dubai · New York)</th><th>Signal status ({variant})</th><th>Points</th><th>Scoring factors</th><th>Last data update</th><th>Event v.</th></tr></thead>
+            <thead><tr><th>Stock</th><th>Earnings</th><th>Capture window (Dubai · New York)</th><th>Signal status ({variant})</th><th>Points</th><th>Scoring factors</th><th>Last data update</th><th>Event v.</th><th>V2 (exp.)</th><th>Outcome</th></tr></thead>
             <tbody>
               {rows.map((r) => {
                 const key = `${r.symbol}|${r.earnings_date}`;
@@ -223,8 +246,10 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
                         <small>closes {fmtDubai(r.window.cutoff_utc)}<br />{fmtNY(r.window.cutoff_utc)}</small>
                       </td>
                       <td>
-                        <StatusPill status={r.status} />
-                        <small>{r.status_why}</small>
+                        {model === 'V2' && v2By[key]
+                          ? <><span className={`sm-bd-pill ${v2By[key].signal === 'NO_TRADE' ? 'data_incomplete' : v2By[key].signal.toLowerCase()}`}><i />{v2By[key].signal === 'NO_TRADE' ? 'V2 UNAVAILABLE' : `V2 ${v2By[key].signal} (EXPERIMENTAL)`}</span>
+                              <small>{v2By[key].available_points} of 100 points have data (60 needed); {v2By[key].reason_codes.join(', ')}. V1 says {STATUS_LABEL[r.status as Status]}.</small></>
+                          : <><StatusPill status={r.status} /><small>{r.status_why}</small></>}
                         {r.blocker && <small className="sm-bd-blocker">{r.blocker}</small>}
                         <small className="sm-bd-other">{other}: <StatusPill status={ov.status} small /></small>
                       </td>
@@ -242,10 +267,12 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
                         </div>
                       </td>
                       <td>{r.evaluated ? fmtExact(r.last_update) : fmtET(r.last_update)}<small>{fmtAge(r.age_hours)} · {r.evaluation_source.replace(/_/g, ' ').toLowerCase()}</small></td>
+                      <td>{(() => { const x = v2By[key]; if (!x) return <span className="sm-none">n/a</span>; return <span title={`V2 ${x.signal}; missing: ${x.missing.map((m: any) => m.factor).join(', ')}`}>{x.bull}↑ {x.bear}↓ <small>{x.available_points}/100 available · {model === 'V2' ? 'EXPERIMENTAL ' : ''}{x.signal === 'NO_TRADE' ? 'no signal' : x.signal}</small></span>; })()}</td>
+                      <td>{(() => { const o = outBy[key]; return o ? `${o.move_pct > 0 ? '+' : ''}${o.move_pct}%` : <span className="sm-none">pending</span>; })()}</td>
                       <td title={r.event ? `first seen date ${r.event.original_date}; registry observed ${r.event.observed_ts}` : 'not in registry'}>{r.event ? `v${r.event.version}` : '—'}</td>
                     </tr>
                     {open === key && (
-                      <tr className="sm-bd-detail"><td colSpan={8}>
+                      <tr className="sm-bd-detail"><td colSpan={10}>
                         <div className="sm-bd-grid">
                           <div><h4>Factors</h4>{r.factors.map((f: any) => <div key={f.factor}><b>{f.factor}</b> {f.name}: {STATE_LABEL[f.state]}{f.reason ? ` (${f.reason})` : ''}</div>)}</div>
                           <div><h4>Both variants (scored separately)</h4>
@@ -256,6 +283,8 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
                             <div>Opens {fmtDubai(r.window.start_utc)} · {fmtNY(r.window.start_utc)}</div><div>Closes {fmtDubai(r.window.cutoff_utc)} · {fmtNY(r.window.cutoff_utc)}</div>{r.evaluated && <div>Captured {fmtExact(r.last_update)}</div>}{r.blocker && <div>{r.blocker}</div>}
                             <div>Calendar: {r.calendar_status || '—'}{r.run ? ` · run ${r.run}` : ''}</div>
                             {r.event && <div>Event version v{r.event.version}, first seen on {r.event.original_date}{r.event.confirmed ? ', vendor confirmed' : ', not confirmed'}</div>}</div>
+                          <div><h4>V2 factors (experimental, {variant})</h4>
+                            {v2By[key] ? v2By[key].factors.map((f: any) => <div key={f.factor}><b>{f.factor}</b> {f.available ? `${f.bull}↑ ${f.bear}↓ of ${f.max}` : <span className="sm-none">missing, not a signal</span>}</div>) : <div>No V2 result saved for this event.</div>}</div>
                           <div><h4>Evidence (hash, source, retrieval time)</h4>
                             {r.evidence.length ? r.evidence.map((e: any, i: number) => <div key={i} className="sm-hash">{e.kind} {e.symbol} · {fmtExact(e.retrieved_at)} · {String(e.raw_sha256).slice(0, 12)} · {e.mode}</div>) : <div>No evidence saved for this event.</div>}</div>
                         </div>
