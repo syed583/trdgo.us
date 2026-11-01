@@ -57,10 +57,14 @@ def _ts(x) -> datetime:
 # ---------------------------------------------------------------- history
 def load_predictions(store_dirs: Iterable) -> list:
     """Every stored prediction version from the given live-store folders (predictions.jsonl), tagged with its source folder. Read only."""
-    rows = []
+    rows, seen = [], set()
     for sd in store_dirs:
         for r in _read_jsonl(Path(sd) / "predictions.jsonl"):
             if r.get("symbol") and r.get("earnings_date") and r.get("engine"):
+                k = (r["symbol"], str(r["earnings_date"])[:10], r.get("mode") or "LIVE", r.get("digest"), r.get("captured_at"))
+                if k in seen:                                   # the same saved prediction reachable through two stores is one record
+                    continue
+                seen.add(k)
                 rows.append(dict(r, _source=str(sd)))
     return rows
 

@@ -1,0 +1,11 @@
+# Enable with: systemctl enable --now smartmove-tick.timer   (NOT enabled by this repository)
+[Unit]
+Description=Smart Move tick every 30 minutes
+
+[Timer]
+OnCalendar=*:0/30
+Persistent=true
+Unit=smartmove-tick.service
+
+[Install]
+WantedBy=timers.target

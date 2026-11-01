@@ -237,7 +237,10 @@ def build_board(saved_rows: list, live_rows: list, run_results: dict, *, now: da
             variants[v] = c
         last_dt = _dt(last)
         phase = window_phase(plan, now)
-        rows.append({"phase": phase, "blocker": blocker(evaluated, phase, calendar_ok, bool(run_results)), "evaluated": evaluated, "symbol": s["symbol"], "company": s.get("company"), "earnings_date": s["earnings_date"], "release": _release_label(s.get("kind"), plan),
+        ev_ver = cur.get(s["symbol"]) if cur is not None else None
+        rows.append({"event": {"version": ev_ver["version"], "original_date": ev_ver.get("original_date"), "observed_ts": ev_ver["observed_ts"], "confirmed": ev_ver["confirmed"]} if ev_ver else None,
+                     "evidence": [{k: e.get(k) for k in ("kind", "symbol", "retrieved_at", "raw_sha256", "mode")} for e in ((run or lv or {}).get("evidence") or [])],
+                     "phase": phase, "blocker": blocker(evaluated, phase, calendar_ok, bool(run_results)), "evaluated": evaluated, "symbol": s["symbol"], "company": s.get("company"), "earnings_date": s["earnings_date"], "release": _release_label(s.get("kind"), plan),
                      "window": {"start_utc": (plan or {}).get("window_start_utc"), "cutoff_utc": (plan or {}).get("cutoff_utc")},
                      "status": variants[variant]["status"], "status_why": variants[variant]["why"], "variants": variants,
                      "points": {"available": avail if evaluated else None, "max": 40, "bull": variants[variant]["bull"], "bear": variants[variant]["bear"], "min_to_decide": MIN_AVAILABLE},
@@ -258,7 +261,7 @@ def build_board(saved_rows: list, live_rows: list, run_results: dict, *, now: da
     upcoming = sorted(t for t in (_dt(r["window"]["start_utc"]) for r in rows if r["phase"] == "AHEAD") if t)
     summary["next_window_opens_utc"] = upcoming[0].isoformat() if upcoming else None
     return {"as_of": now.isoformat(), "summary": summary, "variant": variant, "counts": counts, "total": len(rows), "rows": rows,
-            "removed_events": removed, "registry": {"current": len(cur)} if cur is not None else None,
+            "removed_events": removed, "rescheduled_events": ([{"symbol": v["symbol"], "from": v.get("earnings_date"), "superseded_ts": v.get("superseded_ts")} for v in registry.versions if v["status"] == "RESCHEDULED"] if registry is not None else []), "registry": {"current": len(cur)} if cur is not None else None,
             "sources": {"run_reports": len(run_results), "live_rows": len(live), "saved_calendar_rows": len(saved_rows)}}
 
 

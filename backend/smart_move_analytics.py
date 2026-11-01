@@ -62,7 +62,36 @@ def breakdown(rows: list) -> dict:
             dims[key] = {b: _group(x) for b, x in sorted(groups.items())}
         met = g["decided"] >= G.MIN_DECIDED_PER_VARIANT and len(weeks) >= G.MIN_EARNINGS_WEEKS
         ok.append(met)
-        out["variants"][v] = {"overall": g, "by_signal": sig, "no_trade": no_trade, "no_trade_frequency": round(no_trade / len(rs), 3) if rs else None,
+        out["variants"][v] = {"signal_counts": {k: sum(1 for r in rs if r["signal"] == k) for k in ("BUY", "SELL", "NO_TRADE")}, "overall": g, "by_signal": sig, "no_trade": no_trade, "no_trade_frequency": round(no_trade / len(rs), 3) if rs else None,
                               "earnings_weeks": len(weeks), "minimum_sample_met": met, "by": dims}
     out["minimum_sample_met_both"] = all(ok)
     return out
+
+
+def rows_from_records(preds: list, outcomes: list, *, mode: str = "LIVE", sector_lookup: dict | None = None, kind_lookup: dict | None = None) -> list:
+    """Analytics rows from stored prediction versions and outcomes. Latest version per event+variant; late captures and out-of-window predictions are excluded
+    (same rule as the grader). Metadata comes from the record's own `meta`; an older record without it falls back to the saved calendar sector only,
+    and liquidity stays unknown. Nothing is guessed."""
+    import smart_move_tracking as T
+    latest = {}
+    for p in preds:
+        if (p.get("mode") or "LIVE") != mode:
+            continue
+        k = (p["symbol"], str(p["earnings_date"])[:10])
+        if k not in latest or (p.get("version", 1), p["captured_at"]) > (latest[k].get("version", 1), latest[k]["captured_at"]):
+            latest[k] = p
+    om = {(o["symbol"], o["earnings_date"]): o for o in outcomes if o.get("mode") == mode}
+    rows = []
+    for (sym, ed), p in latest.items():
+        if T.is_late(p):
+            continue
+        meta = p.get("meta") or {}
+        o = om.get((sym, ed))
+        for v in T.VARIANTS:
+            e = p["engine"].get(v)
+            if not e or not T.in_window(p, v):
+                continue
+            rows.append({"variant": v, "signal": e["signal"], "move_pct": o["move_pct"] if o else None, "mode": mode, "earnings_date": ed, "symbol": sym,
+                         "sector": meta.get("sector") or (sector_lookup or {}).get(sym), "kind": meta.get("kind") or (kind_lookup or {}).get((sym, ed)), "coverage": e.get("available"),
+                         "adv20": meta.get("adv20"), "bull": e.get("bull"), "bear": e.get("bear")})
+    return rows

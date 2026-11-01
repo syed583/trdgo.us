@@ -1,0 +1,10 @@
+# systemd unit for the Smart Move tick on a VPS. NOT INSTALLED. Plan-only unless SMART_MOVE_LIVE_COLLECTION=1, the flag file and --execute are all added by the owner.
+[Unit]
+Description=Smart Move tick (plan only by default; prediction-only; no broker)
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/smartmove
+EnvironmentFile=-/etc/smartmove/tick.env
+ExecStart=/usr/bin/python3 /opt/smartmove/docs/smart_move/app/scheduler_tick.py --run-root /var/lib/smartmove/out
+TimeoutStartSec=1200

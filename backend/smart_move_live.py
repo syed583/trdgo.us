@@ -749,6 +749,7 @@ class LiveScorer:
             if any(e["mode"] == "SIMULATION" for e in used):
                 row["evidence_mode"] = "SIMULATION"
             row.update(available_points=preds["continuation"]["weight_available"], missing_factors=miss, blocked_by=sorted(set(blocked)), evidence=used,
+                       adv20=(getattr(evid[5], "extracted", None) or {}).get("adv20") if evid[5].usable else None,
                        subscores={v: preds[v]["explanation"]["subscores"] for v in preds}, capture_ts=now.isoformat(),
                        plan={"assumed_release_et": plan["assumed_release_et"].isoformat(), "window_start_utc": plan["window_start_utc"].isoformat(), "cutoff_utc": plan["cutoff_utc"].isoformat(), "basis": plan["basis"]})
             rows.append(row)
@@ -764,5 +765,6 @@ class LiveScorer:
                 if prev is None or prev["digest"] != digest:
                     self.s.store.append("predictions", {"symbol": r["symbol"], "earnings_date": r["earnings_date"], "digest": digest, "version": (prev["version"] + 1) if prev else 1,
                                                         "captured_at": r["capture_ts"], "mode": r["evidence_mode"], "engine": r["engine"], "blocked_by": r["blocked_by"],
+                                                        "meta": {"sector": r.get("sector"), "kind": r.get("kind"), "adv20": r.get("adv20"), "coverage": r.get("available_points"), "company": r.get("company")},
                                                         "evidence": [{k: e[k] for k in ("kind", "symbol", "raw_sha256", "retrieved_at")} for e in r["evidence"]]})
         return rows

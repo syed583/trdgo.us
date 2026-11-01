@@ -1040,9 +1040,12 @@ export const smartMoveTracking = {
   history: (query: string, s?: AbortSignal) => request<any>(`/api/smart-move/tracking/history?${query}`, s),
   accuracy: (mode: string, s?: AbortSignal) => request<any>(`/api/smart-move/tracking/accuracy?mode=${encodeURIComponent(mode)}`, s),
   report: (s?: AbortSignal) => request<any>('/api/smart-move/tracking/report', s),
+  analytics: (mode: string, s?: AbortSignal) => request<any>(`/api/smart-move/tracking/analytics?mode=${encodeURIComponent(mode)}`, s),
+  outcomes: (s?: AbortSignal) => request<any>('/api/smart-move/tracking/outcomes', s),
 };
 
 /** Smart Move earnings board: eligible upcoming events with an honest status (read only; saved data; no provider request). */
 export const smartMoveBoard = {
   board: (query: string, s?: AbortSignal) => request<any>(`/api/smart-move/board?${query}`, s),
+  ops: (s?: AbortSignal) => request<any>('/api/smart-move/ops', s),
 };

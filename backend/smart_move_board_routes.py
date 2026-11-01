@@ -85,3 +85,31 @@ def health():
     reg = B.derive_registry(R.current_rows(), reports)
     out = H.health(os.path.join(root, reports[-1][0]), reg, now=now)
     return dict(out, read_only=True, sends_requests=False)
+
+
+@router.get("/ops")
+def ops():
+    """Operations view, read only: what the next scheduler tick WOULD do (plan only), alerts, provider errors, kill switch, data health. Sends nothing, registers nothing."""
+    import smart_move_health as H
+    import smart_move_scheduler as SCH
+    now, forced = _now()
+    root = os.getenv("SMART_MOVE_RUN_ROOT") or DEFAULT_RUN_ROOT
+    reports = B.load_run_reports(root)
+    saved = R.current_rows()
+    reg = B.derive_registry(saved, reports)
+    cur = reg.current()
+    events = [{"symbol": s, "earnings_date": v["earnings_date"], "kind": v.get("kind")} for s, v in cur.items()]
+    captured = set(B.load_run_results(root).keys())
+    obs = max((v["observed_ts"] for v in cur.values()), default=None)
+    age = round((now - datetime.fromisoformat(obs)).total_seconds() / 3600, 1) if obs else None
+    plan = SCH.tick(now, events, captured, set(), SCH.Budget(), calendar_age_h=age, outcome_fetch_enabled=True, collection_enabled=False)
+    newest = reports[-1] if reports else None
+    rep = newest[1] if newest else {}
+    kill = os.path.exists(os.path.join(root, newest[0], "store", "KILL")) if newest else None
+    health = H.health(os.path.join(root, newest[0]), reg, now=now) if newest else {"ok": False, "checks": []}
+    return {"as_of": now.isoformat(), "clock_override": forced, "read_only": True, "sends_requests": False,
+            "scheduler": {"recurring_enabled": False, "registered_by_this_code": False, "mode": "PLAN ONLY (live collection not authorized)", "next_tick_plan": plan,
+                          "estimated_daily_requests_for_universe": SCH.estimate_daily_requests(len(events)), "calendar_age_hours": age},
+            "alerts": plan["alerts"], "kill_switch": {"engaged": kill, "run": newest[0] if newest else None},
+            "provider": {"attempts_total": rep.get("attempts_total"), "by_provider": rep.get("requests_by_provider"), "errors": len(rep.get("errors") or []), "stop_events": len(rep.get("stop_events") or []), "run_status": rep.get("status")},
+            "health": health, "event_registry": {"current": len(cur), "removed_or_rescheduled_versions": sum(1 for v in reg.versions if v["status"] != "CURRENT")}}

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<!-- Windows Task Scheduler definition for the Smart Move tick. NOT REGISTERED. Enabled=false.
+     Register only after review:  schtasks /Create /XML SmartMove_Tick.task.xml /TN SmartMove_Tick
+     The tick PLANS only (no provider request) unless the owner ALSO sets SMART_MOVE_LIVE_COLLECTION=1, creates <run-root>\LIVE_COLLECTION_ENABLED and adds --execute. -->
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo><Description>Smart Move 30-minute tick (plan only by default; prediction-only; no broker)</Description></RegistrationInfo>
+  <Triggers>
+    <TimeTrigger>
+      <Repetition><Interval>PT30M</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition>
+      <StartBoundary>2026-11-02T00:00:00</StartBoundary>
+      <Enabled>false</Enabled>
+    </TimeTrigger>
+  </Triggers>
+  <Settings>
+    <Enabled>false</Enabled>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <ExecutionTimeLimit>PT20M</ExecutionTimeLimit>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>C:\Users\initi\AppData\Local\Programs\Python\Python313\python.exe</Command>
+      <Arguments>C:\Users\initi\SmartMoveRun\code_v3\scheduler_tick.py --run-root C:\Users\initi\SmartMoveRun\out</Arguments>
+    </Exec>
+  </Actions>
+</Task>

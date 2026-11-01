@@ -65,6 +65,25 @@ function StatusPill({ status, small }: { status: Status; small?: boolean }) {
   return <span className={`sm-bd-pill ${status.toLowerCase()} ${small ? 'small' : ''}`}><i />{STATUS_LABEL[status]}</span>;
 }
 
+function OpsPanel({ ops, error }: { ops: any; error?: string | null }) {
+  if (error) return <div className="sm-fresh stale"><AlertTriangle size={14} /> Operations status unavailable: {error}</div>;
+  if (!ops) return null;
+  const bad = ops.health?.checks?.filter((c: any) => !c.ok) || [];
+  return (
+    <div className="sm-bd-summary" role="region" aria-label="Operations status">
+      <div className="sm-bd-sumhead"><b>Operations</b> · scheduler: {ops.scheduler.mode}{ops.scheduler.recurring_enabled ? '' : ' · recurring collection OFF'} · kill switch: <b>{ops.kill_switch.engaged ? 'engaged' : ops.kill_switch.engaged === false ? 'NOT engaged' : 'unknown'}</b></div>
+      <div className="sm-bd-sumgrid">
+        <span>Provider attempts (last run) <b>{ops.provider.attempts_total ?? '—'}</b></span><span>Provider errors <b>{ops.provider.errors}</b></span><span>Stop events <b>{ops.provider.stop_events}</b></span>
+        <span>Data health <b>{ops.health.ok ? 'OK' : `${bad.length} problem(s)`}</b></span><span>Registry events <b>{ops.event_registry.current}</b></span>
+        <span>Calendar age <b>{ops.scheduler.calendar_age_hours ?? '—'} h</b></span><span>Est. requests/day <b>{ops.scheduler.estimated_daily_requests_for_universe}</b></span>
+      </div>
+      {ops.alerts.length > 0 && <div className="sm-bd-blocker">{ops.alerts.slice(0, 6).map((a: any, i: number) => <div key={i}>{a.type}: {a.symbol || a.why || ''}</div>)}</div>}
+      {bad.map((c: any) => <div key={c.check} className="sm-bd-blocker">Health: {c.check} — {c.detail}</div>)}
+      {ops.scheduler.next_tick_plan.actions.map((a: any, i: number) => <div key={i} className="sm-bd-next">Next tick would: {a.action}{a.symbols ? ` (${a.symbols.length} stocks)` : ''} — plan only, not authorized to run</div>)}
+    </div>
+  );
+}
+
 /* Smart Move earnings board: every eligible upcoming earnings event with an honest status.
    Read only, saved data only. The colour is a display of what the frozen engine returned; it never creates a signal. */
 export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
@@ -73,6 +92,9 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
   const [status, setStatus] = useState<'' | Status>('');
   const [kind, setKind] = useState('');
   const [q, setQ] = useState('');
+  const [sector, setSector] = useState('');
+  const [date, setDate] = useState('');
+  const [evidenceF, setEvidenceF] = useState('');
   const [open, setOpen] = useState('');
   const [, setTick] = useState(0);
   useEffect(() => { const id = setInterval(() => setTick((x) => x + 1), 1000); return () => clearInterval(id); }, []);
@@ -86,7 +108,14 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
   }, [variant, status, kind, q]);
   const board = useApi<any>((s) => smartMoveBoard.board(query, s), [query], { refreshMs: 30_000 });
   const d = board.data;
-  const rows: any[] = d?.rows || [];
+  const ops = useApi<any>((s) => smartMoveBoard.ops(s), [], { refreshMs: 30_000 });
+  const allRows: any[] = d?.rows || [];
+  const sectors = Array.from(new Set(allRows.map((r) => r.sector).filter(Boolean))).sort() as string[];
+  const dates = Array.from(new Set(allRows.map((r) => r.earnings_date))).sort() as string[];
+  const rows: any[] = allRows.filter((r) =>
+    (!sector || r.sector === sector) && (!date || r.earnings_date === date) &&
+    (!evidenceF || (evidenceF === 'complete' ? r.evaluated && r.points.available === r.points.max && !r.factors.some((f: any) => f.state === 'MISSING')
+      : evidenceF === 'incomplete' ? r.evaluated && (r.points.available !== r.points.max || r.factors.some((f: any) => f.state === 'MISSING')) : !r.evaluated)));
   const simRows = rows.filter((r) => r.evidence_mode === 'SIMULATION').length;
   /* Countdown clock: the real clock, or (demo clock only) the server's demo time advanced by the seconds since it was loaded. */
   const [loadedAt, setLoadedAt] = useState(0);
@@ -131,6 +160,15 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
           )}
         </div>
       )}
+      <OpsPanel ops={ops.data} error={ops.error} />
+      {(d?.removed_events?.length > 0 || d?.rescheduled_events?.length > 0) && (
+        <div className="sm-fresh" role="note">
+          <AlertTriangle size={14} /> Not counted as current events:
+          {d.removed_events.map((x: any) => <span key={x.symbol + x.earnings_date} className="badge amber" style={{ marginLeft: 6 }}>{x.symbol} {x.earnings_date} removed/rescheduled</span>)}
+          {d.rescheduled_events.map((x: any) => <span key={x.symbol + x.from} className="badge amber" style={{ marginLeft: 6 }}>{x.symbol} moved from {x.from}</span>)}
+          {' '}Predictions already saved for them stay in Tracking history.
+        </div>
+      )}
       <div className="sm-bd-counts" role="group" aria-label="Filter by status">
         {STATUS_ORDER.map((s) => (
           <button key={s} className={`sm-bd-count ${s.toLowerCase()} ${status === s ? 'on' : ''}`} onClick={() => setStatus(status === s ? '' : s)} aria-pressed={status === s}>
@@ -153,7 +191,13 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
           <select value={variant} onChange={(e) => setVariant(e.target.value as any)}>
             <option value="continuation">Continuation variant</option><option value="contrarian">Contrarian variant</option>
           </select></label>
-        <button className="ghost-btn" onClick={() => { setStatus(''); setKind(''); setQ(''); }}>Clear</button>
+        <label>Earnings date
+          <select value={date} onChange={(e) => setDate(e.target.value)}><option value="">All</option>{dates.map((x) => <option key={x} value={x}>{x}</option>)}</select></label>
+        <label>Sector
+          <select value={sector} onChange={(e) => setSector(e.target.value)}><option value="">All</option>{sectors.map((x) => <option key={x} value={x}>{x}</option>)}</select></label>
+        <label>Evidence
+          <select value={evidenceF} onChange={(e) => setEvidenceF(e.target.value)}><option value="">Any</option><option value="complete">Complete (40/40)</option><option value="incomplete">Incomplete</option><option value="none">Not evaluated</option></select></label>
+        <button className="ghost-btn" onClick={() => { setStatus(''); setKind(''); setQ(''); setSector(''); setDate(''); setEvidenceF(''); }}>Clear</button>
         {d && <span className="sm-bd-asof">As of {fmtET(d.as_of)} · showing {d.shown} of {d.total}</span>}
       </div>
 
@@ -162,7 +206,7 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
       {rows.length > 0 && (
         <div className="sm-table-wrap">
           <table className="sm-table sm-bd-table">
-            <thead><tr><th>Stock</th><th>Earnings</th><th>Capture window (Dubai · New York)</th><th>Signal status ({variant})</th><th>Points</th><th>Scoring factors</th><th>Last data update</th></tr></thead>
+            <thead><tr><th>Stock</th><th>Earnings</th><th>Capture window (Dubai · New York)</th><th>Signal status ({variant})</th><th>Points</th><th>Scoring factors</th><th>Last data update</th><th>Event v.</th></tr></thead>
             <tbody>
               {rows.map((r) => {
                 const key = `${r.symbol}|${r.earnings_date}`;
@@ -198,9 +242,10 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
                         </div>
                       </td>
                       <td>{r.evaluated ? fmtExact(r.last_update) : fmtET(r.last_update)}<small>{fmtAge(r.age_hours)} · {r.evaluation_source.replace(/_/g, ' ').toLowerCase()}</small></td>
+                      <td title={r.event ? `first seen date ${r.event.original_date}; registry observed ${r.event.observed_ts}` : 'not in registry'}>{r.event ? `v${r.event.version}` : '—'}</td>
                     </tr>
                     {open === key && (
-                      <tr className="sm-bd-detail"><td colSpan={7}>
+                      <tr className="sm-bd-detail"><td colSpan={8}>
                         <div className="sm-bd-grid">
                           <div><h4>Factors</h4>{r.factors.map((f: any) => <div key={f.factor}><b>{f.factor}</b> {f.name}: {STATE_LABEL[f.state]}{f.reason ? ` (${f.reason})` : ''}</div>)}</div>
                           <div><h4>Both variants (scored separately)</h4>
@@ -209,7 +254,10 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
                             ))}</div>
                           <div><h4>Capture window</h4>
                             <div>Opens {fmtDubai(r.window.start_utc)} · {fmtNY(r.window.start_utc)}</div><div>Closes {fmtDubai(r.window.cutoff_utc)} · {fmtNY(r.window.cutoff_utc)}</div>{r.evaluated && <div>Captured {fmtExact(r.last_update)}</div>}{r.blocker && <div>{r.blocker}</div>}
-                            <div>Calendar: {r.calendar_status || '—'}{r.run ? ` · run ${r.run}` : ''}</div></div>
+                            <div>Calendar: {r.calendar_status || '—'}{r.run ? ` · run ${r.run}` : ''}</div>
+                            {r.event && <div>Event version v{r.event.version}, first seen on {r.event.original_date}{r.event.confirmed ? ', vendor confirmed' : ', not confirmed'}</div>}</div>
+                          <div><h4>Evidence (hash, source, retrieval time)</h4>
+                            {r.evidence.length ? r.evidence.map((e: any, i: number) => <div key={i} className="sm-hash">{e.kind} {e.symbol} · {fmtExact(e.retrieved_at)} · {String(e.raw_sha256).slice(0, 12)} · {e.mode}</div>) : <div>No evidence saved for this event.</div>}</div>
                         </div>
                       </td></tr>
                     )}

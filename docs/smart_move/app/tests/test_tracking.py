@@ -87,6 +87,7 @@ def test_empty_state_is_explained_not_faked(tmp_path, monkeypatch):
     monkeypatch.delenv("SMART_MOVE_TRACKING_DEMO", raising=False)
     monkeypatch.delenv("SMART_MOVE_PRED_STORES", raising=False)
     monkeypatch.delenv("SMART_MOVE_TRACKING_DIR", raising=False)
+    monkeypatch.setenv("SMART_MOVE_RUN_ROOT", str(tmp_path / "no_runs"))               # the default run folders are real data; this test needs none
     c = TestClient(srv.app)
     s = c.get("/api/smart-move/tracking/status").json()
     assert s["prediction_versions"] == 0 and s["sends_requests"] is False and "No stored predictions" in s["message"]

@@ -29,3 +29,16 @@ Full suite: `python -m pytest docs/smart_move/app/tests docs/smart_move/baseline
 cd <wt_smart> ; python -m pytest docs/smart_move/app/tests docs/smart_move/baseline -q
 ```
 then wire the Board UI to `removed_events`/`registry` fields in `frontend/src/pages/SmartMoveBoardPage.tsx`.
+
+---
+## Update (second phase) — everything below is done and committed locally
+- Board UI: filters (date, sector, evidence completeness, status, timing, variant, search), event version column, removed/rescheduled events banner, evidence list with hashes in the detail row, operations panel (scheduler plan-only, kill switch, provider attempts/errors, health, alerts).
+- Tracking UI: real stores discovered by default (`out/run_*/store`), deduped, scoped to the evaluated universe (122 events / 344 versions of 668 saved), analytics by sector/timing/coverage/liquidity/score with 95% intervals, outcomes count.
+- Prediction records now carry `meta` (sector, kind, adv20, coverage, company) for NEW records; old records show liquidity as unknown, sector/kind joined from the saved calendar/run report only.
+- `backend/smart_move_outcome_collect.py` (governor-bound `call`, mock-tested), `docs/smart_move/app/scheduler_tick.py` (plan-only default; execute needs `--execute` + `SMART_MOVE_LIVE_COLLECTION=1` + `LIVE_COLLECTION_ENABLED` file), `docs/smart_move/deploy/*` (Task Scheduler XML Enabled=false, systemd service/timer, not installed).
+- `docs/smart_move/app/reconcile_board.py`: all 244 displayed statuses (122 x 2 variants) reconcile with the saved run report, 0 mismatches.
+- Tests: `python -m pytest docs/smart_move/app/tests docs/smart_move/baseline -q` -> 125 passed, 1 skipped. `npx tsc -p tsconfig.app.json --noEmit` clean, `npm run build` OK (fixed a pre-existing `sub` prop type error in the tracking page).
+- `backend/tests` has failures unrelated to Smart Move (dev DB guard / missing `tools/moves_replay.py` on this branch).
+## Still open
+- scheduler_tick execution path (full_universe_run seed arguments) never run live; needs a reviewed seed-store convention before enabling.
+- Provider limits/renewal unverified; outcome collection never run live; no outcomes yet so no accuracy claim.
