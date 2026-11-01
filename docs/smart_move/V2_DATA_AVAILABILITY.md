@@ -28,3 +28,18 @@ Evidence used: the repository's provider code, the committed OpenAPI spec `api_s
 
 ## Needs dashboard / support evidence (UNVERIFIED here)
 Subscription status after the 1 Nov renewal; whether this token may call `net-prem-ticks`, `flow-alerts`, `screener/analysts`, `shorts/.../interest-float/v2`, `institution/.../ownership`, `news/headlines`; the 3-in-flight limit today.
+
+---
+## Update v2-exp-2 (rules made explicit; pipeline built; still no new live data)
+| Factor | Rule now implemented (all thresholds in `CONFIG`, hashed, unvalidated) | Data it needs | Collected? |
+|---|---|---|---|
+| Analyst (15) | 10 pts: EPS and revenue consensus (`earnings-estimates`: `eps_estimate_average`, `revenue_estimate_average`) vs the earliest SAVED consensus 7-60 days older, +-1% each; both agree = full, one = half, conflict = 0. 5 pts: net rating upgrades minus downgrades (`screener/analysts`) in 30 days, net >= 2 | consensus snapshots over time (the endpoint returns only the current consensus, so history must be built by weekly collection) | no |
+| Options flow (15) | Direction from the aggressor side: ask-side calls + bid-side puts (bullish) vs bid-side calls + ask-side puts (bearish) from `flow-alerts`; multi-leg excluded, expiry must be on/after the earnings date, volume/OI >= 1, sweeps x1.5, >= 3 alerts and >= $500k attributed premium; |net| >= 0.5 full, >= 0.25 half | `flow-alerts` rows with `created_at` <= capture | no |
+| Implied vs historical move (10) | risk label only (rich/cheap/in line); **no direction, not counted toward the 60-point directional minimum** | saved `earnings` payload | yes (115/122) |
+| Short/institutional (5) | 2.5: SI float >= 15% AND short interest up >= 10% between snapshots 10+ days apart = bearish (high alone or falling = no direction); 2.5: net 13F unit change >= +-0.5% of shares | two `interest-float/v2` snapshots; `institution/{t}/ownership` | no |
+| Relative strength (5) | 5-session return vs SPY and sector ETF on the last COMMON session; +-2 points | saved ohlc | yes |
+| News/guidance (10) | BLOCKED: `sentiment_semantics_verified=false`. When verified, only headlines stamped before BOTH capture and release count | `news/headlines` sample to verify the field | no |
+
+**Directional minimum:** 60 of the points that CAN carry direction (everything except the implied-move factor). Today the most any stock reaches is **45** (F3, F5, F7, F8 + relative strength), so all 122 results are DATA INCOMPLETE. The bar was not lowered. With all new factors collected the maximum is 90; NEWS/GUIDANCE stays BLOCKED until its field is verified.
+
+**Pipeline (`smart_move_v2_collect.py`)**: plan with de-duplication (same-day, 7-day estimates, 10-day short interest, 30-day ownership), requests only through `RefreshService._call` (governor, kill switch, 401/429 stop), response validation, append-only `v2_evidence.jsonl` with hashes, checkpoint resume, request accounting, as-of-capture reads. About 5 requests per stock (about 610 for 122 stocks), plus 1 more if the news sample is enabled; estimates and short interest need repeat weekly/10-day collections before they can score.

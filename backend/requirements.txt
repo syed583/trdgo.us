@@ -24,3 +24,9 @@ httpx==0.28.1
 
 # Data Health Check workbook export (data_health_check.py)
 openpyxl==3.1.5
+
+# Smart Move audit PDF (smart_move_audit_pdf.py): reportlab renders, pypdf re-reads the file to enforce the two-page limit
+reportlab==5.1.0
+pypdf==6.21.4
+# Smart Move: visual PDF check in development only (renders pages to images); not needed at runtime
+pymupdf==2.0

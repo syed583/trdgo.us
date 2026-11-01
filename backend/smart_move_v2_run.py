@@ -19,6 +19,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "docs" / "smart_move" / "shadow_impl"))
 import smart_move_live as L  # noqa: E402
 import smart_move_v2 as V2  # noqa: E402
+import smart_move_v2_collect as V2C  # noqa: E402
 from smvshadow import adapters as ad  # noqa: E402
 from smvshadow import governor as gv  # noqa: E402
 
@@ -29,8 +30,8 @@ def _close_series(rows):
     return {d: v[3] for d, v in ad.regular_series(rows).items()}
 
 
-def run(run_dir, as_of: datetime, *, extra: dict | None = None) -> dict:
-    """extra: optional saved bodies per symbol for the factors that are not in the run's store: {"SYM": {"analyst": rows, "flow": ticks, "short": row, "inst": rows}}. Tests pass fixtures."""
+def run(run_dir, as_of: datetime, *, extra: dict | None = None, v2_store=None) -> dict:
+    """extra: optional per-symbol inputs (the dict shape of smart_move_v2_collect.load_inputs); v2_store: a LiveStore holding saved V2 evidence, read AS OF each stock's capture time."""
     src = Path(run_dir) / "store"
     tmp = Path(tempfile.mkdtemp(prefix="sm_v2_"))
     try:
@@ -54,19 +55,21 @@ def run(run_dir, as_of: datetime, *, extra: dict | None = None) -> dict:
             s_own, s_spy = (_close_series(scorer._rows_of(own)[0]) if own else {}), (_close_series(scorer._rows_of(spy)[0]) if spy else {})
             s_etf = _close_series(scorer._rows_of(etf)[0]) if etf else None
             last = max((d for d in s_own if d <= date.fromisoformat(r["capture_ts"][:10])), default=None)
-            ex = (extra or {}).get(sym, {})
+            ex = (extra or {}).get(sym) or (V2C.load_inputs(v2_store, sym, datetime.fromisoformat(r["capture_ts"])) if v2_store is not None else {})
+            cap_dt = datetime.fromisoformat(r["capture_ts"])
             gates = [c for c in r["engine"]["continuation"]["reason_codes"] if c in ("OUT_OF_WINDOW", "UNKNOWN_TIMING", "TIMING_CONTRADICTED", "NOT_TRADABLE", "ILLIQUID_OR_UNKNOWN", "STALE_EVIDENCE", "BLOCKED_BY_GATE", "SUSPECT_WINDOW")]
             res = {}
             for v in ("continuation", "contrarian"):
                 facs = V2.from_v1(r["subscores"][v])
                 facs.append(V2.implied_vs_hist(erows, ed))
                 facs.append(V2.rel_strength(s_own, s_spy, s_etf, last, v) if last else V2._factor("REL_STRENGTH", 0, 0, False, reason="NO_PRICE_HISTORY"))
-                facs.append(V2.analyst(ex.get("analyst"), ed, datetime.fromisoformat(r["capture_ts"]), v))
-                facs.append(V2.options_flow(ex.get("flow"), v))
-                facs.append(V2.short_inst(ex.get("short"), ex.get("inst"), v))
-                facs.append(V2.news_guidance())
+                facs.append(V2.analyst(ex.get("est_snapshots"), ex.get("analyst_actions"), cap_dt, v))
+                facs.append(V2.options_flow(ex.get("flow"), ed, cap_dt, v))
+                facs.append(V2.short_inst(ex.get("short_snaps"), ex.get("inst"), cap_dt, v))
+                facs.append(V2.news_guidance(ex.get("news"), (r.get("plan") or {}).get("assumed_release_utc") and datetime.fromisoformat(r["plan"]["assumed_release_utc"]) or None, cap_dt, v))
                 res[v] = V2.score(facs, v1_gates=gates, variant=v)
-            out.append({"symbol": sym, "earnings_date": ed, "kind": r.get("kind"), "capture_ts": r["capture_ts"], "v1": {v: {k: r["engine"][v][k] for k in ("signal", "bull", "bear", "available")} for v in r["engine"]}, "v2": res,
+            out.append({"symbol": sym, "earnings_date": ed, "kind": r.get("kind"), "capture_ts": r["capture_ts"],
+                        "eligibility": {"liquidity_ok": "ILLIQUID_OR_UNKNOWN" not in gates, "entry_ok": "NOT_TRADABLE" not in gates, "capture_window_ok": "OUT_OF_WINDOW" not in gates and "UNKNOWN_TIMING" not in gates, "v1_gates": gates}, "v1": {v: {k: r["engine"][v][k] for k in ("signal", "bull", "bear", "available")} for v in r["engine"]}, "v2": res,
                         "evidence": [{k: e[k] for k in ("kind", "symbol", "retrieved_at", "raw_sha256")} for e in r["evidence"]]})
         body = {"model": "V2", "version": V2.VERSION, "status": V2.STATUS, "config_hash": V2.CONFIG_HASH, "source_run": Path(run_dir).name, "as_of": as_of.isoformat(), "events": out, "simulation": False}
         body["audit_hash"] = hashlib_sha(json.dumps({k: body[k] for k in ("version", "config_hash", "source_run", "events")}, sort_keys=True, default=str))

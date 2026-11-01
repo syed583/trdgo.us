@@ -35,12 +35,34 @@ def v2_predictions(variant: str = Query("continuation", pattern="^(continuation|
     out = []
     for e in ev:
         x = e["v2"][variant]
-        out.append({"symbol": e["symbol"], "earnings_date": e["earnings_date"], "signal": x["signal"], "bull": x["bull"], "bear": x["bear"], "available_points": x["available_points"], "max": 100,
-                    "reason_codes": x["reason_codes"], "missing": [{"factor": m["factor"], "reason": m["reason"], "data_status": m["data_status"]} for m in x["missing"]],
+        out.append({"symbol": e["symbol"], "earnings_date": e["earnings_date"], "signal": x["signal"], "display_status": x.get("display_status", x["signal"]), "bull": x["bull"], "bear": x["bear"],
+                    "available_points": x["available_points"], "directional_available_points": x.get("directional_available_points"), "missing_points": x.get("missing_points"), "max": 100,
+                    "eligibility": e.get("eligibility"), "explanation": x.get("explanation"), "evidence": e.get("evidence"), "capture_ts": e.get("capture_ts"),
+                    "validated_real_data_signal": x.get("validated_real_data_signal", False), "reason_codes": x["reason_codes"], "missing": [{"factor": m["factor"], "reason": m["reason"], "data_status": m["data_status"]} for m in x["missing"]],
                     "factors": [{"factor": q["factor"], "bull": q["bull"], "bear": q["bear"], "available": q["available"], "max": q["max"]} for q in x["factors"]]})
     return {"available": True, "status": body["status"], "version": body["version"], "config_hash": body["config_hash"], "audit_hash": body.get("audit_hash"), "source_run": body["source_run"], "as_of": body["as_of"],
             "usable_for_decisions": False, "banner": "EXPERIMENTAL / UNAVAILABLE FOR DECISIONS: weights and thresholds are unvalidated hypotheses; saved evidence covers at most 55 of 100 points, so no V2 BUY/SELL can be produced; missing data is never a signal.",
             "variant": variant, "events": out}
+
+
+@router.get("/v2/compare")
+def v2_compare():
+    """V1 versus V2 on the same events with graded real outcomes (none yet: INCONCLUSIVE). Descriptive; never declares a winner."""
+    import smart_move_outcomes as O
+    import smart_move_tracking as T
+    import smart_move_tracking_routes as TR
+    import smart_move_v2_compare as CMP
+    root = os.getenv("SMART_MOVE_RUN_ROOT") or DEFAULT_RUN_ROOT
+    f, body = _latest_v2()
+    res = B.load_run_results(root)
+    v2e = {(e["symbol"], str(e["earnings_date"])[:10]): e for e in (body or {}).get("events", [])}
+    outs = {(o["symbol"], o["earnings_date"]): o["move_pct"] for o in T.load_outcomes(TR._sources()[1]) if o.get("mode") == "LIVE"} if TR._sources()[1] else {}
+    rows = []
+    for k, r in res.items():
+        for v in ("continuation", "contrarian"):
+            e2 = v2e.get(k)
+            rows.append({"symbol": k[0], "earnings_date": k[1], "kind": r.get("kind"), "sector": None, "variant": v, "move_pct": outs.get(k), "v1_signal": r[v]["signal"], "v2_signal": e2["v2"][v]["signal"] if e2 else None})
+    return dict(CMP.compare(rows), v2_file=os.path.basename(f) if f else None, graded_outcomes=len(outs), note="walk-forward by earnings week; INCONCLUSIVE until 100 decided events per variant over 8 weeks for both models")
 
 
 @router.get("/audits")

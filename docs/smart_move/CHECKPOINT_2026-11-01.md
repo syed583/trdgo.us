@@ -50,3 +50,14 @@ then wire the Board UI to `removed_events`/`registry` fields in `frontend/src/pa
 - Tick `--execute` path: seeds from the newest earlier run, resumes an interrupted folder, no-op when finished, exit 5 on provider stop, refused without all three switches; mock-tested.
 - QA: Smart Move suite 143 passed/1 skipped; tsc + build clean; main-repo backend suite 1262 passed/4 skipped; worktree-only backend failures are environment (missing gitignored .env.dev, tests from another branch).
 - Open: owner decisions listed in the V2 doc; collection of analyst/flow/short data (needs approval); outcome collection live; provider dashboard checks.
+
+---
+## Update (fourth phase): V2 rules, evidence pipeline, outcome->tracking, scheduler V2 actions
+- `smart_move_v2.py` (v2-exp-2): explicit rules for analyst revisions, flow (aggressor side, context filters), implied move (risk only), short interest (change-based), synchronised relative strength, news (BLOCKED until sentiment semantics verified); 60-point minimum applies to DIRECTIONAL evidence only (max today 45 -> all 122 DATA INCOMPLETE).
+- `smart_move_v2_collect.py`: governor-bound evidence pipeline (dedupe, validation, hashes, checkpoint, accounting, as-of reads); InfraFetcher gained 6 additive V2 kinds (not used by V1).
+- `smart_move_outcome_collect.py` now also imports graded outcomes into the frozen grader's outcome file so Tracking/analytics update; predictions are never modified.
+- Scheduler: tick plans COLLECT_V2 / FETCH_OUTCOMES / GENERATE_AUDIT; `run_service_actions` executes them through the service (kill switch re-engaged in finally); mock-tested end to end.
+- `backend/requirements.txt`: reportlab==5.1.0, pypdf==6.21.4, pymupdf==2.0 (dev).
+- Tests: Smart Move suite 164 passed / 1 skipped. tsc + build clean.
+- Final audit: `docs/smart_move/audits/audit_run_20261101_full_universe_20261101T102934Z.{pdf,json}`.
+- NEXT (needs owner authorization): (1) supervised V2 evidence collection for the 122 stocks (~610 requests) then weekly/10-day repeats to build revision and short-interest history; (2) one news sample to verify the sentiment field; (3) live outcome collection after reaction sessions; (4) dashboard confirmation of subscription/limits.

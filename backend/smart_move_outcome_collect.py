@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Callable, Iterable
 
 import smart_move_outcomes as O
+import smart_move_tracking as T
 
 
 def collect(events: Iterable[dict], track_dir, now: datetime, call: Callable, *, max_requests: int, mode: str = "LIVE", stopped: Callable[[], bool] = lambda: False) -> dict:
@@ -35,5 +36,7 @@ def collect(events: Iterable[dict], track_dir, now: datetime, call: Callable, *,
             continue
         out = O.compute(sym, dates[sym], kinds[sym], rows, now, mode=mode, source="uw.ohlc.1d raw_sha256=%s" % sha)
         r = O.record(track_dir, out)
+        if out["status"] == "GRADED":                       # feed the frozen grader's outcome file too, so Tracking and the accuracy analytics update by themselves; first value wins there, corrections stay versioned in outcome_details
+            res.setdefault("tracking", []).append(T.import_outcomes(track_dir, [{"symbol": sym, "earnings_date": dates[sym], "move_pct": out["move_pct"], "source": out["source"]}], mode=mode, recorded_at=now))
         (res["recorded"] if r["result"] in ("recorded", "correction", "duplicate_same") else res["pending"]).append({"symbol": sym, "result": r["result"], "status": out["status"]})
     return res

@@ -247,8 +247,8 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
                       </td>
                       <td>
                         {model === 'V2' && v2By[key]
-                          ? <><span className={`sm-bd-pill ${v2By[key].signal === 'NO_TRADE' ? 'data_incomplete' : v2By[key].signal.toLowerCase()}`}><i />{v2By[key].signal === 'NO_TRADE' ? 'V2 UNAVAILABLE' : `V2 ${v2By[key].signal} (EXPERIMENTAL)`}</span>
-                              <small>{v2By[key].available_points} of 100 points have data (60 needed); {v2By[key].reason_codes.join(', ')}. V1 says {STATUS_LABEL[r.status as Status]}.</small></>
+                          ? <><span className={`sm-bd-pill ${v2By[key].display_status === 'DATA_INCOMPLETE' ? 'data_incomplete' : v2By[key].signal.toLowerCase()}`}><i />{v2By[key].display_status === 'DATA_INCOMPLETE' ? 'V2 DATA INCOMPLETE' : v2By[key].signal === 'NO_TRADE' ? 'V2 NO TRADE' : `V2 ${v2By[key].signal} (EXPERIMENTAL)`}</span>
+                              <small>{v2By[key].explanation} V1 says {STATUS_LABEL[r.status as Status]}.</small></>
                           : <><StatusPill status={r.status} /><small>{r.status_why}</small></>}
                         {r.blocker && <small className="sm-bd-blocker">{r.blocker}</small>}
                         <small className="sm-bd-other">{other}: <StatusPill status={ov.status} small /></small>
@@ -267,7 +267,7 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
                         </div>
                       </td>
                       <td>{r.evaluated ? fmtExact(r.last_update) : fmtET(r.last_update)}<small>{fmtAge(r.age_hours)} · {r.evaluation_source.replace(/_/g, ' ').toLowerCase()}</small></td>
-                      <td>{(() => { const x = v2By[key]; if (!x) return <span className="sm-none">n/a</span>; return <span title={`V2 ${x.signal}; missing: ${x.missing.map((m: any) => m.factor).join(', ')}`}>{x.bull}↑ {x.bear}↓ <small>{x.available_points}/100 available · {model === 'V2' ? 'EXPERIMENTAL ' : ''}{x.signal === 'NO_TRADE' ? 'no signal' : x.signal}</small></span>; })()}</td>
+                      <td>{(() => { const x = v2By[key]; if (!x) return <span className="sm-none">n/a</span>; return <span title={`V2 ${x.signal}; missing: ${x.missing.map((m: any) => m.factor).join(', ')}`}>{x.bull}↑ {x.bear}↓ <small>{x.available_points}/100 with data ({x.directional_available_points} directional, need 60) · {x.missing_points} missing · {model === 'V2' ? 'EXPERIMENTAL ' : ''}{x.display_status === 'DATA_INCOMPLETE' ? 'data incomplete' : x.signal}</small></span>; })()}</td>
                       <td>{(() => { const o = outBy[key]; return o ? `${o.move_pct > 0 ? '+' : ''}${o.move_pct}%` : <span className="sm-none">pending</span>; })()}</td>
                       <td title={r.event ? `first seen date ${r.event.original_date}; registry observed ${r.event.observed_ts}` : 'not in registry'}>{r.event ? `v${r.event.version}` : '—'}</td>
                     </tr>

@@ -74,7 +74,7 @@ def test_closing_soonest_goes_first_and_outcomes_only_when_due_and_enabled():
     assert t["actions"][0]["symbols"] == ["B", "A"]
     after = co._mc().session_close_utc(co.reaction_session(date(2026, 11, 2), "AMC")) + timedelta(minutes=31)
     o = S.tick(after, [ev("B", "2026-11-02")], {("B", "2026-11-02")}, set(), S.Budget(), calendar_age_h=1.0, collection_enabled=True, outcome_fetch_enabled=True)
-    assert o["actions"][0] == {"action": "FETCH_OUTCOMES", "symbols": ["B"], "requests": 1}
+    assert o["actions"][0]["action"] == "FETCH_OUTCOMES" and o["actions"][0]["symbols"] == ["B"] and o["actions"][0]["requests"] == 1
     off = S.tick(after, [ev("B", "2026-11-02")], {("B", "2026-11-02")}, set(), S.Budget(), calendar_age_h=1.0, collection_enabled=True)
     assert off["actions"] == []
 

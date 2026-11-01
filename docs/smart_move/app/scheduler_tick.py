@@ -35,7 +35,27 @@ def plan(run_root, now, *, collection_enabled=False):
     captured = set(B.load_run_results(run_root).keys())
     obs = max((v["observed_ts"] for v in cur.values()), default=None)
     age = (now - datetime.fromisoformat(obs)).total_seconds() / 3600 if obs else None
-    return SCH.tick(now, events, captured, set(), SCH.Budget(stopped=False), calendar_age_h=age, outcome_fetch_enabled=True, collection_enabled=collection_enabled), events
+    import smart_move_v2_collect as V2C
+    v2_store = _v2_store(run_root)
+    v2_tasks = V2C.plan([e["symbol"] for e in events], v2_store, now)
+    reports = B.load_run_reports(run_root)
+    audits = Path(run_root).parent / "audits"
+    last_audit = max((p.stat().st_mtime for p in audits.glob("audit_*.json")), default=0) if audits.exists() else 0
+    newest_run = max((Path(run_root, n, "audit_report.json").stat().st_mtime for n, _ in reports), default=0)
+    return SCH.tick(now, events, captured, set(), SCH.Budget(stopped=False), calendar_age_h=age, outcome_fetch_enabled=True, collection_enabled=collection_enabled,
+                    v2_tasks=v2_tasks, audit_due=newest_run > last_audit), events
+
+
+def _v2_store(run_root):
+    """The V2 evidence store (own folder next to the run folders; created lazily by the first executed V2 collection). None when it does not exist yet: then every V2 task is due."""
+    import smart_move_live as L
+    d = Path(run_root).parent / "v2_store"
+    return L.LiveStore(d) if d.exists() else _EmptyStore()
+
+
+class _EmptyStore:
+    def read(self, name):
+        return []
 
 
 def main(argv=None):
@@ -83,7 +103,47 @@ def build_collect_command(act, run_root, now):
     return [sys.executable, str(HERE / "full_universe_run.py"), "--out-dir", str(out), "--seed-store", str(seed[0]), "--seed-report", str(seed[1]), "--cap", str(cap), "--batch-size", "20"], out
 
 
-def run_actions(result, run_root, now, runner=None):
+def build_live_service(run_root, now, cap):
+    """The production RefreshService for V2 evidence and outcome requests: the real governor (cap, spacing, hourly caps, 401/429 stop), a store of its own, the kill switch engaged
+    unless this execution enables it. Only reached when live collection is fully enabled; tests inject a fake factory instead."""
+    import smart_move_live as L
+    cfg = L.LiveConfig(mode="LIVE", store_dir=Path(run_root).parent / "v2_store", refresh_enabled=True, authorized_daily=cap, spacing_s=2.0)
+    svc = L.RefreshService(cfg, L.InfraFetcher(), L.SystemClock())
+    svc.gov.authorized_daily, svc.gov.enabled = cap, True
+    svc.store.kill_file.unlink(missing_ok=True)               # released only for this authorized execution; re-engaged in run_service_actions' finally block
+    return svc
+
+
+def run_service_actions(result, run_root, now, factory=None, audit_fn=None):
+    """COLLECT_V2, FETCH_OUTCOMES and GENERATE_AUDIT. Every provider request goes through svc._call (governor + kill switch); the kill switch is engaged again afterwards, also on error."""
+    import smart_move_outcome_collect as OC
+    import smart_move_v2_collect as V2C
+    factory = factory or build_live_service
+    rc = 0
+    for act in result["actions"]:
+        if act["action"] in ("COLLECT_V2", "FETCH_OUTCOMES"):
+            svc = factory(run_root, now, max(act.get("requests", 0) + 10, 10))
+            try:
+                if act["action"] == "COLLECT_V2":
+                    acc = V2C.run(svc, act["tasks"], max_requests=act["requests"], checkpoint=Path(run_root).parent / "v2_store" / "checkpoint.json", stopped=lambda: bool(getattr(svc.gov, "stopped_until", None) and svc.clock.now() < svc.gov.stopped_until))
+                    rc = 5 if acc.get("stopped") else rc
+                else:
+                    events = act.get("event_list", [])
+                    call = lambda kind, sym, params: svc._call(kind, sym, params, "out-%s-%s" % (sym, now.strftime("%Y%m%d")))  # noqa: E731
+                    out = OC.collect(events, Path(run_root).parent / "tracking", now, call, max_requests=act["requests"], stopped=lambda: bool(getattr(svc.gov, "stopped_until", None) and svc.clock.now() < svc.gov.stopped_until))
+                    rc = 5 if out.get("stopped") else rc
+            finally:
+                try:
+                    svc.store.kill_file.write_text("engaged after tick %s" % now.isoformat())
+                except Exception:  # noqa: BLE001
+                    pass
+        elif act["action"] == "GENERATE_AUDIT":
+            audit_fn = audit_fn or (lambda: __import__("smart_move_audit_run").generate(run_root, Path(run_root).parent / "audits", now=now))
+            audit_fn()
+    return rc
+
+
+def run_actions(result, run_root, now, runner=None, factory=None, audit_fn=None):
     """Carries out COLLECT / REFRESH_CALENDAR through full_universe_run.py in a NEW folder (it refuses an existing one, resumes only with --resume, engages the kill switch after every batch).
     A folder left unfinished by an interrupted tick is resumed instead of restarted. `runner` replaces subprocess.run in tests."""
     import subprocess
@@ -105,7 +165,7 @@ def run_actions(result, run_root, now, runner=None):
         done = True                                               # one collection per tick
         if rc not in (0,):
             return 5
-    return 0
+    return run_service_actions(result, run_root, now, factory=factory, audit_fn=audit_fn)
 
 
 if __name__ == "__main__":

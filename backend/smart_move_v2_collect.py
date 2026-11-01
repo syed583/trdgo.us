@@ -1,0 +1,142 @@
+"""V2 evidence pipeline: the extra Unusual Whales endpoints (analyst actions, consensus estimates, flow alerts, short interest, institutional ownership; news only as an opt-in sample).
+
+Every request goes through `svc._call(kind, symbol, params, request_id)` = RefreshService._call, i.e. the existing governor (authorization cap, 2 s spacing, hourly caps, one retry,
+401/429 stop for the day), request ledger and kill switch. This module adds: planning with de-duplication, response validation, append-only evidence records with hashes,
+a checkpoint for safe resume, and full request accounting. It never builds a provider client; with a mock `svc` it is tested without any network.
+"""
+from __future__ import annotations
+
+import json
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Callable, Iterable, Optional
+
+EVIDENCE = "v2_evidence"            # <store>/v2_evidence.jsonl (append-only), bodies in the store's hashed payload folder
+UTC = timezone.utc
+
+# kind -> (endpoint documented in api_spec.yaml, params, required keys in a row, minimum days before a SAME-kind re-request is allowed)
+KINDS = {
+    "uw_analysts": ("/api/screener/analysts", {"limit": 50}, ("action", "timestamp"), 1),
+    "uw_estimates": ("/api/companies/{t}/earnings-estimates", {}, ("date",), 7),            # one snapshot per week builds the revision history
+    "uw_flow_alerts": ("/api/stock/{t}/flow-alerts", {"limit": 100}, ("created_at", "type"), 1),
+    "uw_short_float": ("/api/shorts/{t}/interest-float/v2", {}, ("market_date",), 10),      # snapshots 10+ days apart give the positioning change
+    "uw_inst_own": ("/api/institution/{t}/ownership", {"limit": 100}, ("filing_date",), 30),
+    "uw_news": ("/api/news/headlines", {"limit": 25}, ("created_at",), 1),
+}
+CORE = ("uw_analysts", "uw_estimates", "uw_flow_alerts", "uw_short_float", "uw_inst_own")
+
+
+def validate(kind: str, body: bytes) -> dict:
+    """Structure check of a saved response. Returns {ok, rows, reason}. Never raises."""
+    try:
+        obj = json.loads(body)
+    except (TypeError, ValueError):
+        return {"ok": False, "rows": 0, "reason": "NOT_JSON"}
+    data = obj.get("data") if isinstance(obj, dict) else None
+    if kind == "uw_estimates" and isinstance(data, dict):
+        data = data.get("estimates")
+    if kind == "uw_short_float" and isinstance(data, dict):
+        data = [data]
+    if not isinstance(data, list):
+        return {"ok": False, "rows": 0, "reason": "NO_DATA_ARRAY"}
+    need = KINDS[kind][2]
+    bad = [r for r in data if not isinstance(r, dict) or any(k not in r for k in need)]
+    if data and len(bad) == len(data):
+        return {"ok": False, "rows": len(data), "reason": "MISSING_REQUIRED_FIELDS:" + ",".join(need)}
+    return {"ok": True, "rows": len(data), "reason": None}
+
+
+def _records(store, kind=None, symbol=None) -> list:
+    return [r for r in store.read(EVIDENCE) if (kind is None or r["kind"] == kind) and (symbol is None or r["symbol"] == symbol)]
+
+
+def plan(symbols: Iterable[str], store, now: datetime, *, include_news: bool = False) -> list:
+    """Tasks still needed. A kind is skipped when a record of that kind already exists within its minimum interval (no duplicate request); the request ID is stable per symbol/kind/day."""
+    tasks = []
+    for sym in symbols:
+        for kind in CORE + (("uw_news",) if include_news else ()):
+            recs = [r for r in _records(store, kind, sym) if r["status"] == "OK"]
+            gap = KINDS[kind][3]
+            if recs and now - datetime.fromisoformat(max(r["retrieved_at"] for r in recs)) < timedelta(days=gap):
+                continue
+            tasks.append({"kind": kind, "symbol": sym, "id": "%s-%s-%s" % (kind, sym, now.strftime("%Y%m%d"))})
+    return tasks
+
+
+def run(svc, tasks: list, *, max_requests: int, checkpoint: Optional[Path] = None, stopped: Callable[[], bool] = lambda: False) -> dict:
+    """Sequential (one request in flight, within the shared 3-slot limit). Stops on a provider stop; resumes from the checkpoint without repeating finished task IDs."""
+    done = set(json.loads(Path(checkpoint).read_text())["done"]) if checkpoint and Path(checkpoint).exists() else set()
+    acc = {"planned": len(tasks), "attempted": 0, "ok": 0, "failed": 0, "invalid": 0, "skipped_resume": 0, "by_kind": {}, "stopped": False, "failures": []}
+    for t in tasks:
+        if t["id"] in done:
+            acc["skipped_resume"] += 1
+            continue
+        if acc["attempted"] >= max_requests:
+            acc["budget_exhausted"] = True
+            break
+        if stopped():
+            acc["stopped"] = True
+            break
+        params = dict(KINDS[t["kind"]][1])
+        if t["kind"] in ("uw_analysts", "uw_news"):
+            params["ticker"] = t["symbol"]
+        body, sha, at = svc._call(t["kind"], t["symbol"], params, t["id"])
+        acc["attempted"] += 1
+        acc["by_kind"][t["kind"]] = acc["by_kind"].get(t["kind"], 0) + 1
+        if body is None:
+            acc["failed"] += 1
+            acc["failures"].append({"kind": t["kind"], "symbol": t["symbol"], "reason": "NOT_DONE (denied, failed or provider stop)"})
+            if stopped():
+                acc["stopped"] = True
+                break
+            continue
+        v = validate(t["kind"], body)
+        svc.store.append(EVIDENCE, {"id": t["id"], "kind": t["kind"], "symbol": t["symbol"], "retrieved_at": at.isoformat(), "raw_sha256": sha, "status": "OK" if v["ok"] else "INVALID",
+                                    "rows": v["rows"], "invalid_reason": v["reason"], "params": params})
+        acc["ok" if v["ok"] else "invalid"] += 1
+        if v["ok"]:
+            done.add(t["id"])
+            if checkpoint:
+                Path(checkpoint).write_text(json.dumps({"done": sorted(done)}), encoding="utf-8")
+    return acc
+
+
+# ---------------------------------------------------------------- reading the saved evidence back, as of a capture time
+def _rows(store, rec, kind):
+    obj = json.loads(store.get(rec["raw_sha256"]))
+    d = obj.get("data")
+    if kind == "uw_estimates":
+        return (d or {}).get("estimates") if isinstance(d, dict) else d
+    return [d] if (kind == "uw_short_float" and isinstance(d, dict)) else d
+
+
+def load_inputs(store, symbol: str, capture_ts: datetime) -> dict:
+    """The saved V2 inputs for one symbol AS OF capture_ts (anything retrieved later is invisible). None for a kind that was never collected."""
+    out = {"analyst_actions": None, "est_snapshots": None, "flow": None, "short_snaps": None, "inst": None, "news": None}
+    recs = [r for r in _records(store, symbol=symbol) if r["status"] == "OK" and datetime.fromisoformat(r["retrieved_at"]) <= capture_ts]
+    by = {}
+    for r in sorted(recs, key=lambda r: r["retrieved_at"]):
+        by.setdefault(r["kind"], []).append(r)
+    if by.get("uw_analysts"):
+        out["analyst_actions"] = _rows(store, by["uw_analysts"][-1], "uw_analysts") or []
+    if by.get("uw_flow_alerts"):
+        out["flow"] = _rows(store, by["uw_flow_alerts"][-1], "uw_flow_alerts") or []
+    if by.get("uw_inst_own"):
+        out["inst"] = _rows(store, by["uw_inst_own"][-1], "uw_inst_own") or []
+    if by.get("uw_news"):
+        out["news"] = _rows(store, by["uw_news"][-1], "uw_news") or []
+    if by.get("uw_estimates"):
+        snaps = []
+        for r in by["uw_estimates"]:
+            rows = _rows(store, r, "uw_estimates") or []
+            fwd = sorted((x for x in rows if str(x.get("date"))[:10] >= r["retrieved_at"][:10]), key=lambda x: str(x["date"]))     # nearest period ending on/after the day it was saved (mapping unverified)
+            if fwd:
+                snaps.append({"captured_at": r["retrieved_at"], "eps": fwd[0].get("eps_estimate_average"), "revenue": fwd[0].get("revenue_estimate_average"), "period": fwd[0].get("date")})
+        out["est_snapshots"] = snaps
+    if by.get("uw_short_float"):
+        snaps = []
+        for r in by["uw_short_float"]:
+            for x in (_rows(store, r, "uw_short_float") or [])[:1]:
+                snaps.append(dict(x, captured_at=r["retrieved_at"]))
+        out["short_snaps"] = snaps
+    return out

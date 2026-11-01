@@ -117,3 +117,97 @@ def test_a_provider_stop_in_the_collector_returns_exit_5_and_the_cli_never_execu
     import subprocess
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not run")))
     assert ST.main(["--run-root", str(root), "--now", "2026-11-02T12:00:00+00:00", "--execute"]) == 2
+
+
+def test_graded_outcomes_flow_into_tracking_and_the_accuracy_analytics_without_touching_predictions(tmp_path):
+    import smart_move_analytics as A
+    import smart_move_tracking as T
+    pred = {"symbol": "A", "earnings_date": "2026-11-02", "digest": "d", "version": 1, "captured_at": "2026-10-31T21:30:00+00:00", "mode": "LIVE", "blocked_by": [], "evidence": [],
+            "engine": {"continuation": {"signal": "BUY", "bull": 18, "bear": 1, "available": 40, "reason_codes": ["RULE"]}, "contrarian": {"signal": "SELL", "bull": 1, "bear": 18, "available": 40, "reason_codes": ["RULE"]}}}
+    store = tmp_path / "s"
+    store.mkdir()
+    (store / "predictions.jsonl").write_text(json.dumps(pred) + "\n")
+    before = (store / "predictions.jsonl").read_bytes()
+    OC.collect([{"symbol": "A", "earnings_date": "2026-11-02", "kind": "AMC"}], tmp_path / "t", NOW, good, max_requests=5)
+    outs = T.load_outcomes(tmp_path / "t")
+    assert len(outs) == 1 and outs[0]["move_pct"] == 8.0 and outs[0]["mode"] == "LIVE"
+    rows = A.rows_from_records(T.load_predictions([store]), outs)
+    assert {(r["variant"], r["signal"], r["move_pct"]) for r in rows} == {("continuation", "BUY", 8.0), ("contrarian", "SELL", 8.0)}
+    ana = A.breakdown(rows)
+    assert ana["variants"]["continuation"]["overall"]["hits"] == 1 and ana["variants"]["contrarian"]["overall"]["hits"] == 0 and ana["claim_allowed"] is False
+    assert (store / "predictions.jsonl").read_bytes() == before                      # the issued prediction is never altered by an outcome
+    OC.collect([{"symbol": "A", "earnings_date": "2026-11-02", "kind": "AMC"}], tmp_path / "t", NOW, good, max_requests=5)
+    assert len(T.load_outcomes(tmp_path / "t")) == 1                                  # a second pass adds nothing
+
+
+# ------------------------------------------------------------------ V2 evidence, outcomes and audit actions through the service path (mock service, no provider)
+class FakeLive:
+    def __init__(self, tmp, now, stop_after=None):
+        import smart_move_live as L
+        self.store = L.LiveStore(tmp)
+        self.calls = []
+        self.now, self.stop_after = now, stop_after
+
+        class G:
+            stopped_until = None
+        self.gov = G()
+
+    class clock:
+        pass
+
+    def _call(self, kind, symbol, params, rid, priority="core"):
+        self.calls.append((kind, symbol))
+        if self.stop_after is not None and len(self.calls) > self.stop_after:
+            self.gov.stopped_until = self.now + timedelta(days=1)
+            return None, None, self.now
+        body = {"uw_analysts": {"data": []}, "uw_estimates": {"data": {"estimates": [{"date": "2026-12-31", "eps_estimate_average": 1}]}}, "uw_flow_alerts": {"data": [{"created_at": "2026-11-01T00:00:00+00:00", "type": "call"}]},
+                "uw_short_float": {"data": {"market_date": "2026-10-20"}}, "uw_inst_own": {"data": [{"filing_date": "2026-09-30"}]}, "ohlc": {"data": ROWS}}[kind]
+        raw = json.dumps(body).encode()
+        return raw, self.store.put(raw), self.now
+
+
+def _res(actions):
+    return {"actions": actions}
+
+
+def test_v2_collection_and_outcomes_run_through_the_service_and_the_kill_switch_is_re_engaged(tmp_path):
+    import smart_move_v2_collect as V2C
+    run_root = tmp_path / "out"
+    run_root.mkdir()
+    now = NOW
+    fake = FakeLive(tmp_path / "v2_store", now)
+    fake.clock = type("C", (), {"now": staticmethod(lambda: now)})()
+    tasks = V2C.plan(["A"], fake.store, now)
+    audits = []
+    rc = ST.run_service_actions(_res([{"action": "COLLECT_V2", "tasks": tasks, "requests": len(tasks), "symbols": ["A"]},
+                                      {"action": "FETCH_OUTCOMES", "requests": 2, "event_list": [{"symbol": "A", "earnings_date": "2026-11-02", "kind": "AMC"}]}, {"action": "GENERATE_AUDIT"}]),
+                                run_root, now, factory=lambda *a: fake, audit_fn=lambda: audits.append(1))
+    assert rc == 0 and len([c for c in fake.calls if c[0] != "ohlc"]) == 5 and ("ohlc", "A") in fake.calls and audits == [1]
+    assert (tmp_path / "v2_store" / "KILL").exists()                                        # engaged again after the execution
+    import smart_move_outcomes as O
+    assert O.latest(tmp_path / "tracking")[0]["status"] == "GRADED" and (tmp_path / "v2_store" / "checkpoint.json").exists()
+
+
+def test_a_provider_stop_during_v2_collection_returns_exit_5_and_sends_nothing_more(tmp_path):
+    import smart_move_v2_collect as V2C
+    run_root = tmp_path / "out"
+    run_root.mkdir()
+    fake = FakeLive(tmp_path / "v2_store", NOW, stop_after=2)
+    fake.clock = type("C", (), {"now": staticmethod(lambda: NOW)})()
+    tasks = V2C.plan(["A", "B"], fake.store, NOW)
+    rc = ST.run_service_actions(_res([{"action": "COLLECT_V2", "tasks": tasks, "requests": len(tasks), "symbols": ["A", "B"]}]), run_root, NOW, factory=lambda *a: fake)
+    assert rc == 5 and len(fake.calls) == 3 and (tmp_path / "v2_store" / "KILL").exists()
+
+
+def test_the_tick_plans_v2_evidence_after_v1_and_an_audit_after_a_finished_run():
+    import smart_move_scheduler as S
+    from smvshadow import cutoff as co
+    from datetime import date
+    s, _ = co.plan_event(date(2026, 11, 3), "AMC")["window_start_utc"], None
+    now = s + timedelta(hours=3)
+    tasks = [{"kind": "uw_flow_alerts", "symbol": "A", "id": "x"}, {"kind": "uw_short_float", "symbol": "A", "id": "y"}]
+    t = S.tick(now, [{"symbol": "A", "earnings_date": "2026-11-03", "kind": "AMC"}], set(), set(), S.Budget(), calendar_age_h=1.0, collection_enabled=False, v2_tasks=tasks, audit_due=True)
+    kinds = [a["action"] for a in t["actions"]]
+    assert kinds == ["COLLECT", "COLLECT_V2", "GENERATE_AUDIT"] and t["execute"] is False and all("blocked" in a for a in t["actions"])
+    stopped = S.tick(now, [{"symbol": "A", "earnings_date": "2026-11-03", "kind": "AMC"}], set(), set(), S.Budget(stopped=True), calendar_age_h=1.0, collection_enabled=True, v2_tasks=tasks)
+    assert not any(a["action"] in ("COLLECT", "COLLECT_V2") for a in stopped["actions"])

@@ -204,6 +204,19 @@ class InfraFetcher(Fetcher):
             return self._uw("/api/stock/%s/volatility/context" % symbol, {"date": params["date"]})
         if kind == "iv_rank":
             return self._uw("/api/stock/%s/iv-rank" % symbol, {"date": params["date"]})
+        # V2 evidence kinds (additive; V1 never requests these). Endpoints are documented in api_spec.yaml.
+        if kind == "uw_analysts":
+            return self._uw("/api/screener/analysts", {"ticker": symbol, "limit": params.get("limit", 50)})
+        if kind == "uw_estimates":
+            return self._uw("/api/companies/%s/earnings-estimates" % symbol, {})
+        if kind == "uw_flow_alerts":
+            return self._uw("/api/stock/%s/flow-alerts" % symbol, {"limit": params.get("limit", 100)})
+        if kind == "uw_short_float":
+            return self._uw("/api/shorts/%s/interest-float/v2" % symbol, {})
+        if kind == "uw_inst_own":
+            return self._uw("/api/institution/%s/ownership" % symbol, {"limit": params.get("limit", 100)})
+        if kind == "uw_news":
+            return self._uw("/api/news/headlines", {"ticker": symbol, "limit": params.get("limit", 25)})
         if kind == "finviz_calendar":
             data = self.fz._get({"v": "152", "t": ",".join(params["tickers"]), "c": "1,68"})
             if data is None:

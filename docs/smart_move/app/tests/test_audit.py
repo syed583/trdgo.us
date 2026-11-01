@@ -120,3 +120,40 @@ def test_routes_generate_list_retrieve_and_refuse_path_tricks(tmp_path, monkeypa
     assert c.get("/api/smart-move/audits/%s.json" % ls[0]["file"]).json()["audit_hash"] == ls[0]["audit_hash"]
     assert c.get("/api/smart-move/audits/..%2Fsecret.json").status_code == 404 and c.get("/api/smart-move/audits/other.pdf").status_code == 404
     assert c.get("/api/smart-move/v2").json()["available"] is False
+
+
+def test_audit_with_v2_results_and_graded_outcomes_stays_two_pages_and_never_claims_accuracy(tmp_path):
+    root = make_run(tmp_path)
+    fac = [{"factor": f, "available": True, "bull": 0, "bear": 0, "max": 10} for f in ("F3", "F5")]
+    v2 = lambda sig, disp: {"signal": sig, "display_status": disp, "available_points": 55, "directional_available_points": 45, "missing": [{"factor": "ANALYST"}], "factors": fac + [{"factor": "ANALYST", "available": False, "bull": 0, "bear": 0, "max": 15}]}  # noqa: E731
+    events = [{"symbol": "S%02d" % i, "earnings_date": "2026-11-02", "v2": {"continuation": v2("NO_TRADE", "DATA_INCOMPLETE"), "contrarian": v2("NO_TRADE", "DATA_INCOMPLETE")}} for i in range(12)]
+    f = tmp_path / "v2.json"
+    f.write_text(json.dumps({"events": events, "audit_hash": "h", "source_run": "run_x"}))
+    outs = [{"symbol": "S00", "earnings_date": "2026-11-02", "move_pct": 6.0, "mode": "LIVE"}, {"symbol": "S01", "earnings_date": "2026-11-02", "move_pct": -4.0, "mode": "LIVE"},
+            {"symbol": "S05", "earnings_date": "2026-11-02", "move_pct": 1.0, "mode": "SIMULATION"}]
+    rec = A.build(root, now=NOW, saved_rows=[], v2_file=f, outcomes=outs)
+    assert rec["signals_v2"]["continuation"] == {"DATA_INCOMPLETE": 12} and rec["outcomes"]["graded"] == 2                      # the simulated outcome is not counted as real
+    d = rec["outcomes"]["v1_descriptive"]["continuation"]
+    assert d["decided"] == 2 and d["hit_rate"] == 1.0 and d["buy"] == {"n": 1, "hits": 1} and rec["outcomes"]["claim_allowed"] is False
+    assert rec["v1_vs_v2"]["verdict"].startswith("INCONCLUSIVE") and rec["v2"]["evidence_complete_stocks"] == 0 and any("V2 data" == x["component"] for x in rec["defects"])
+    out = PDF.render(rec, tmp_path / "v2.pdf")
+    text = "\n".join(p.extract_text() for p in pages(out["pdf"]))
+    assert out["pages"] == 2 and "V2 Continuation (exp.)" in text and "V1 descriptive" in text and "no accuracy claim" in text.replace("\n", " ")
+
+
+def test_v2_and_compare_routes_expose_explanations_eligibility_and_inconclusive_comparison(tmp_path, monkeypatch):
+    root = make_run(tmp_path)
+    fac = [{"factor": "F3", "available": True, "bull": 5, "bear": 0, "max": 15}]
+    x = lambda: {"signal": "NO_TRADE", "display_status": "DATA_INCOMPLETE", "bull": 5, "bear": 0, "available_points": 40, "directional_available_points": 40, "missing_points": 60, "reason_codes": ["INSUFFICIENT_COVERAGE"],  # noqa: E731
+                 "explanation": "only 40 of the required 60 DIRECTIONAL points have data.", "missing": [{"factor": "ANALYST", "reason": "NOT_COLLECTED", "data_status": "PARTIAL"}], "factors": fac, "validated_real_data_signal": False}
+    ev = [{"symbol": "S00", "earnings_date": "2026-11-02", "capture_ts": "t", "eligibility": {"liquidity_ok": True}, "evidence": [], "v2": {"continuation": x(), "contrarian": x()}}]
+    (tmp_path / "v2").mkdir()
+    (tmp_path / "v2" / "v2_run_x.json").write_text(json.dumps({"events": ev, "status": "EXPERIMENTAL", "version": "v2-exp-2", "config_hash": "c", "source_run": "run_x", "as_of": "t"}))
+    for k, v in (("SMART_MOVE_RUN_ROOT", root), ("SMART_MOVE_V2_DIR", tmp_path / "v2"), ("SMART_MOVE_TRACKING_DIR", tmp_path / "trk")):
+        monkeypatch.setenv(k, str(v))
+    c = TestClient(srv.app)
+    j = c.get("/api/smart-move/v2").json()
+    e = j["events"][0]
+    assert j["usable_for_decisions"] is False and e["display_status"] == "DATA_INCOMPLETE" and "required 60" in e["explanation"] and e["missing_points"] == 60 and e["validated_real_data_signal"] is False
+    cmp = c.get("/api/smart-move/v2/compare").json()
+    assert cmp["verdict"].startswith("INCONCLUSIVE") and cmp["graded_outcomes"] == 0

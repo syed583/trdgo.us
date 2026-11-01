@@ -17,8 +17,8 @@ GREEN, RED, AMBER, GREY, NAVY, INK = colors.HexColor("#1b7f3b"), colors.HexColor
 LIGHT = colors.HexColor("#f3f4f6")
 BODY = ParagraphStyle("b", fontName="Helvetica", fontSize=8.5, leading=10.5, textColor=INK)
 SMALL = ParagraphStyle("s", parent=BODY, fontSize=8.2, leading=10)
-H = ParagraphStyle("h", parent=BODY, fontName="Helvetica-Bold", fontSize=9.5, leading=12, textColor=NAVY, spaceBefore=4, spaceAfter=2)
-TITLE = ParagraphStyle("t", parent=BODY, fontName="Helvetica-Bold", fontSize=13, leading=16, textColor=NAVY)
+H = ParagraphStyle("h", parent=BODY, fontName="Helvetica-Bold", fontSize=9.5, leading=12, textColor=NAVY, spaceBefore=3, spaceAfter=1.5)
+TITLE = ParagraphStyle("t", parent=BODY, fontName="Helvetica-Bold", fontSize=12.5, leading=15, textColor=NAVY)
 MAX_PAGES = 2
 
 
@@ -81,9 +81,16 @@ def page1(r, lim):
         c = sg[v]
         rows.append([v.capitalize(), P('<font color="#1b7f3b"><b>%d</b></font>' % c.get("BUY", 0)), P('<font color="#b3261e"><b>%d</b></font>' % c.get("SELL", 0)), P('<b>%d</b>' % c.get("NO_TRADE", 0)),
                      P('<font color="#b26a00"><b>%d</b></font>' % c.get("DATA_INCOMPLETE", 0)), c.get("PENDING", 0)])
+    v2s = r.get("signals_v2")
+    if v2s:
+        for v in ("continuation", "contrarian"):
+            c = v2s[v]
+            rows.append(["V2 " + v.capitalize() + " (exp.)", c.get("BUY", 0), c.get("SELL", 0), c.get("NO_TRADE", 0), P('<font color="#b26a00"><b>%d</b></font>' % c.get("DATA_INCOMPLETE", 0)), c.get("PENDING", 0)])
     cov = r["evidence_coverage"]
-    s += [tbl(rows, [34 * mm, 22 * mm, 22 * mm, 28 * mm, 36 * mm, 24 * mm]),
+    s += [tbl(rows, [40 * mm, 20 * mm, 20 * mm, 26 * mm, 36 * mm, 22 * mm]),
           P("Evidence coverage: " + " | ".join("%s: %d" % (k, v) for k, v in cov.items()) + ". Missing data is shown as DATA INCOMPLETE, never as a neutral or negative signal.")]
+    oc = r["outcomes"]
+    s += [P("Actual outcomes: <b>%d graded</b>. %s" % (oc["graded"], oc["accuracy"] if not oc["graded"] else "Descriptive hit rates are on page 2; not enough decided events for any accuracy claim."))]
     s += [Paragraph("4. Top predictions (highest bullish/bearish points; engine rule met, no gate)", H)]
     tops = r["top_signals"][:lim]
     s += [tbl([hdr(["Symbol", "Variant", "Signal", "Points", "Evidence", "Reason"])] +
@@ -108,7 +115,7 @@ def page2(r, lim):
         have = "%s / %s" % (f["stocks_with_data"], f["stocks"]) if f["stocks"] is not None else NA
         rows.append([f["factor"], f["points"], have, pill(f["data_status"]), P(f["source"]), P(f["note"])])
     s += [tbl(rows, [31 * mm, 8 * mm, 21 * mm, 18 * mm, 50 * mm, 46 * mm]),
-          P("V2 uses at most %s of 100 points on saved data (60 required): every V2 signal is NO TRADE (insufficient coverage). Missing is not negative." % (("%g" % v2["available_points_max"]) if v2.get("available_points_max") is not None else NA))]
+          P("V2: at most %s of 100 points have data, of which %s are DIRECTIONAL (60 required; the implied-move factor is magnitude-only and does not count). Every V2 result is DATA INCOMPLETE. Missing is not negative." % (("%g" % v2["available_points_max"]) if v2.get("available_points_max") is not None else NA, ("%g" % v2["directional_available_max"]) if v2.get("directional_available_max") is not None else NA))]
     s += [Paragraph("2. Provider requests, capture windows, liquidity", H)]
     w, lq = r["windows"], r["liquidity"]
     s += [tbl([hdr(["Item", "Value"]),
@@ -118,7 +125,7 @@ def page2(r, lim):
                ["Liquidity / entry (V1)", P(" | ".join("%s: %d" % (k, v) for k, v in lq.items()))]], [36 * mm, 138 * mm])]
     o, cmpv = r["outcomes"], r["v1_vs_v2"]
     s += [Paragraph("3. Outcomes, accuracy, V1 versus V2", H),
-          tbl([[P("<b>Outcomes graded</b>"), P("%d. Accuracy: %s" % (o["graded"], o["accuracy"]))], [P("<b>V1 vs V2</b>"), P(cmpv["verdict"])]], [36 * mm, 138 * mm], head=False)]
+          tbl([[P("<b>Outcomes graded</b>"), P("%d. Accuracy: %s" % (o["graded"], o["accuracy"]))], [P("<b>V1 vs V2</b>"), P(cmpv["verdict"])]] + ([[P("<b>V1 descriptive</b>"), P(" | ".join("%s: %d decided, hit %s, 95%% CI %s (BUY %d/%d, SELL %d/%d)" % (v, x["decided"], x["hit_rate"], x["ci95"], x["buy"]["hits"], x["buy"]["n"], x["sell"]["hits"], x["sell"]["n"]) for v, x in o["v1_descriptive"].items()))]] if o.get("v1_descriptive") else []), [36 * mm, 138 * mm], head=False)]
     t = r["tests"]
     bk = ops["backup"]
     bks = "VERIFIED: %s (%d files)" % (bk["folder"], bk["files"]) if isinstance(bk, dict) and bk.get("ok") else str(bk)
@@ -143,7 +150,7 @@ def render(rec: dict, pdf_path) -> dict:
     if pdf_path.exists():
         raise FileExistsError("PDF exists; never overwritten: %s" % pdf_path)
     W, Hh = A4
-    m = 13 * mm
+    m = 11 * mm
     last = None
     for lim in (8, 6, 5, 4, 3, 2):
         tmp = pdf_path.with_suffix(".tmp.pdf")
@@ -158,7 +165,7 @@ def render(rec: dict, pdf_path) -> dict:
             c.drawString(m, 9 * mm, "Run %s | audit hash %s | shadow research, not investment advice | page %d of 2" % (rid, h[:32], d.page))
             c.restoreState()
         doc.addPageTemplates([PageTemplate(id="p", frames=[Frame(m, m + 4 * mm, fw, fh, leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)], onPage=footer)])
-        story = [KeepInFrame(fw, fh, page1(rec, 8), mode="error"), PageBreak(), KeepInFrame(fw, fh, page2(rec, lim), mode="error")]
+        story = [KeepInFrame(fw, fh, page1(rec, min(8, lim + 3)), mode="error"), PageBreak(), KeepInFrame(fw, fh, page2(rec, lim), mode="error")]
         try:
             doc.build(story)
         except (LayoutError, Exception) as e:       # noqa: BLE001  overflow -> shorter lists, never smaller text

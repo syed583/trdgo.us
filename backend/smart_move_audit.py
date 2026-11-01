@@ -15,6 +15,7 @@ import smart_move_board as B
 import smart_move_health as H
 import smart_move_scheduler as SCH
 import smart_move_v2 as V2
+import smart_move_v2_compare as V2CMP
 
 UTC = timezone.utc
 NV = "NOT VERIFIED"
@@ -87,8 +88,10 @@ def build(run_root, *, now: datetime, v2_file=None, tests: Optional[dict] = None
         v2_events = {e["symbol"]: e for e in v2b["events"] if e["symbol"] in res}
         v2["audit_hash"] = v2b.get("audit_hash")
         v2["source_run"] = v2b.get("source_run")
-        v2["signals"] = {v: dict(Counter(e["v2"][v]["signal"] for e in v2_events.values())) for v in ("continuation", "contrarian")}
+        v2["signals"] = {v: dict(Counter(e["v2"][v]["display_status"] if "display_status" in e["v2"][v] else e["v2"][v]["signal"] for e in v2_events.values())) for v in ("continuation", "contrarian")}
         v2["available_points_max"] = max((e["v2"]["continuation"]["available_points"] for e in v2_events.values()), default=None)
+        v2["directional_available_max"] = max((e["v2"]["continuation"].get("directional_available_points") for e in v2_events.values() if e["v2"]["continuation"].get("directional_available_points") is not None), default=None)
+        v2["evidence_complete_stocks"] = sum(1 for e in v2_events.values() if not e["v2"]["continuation"]["missing"])
         av = Counter()
         for e in v2_events.values():
             for f in e["v2"]["continuation"]["factors"]:
@@ -101,9 +104,23 @@ def build(run_root, *, now: datetime, v2_file=None, tests: Optional[dict] = None
             src = FACTOR_SOURCES[k]
             v2["factors"].append({"factor": k, "points": w, "stocks_with_data": None, "stocks": None, "data_status": src[1], "source": src[0], "note": src[2] + "; V2 run file " + NA})
     # ---- outcomes / accuracy
-    outs = outcomes or []
-    outcome = {"graded": len(outs), "accuracy": NA + " (no graded outcomes yet; no accuracy is claimed)" if not outs else "see tracking analytics", "claim_allowed": False}
-    comparison = {"verdict": "INCONCLUSIVE: no graded outcomes; minimum sample is 100 decided events per variant over 8 earnings weeks"}
+    outs = [o for o in (outcomes or []) if o.get("mode", "LIVE") == "LIVE" and o.get("move_pct") is not None]
+    omap = {(o["symbol"], str(o["earnings_date"])[:10]): o["move_pct"] for o in outs}
+    cmp_rows = []
+    for sym, r in res.items():
+        k = (sym, str(r["earnings_date"])[:10])
+        for v in ("continuation", "contrarian"):
+            e2 = (v2_events or {}).get(sym)
+            cmp_rows.append({"symbol": sym, "earnings_date": k[1], "kind": r.get("kind"), "sector": None, "variant": v, "move_pct": omap.get(k), "v1_signal": r[v]["signal"],
+                             "v2_signal": (e2["v2"][v]["signal"] if e2 else None)})
+    comparison = V2CMP.compare(cmp_rows)
+    cstats = {v: {"v1": comparison["variants"][v]["v1"], "v2": comparison["variants"][v]["v2"], "sample_sufficient": comparison["variants"][v]["sample_sufficient"]} for v in comparison["variants"]}
+    comparison = {"verdict": comparison["verdict"], "variants": cstats, "graded_events": len(outs)}
+    v1_acc = None
+    if outs:
+        v1_acc = {v: {"decided": cstats[v]["v1"]["decided"], "hit_rate": cstats[v]["v1"]["hit_rate"], "ci95": cstats[v]["v1"]["ci95"], "buy": cstats[v]["v1"]["buy"], "sell": cstats[v]["v1"]["sell"]} for v in cstats}
+    outcome = {"graded": len(outs), "accuracy": (NA + " (no graded outcomes yet; no accuracy is claimed)") if not outs else "descriptive only; minimum sample not met: no accuracy claim", "claim_allowed": False, "v1_descriptive": v1_acc,
+               "average_move_pct": round(sum(abs(o["move_pct"]) for o in outs) / len(outs), 2) if outs else None}
     # ---- operations
     health = H.health(run_dir, reg, now=now)
     kill = (run_dir / "store" / "KILL").exists()
@@ -120,7 +137,9 @@ def build(run_root, *, now: datetime, v2_file=None, tests: Optional[dict] = None
         defects.append({"severity": sev, "component": comp, "defect": what, "action": action})
     if not outs:
         d("HIGH", "outcomes", "No outcome has ever been collected or graded; accuracy is unknown", "Run outcome collection after the reaction sessions close (needs separate live approval)")
-    d("HIGH", "V2 data", "Saved evidence reaches at most 55 of 100 V2 points; 4 factors have no saved data, news/guidance is BLOCKED", "Authorize collection of analyst, flow and short/institutional data; define guidance field")
+    dm = v2.get("directional_available_max")
+    if dm is None or dm < V2.CONFIG["decision"]["min_directional_available"]:
+        d("HIGH", "V2 data", "V2 directional evidence reaches at most %s points (60 needed); analyst, flow, short/institutional never collected; news/guidance BLOCKED" % (("%g" % dm) if dm is not None else NA), "Authorize V2 evidence collection; verify the news sentiment field")
     d("MED", "scheduler", "scheduler_tick --execute is tested with mocks only; never run live", "Review seed-store convention, then a supervised first execution")
     d("MED", "provider", "Subscription, renewal (1 Nov) and 3-concurrent limit not re-verified today", "Owner to confirm in the Unusual Whales dashboard")
     if not backups:
@@ -137,7 +156,7 @@ def build(run_root, *, now: datetime, v2_file=None, tests: Optional[dict] = None
         "models": {"V1": {"points": 40, "status": "FROZEN, in use for the board (shadow research)"}, "V2": {"points": 100, "status": V2.STATUS + " / UNAVAILABLE for decisions", "version": V2.VERSION, "config_hash": V2.CONFIG_HASH}},
         "events": {"calendar_events": summary["total"] + len(boards["continuation"]["removed_events"]), "eligible": summary["total"], "evaluated": summary["evaluated"], "pending": counts["continuation"].get("PENDING", 0),
                    "incomplete": counts["continuation"].get("DATA_INCOMPLETE", 0), "excluded_removed": len(boards["continuation"]["removed_events"]), "removed": boards["continuation"]["removed_events"]},
-        "signals": counts, "evidence_coverage": dict(cov), "top_signals": tops, "disagreements": {"count": len(dis), "symbols": dis},
+        "signals": counts, "signals_v2": v2.get("signals"), "evidence_coverage": dict(cov), "top_signals": tops, "disagreements": {"count": len(dis), "symbols": dis},
         "provider": provider, "windows": windows, "liquidity": liquidity, "v2": v2, "outcomes": outcome, "v1_vs_v2": comparison, "operations": ops,
         "tests": tests or {"recorded": NV}, "defects": defects, "verdict": verdict,
         "verdict_reasons": [x["defect"] for x in defects if x["severity"] in ("HIGH", "CRITICAL")][:4],
