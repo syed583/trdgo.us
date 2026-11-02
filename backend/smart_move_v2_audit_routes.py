@@ -73,6 +73,22 @@ def _latest_v2r():
     return (files[-1], _j.load(open(files[-1], encoding="utf-8"))) if files else (None, None)
 
 
+@router.get("/recovery")
+def recovery_audit():
+    """Latest missing-evidence recovery audit (saved file): before/after, categories, per-stock unresolved factors. Read only."""
+    import glob
+    import json as _j
+    d = os.getenv("SMART_MOVE_RECOVERY_DIR") or os.path.join(os.getenv("SMART_MOVE_BASE") or BASEDIR, "audits_recovery")
+    fs = sorted(glob.glob(os.path.join(d, "recovery_audit_*.json")))
+    if not fs:
+        return {"available": False, "message": "no recovery audit saved yet"}
+    r = _j.load(open(fs[-1], encoding="utf-8"))
+    return {"available": True, "file": os.path.basename(fs[-1]), "generated_utc": r["generated_utc"], "stocks": r["stocks"], "audit_hash": r["audit_hash"], "recovery": r["recovery"], "before_after": r["before_after"],
+            "missing_points_by_category": r["missing_points_by_category"], "stocks_by_category": r["stocks_by_category"], "consensus_history": r["consensus_history"], "focus": r["focus"],
+            "per_stock": [{"symbol": p["symbol"], "cutoff_passed": p["cutoff_passed"], "unresolved": [{"factor": u["factor"], "points_missing": u["points_missing"], "category": u["category"], "reason": u["reason"], "recoverable_today": u["recoverable_today"]} for u in p["unresolved"]]} for p in r["per_stock"]],
+            "can_be_fixed_now": r["can_be_fixed_now"], "needs_future_observations": r["needs_future_observations"]}
+
+
 @router.get("/v2r")
 def v2r_predictions(variant: str = Query("continuation", pattern="^(continuation|contrarian)$")):
     """NEW RESEARCH CANDIDATE (v2r-1): unchanged scoring, transparent options-flow and news layers, named causes. Research only; accuracy NOT VERIFIED."""

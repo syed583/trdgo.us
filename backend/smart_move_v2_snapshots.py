@@ -113,3 +113,38 @@ def readiness(store, symbols: Iterable[str], quarters: dict, now: datetime) -> d
             waiting += 1
     return {"as_of": now.isoformat(), "measurable": ready, "waiting": waiting, "no_snapshot": none, "by_symbol": out,
             "note": "plan only; no recurring collection is active. A second snapshot at least 7 days after the first makes the revision measurable."}
+
+
+# ---------------------------------------------------------------- consensus history already inside the saved CALENDAR payloads (no extra request)
+def calendar_history(cal_obs: Iterable[dict], load_payload, event_date: str) -> dict:
+    """Every point-in-time EPS consensus for `event_date` that the saved calendar responses carry: Unusual Whales `street_mean_est` and Finnhub `epsEstimate`, each stamped with the request's own `observed_at`.
+    Each calendar refresh already contains it, so building history costs no additional request. load_payload(sha) -> parsed body or None. EPS only (no revenue). Returns {symbol: {source: [(observed_at, eps)]}} plus span/change summary."""
+    cache, hist = {}, {}
+    for o in cal_obs:
+        if str(o.get("date"))[:10] != event_date or o.get("source") not in ("UW_CALENDAR", "FINNHUB"):
+            continue
+        sha = o["raw_sha256"]
+        if sha not in cache:
+            cache[sha] = load_payload(sha)
+        b = cache[sha]
+        if not b:
+            continue
+        sym = o["symbol"]
+        if o["source"] == "UW_CALENDAR":
+            for x in (b.get("data") if isinstance(b, dict) else b) or []:
+                if x.get("symbol") == sym and str(x.get("report_date"))[:10] == event_date and _num(x.get("street_mean_est")) is not None:
+                    hist.setdefault(sym, {}).setdefault("UW_CALENDAR", {})[o["observed_at"]] = _num(x["street_mean_est"])
+        else:
+            for x in (b.get("earningsCalendar") if isinstance(b, dict) else None) or []:
+                if x.get("symbol") == sym and x.get("date") == event_date and _num(x.get("epsEstimate")) is not None:
+                    hist.setdefault(sym, {}).setdefault("FINNHUB", {})[o["observed_at"]] = _num(x["epsEstimate"])
+    out, spans, changed = {}, [], 0
+    for sym, srcs in hist.items():
+        series = {k: sorted(v.items()) for k, v in srcs.items()}
+        out[sym] = series
+        for pts in series.values():
+            if len(pts) >= 2:
+                spans.append((datetime.fromisoformat(pts[-1][0]) - datetime.fromisoformat(pts[0][0])).total_seconds() / 3600)
+                changed += abs(pts[-1][1] - pts[0][1]) > 1e-9
+    return {"by_symbol": out, "stocks": len(out), "max_span_hours": round(max(spans), 1) if spans else None, "series_with_a_change": changed, "usable_revision_band": "7-60 days",
+            "usable_now": bool(spans) and max(spans) >= MIN_GAP_DAYS * 24}

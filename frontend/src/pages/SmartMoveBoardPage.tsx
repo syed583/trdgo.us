@@ -159,6 +159,7 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
   const audits = useApi<any>((s) => smartMoveBoard.audits(s), [auditMsg], { refreshMs: 60_000 });
   const coll = useApi<any>((s) => smartMoveBoard.v2Collection(s), [], { refreshMs: 60_000 });
   const v2c = useApi<any>((s) => smartMoveBoard.v2(variant === 'continuation' ? 'contrarian' : 'continuation', s), [variant], { refreshMs: 60_000 });
+  const rec = useApi<any>((s) => smartMoveBoard.recovery(s), [], { refreshMs: 120_000 });
   const cand = useApi<any>((s) => smartMoveBoard.v2r(variant, s), [variant], { refreshMs: 60_000 });
   const candBy: Record<string, any> = {};
   (cand.data?.events || []).forEach((e: any) => { candBy[`${e.symbol}|${e.earnings_date}`] = e; });
@@ -234,6 +235,16 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
       </div>
       {model === 'V2' && <div className="sm-banner" role="note"><AlertTriangle size={16} /><div>{v2.data?.banner || 'V2 results are not available.'} Config hash {String(v2.data?.config_hash || '').slice(0, 12)}. Missing factors are never turned into signals.</div></div>}
       {model === 'V2C' && <CandPanel cand={cand.data} />}
+      {model === 'V2C' && rec.data?.available && (
+        <div className="sm-bd-summary" role="region" aria-label="Recovery audit">
+          <div className="sm-bd-sumhead"><b>Missing-evidence recovery audit</b> · {rec.data.stocks} stocks · recovered factors <b>{rec.data.recovery.recovered_factors}</b> · stocks improved <b>{rec.data.recovery.stocks_improved}</b> · still blocked <b>{rec.data.recovery.stocks_still_blocked}</b></div>
+          <div className="sm-bd-sumgrid">
+            {Object.entries<number>(rec.data.stocks_by_category).map(([k, n]) => <span key={k}>{k.replace(/_/g, ' ').toLowerCase()} <b>{n}</b> stocks</span>)}
+            <span>Longest saved consensus history <b>{rec.data.consensus_history.max_span_hours} h</b> (7 days needed)</span>
+          </div>
+          <div className="sm-bd-next">Every capture window has closed, so nothing collected now can enter a pre-earnings signal for these events. Unresolved factors per stock are in each row's "Missing" line and in the audit JSON.</div>
+        </div>
+      )}
       <V2Panel v2={v2.data} other={v2c.data} variant={variant} coll={coll.data?.report} v1rows={allRows} />
       <OpsPanel ops={ops.data} error={ops.error} />
       {(d?.removed_events?.length > 0 || d?.rescheduled_events?.length > 0) && (

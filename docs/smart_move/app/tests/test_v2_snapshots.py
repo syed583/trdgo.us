@@ -82,3 +82,17 @@ def test_readiness_states_and_the_scorer_uses_the_exact_quarter(tmp_path):
     legacy = C.load_inputs(st, "A", T0 + timedelta(days=9))
     assert [s["eps"] for s in legacy["est_snapshots"]] == [9.9, 9.9]                                    # documents the defect the exact mapping removes
     assert C.load_inputs(st, "A", T0 + timedelta(days=9), ending_quarter="2026-03-31")["est_snapshots"] == []   # unknown quarter row: no snapshot, no guess
+
+
+def test_calendar_history_reads_the_saved_calendar_payloads_stamps_each_point_and_never_fills_gaps():
+    obs = [{"symbol": "A", "date": "2026-11-02", "source": "UW_CALENDAR", "raw_sha256": "u1", "observed_at": "2026-10-30T15:13:00+00:00"},
+           {"symbol": "A", "date": "2026-11-02", "source": "UW_CALENDAR", "raw_sha256": "u2", "observed_at": "2026-11-01T10:38:00+00:00"},
+           {"symbol": "A", "date": "2026-11-02", "source": "FINNHUB", "raw_sha256": "f1", "observed_at": "2026-10-30T15:14:00+00:00"},
+           {"symbol": "B", "date": "2026-11-02", "source": "UW_CALENDAR", "raw_sha256": "u1", "observed_at": "2026-10-30T15:13:00+00:00"},
+           {"symbol": "A", "date": "2026-11-09", "source": "UW_CALENDAR", "raw_sha256": "u2", "observed_at": "2026-11-01T10:38:00+00:00"}]
+    bodies = {"u1": {"data": [{"symbol": "A", "report_date": "2026-11-02", "street_mean_est": "1.50"}, {"symbol": "B", "report_date": "2026-11-02", "street_mean_est": None}]},
+              "u2": {"data": [{"symbol": "A", "report_date": "2026-11-02", "street_mean_est": "1.52"}]}, "f1": {"earningsCalendar": [{"symbol": "A", "date": "2026-11-02", "epsEstimate": 1.5}]}}
+    h = SN.calendar_history(obs, bodies.get, "2026-11-02")
+    assert h["by_symbol"]["A"]["UW_CALENDAR"] == [("2026-10-30T15:13:00+00:00", 1.5), ("2026-11-01T10:38:00+00:00", 1.52)] and "B" not in h["by_symbol"]       # a null consensus is not a value
+    assert h["by_symbol"]["A"]["FINNHUB"] == [("2026-10-30T15:14:00+00:00", 1.5)] and h["max_span_hours"] == 43.4 and h["series_with_a_change"] == 1
+    assert h["usable_now"] is False                                                                                                         # 43 h is below the 7-day band: seen, never scored
