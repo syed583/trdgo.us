@@ -118,18 +118,21 @@ def page2(r, lim):
     s = [Paragraph("TECHNICAL VALIDATION AND PROBLEM AUDIT", TITLE), Spacer(1, 2), Paragraph("1. V2 factor coverage (all 10 parameters)", H)]
     rows = [hdr(["Factor", "Pts", "Stocks with data", "Data", "Source / endpoint", "Note"])]
     for f in v2["factors"]:
-        have = "%s / %s" % (f["stocks_with_data"], f["stocks"]) if f["stocks"] is not None else NA
+        have = ("%s / %s" % (f["stocks_with_data"], f["stocks"]) + (" (%d part.)" % f["partial"] if f.get("partial") else "")) if f["stocks"] is not None else NA
         rows.append([f["factor"], f["points"], have, pill(f["data_status"]), P(f["source"]), P(f["note"])])
-    s += [tbl(rows, [31 * mm, 8 * mm, 21 * mm, 18 * mm, 50 * mm, 46 * mm]),
-          P("V2: at most %s of 100 points have data, of which %s are DIRECTIONAL (60 required; the implied-move factor is magnitude-only and does not count). Every V2 result is DATA INCOMPLETE. Missing is not negative." % (("%g" % v2["available_points_max"]) if v2.get("available_points_max") is not None else NA, ("%g" % v2["directional_available_max"]) if v2.get("directional_available_max") is not None else NA))]
+    s += [tbl(rows, [30 * mm, 8 * mm, 30 * mm, 18 * mm, 48 * mm, 40 * mm]),
+          P("V2: at most %s of 100 points have data (%s directional; 60 required, and the implied-move factor is magnitude-only so it does not count). Averages %s available / %s directional; %s stocks reach 60 directional. V2 results: %s. Missing is not negative." % (
+              ("%g" % v2["available_points_max"]) if v2.get("available_points_max") is not None else NA, ("%g" % v2["directional_available_max"]) if v2.get("directional_available_max") is not None else NA,
+              v2.get("average_available", NA), v2.get("average_directional", NA), v2.get("stocks_60_plus_directional", NA),
+              "; ".join("%s %s" % (v, ", ".join("%s %d" % kv for kv in sorted(c.items()))) for v, c in (v2.get("signals") or {}).items())))]
     s += [Paragraph("2. Provider requests, capture windows, liquidity", H)]
     w, lq = r["windows"], r["liquidity"]
     s += [tbl([hdr(["Item", "Value"]),
                ["Attempts / by provider", "%s attempts (%s) | errors %d | 401/429 %d | budget %s%% of cap %s" % (pv["attempts_total"], ", ".join("%s %s" % kv for kv in (pv["by_provider"] or {}).items()), pv["errors"], pv["stop_events_401_429"], pv["budget_utilisation_pct"], pv["cap"])],
-               ] + ([["V2 collection", P("%d stocks | attempts %s of %s | by kind %s | probe %s endpoints: %s | failures %d | stop events %d | open-window events %s, window closed %d, expired before collection %d" % (
-                   (cl or {}).get("stocks_collected", 0), (cl or {}).get("attempts_total"), (cl or {}).get("cap"), (cl or {}).get("by_kind"), (cl or {}).get("probe_symbol"),
-                   "; ".join("%s %s" % kv for kv in ((cl or {}).get("endpoint_access") or {}).items()), (cl or {}).get("failures", 0), len((cl or {}).get("stop_events") or []),
-                   (cl or {}).get("open_window_events"), len((cl or {}).get("window_closed") or []), len((cl or {}).get("expired_before_collection") or [])))]] if cl else []) + [
+               ] + ([["V2 collection", P("%d stocks | attempts %s of %s | probe %s: %s | failed calls %d | 401/429 %d | open-window events %s; expired before collection %d" % (
+                   (cl or {}).get("stocks_collected", 0), (cl or {}).get("attempts_total"), (cl or {}).get("cap"), (cl or {}).get("probe_symbol"),
+                   ", ".join(k.replace("uw_", "") + " " + v.split(" ")[0] for k, v in ((cl or {}).get("endpoint_access") or {}).items()), (cl or {}).get("failures", 0), len((cl or {}).get("stop_events") or []),
+                   (cl or {}).get("open_window_events"), len((cl or {}).get("expired_before_collection") or [])))]] if cl else []) + [
                ["Subscription / limits", P(pv["subscription"] + ". " + pv["limits"])],
                ["Capture windows", P("evaluated %d | open, no prediction %d | closed and missed %d | not yet open %d" % (w["evaluated"], w["open_without_prediction"], w["late_or_expired"], w["ahead"]))],
                ["Liquidity / entry (V1)", P(" | ".join("%s: %d" % (k, v) for k, v in lq.items()))]], [36 * mm, 138 * mm])]

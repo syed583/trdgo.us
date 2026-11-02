@@ -27,12 +27,12 @@ FACTOR_SOURCES = {
     "F5": ("UW /api/stock/{t}/ohlc/1d", "READY", "saved in every run"),
     "F7": ("UW /volatility/context + /iv-rank", "READY", "collected live in window only"),
     "F8": ("UW ohlc SPY + sector ETF", "READY", "saved in every run"),
-    "ANALYST": ("UW /api/screener/analysts; /companies/{t}/earnings-estimates (current only)", "PARTIAL", "rating actions only; estimate revisions need dated snapshots"),
-    "OPTIONS_FLOW": ("UW /api/stock/{t}/net-prem-ticks, /flow-alerts", "PARTIAL", "adapter built; never collected, no history saved"),
-    "IMPLIED_VS_HIST": ("UW /api/earnings/{t} (expected_move_perc, post_earnings_move_1d)", "PARTIAL", "ratio is READY from saved data; direction undefined, magnitude only"),
-    "SHORT_INST": ("UW /api/shorts/{t}/interest-float/v2, /institution/{t}/ownership", "PARTIAL", "never collected; FINRA/13F data is delayed"),
+    "ANALYST": ("UW /screener/analysts, /earnings-estimates", "PARTIAL", "actions (5 pts) collected; revisions (10 pts) need a 2nd snapshot"),
+    "OPTIONS_FLOW": ("UW /api/stock/{t}/flow-alerts", "PARTIAL", "collected; few stocks pass the activity rules"),
+    "IMPLIED_VS_HIST": ("UW /api/earnings/{t} (expected_move_perc)", "PARTIAL", "magnitude only, no direction"),
+    "SHORT_INST": ("UW /shorts/{t}/interest-float/v2, /institution/{t}/ownership", "PARTIAL", "collected; FINRA lagged, 13F partial"),
     "REL_STRENGTH": ("derived from saved ohlc (stock, SPY, sector ETF)", "READY", "overlaps V1 F5/F8 evidence"),
-    "NEWS_GUIDANCE": ("UW /api/news/headlines (sentiment field semantics unverified)", "BLOCKED", "no structured guidance field"),
+    "NEWS_GUIDANCE": ("UW /api/news/headlines (sentiment unverified)", "BLOCKED", "no structured guidance field"),
 }
 
 
@@ -75,7 +75,7 @@ def build(run_root, *, now: datetime, v2_file=None, tests: Optional[dict] = None
     provider = {"attempts_total": rep.get("attempts_total"), "by_provider": by, "errors": len(rep.get("errors") or []), "stop_events_401_429": len(stops), "cap": rep.get("cap_total"),
                 "budget_utilisation_pct": round(100 * rep["attempts_total"] / rep["cap_total"], 1) if rep.get("attempts_total") and rep.get("cap_total") else None,
                 "latest_evidence_retrieved_utc": max(ev_times) if ev_times else None, "run_updated_utc": rep.get("updated_utc"), "run_status": rep.get("status"),
-                "subscription": NV + " (needs the Unusual Whales dashboard; last seen: Whale Bundle Advanced, renews 1 Nov 2026, 3 concurrent requests)", "limits": "3 in-flight per token (UW support 23 Oct); daily quota unlimited per dashboard; both NOT RE-VERIFIED today"}
+                "subscription": "ACTIVE (all 6 V2 endpoints answered with data on 1 Nov; no 401); renewal and dashboard quota NOT VERIFIED", "limits": "3 in-flight per token (UW support, 23 Oct): not re-verified; run used 1 in flight, 2 s pacing"}
     # ---- windows, liquidity
     codes = Counter(c for r in res.values() for c in r["continuation"]["reason_codes"])
     windows = {"late_or_expired": summary["window_closed_missed"], "open_without_prediction": summary["window_open_no_prediction"], "ahead": summary["window_ahead"], "evaluated": summary["evaluated"]}
@@ -96,9 +96,19 @@ def build(run_root, *, now: datetime, v2_file=None, tests: Optional[dict] = None
         for e in v2_events.values():
             for f in e["v2"]["continuation"]["factors"]:
                 av[f["factor"]] += 1 if f["available"] else 0
+        part = Counter()
+        for e in v2_events.values():
+            for f in e["v2"]["continuation"]["factors"]:
+                if f["available"] and f.get("available_points", f["max"]) < f["max"]:
+                    part[f["factor"]] += 1
+        dirs = [e["v2"]["continuation"].get("directional_available_points") for e in v2_events.values()]
+        avs = [e["v2"]["continuation"]["available_points"] for e in v2_events.values()]
+        v2["average_available"] = round(sum(avs) / len(avs), 1) if avs else None
+        v2["average_directional"] = round(sum(d for d in dirs if d is not None) / max(1, len([d for d in dirs if d is not None])), 1)
+        v2["stocks_60_plus_directional"] = sum(1 for d in dirs if d is not None and d >= 60)
         for k, w in V2.WEIGHTS.items():
             src = FACTOR_SOURCES[k]
-            v2["factors"].append({"factor": k, "points": w, "stocks_with_data": av.get(k, 0), "stocks": len(v2_events), "data_status": src[1], "source": src[0], "note": src[2]})
+            v2["factors"].append({"factor": k, "points": w, "stocks_with_data": av.get(k, 0), "partial": part.get(k, 0), "stocks": len(v2_events), "data_status": src[1], "source": src[0], "note": src[2]})
     else:
         for k, w in V2.WEIGHTS.items():
             src = FACTOR_SOURCES[k]
@@ -175,6 +185,8 @@ def build(run_root, *, now: datetime, v2_file=None, tests: Optional[dict] = None
             d("CRITICAL" if c["check"] in ("kill_switch_engaged", "no_duplicate_symbols", "evidence_hashes_present", "no_provider_stop") else "HIGH", "health", "%s: %s" % (c["check"], c["detail"]), "Investigate before relying on the board")
     for f in (tests or {}).get("failures", []):
         d(f.get("severity", "LOW"), "tests", f["name"] + ": " + f["why"], f.get("action", "see test notes"))
+    rank = {"CRITICAL": 0, "HIGH": 1, "MED": 2, "LOW": 3}
+    defects.sort(key=lambda x: rank.get(x["severity"], 9))                          # most severe first: a HIGH item is never the one cut from the two-page PDF
     verdict = "PARTIAL" if not any(x["severity"] == "CRITICAL" for x in defects) else "BLOCKED"
     rec = {
         "schema": "smart-move-audit/1", "title": "TRDGO-US SMART MOVE - EARNINGS PREDICTION AUDIT", "generated_utc": now.isoformat(), "run_id": name, "mode": "REAL" if not rep.get("simulation") else "SIMULATION",

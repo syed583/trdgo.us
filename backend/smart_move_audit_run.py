@@ -36,7 +36,11 @@ def generate(run_root, audit_root, *, now=None, v2_file=None, tests_file=None, b
     if rec.get("ok") is False:
         return rec
     saved = A.save(rec, audit_root)
-    pdf = PDF.render(rec, saved["base"] + ".pdf")
+    try:
+        pdf = PDF.render(rec, saved["base"] + ".pdf")
+    except Exception:
+        Path(saved["json"]).unlink(missing_ok=True)                  # no orphan record without its PDF
+        raise
     return {"ok": True, "run_id": rec["run_id"], "verdict": rec["verdict"], "audit_hash": rec["audit_hash"], **saved, **pdf}
 
 
