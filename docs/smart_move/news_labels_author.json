@@ -1,0 +1,567 @@
+{
+ "labelled_by": "the author of the classifier (NOT independent)",
+ "purpose": "regression and sanity check only; production points require independently labelled headlines",
+ "capture_ts": "2026-11-01T12:00:00+00:00",
+ "rows": [
+  {
+   "id": 1,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-31T12:02:16Z",
+   "source": "Blockchain News",
+   "headline": "AAPL Price Prediction: Momentum Flatlines at Pivot as Open Interest Surges 11.6% and BofA Holds $370 Target",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 2,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-30T12:53:21Z",
+   "source": "PR NewsWire",
+   "headline": "New Book from AAPL Equips Physician Leaders to Drive Systemic Change Through Coalition Strategy and Systems Thinking",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 3,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-30T12:20:16Z",
+   "source": "Blockchain News",
+   "headline": "AAPL Price Prediction: Momentum Stalls at $346 as Analysts Set Pre-Earnings Targets Up to $380",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 4,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-29T17:17:00Z",
+   "source": "Tradex",
+   "headline": "Apple cuts Taiwan app store commission rate to 26%. $AAPL",
+   "provider_sentiment": "neutral",
+   "label": "NEUTRAL"
+  },
+  {
+   "id": 5,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-29T14:21:48Z",
+   "source": "Blockchain News",
+   "headline": "AAPL Price Prediction: MACD Histogram Reaches Zero as Contract Closes to Within $1.40 of a Tight Resistance Cluster",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 6,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-28T20:57:17Z",
+   "source": "Tradex",
+   "headline": "Apple scaling pre-training of foundation models on Google TPUs. $GOOGL $AAPL",
+   "provider_sentiment": "neutral",
+   "label": "NEUTRAL"
+  },
+  {
+   "id": 7,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-28T17:13:49Z",
+   "source": "Tradex",
+   "headline": "Touch Mac starts at $2,899 for the 14-inch and $3,399 for the 16-inch $AAPL",
+   "provider_sentiment": "neutral",
+   "label": "NEUTRAL"
+  },
+  {
+   "id": 8,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-28T17:03:54Z",
+   "source": "Tradex",
+   "headline": "Apple announces overhauled MacBook Pro with touch-screen $AAPL",
+   "provider_sentiment": "neutral",
+   "label": "NEUTRAL"
+  },
+  {
+   "id": 9,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-28T17:01:51Z",
+   "source": "Tradex",
+   "headline": "Apple Touch MacBook event begins in Los Angeles $AAPL",
+   "provider_sentiment": "neutral",
+   "label": "NEUTRAL"
+  },
+  {
+   "id": 10,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-28T12:07:44Z",
+   "source": "Blockchain News",
+   "headline": "AAPL Price Prediction: MACD Flatlines at $346 as Analysts Cluster Around $355–$370 and Short Positioning Dominates Binance Futures",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 11,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-26T18:40:42Z",
+   "source": "Tradex",
+   "headline": "Apple: Siri AI is currently unavailable in the EU. We're working with the EU on a path forward - Website. $AAPL",
+   "provider_sentiment": "neutral",
+   "label": "NEUTRAL"
+  },
+  {
+   "id": 12,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-26T18:40:11Z",
+   "source": "Tradex",
+   "headline": "Apple: Siri AI is expanding to more people around the world, with availability in French, Japanese, Korean, Portuguese, and Spanish languages. $AAPL",
+   "provider_sentiment": "neutral",
+   "label": "NEUTRAL"
+  },
+  {
+   "id": 13,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-26T16:49:23Z",
+   "source": "Tradex",
+   "headline": "Apple iPhone Duo draws early complaints of the screen cracking. $AAPL",
+   "provider_sentiment": "neutral",
+   "label": "NEGATIVE"
+  },
+  {
+   "id": 14,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-26T12:01:44Z",
+   "source": "Blockchain News",
+   "headline": "AAPL Price Prediction: MACD Flatlines at $343.80 as Analyst Targets Span $245 to $370",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 15,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-25T12:06:11Z",
+   "source": "Blockchain News",
+   "headline": "AAPL Price Prediction: Zero MACD Histogram and a $30 Analyst Gap Signal a Critical Juncture at $348",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 16,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-24T12:05:01Z",
+   "source": "Blockchain News",
+   "headline": "AAPL Price Prediction: Momentum Stall at $347 as Analyst Targets Trail and Open Interest Retreats",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 17,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-23T13:57:11Z",
+   "source": "Tradex",
+   "headline": "$AAPL - APPLE SHARES TOUCH RECORD HIGH, LAST UP 0.4%",
+   "provider_sentiment": "neutral",
+   "label": "NEUTRAL"
+  },
+  {
+   "id": 18,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-22T12:20:14Z",
+   "source": "Blockchain News",
+   "headline": "AAPL token on Binance Futures now at $344.35, $14 higher than revised analyst targets, MACD showing crossover pause.",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 19,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-22T09:52:35Z",
+   "source": "Tradex",
+   "headline": "Apple has increased iPhone Duo shipments by 44% to 14 million units, according to DigiTimes. $AAPL",
+   "provider_sentiment": "neutral",
+   "label": "POSITIVE"
+  },
+  {
+   "id": 20,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-21T12:15:05Z",
+   "source": "Blockchain News",
+   "headline": "AAPL prediction slashed by Loop Capital: Downgraded to Hold with $330 target, citing 13M lost iPhone shipments.",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 21,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-20T12:10:15Z",
+   "source": "Blockchain News",
+   "headline": "AAPL price target revised to $330 by Loop Capital after downgrade; Binance Futures leans short.",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 22,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-20T12:04:36Z",
+   "source": "Tradex",
+   "headline": "Apple is expanding its partnership with Qnity Electronics $AAPL",
+   "provider_sentiment": "neutral",
+   "label": "NEUTRAL"
+  },
+  {
+   "id": 23,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-20T12:02:22Z",
+   "source": "Tradex",
+   "headline": "Apple reports new American manufacturing program partners $AAPL",
+   "provider_sentiment": "neutral",
+   "label": "NEUTRAL"
+  },
+  {
+   "id": 24,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-19T16:05:25Z",
+   "source": "Tradex",
+   "headline": "Apple announces Oct. 28 'Pro and Tell' event in Los Angeles. $AAPL",
+   "provider_sentiment": "neutral",
+   "label": "NEUTRAL"
+  },
+  {
+   "id": 25,
+   "symbol": "AAPL",
+   "company": "APPLE",
+   "created_at": "2026-10-19T12:14:10Z",
+   "source": "Blockchain News",
+   "headline": "AAPL: Analysts predict $130 target as Binance contract reaches $343.74 on Oct 19, 2026, near upper Bollinger Band.",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 26,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-31T13:29:05Z",
+   "source": "Blockchain News",
+   "headline": "PLTR Price Prediction: Sharp Selloff Compresses Price to Bollinger Floor as Analysts Split $172 Apart",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 27,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-30T13:45:58Z",
+   "source": "Blockchain News",
+   "headline": "PLTR Price Prediction: Analyst Upgrades Stack Up as the Contract Pulls Back Below Short-Term Averages",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 28,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-29T16:06:33Z",
+   "source": "Blockchain News",
+   "headline": "PLTR Price Prediction: $200 Ceiling Holds as Analysts Target $231–$262 and Binance Futures OI Surges 7.4%",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 29,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-29T10:33:02Z",
+   "source": "Business Wire",
+   "headline": "Surf Air Mobility Provides SurfOS Business Update, Highlighting OperatorOS Commercial Launch and Enterprise Growth Priorities",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 30,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-28T14:30:30Z",
+   "source": "Blockchain News",
+   "headline": "PLTR Price Prediction: Analyst Chasm and a Flattening MACD Frame the Next Move",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 31,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-27T14:30:37Z",
+   "source": "Blockchain News",
+   "headline": "PLTR Price Prediction: Three Analyst Upgrades Target $225–$250 as Futures Shorts Lean Heavy at the Pivot",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 32,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-25T13:37:18Z",
+   "source": "Blockchain News",
+   "headline": "PLTR Price Prediction: Analysts Lift Targets to $231–$250 as Binance Contract Flatlines Near $196",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 33,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-22T15:05:09Z",
+   "source": "Blockchain News",
+   "headline": "PLTR stock has a $245 target from Mizuho with a flat MACD and heavy shorts on Binance. Currently trading at $198.39.",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 34,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-22T11:09:40Z",
+   "source": "Business Wire",
+   "headline": "Palantir Elevates Aplos Data to Vanguard: Elite",
+   "provider_sentiment": "neutral",
+   "label": "NEUTRAL"
+  },
+  {
+   "id": 35,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-21T20:23:51Z",
+   "source": "Business Wire",
+   "headline": "Palantir Accelerates Delivery of Sovereign AI to New Wave of Customers",
+   "provider_sentiment": "neutral",
+   "label": "NEUTRAL"
+  },
+  {
+   "id": 36,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-21T14:25:26Z",
+   "source": "Blockchain News",
+   "headline": "PLTR price prediction: Mizuho increases target to $245, Binance Futures at $192.98, stalls below key SMA.",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 37,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-20T13:38:51Z",
+   "source": "Blockchain News",
+   "headline": "Analyst elevates Palantir's target to $245 with Outperform rating as momentum plateaus at midpoint.",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 38,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-19T13:44:33Z",
+   "source": "Blockchain News",
+   "headline": "Analysts predict PLTR may reach $250, but it struggles below key short-term averages. Mizuho and Baird lifted targets to $245 and $250, while Phillip Securities downgraded to Neutral.",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 39,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-19T11:04:27Z",
+   "source": "Business Wire",
+   "headline": "Knox and Palantir Partner to Further Accelerate Delivery of Software through Largest Federal Cloud",
+   "provider_sentiment": "neutral",
+   "label": "NEUTRAL"
+  },
+  {
+   "id": 40,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-18T13:34:29Z",
+   "source": "Blockchain News",
+   "headline": "Analysts raise Palantir target to $250. Binance Futures tokenized contract at $185.13, near 50-day SMA at $185.08.",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 41,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-17T13:38:46Z",
+   "source": "Blockchain News",
+   "headline": "PLTR price dropped 8.12% in 24 hours to $185.10, matching 50-day avg. Analysts and derivatives signals differ.",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 42,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-16T14:11:58Z",
+   "source": "Blockchain News",
+   "headline": "Analysts forecast PLTR to hit $265 with a 16.75% surge in futures interest. 3 upgrades set targets at $245-$265.",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 43,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-15T15:05:42Z",
+   "source": "Blockchain News",
+   "headline": "PLTR stock falls by 5.6% to $197.12 on Oct 15 as analysts set targets at $265, slipping below key averages.",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 44,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-15T12:40:14Z",
+   "source": "Business Wire",
+   "headline": "Customers Bank and Palantir Collaborate to Build an AI-Native Future for Banking",
+   "provider_sentiment": "neutral",
+   "label": "NEUTRAL"
+  },
+  {
+   "id": 45,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-15T10:38:46Z",
+   "source": "Business Wire",
+   "headline": "Surf Air Mobility Signs OperatorOS Contract with Flying Zebra",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 46,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-14T14:01:10Z",
+   "source": "Blockchain News",
+   "headline": "Palantir's stock price rises on Goldman and Barclays upgrades as RSI hits 75 and MACD stalls near $209. $230 and $265 targets set.",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 47,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-12T20:11:48Z",
+   "source": "Business Wire",
+   "headline": "Palantir Announces Date of Third Quarter 2026 Earnings Release and Webcast",
+   "provider_sentiment": "neutral",
+   "label": "NEUTRAL"
+  },
+  {
+   "id": 48,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-12T13:36:26Z",
+   "source": "Blockchain News",
+   "headline": "PLTR price jumps to $208.17 on 3 analyst upgrades in 4 days. Technicals signal possible overbought conditions.",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 49,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-12T01:03:13Z",
+   "source": "Business Wire",
+   "headline": "Palantir Technologies Announces October Seoul Pop-Up with Korea-First Exclusive Merchandise Release",
+   "provider_sentiment": "neutral",
+   "label": "NEUTRAL"
+  },
+  {
+   "id": 50,
+   "symbol": "PLTR",
+   "company": "PALANTIR",
+   "created_at": "2026-10-11T13:36:19Z",
+   "source": "Blockchain News",
+   "headline": "Goldman and Barclays bullish on PLTR as upgrades flow post Oct. 8, futures at $209.31 with RSI 80.30.",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 51,
+   "symbol": "VRTX",
+   "company": "VERTEX PHARMACEUTICALS",
+   "created_at": "2026-10-09T17:23:44Z",
+   "source": "Business Wire",
+   "headline": "Vertex to Present New Data on ALYFTREK® at the North American Cystic Fibrosis Conference",
+   "provider_sentiment": "neutral",
+   "label": "NEUTRAL"
+  },
+  {
+   "id": 52,
+   "symbol": "VRTX",
+   "company": "VERTEX PHARMACEUTICALS",
+   "created_at": "2026-10-01T21:02:24Z",
+   "source": "GlobeNewswire",
+   "headline": "Vortex Energy Completes Acquisition of the Meadows Project in Saskatchewan",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 53,
+   "symbol": "VRTX",
+   "company": "VERTEX PHARMACEUTICALS",
+   "created_at": "2026-09-17T21:32:10Z",
+   "source": "GlobeNewswire",
+   "headline": "Vortex Energy Enters Into Asset Purchase Agreement to Acquire the Meadows Project in Saskatchewan",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 54,
+   "symbol": "VRTX",
+   "company": "VERTEX PHARMACEUTICALS",
+   "created_at": "2026-09-07T13:01:59Z",
+   "source": "Unusual Whales",
+   "headline": "David Taylor revealed transactions for 7 stocks, including AVGO, AMGN, VRTX, FITB, AEP.",
+   "provider_sentiment": "neutral",
+   "label": "UNVERIFIED"
+  },
+  {
+   "id": 55,
+   "symbol": "VRTX",
+   "company": "VERTEX PHARMACEUTICALS",
+   "created_at": "2026-08-03T20:14:34Z",
+   "source": "Tradex",
+   "headline": "VERTEX PHARMACEUTICALS POSTED Q2 REVENUE OF $3.33 BLN, ABOVE THE $3.23 BLN ESTIMATE, WITH ADJUSTED EPS OF $4.73 IN LINE WITH ESTIMATES, EPS OF $4.31 AND ADJUSTED NET INCOME OF $1.21 BLN VERSUS $1.23 BLN EXPECTED, AND SEES FY REVENUE OF $13.1 BLN-$13.2 BLN VERSUS $13.07 BLN EXPECTED",
+   "provider_sentiment": "neutral",
+   "label": "NEUTRAL"
+  },
+  {
+   "id": 56,
+   "symbol": "WMB",
+   "company": "WILLIAMS COMPANIES",
+   "created_at": "2026-08-03T20:33:00Z",
+   "source": "Business Wire",
+   "headline": "EnCap Flatrock Announces Sale of M6 Midstream to Williams for $5.5 Billion",
+   "provider_sentiment": "neutral",
+   "label": "NEUTRAL"
+  }
+ ]
+}

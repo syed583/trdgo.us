@@ -90,7 +90,7 @@ def page1(r, lim):
     if cd:
         for v in ("continuation", "contrarian"):
             c = cd["counts"][v]
-            rows.append(["V2 candidate %s (research)" % v.capitalize(), c.get("BUY", 0), c.get("SELL", 0), c.get("NO_TRADE", 0), P('<font color="#b26a00"><b>%d</b></font>' % c.get("DATA_INCOMPLETE", 0)), 0])
+            rows.append(["New candidate %s (research)" % v.capitalize(), c.get("BUY", 0), c.get("SELL", 0), c.get("NO_TRADE", 0), P('<font color="#b26a00"><b>%d</b></font>' % c.get("DATA_INCOMPLETE", 0)), 0])
     cov = r["evidence_coverage"]
     s += [tbl(rows, [52 * mm, 16 * mm, 16 * mm, 24 * mm, 34 * mm, 20 * mm]),
           P("Evidence coverage: " + " | ".join("%s: %d" % (k, v) for k, v in cov.items()) + ". Missing data is shown as DATA INCOMPLETE, never as a neutral or negative signal.")]
@@ -149,11 +149,14 @@ def page2(r, lim):
         pcz = cd["primary_causes"]["continuation"]
         fl = fn["flow_lookback"]
         s += [Paragraph("3b. V2 research candidate and evidence findings", H),
-              tbl([[P("<b>Candidate %s</b>" % cd["version"]), P("RESEARCH ONLY. Weights, thresholds, factor rules and the 100 points are identical to the frozen V2; no redistribution. It only names WHY a stock is incomplete: Continuation BUY %d, SELL %d, NO TRADE %d, DATA INCOMPLETE %d (%s). Accuracy NOT VERIFIED." % (
-                    cc.get("BUY", 0), cc.get("SELL", 0), cc.get("NO_TRADE", 0), cc.get("DATA_INCOMPLETE", 0), ", ".join("%s %d" % (k.replace("_", " ").lower(), n) for k, n in sorted(pcz.items(), key=lambda kv: -kv[1]))))],
+              tbl([[P("<b>Candidate %s</b>" % cd["version"]), P("RESEARCH ONLY; scoring, weights, thresholds identical to the frozen V2, news earns 0 points. Continuation BUY %d, SELL %d, NO TRADE %d, DATA INCOMPLETE %d (%s). If coverage allowed, the unchanged rule would say: %s. Flow states: %s. Accuracy NOT VERIFIED." % (
+                    cc.get("BUY", 0), cc.get("SELL", 0), cc.get("NO_TRADE", 0), cc.get("DATA_INCOMPLETE", 0), ", ".join("%s %d" % (k.replace("_", " ").lower(), n) for k, n in sorted(pcz.items(), key=lambda kv: -kv[1])),
+                    "; ".join("%s %s" % ({"continuation": "Continuation", "contrarian": "Contrarian"}[v], ", ".join("%s %d" % kv for kv in sorted(c.items()))) for v, c in (cd.get("rule_would_fire_if_covered") or {}).items() if c) or "none",
+                    ", ".join("%s %d" % (k.replace("_", " ").lower(), n) for k, n in sorted((cd.get("flow_states") or {}).items(), key=lambda kv: -kv[1])[:4])))],
                    [P("<b>Analyst history</b>"), P("longest saved consensus history %s h, %d of %d stocks changed: below the 7-day band, so the revision factor stays unavailable (nothing manufactured)." % (fn["analyst_history"]["max_span_hours"], fn["analyst_history"]["stocks_with_a_changed_value"], fn["analyst_history"]["stocks_with_two_or_more"]))],
                    [P("<b>Flow lookback</b>"), P("point-in-time backtest on %d past events: qualifying events at 5/10/15/30 d = %s; decided <= %d, far below 100: %s" % (fl["events"], "/".join(str(fl["windows"][k]["qualifying"]) for k in ("5", "10", "15", "30")), max(w["decided"] for w in fl["windows"].values()), fl["verdict"].split(":")[0]))],
-                   [P("<b>News / guidance</b>"), P("%d saved labels, all %s: meaning undocumented, factor stays BLOCKED and unscored." % (fn["news_schema"]["headlines"], ", ".join(fn["news_schema"]["sentiment"])))]], [36 * mm, 138 * mm], head=False)]
+                   [P("<b>News / guidance</b>"), P("%d provider labels, all %s: undocumented. Transparent classifier news-x1: %s, 0 points until independently validated." % (fn["news_schema"]["headlines"], ", ".join(fn["news_schema"]["sentiment"]),
+                       ("agrees with author labels on %s (not independent); verified headlines are few: most are crypto commentary or ticker collisions" % fn["news_classifier"]["agreement_with_author_labels"]) if fn.get("news_classifier") else "not run"))]], [36 * mm, 138 * mm], head=False)]
     t = r["tests"]
     bk = ops["backup"]
     bks = "VERIFIED: %s (%d files)" % (bk["folder"], bk["files"]) if isinstance(bk, dict) and bk.get("ok") else str(bk)

@@ -21,3 +21,18 @@ NOT VERIFIED. No outcome exists for any prediction made here. The earliest colle
 
 ## Promotion
 Not promoted. Needs: outcomes, >= 100 decided events per variant over >= 8 weeks, a stable calendar guard in a supervised run, and your approval.
+
+---
+## v2r-1: the new research candidate (2 Nov, later)
+Supersedes v2c-1 on the dashboard (v2c-1 data remains). Scoring, weights, thresholds and factor rules are still identical to the frozen V2 (`scoring_changes = []`, `factor_redistribution = []`). Adds two transparent layers:
+
+* **flowx-1** (`smart_move_flowx.py`): the V2 rule, with a per-stock waterfall, the observed lean when below the minimum, consistency, sweep share, unattributed share and a lookback comparison on the same alerts. Verified against the saved data: 5,863 alerts, 0 null fields, 0 future stamps; premium ask 44.3 % / bid 46.1 % / unattributed 9.6 %; `all_opening_trades` is true for 39 alerts and 0 inside 5 days (cannot replace volume/OI); no truncation inside the 5-day window. Only 3 stocks qualify with a direction at capture time (ON bearish, PLTR bullish, SNDX bearish); 3 more have enough activity but are balanced; 14 show a lean below the minimum; 57 have no alert in the last 5 days. By lookback 5/10/15/30 d: 3/3/6/12 qualify. **No parsing or classification bug exists; the low count is thin activity and a short alert history.**
+* **news-x1** (`smart_move_news.py`): POSITIVE / NEGATIVE / NEUTRAL / UNVERIFIED with source, entity, timestamp and no-double-count rules (analyst actions, price moves, earlier results excluded). On the 56 saved headlines: 34 UNVERIFIED (crypto-futures commentary and ticker collisions such as "Vortex Energy" tagged VRTX and "New Book from AAPL"), 20 NEUTRAL, 1 NEGATIVE, 1 POSITIVE. It matches the author's labels 56/56 (**not independent**), so it earns **0 points**; displayed only.
+
+### Result on the 95 stocks (both variants): BUY 0, SELL 0, NO TRADE 5, DATA INCOMPLETE 90
+Binding constraints, in order:
+1. **Coverage (60 directional points):** 90 stocks have 55 or less (42 also captured against a stale calendar). Only 5 reach 70, and all five are below the margin.
+2. **Direction strength:** the highest bull score is 35 and the highest bear 40; only 6 stocks have bull >= 25 and 4 have bear >= 25 (Continuation).
+3. **Near misses** (the unchanged rule WOULD fire if coverage allowed): Continuation BUY: VAL (bull 35, bear 2.5, 55 directional points). Contrarian SELL: CE (bear 40) and FANG (bear 36), both at 55. Each needs only +5 directional points, which could come from: a second analyst-consensus snapshot (from 8 Nov), qualifying options flow (15 points), or independently validated news (10 points). They are NOT signals today.
+
+Evidence required for genuine signals: (a) the second consensus snapshot and a calendar-guarded collection, (b) flow inside the 5-day window before earnings, (c) independently labelled headlines for the news layer, (d) outcomes (>= 100 decided per variant over >= 8 weeks) before any accuracy statement.

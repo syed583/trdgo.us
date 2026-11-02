@@ -136,4 +136,4 @@ def test_the_candidate_route_labels_research_only_and_the_audit_reports_candidat
     assert rec["candidate"]["scoring_changes"] == [] and rec["findings"]["flow_lookback"]["verdict"].startswith("INCONCLUSIVE") and rec["candidate"]["accuracy"] == "NOT VERIFIED"
     out = PDF.render(rec, tmp_path / "c.pdf")
     text = " ".join(p.extract_text() for p in pages(out["pdf"]))
-    assert out["pages"] == 2 and "V2 candidate Continuation (research)" in text.replace("\n", " ") and "Flow lookback" in text and "NOT VERIFIED" in text
+    assert out["pages"] == 2 and "New candidate Continuation (research)" in text.replace("\n", " ") and "Flow lookback" in text and "NOT VERIFIED" in text

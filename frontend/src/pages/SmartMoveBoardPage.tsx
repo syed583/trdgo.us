@@ -97,9 +97,11 @@ function CandPanel({ cand }: { cand: any }) {
   const f = cand.frozen_v2_counts?.[cand.variant] || {};
   return (
     <div className="sm-bd-summary" role="region" aria-label="V2 candidate summary">
-      <div className="sm-bd-sumhead"><b>V2 candidate {cand.version} (RESEARCH ONLY)</b> · {cand.variant} · BUY {c.BUY || 0} · SELL {c.SELL || 0} · NO TRADE {c.NO_TRADE || 0} · DATA INCOMPLETE {c.DATA_INCOMPLETE || 0} · accuracy <b>NOT VERIFIED</b></div>
+      <div className="sm-bd-sumhead"><b>New research candidate {cand.version} (RESEARCH ONLY)</b> · {cand.variant} · BUY {c.BUY || 0} · SELL {c.SELL || 0} · NO TRADE {c.NO_TRADE || 0} · DATA INCOMPLETE {c.DATA_INCOMPLETE || 0} · accuracy <b>NOT VERIFIED</b></div>
       <div className="sm-bd-sumgrid">
         <span>Frozen V2 baseline: BUY {f.BUY || 0} · SELL {f.SELL || 0} · NO TRADE {f.NO_TRADE || 0} · DATA INCOMPLETE {f.DATA_INCOMPLETE || 0}</span>
+        <span>Rule would fire if coverage allowed: {Object.entries<number>(cand.summary?.rule_would_fire_if_covered?.[cand.variant] || {}).map(([k, n]) => `${k} ${n}`).join(', ') || 'none'}</span>
+        <span>Options-flow states: {Object.entries<number>(cand.summary?.flow_states || {}).map(([k, n]) => `${k.replace(/_/g, ' ').toLowerCase()} ${n}`).join(' · ')}</span>
         {Object.entries<number>(p).map(([k, n]) => <span key={k}>Incomplete because {k.replace(/_/g, ' ').toLowerCase()} <b>{n}</b></span>)}
       </div>
       <div className="sm-bd-next">{cand.banner} Weights, thresholds and factor rules are identical to the frozen V2; nothing is redistributed.</div>
@@ -157,7 +159,7 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
   const audits = useApi<any>((s) => smartMoveBoard.audits(s), [auditMsg], { refreshMs: 60_000 });
   const coll = useApi<any>((s) => smartMoveBoard.v2Collection(s), [], { refreshMs: 60_000 });
   const v2c = useApi<any>((s) => smartMoveBoard.v2(variant === 'continuation' ? 'contrarian' : 'continuation', s), [variant], { refreshMs: 60_000 });
-  const cand = useApi<any>((s) => smartMoveBoard.v2c(variant, s), [variant], { refreshMs: 60_000 });
+  const cand = useApi<any>((s) => smartMoveBoard.v2r(variant, s), [variant], { refreshMs: 60_000 });
   const candBy: Record<string, any> = {};
   (cand.data?.events || []).forEach((e: any) => { candBy[`${e.symbol}|${e.earnings_date}`] = e; });
   const outcomes = useApi<any>((s) => smartMoveTracking.outcomes(s), [], { refreshMs: 60_000 });
@@ -224,7 +226,7 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
         <b>Model</b>
         <button className={`sm-tab ${model === 'V1' ? 'on' : ''}`} onClick={() => setModel('V1')}>V1 · 40 points (frozen)</button>
         <button className={`sm-tab ${model === 'V2' ? 'on' : ''}`} onClick={() => setModel('V2')}>V2 · 100 points (EXPERIMENTAL, unavailable for decisions)</button>
-        <button className={`sm-tab ${model === 'V2C' ? 'on' : ''}`} onClick={() => setModel('V2C')}>V2 candidate v2c-1 (RESEARCH ONLY)</button>
+        <button className={`sm-tab ${model === 'V2C' ? 'on' : ''}`} onClick={() => setModel('V2C')}>New research candidate v2r-1 (RESEARCH ONLY)</button>
         <span style={{ flex: 1 }} />
         <button className="ghost-btn" onClick={generate} title="Builds the audit record and the two-page PDF from saved data; sends no provider request">Generate audit</button>
         {audits.data?.audits?.length > 0 && <a className="ghost-btn" href={`/api/smart-move/audits/${audits.data.audits[audits.data.audits.length - 1].file}.pdf`} target="_blank" rel="noreferrer">Latest audit PDF</a>}
@@ -297,8 +299,11 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
                       </td>
                       <td>
                         {model === 'V2C' && candBy[key]
-                          ? <><span className={`sm-bd-pill ${candBy[key].display_status === 'DATA_INCOMPLETE' ? 'data_incomplete' : candBy[key].display_status.toLowerCase()}`}><i />{`V2C ${candBy[key].display_status === 'DATA_INCOMPLETE' ? 'DATA INCOMPLETE' : candBy[key].display_status === 'NO_TRADE' ? 'NO TRADE' : candBy[key].display_status} (RESEARCH)`}</span>
-                              <small>{candBy[key].primary_cause.replace(/_/g, ' ').toLowerCase()}{candBy[key].secondary_causes.length ? ` + ${candBy[key].secondary_causes.map((c: string) => c.replace(/_/g, ' ').toLowerCase()).join(', ')}` : ''}. {candBy[key].explanation} Available {candBy[key].available_points}/100, directional {candBy[key].directional_available_points}/100. V1: {STATUS_LABEL[r.status as Status]}; frozen V2: {candBy[key].frozen_v2_signal}.</small></>
+                          ? <><span className={`sm-bd-pill ${candBy[key].display_status === 'DATA_INCOMPLETE' ? 'data_incomplete' : candBy[key].display_status.toLowerCase()}`}><i />{`NEW CANDIDATE ${candBy[key].display_status === 'DATA_INCOMPLETE' ? 'DATA INCOMPLETE' : candBy[key].display_status === 'NO_TRADE' ? 'NO TRADE' : candBy[key].display_status} (RESEARCH ONLY)`}</span>
+                              <small>{candBy[key].primary_cause.replace(/_/g, ' ').toLowerCase()}{candBy[key].secondary_causes.length ? ` + ${candBy[key].secondary_causes.map((c: string) => c.replace(/_/g, ' ').toLowerCase()).join(', ')}` : ''}. {candBy[key].explanation}</small>
+                              <small>Evidence {candBy[key].evidence_score.available_of_100}/100 available · {candBy[key].evidence_score.directional_of_100}/100 directional (60 needed) · bull {candBy[key].bull} / bear {candBy[key].bear}</small>
+                              <small>Options flow: <b>{candBy[key].options_flow.direction || 'none'}</b> ({String(candBy[key].options_flow.state).replace(/_/g, ' ').toLowerCase()}) · News: <b>{candBy[key].news.direction.replace(/_/g, ' ')}</b> (0 points)</small>
+                              <small>Missing: {candBy[key].missing_evidence.map((m: any) => `${m.factor} (${String(m.cause || m.state).replace(/_/g, ' ').toLowerCase()})`).join(', ') || 'none'}. V1: {STATUS_LABEL[r.status as Status]}; frozen V2: {candBy[key].frozen_v2_signal}.</small></>
                           : model === 'V2' && v2By[key]
                           ? <><span className={`sm-bd-pill ${v2By[key].display_status === 'DATA_INCOMPLETE' ? 'data_incomplete' : v2By[key].signal.toLowerCase()}`}><i />{v2By[key].display_status === 'DATA_INCOMPLETE' ? 'V2 DATA INCOMPLETE' : v2By[key].signal === 'NO_TRADE' ? 'V2 NO TRADE' : `V2 ${v2By[key].signal} (EXPERIMENTAL)`}</span>
                               <small>{v2By[key].explanation} V1 says {STATUS_LABEL[r.status as Status]}.</small></>

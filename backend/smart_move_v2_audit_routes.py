@@ -66,6 +66,43 @@ def v2c_predictions(variant: str = Query("continuation", pattern="^(continuation
             "banner": "RESEARCH CANDIDATE (v2c-1): scoring, weights and thresholds are identical to the frozen V2; only the status logic names WHY a stock is incomplete or no-trade. No accuracy is verified; research only.", "events": out}
 
 
+def _latest_v2r():
+    import glob
+    import json as _j
+    files = sorted(glob.glob(os.path.join(_dirs()["v2"], "v2r_run_*.json")))
+    return (files[-1], _j.load(open(files[-1], encoding="utf-8"))) if files else (None, None)
+
+
+@router.get("/v2r")
+def v2r_predictions(variant: str = Query("continuation", pattern="^(continuation|contrarian)$")):
+    """NEW RESEARCH CANDIDATE (v2r-1): unchanged scoring, transparent options-flow and news layers, named causes. Research only; accuracy NOT VERIFIED."""
+    f, body = _latest_v2r()
+    if body is None:
+        return {"available": False, "status": "UNAVAILABLE", "message": "No v2r candidate file saved yet.", "events": []}
+    root = os.getenv("SMART_MOVE_RUN_ROOT") or DEFAULT_RUN_ROOT
+    uni = set(B.load_run_results(root).keys())
+    out = []
+    for e in body["events"]:
+        if (e["symbol"], str(e["earnings_date"])[:10]) not in uni:
+            continue
+        x = e["v2r"][variant]
+        out.append({"symbol": e["symbol"], "earnings_date": e["earnings_date"], "signal": x["signal"], "display_status": x["display_status"], "primary_cause": x["primary_cause"], "secondary_causes": x["secondary_causes"],
+                    "explanation": x["explanation"], "bull": x["bull"], "bear": x["bear"], "evidence_score": x["evidence_score"], "available_points": x["available_points"],
+                    "directional_available_points": x["directional_available_points"], "options_flow": {k: x["options_flow"].get(k) for k in ("direction", "state", "qualifies", "net_ratio", "alerts_used", "attributed_premium", "consistency", "shortfall")},
+                    "news": x["news"], "missing_evidence": x["missing_evidence"], "headroom": x["headroom"], "frozen_v2_signal": x["frozen_v2_signal"], "scored_as_of": e.get("scored_as_of")})
+    _vf, vbody = _latest_v2()
+    keys = {(e["symbol"], str(e["earnings_date"])[:10]) for e in body["events"]}
+    frozen = {v: {} for v in ("continuation", "contrarian")}
+    for e in (vbody or {}).get("events", []):
+        if (e["symbol"], str(e["earnings_date"])[:10]) in keys:
+            for v in frozen:
+                k = e["v2"][v].get("display_status", e["v2"][v]["signal"])
+                frozen[v][k] = frozen[v].get(k, 0) + 1
+    return {"available": True, "frozen_v2_counts": frozen, "status": body["status"], "version": body["version"], "config_hash": body["config_hash"], "audit_hash": body.get("audit_hash"), "base_v2": body["base_v2"], "summary": body["summary"],
+            "scoring_changes": body["scoring_changes"], "factor_redistribution": body["factor_redistribution"], "accuracy": body["accuracy"], "usable_for_decisions": False, "variant": variant,
+            "banner": "NEW RESEARCH CANDIDATE (v2r-1) - RESEARCH ONLY. Scoring, weights and thresholds equal the frozen V2; options flow and news are transparent layers; news earns 0 points until independently validated. Accuracy NOT VERIFIED.", "events": out}
+
+
 @router.get("/v2/collection")
 def v2_collection():
     """Report of the newest one-time V2 collection run (provider access, attempts, errors, kill switch)."""
@@ -130,7 +167,7 @@ def audits_generate():
     d = _dirs()
     f, _b = _latest_v2()
     tests = os.path.join(d["audits"], "test_results.json")
-    return AR.generate(os.getenv("SMART_MOVE_RUN_ROOT") or DEFAULT_RUN_ROOT, d["audits"], now=now, v2_file=f, tests_file=tests if os.path.exists(tests) else None, backup_root=d["backups"], v2_collection_file=_latest_collection(), v2c_file=_latest_v2c()[0], findings_file=_latest_findings())
+    return AR.generate(os.getenv("SMART_MOVE_RUN_ROOT") or DEFAULT_RUN_ROOT, d["audits"], now=now, v2_file=f, tests_file=tests if os.path.exists(tests) else None, backup_root=d["backups"], v2_collection_file=_latest_collection(), v2c_file=(_latest_v2r()[0] or _latest_v2c()[0]), findings_file=_latest_findings())
 
 
 @router.get("/audits/{name}.{ext}")

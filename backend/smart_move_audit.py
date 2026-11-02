@@ -139,14 +139,15 @@ def build(run_root, *, now: datetime, v2_file=None, tests: Optional[dict] = None
         v2["signal_differences"] = diffs
     cand = None
     if v2c:
-        cand = {"version": v2c["version"], "status": v2c["status"], "config_hash": v2c["config_hash"], "base_version": v2c["base_version"], "counts": v2c["summary"]["counts"], "primary_causes": v2c["summary"]["primary_causes"],
-                "frozen_v2_counts": v2c["frozen_v2_counts"], "scoring_changes": v2c["scoring_changes"], "factor_redistribution": v2c["factor_redistribution"], "accuracy": v2c["accuracy"], "stocks": len(v2c["events"]),
-                "changes": v2c["changes"]}
+        sm = v2c["summary"]
+        cand = {"version": v2c["version"], "status": v2c["status"], "config_hash": v2c["config_hash"], "base_version": v2c.get("base_version") or v2c.get("base_v2"), "counts": sm["counts"], "primary_causes": sm["primary_causes"],
+                "frozen_v2_counts": v2c.get("frozen_v2_counts"), "scoring_changes": v2c["scoring_changes"], "factor_redistribution": v2c["factor_redistribution"], "accuracy": v2c["accuracy"], "stocks": len(v2c["events"]),
+                "changes": v2c.get("changes"), "rule_would_fire_if_covered": sm.get("rule_would_fire_if_covered"), "flow_states": sm.get("flow_states"), "news_directions": sm.get("news_directions")}
     fnd = None
     if findings:
         fb = findings["flow_lookback_backtest"]
         fnd = {"analyst_history": {k: findings["analyst_history"][k] for k in ("stocks_with_two_or_more", "max_span_hours", "stocks_with_a_changed_value", "usable_revisions", "conclusion")},
-               "news_schema": {k: findings["news_schema"][k] for k in ("headlines", "sentiment", "conclusion")},
+               "news_schema": {k: findings["news_schema"][k] for k in ("headlines", "sentiment", "conclusion")}, "news_classifier": findings.get("news_classifier"),
                "flow_lookback": {"events": fb["events_total"], "verdict": fb["verdict"], "windows": {L: {"qualifying": w["qualifying_events"], "decided": w["decided_buy_sell"], "hits": w["hits"], "ci95": w["ci95"]} for L, w in fb["windows"].items()}},
                "accuracy": findings["accuracy"]}
     # ---- outcomes / accuracy

@@ -1051,6 +1051,7 @@ export const smartMoveBoard = {
   v2: (variant: string, s?: AbortSignal) => request<any>(`/api/smart-move/v2?variant=${encodeURIComponent(variant)}`, s),
   audits: (s?: AbortSignal) => request<any>('/api/smart-move/audits', s),
   v2c: (variant: string, s?: AbortSignal) => request<any>(`/api/smart-move/v2c?variant=${encodeURIComponent(variant)}`, s),
+  v2r: (variant: string, s?: AbortSignal) => request<any>(`/api/smart-move/v2r?variant=${encodeURIComponent(variant)}`, s),
   v2Collection: (s?: AbortSignal) => request<any>('/api/smart-move/v2/collection', s),
   generateAudit: async () => {
     const r = await fetch('/api/smart-move/audits/generate', { method: 'POST' });

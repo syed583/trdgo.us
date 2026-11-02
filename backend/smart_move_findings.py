@@ -82,6 +82,22 @@ def news_schema(collect_store) -> dict:
             "conclusion": "UNVERIFIED: %d identical labels carry no information; the factor stays BLOCKED and unscored. Analyst actions are already used in the ANALYST factor, so they are not reused here (no double counting). No timestamped guidance field exists in the saved payloads." % n}
 
 
+def news_classifier() -> dict:
+    """news-x1 on the 56 saved headlines against the AUTHOR's labels (not independent: a regression check, not validation) and against the provider label."""
+    import smart_move_news as NW
+    f = HERE.parent / "docs" / "smart_move" / "news_labels_author.json"
+    data = json.loads(f.read_text(encoding="utf-8"))
+    cap = datetime.fromisoformat(data["capture_ts"])
+    conf = collections.Counter()
+    for r in data["rows"]:
+        out = NW.classify({"headline": r["headline"], "source": r["source"], "created_at": r["created_at"]}, r["symbol"], r["company"], cap, None, lookback_days=3650)
+        conf["%s>%s" % (r["label"], out["label"])] += 1
+    agree = sum(n for k, n in conf.items() if k.split(">")[0] == k.split(">")[1])
+    return {"version": NW.VERSION, "headlines": len(data["rows"]), "agreement_with_author_labels": "%d/%d" % (agree, len(data["rows"])), "confusion": dict(conf), "independent_validation": "NONE: labels are the author's; production points stay 0",
+            "provider_label_vs_classifier": "provider says neutral for 56/56; classifier: " + ", ".join("%s %d" % (k, v) for k, v in collections.Counter(k.split(">")[1] for k in sum(([k] * n for k, n in conf.items()), [])).items()),
+            "required_for_points": "an independently labelled set (>= 100 headlines, >= 90% agreement, positive and negative examples present) and your approval"}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--collect-store", required=True)
@@ -92,7 +108,7 @@ def main(argv=None):
     if out.exists():
         print("STOPPED: output exists; never overwritten")
         return 3
-    rep = {"generated_utc": datetime.now().astimezone().isoformat(), "analyst_history": analyst_history(a.collect_store, a.run_out), "news_schema": news_schema(a.collect_store), "flow_lookback_backtest": FB.run(a.collect_store),
+    rep = {"generated_utc": datetime.now().astimezone().isoformat(), "analyst_history": analyst_history(a.collect_store, a.run_out), "news_schema": news_schema(a.collect_store), "flow_lookback_backtest": FB.run(a.collect_store), "news_classifier": news_classifier(),
            "outcomes_available": 0, "accuracy": "NOT VERIFIED: no actual outcome exists for any prediction made in this system; no accuracy percentage is reported"}
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(rep, indent=1, default=str), encoding="utf-8")
