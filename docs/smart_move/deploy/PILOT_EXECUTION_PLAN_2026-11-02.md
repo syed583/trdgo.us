@@ -46,3 +46,9 @@ python backend\smart_move_collection_runner.py --store-dir <live store> --state-
 * The 14-day calendar horizon is unverified; the pilot uses the 3-day calendar.
 * Cross-machine concurrency is protected only by caps that each side must honour; nothing observes the other side's requests.
 * No real post-earnings outcomes exist yet, so nothing here supports a prediction-accuracy claim.
+
+## 7. Additions (Phase 11)
+
+* The obsolete scheduled task `SmartMove_OneTime_20261031_1705ET` (it ran an old copy of `scheduled_run.py` from `SmartMoveRun\code`) was DISABLED on 2026-11-02 after confirming it was not running; its configuration was exported first (`SmartMoveRun	ask_backups\..._before_disable_*.xml`). Rollback: `Register-ScheduledTask -Xml (Get-Content <that file> -Raw) -TaskName SmartMove_OneTime_20261031_1705ET -Force`, then enable it. Nothing was run or deleted.
+* **The ordinary localhost development backend is NOT covered by the Smart Move gate.** At start-up it launches background warmers (unless `DISABLE_WARMERS` is set) that call Unusual Whales with the shared token (one request at a time on a non-production machine). Do not run it during a pilot, or start it with `DISABLE_WARMERS=1`, because its requests would add to the shared three-request limit and the pilot's count would not include them.
+* Local lock folders do not coordinate across machines or across Windows accounts: only a common `UW_SLOT_DIR` on the SAME machine does, and nothing coordinates localhost with production.
