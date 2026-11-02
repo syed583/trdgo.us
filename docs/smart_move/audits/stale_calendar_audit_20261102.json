@@ -1,0 +1,724 @@
+{
+ "stocks_checked": 42,
+ "verdicts": {
+  "VALID_AT_CAPTURE": 42
+ },
+ "rule": "6 h calendar freshness inside D-4 (frozen); no later data is used to alter a V1 prediction",
+ "conclusion": "All checked V1 predictions were valid at their own capture time; the staleness arises only in the later V2 re-score.",
+ "rows": [
+  {
+   "symbol": "ADTN",
+   "v1_capture_ts": "2026-10-31T21:54:03.655237+00:00",
+   "calendar_age_h_at_v1_capture": 0.54,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T19:03:37.677697+00:00",
+   "calendar_age_h_at_v2_capture": 8.41,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "AESI",
+   "v1_capture_ts": "2026-10-31T21:52:12.413042+00:00",
+   "calendar_age_h_at_v1_capture": 0.51,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "SELL",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T18:19:48.661191+00:00",
+   "calendar_age_h_at_v2_capture": 7.68,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "AHRT",
+   "v1_capture_ts": "2026-10-31T21:54:03.655237+00:00",
+   "calendar_age_h_at_v1_capture": 0.54,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T19:03:37.677697+00:00",
+   "calendar_age_h_at_v2_capture": 8.41,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "BLZE",
+   "v1_capture_ts": "2026-10-31T21:54:03.655237+00:00",
+   "calendar_age_h_at_v1_capture": 0.54,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T19:03:37.677697+00:00",
+   "calendar_age_h_at_v2_capture": 8.41,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "BRCC",
+   "v1_capture_ts": "2026-10-31T21:54:03.655237+00:00",
+   "calendar_age_h_at_v1_capture": 0.54,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T19:03:37.677697+00:00",
+   "calendar_age_h_at_v2_capture": 8.41,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "BSM",
+   "v1_capture_ts": "2026-10-31T21:46:31.764455+00:00",
+   "calendar_age_h_at_v1_capture": 0.41,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T18:19:48.661191+00:00",
+   "calendar_age_h_at_v2_capture": 7.68,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "BVS",
+   "v1_capture_ts": "2026-10-31T21:52:12.413042+00:00",
+   "calendar_age_h_at_v1_capture": 0.51,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T18:19:48.661191+00:00",
+   "calendar_age_h_at_v2_capture": 7.68,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "CERS",
+   "v1_capture_ts": "2026-10-31T21:54:03.655237+00:00",
+   "calendar_age_h_at_v1_capture": 0.54,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T19:03:37.677697+00:00",
+   "calendar_age_h_at_v2_capture": 8.41,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "CRD.B",
+   "v1_capture_ts": "2026-10-31T21:54:03.655237+00:00",
+   "calendar_age_h_at_v1_capture": 0.54,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T19:03:37.677697+00:00",
+   "calendar_age_h_at_v2_capture": 8.41,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "CSR",
+   "v1_capture_ts": "2026-10-31T21:52:12.413042+00:00",
+   "calendar_age_h_at_v1_capture": 0.51,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T19:03:37.677697+00:00",
+   "calendar_age_h_at_v2_capture": 8.41,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "CSWC",
+   "v1_capture_ts": "2026-10-31T21:49:20.811856+00:00",
+   "calendar_age_h_at_v1_capture": 0.46,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T18:19:48.661191+00:00",
+   "calendar_age_h_at_v2_capture": 7.68,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "CWH",
+   "v1_capture_ts": "2026-10-31T21:54:03.655237+00:00",
+   "calendar_age_h_at_v1_capture": 0.54,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T19:03:37.677697+00:00",
+   "calendar_age_h_at_v2_capture": 8.41,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "DHC",
+   "v1_capture_ts": "2026-10-31T21:49:20.811856+00:00",
+   "calendar_age_h_at_v1_capture": 0.46,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T18:19:48.661191+00:00",
+   "calendar_age_h_at_v2_capture": 7.68,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "EBS",
+   "v1_capture_ts": "2026-10-31T21:54:03.655237+00:00",
+   "calendar_age_h_at_v1_capture": 0.54,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T19:03:37.677697+00:00",
+   "calendar_age_h_at_v2_capture": 8.41,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "ESRT",
+   "v1_capture_ts": "2026-10-31T21:52:12.413042+00:00",
+   "calendar_age_h_at_v1_capture": 0.51,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "SELL"
+   },
+   "v2_scored_as_of": "2026-11-01T18:19:48.661191+00:00",
+   "calendar_age_h_at_v2_capture": 7.68,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "EVER",
+   "v1_capture_ts": "2026-10-31T21:52:12.413042+00:00",
+   "calendar_age_h_at_v1_capture": 0.51,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T19:03:37.677697+00:00",
+   "calendar_age_h_at_v2_capture": 8.41,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "GAIA",
+   "v1_capture_ts": "2026-10-31T21:54:03.655237+00:00",
+   "calendar_age_h_at_v1_capture": 0.54,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T19:03:37.677697+00:00",
+   "calendar_age_h_at_v2_capture": 8.41,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "GLRE",
+   "v1_capture_ts": "2026-10-31T21:54:03.655237+00:00",
+   "calendar_age_h_at_v1_capture": 0.54,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T19:03:37.677697+00:00",
+   "calendar_age_h_at_v2_capture": 8.41,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "HLF",
+   "v1_capture_ts": "2026-10-31T21:49:20.811856+00:00",
+   "calendar_age_h_at_v1_capture": 0.46,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "BUY",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T16:59:09.694207+00:00",
+   "calendar_age_h_at_v2_capture": 6.34,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "HLIT",
+   "v1_capture_ts": "2026-10-31T21:52:12.413042+00:00",
+   "calendar_age_h_at_v1_capture": 0.51,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T18:19:48.661191+00:00",
+   "calendar_age_h_at_v2_capture": 7.68,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "HLMN",
+   "v1_capture_ts": "2026-10-31T21:49:20.811856+00:00",
+   "calendar_age_h_at_v1_capture": 0.46,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T18:19:48.661191+00:00",
+   "calendar_age_h_at_v2_capture": 7.68,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "HSTM",
+   "v1_capture_ts": "2026-10-31T21:52:12.413042+00:00",
+   "calendar_age_h_at_v1_capture": 0.51,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T19:03:37.677697+00:00",
+   "calendar_age_h_at_v2_capture": 8.41,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "IBTA",
+   "v1_capture_ts": "2026-10-31T21:52:12.413042+00:00",
+   "calendar_age_h_at_v1_capture": 0.51,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T19:03:37.677697+00:00",
+   "calendar_age_h_at_v2_capture": 8.41,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "IIPR",
+   "v1_capture_ts": "2026-10-31T21:49:20.811856+00:00",
+   "calendar_age_h_at_v1_capture": 0.46,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T18:19:48.661191+00:00",
+   "calendar_age_h_at_v2_capture": 7.68,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "LIFE",
+   "v1_capture_ts": "2026-10-31T21:49:20.811856+00:00",
+   "calendar_age_h_at_v1_capture": 0.46,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T16:59:09.694207+00:00",
+   "calendar_age_h_at_v2_capture": 6.34,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "MTUS",
+   "v1_capture_ts": "2026-10-31T21:52:12.413042+00:00",
+   "calendar_age_h_at_v1_capture": 0.51,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T19:03:37.677697+00:00",
+   "calendar_age_h_at_v2_capture": 8.41,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "NMFC",
+   "v1_capture_ts": "2026-10-31T21:52:12.413042+00:00",
+   "calendar_age_h_at_v1_capture": 0.51,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T19:03:37.677697+00:00",
+   "calendar_age_h_at_v2_capture": 8.41,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "OPAD",
+   "v1_capture_ts": "2026-10-31T21:54:03.655237+00:00",
+   "calendar_age_h_at_v1_capture": 0.54,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T20:00:16.342354+00:00",
+   "calendar_age_h_at_v2_capture": 9.36,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "OTTR",
+   "v1_capture_ts": "2026-10-31T21:46:31.764455+00:00",
+   "calendar_age_h_at_v1_capture": 0.41,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T18:19:48.661191+00:00",
+   "calendar_age_h_at_v2_capture": 7.68,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "PLOW",
+   "v1_capture_ts": "2026-10-31T21:52:12.413042+00:00",
+   "calendar_age_h_at_v1_capture": 0.51,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T19:03:37.677697+00:00",
+   "calendar_age_h_at_v2_capture": 8.41,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "PS",
+   "v1_capture_ts": "2026-10-31T21:33:37.028208+00:00",
+   "calendar_age_h_at_v1_capture": 0.2,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T18:19:48.661191+00:00",
+   "calendar_age_h_at_v2_capture": 7.68,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "RNW",
+   "v1_capture_ts": "2026-10-31T21:49:20.811856+00:00",
+   "calendar_age_h_at_v1_capture": 0.46,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T18:19:48.661191+00:00",
+   "calendar_age_h_at_v2_capture": 7.68,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "SIBN",
+   "v1_capture_ts": "2026-10-31T21:52:12.413042+00:00",
+   "calendar_age_h_at_v1_capture": 0.51,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T18:19:48.661191+00:00",
+   "calendar_age_h_at_v2_capture": 7.68,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "SNDX",
+   "v1_capture_ts": "2026-10-31T21:52:12.413042+00:00",
+   "calendar_age_h_at_v1_capture": 0.51,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "BUY"
+   },
+   "v2_scored_as_of": "2026-11-01T18:19:48.661191+00:00",
+   "calendar_age_h_at_v2_capture": 7.68,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "TCMD",
+   "v1_capture_ts": "2026-10-31T21:54:03.655237+00:00",
+   "calendar_age_h_at_v1_capture": 0.54,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T19:03:37.677697+00:00",
+   "calendar_age_h_at_v2_capture": 8.41,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "TNC",
+   "v1_capture_ts": "2026-10-31T21:52:12.413042+00:00",
+   "calendar_age_h_at_v1_capture": 0.51,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T18:19:48.661191+00:00",
+   "calendar_age_h_at_v2_capture": 7.68,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "TTI",
+   "v1_capture_ts": "2026-10-31T21:52:12.413042+00:00",
+   "calendar_age_h_at_v1_capture": 0.51,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T19:03:37.677697+00:00",
+   "calendar_age_h_at_v2_capture": 8.41,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "UMH",
+   "v1_capture_ts": "2026-10-31T21:52:12.413042+00:00",
+   "calendar_age_h_at_v1_capture": 0.51,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T18:19:48.661191+00:00",
+   "calendar_age_h_at_v2_capture": 7.68,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "UPWK",
+   "v1_capture_ts": "2026-10-31T21:52:12.413042+00:00",
+   "calendar_age_h_at_v1_capture": 0.51,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "BUY",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T18:19:48.661191+00:00",
+   "calendar_age_h_at_v2_capture": 7.68,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "UTL",
+   "v1_capture_ts": "2026-10-31T21:52:12.413042+00:00",
+   "calendar_age_h_at_v1_capture": 0.51,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T18:19:48.661191+00:00",
+   "calendar_age_h_at_v2_capture": 7.68,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "VOYG",
+   "v1_capture_ts": "2026-10-31T21:49:20.811856+00:00",
+   "calendar_age_h_at_v1_capture": 0.46,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "BUY"
+   },
+   "v2_scored_as_of": "2026-11-01T16:59:09.694207+00:00",
+   "calendar_age_h_at_v2_capture": 6.34,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  },
+  {
+   "symbol": "VTS",
+   "v1_capture_ts": "2026-10-31T21:52:12.413042+00:00",
+   "calendar_age_h_at_v1_capture": 0.51,
+   "calendar_status": "VENDOR_CONFIRMED",
+   "window_ok": true,
+   "evidence_records": 6,
+   "evidence_after_capture": 0,
+   "v1_signals": {
+    "continuation": "NO_TRADE",
+    "contrarian": "NO_TRADE"
+   },
+   "v2_scored_as_of": "2026-11-01T19:03:37.677697+00:00",
+   "calendar_age_h_at_v2_capture": 8.41,
+   "verdict": "VALID_AT_CAPTURE",
+   "problems": []
+  }
+ ]
+}

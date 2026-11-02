@@ -16,6 +16,7 @@
     <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
     <ExecutionTimeLimit>PT20M</ExecutionTimeLimit>
     <StartWhenAvailable>true</StartWhenAvailable>
+    <WakeToRun>true</WakeToRun>
     <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
   </Settings>
   <Actions Context="Author">

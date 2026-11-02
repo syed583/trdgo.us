@@ -147,6 +147,7 @@ class FakeLive:
         self.store = L.LiveStore(tmp)
         self.calls = []
         self.now, self.stop_after = now, stop_after
+        self.store.append("cal_obs", {"observed_at": now.isoformat()})                      # a fresh calendar: the collection guard requires one
 
         class G:
             stopped_until = None

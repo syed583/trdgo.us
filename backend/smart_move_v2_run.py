@@ -59,7 +59,7 @@ def run(run_dir, as_of: datetime, *, extra: dict | None = None, v2_store=None, s
             s_own, s_spy = (_close_series(scorer._rows_of(own)[0]) if own else {}), (_close_series(scorer._rows_of(spy)[0]) if spy else {})
             s_etf = _close_series(scorer._rows_of(etf)[0]) if etf else None
             last = max((d for d in s_own if d <= date.fromisoformat(r["capture_ts"][:10])), default=None)
-            ex = (extra or {}).get(sym) or (V2C.load_inputs(v2_store, sym, datetime.fromisoformat(r["capture_ts"])) if v2_store is not None else {})
+            ex = (extra or {}).get(sym) or (V2C.load_inputs(v2_store, sym, datetime.fromisoformat(r["capture_ts"]), ending_quarter=__import__("smart_move_v2_snapshots").ending_quarter(erows, ed)) if v2_store is not None else {})
             cap_dt = datetime.fromisoformat(r["capture_ts"])
             gates = [c for c in r["engine"]["continuation"]["reason_codes"] if c in ("OUT_OF_WINDOW", "UNKNOWN_TIMING", "TIMING_CONTRADICTED", "NOT_TRADABLE", "ILLIQUID_OR_UNKNOWN", "STALE_EVIDENCE", "BLOCKED_BY_GATE", "SUSPECT_WINDOW")]
             res = {}

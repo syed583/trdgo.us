@@ -82,6 +82,7 @@ def main(argv=None):
     load_dotenv(ENV)
     import smart_move_live as L
     import smart_move_v2_collect as C
+    import smart_move_calendar_guard as G
     import unusualwhales_service as uw
     import finnhub_service as fh
     import finviz_service as fz
@@ -96,6 +97,9 @@ def main(argv=None):
     svc = L.RefreshService(cfg, L.InfraFetcher(), L.SystemClock())
     report_path = out / "report.json"
     rep = json.loads(report_path.read_text()) if report_path.exists() else {"task": "SmartMove_V2_OneTime_20261101", "cap": a.cap, "phases": {}, "kinds": {}, "errors": [], "stop_events": []}
+    import smart_move_keep_awake as KA
+    awake = KA.KeepAwake()
+    rep["keep_awake"] = {"supported": awake.supported, "granted": awake.request()}    # per-process idle-sleep block; no system setting is changed; a closed lid still sleeps
     status = "OK"
     stopped = lambda: bool(svc.gov.stopped_until and svc.clock.now() < svc.gov.stopped_until)  # noqa: E731
 
@@ -153,6 +157,8 @@ def main(argv=None):
             good_kinds = [k for k in C.CORE if probe["by_kind"].get(k, {}).get("status") == "OK"]
             rep["phases"]["full_start"] = {"at": svc.clock.now().isoformat(), "kinds_used": good_kinds, "kinds_excluded_after_probe": [k for k in C.CORE if k not in good_kinds], "attempts_before": attempts(svc)}
             done_symbols = set()
+            gaps = G.GapWatcher()
+            rep["calendar_refreshes"] = rep.get("calendar_refreshes", [])
             news_left = a.news_sample
             for e in order:
                 sym = e["symbol"]
@@ -169,14 +175,50 @@ def main(argv=None):
                     continue
                 while svc.gov.hourly_allowance() < len(tasks) and svc.clock.now() < cut - MARGIN and not stopped():      # our own hourly share: wait, never lift
                     time.sleep(30)
+                gaps.tick(svc.clock.now())
+                if gaps.gaps:
+                    rep["sleep_gaps"] = gaps.gaps                                   # suspended-PC gaps are recorded, not hidden
+                # the calendar must be fresh AT THE MOMENT of capture (after any pause, sleep or resume): refresh inside the cap, or stop; never capture against a stale calendar
+                g = G.ensure_fresh(svc, budget_left=a.cap - attempts(svc), stopped=stopped)
+                if g["refreshed"]:
+                    rep["calendar_refreshes"].append(g)
+                    live = {x["symbol"]: x["plan"]["cutoff_utc"] for x in svc.eligible_events(svc.clock.now())}
+                    closing.update(live)
+                    atomic(report_path, rep)
+                if not g["ok"]:
+                    status = "STOPPED_STALE_CALENDAR"
+                    rep["errors"].append({"error": "STALE_CALENDAR", "detail": g})
+                    break
+                if sym not in {x["symbol"] for x in svc.eligible_events(svc.clock.now())}:
+                    rep.setdefault("not_eligible_after_refresh", []).append(sym)      # the refreshed calendar no longer confirms this event in an open window
+                    continue
+                cut = datetime.fromisoformat(closing[sym]) if isinstance(closing[sym], str) else closing[sym]
                 if svc.clock.now() >= cut - MARGIN:
                     rep.setdefault("expired_before_collection", []).append(sym)
                     continue
-                room = a.cap - attempts(svc)
-                acc = C.run(svc, tasks, max_requests=min(len(tasks), room), checkpoint=out / "checkpoint.json", stopped=stopped)
-                for k, v in acc["by_kind"].items():
-                    rep["kinds"][k] = rep["kinds"].get(k, 0) + v
-                rep.setdefault("failures", []).extend(acc["failures"])
+                cal_stale = lambda: G.needs_refresh(svc.store, svc.clock.now(), G.MAX_AGE_H + 0.5)  # noqa: E731  checked before EVERY request, so a sleep in the middle of a stock is caught too
+                for _round in range(3):
+                    room = a.cap - attempts(svc)
+                    acc = C.run(svc, tasks, max_requests=min(len(tasks), room), checkpoint=out / "checkpoint.json", stopped=lambda: stopped() or cal_stale(), calendar_ok=lambda at: not G.needs_refresh(svc.store, at, 6.0))
+                    for k, v in acc["by_kind"].items():
+                        rep["kinds"][k] = rep["kinds"].get(k, 0) + v
+                    rep.setdefault("failures", []).extend(acc["failures"])
+                    if not (acc["stopped"] and not stopped()):
+                        break
+                    gaps.tick(svc.clock.now())
+                    if gaps.gaps:
+                        rep["sleep_gaps"] = gaps.gaps
+                    g = G.ensure_fresh(svc, budget_left=a.cap - attempts(svc), stopped=stopped)          # the calendar aged inside this stock: refresh, then finish only the remaining tasks
+                    if g["refreshed"]:
+                        rep["calendar_refreshes"].append(g)
+                    if not g["ok"]:
+                        break
+                    tasks = [t for t in C.plan([sym], svc.store, svc.clock.now()) if t["kind"] in good_kinds]
+                if acc["stopped"] and not stopped():
+                    status = "STOPPED_STALE_CALENDAR"
+                    rep["errors"].append({"error": "STALE_CALENDAR", "detail": "calendar aged past the limit during a capture and could not be refreshed"})
+                    atomic(report_path, rep)
+                    break
                 done_symbols.add(sym)
                 rep["collected_symbols"] = sorted(set(rep.get("collected_symbols", [])) | {sym})
                 rep["attempts_total"] = attempts(svc)
@@ -195,6 +237,7 @@ def main(argv=None):
         if not svc.store.kill_file.exists():
             svc.engage_kill_switch("v2 run finished: " + status)
         rep["kill_switch_final"] = {"engaged": svc.store.kill_file.exists() and svc.kill_engaged}
+        awake.release()
         atomic(report_path, rep)
         print("finished", status, "attempts", attempts(svc), flush=True)
     return 0 if status in ("OK", "CAP_REACHED") else 5

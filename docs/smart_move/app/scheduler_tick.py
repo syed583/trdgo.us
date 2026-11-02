@@ -125,6 +125,12 @@ def run_service_actions(result, run_root, now, factory=None, audit_fn=None):
             svc = factory(run_root, now, max(act.get("requests", 0) + 10, 10))
             try:
                 if act["action"] == "COLLECT_V2":
+                    import smart_move_calendar_guard as G
+                    g = G.ensure_fresh(svc, budget_left=max(act.get("requests", 0) + 10, 10) + G.MIN_BUDGET_FOR_REFRESH, stopped=lambda: bool(getattr(svc.gov, "stopped_until", None) and svc.clock.now() < svc.gov.stopped_until))
+                    if not g["ok"]:                                                  # never collect against a calendar older than the limit
+                        print(json.dumps({"stopped": "STALE_CALENDAR", "detail": g}))
+                        rc = 5
+                        continue
                     acc = V2C.run(svc, act["tasks"], max_requests=act["requests"], checkpoint=Path(run_root).parent / "v2_store" / "checkpoint.json", stopped=lambda: bool(getattr(svc.gov, "stopped_until", None) and svc.clock.now() < svc.gov.stopped_until))
                     rc = 5 if acc.get("stopped") else rc
                 else:

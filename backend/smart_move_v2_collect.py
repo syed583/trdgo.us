@@ -63,7 +63,7 @@ def plan(symbols: Iterable[str], store, now: datetime, *, include_news: bool = F
     return tasks
 
 
-def run(svc, tasks: list, *, max_requests: int, checkpoint: Optional[Path] = None, stopped: Callable[[], bool] = lambda: False) -> dict:
+def run(svc, tasks: list, *, max_requests: int, checkpoint: Optional[Path] = None, stopped: Callable[[], bool] = lambda: False, calendar_ok: Optional[Callable[[datetime], bool]] = None) -> dict:
     """Sequential (one request in flight, within the shared 3-slot limit). Stops on a provider stop; resumes from the checkpoint without repeating finished task IDs."""
     done = set(json.loads(Path(checkpoint).read_text())["done"]) if checkpoint and Path(checkpoint).exists() else set()
     acc = {"planned": len(tasks), "attempted": 0, "ok": 0, "failed": 0, "invalid": 0, "skipped_resume": 0, "by_kind": {}, "stopped": False, "failures": []}
@@ -91,6 +91,11 @@ def run(svc, tasks: list, *, max_requests: int, checkpoint: Optional[Path] = Non
                 break
             continue
         v = validate(t["kind"], body)
+        if calendar_ok is not None and not calendar_ok(at):                 # the response arrived against a calendar older than the frozen limit (e.g. a sleep inside the request): rejected, never scored, re-requested after a refresh
+            svc.store.append(EVIDENCE, {"id": t["id"], "kind": t["kind"], "symbol": t["symbol"], "retrieved_at": at.isoformat(), "raw_sha256": sha, "status": "REJECTED_STALE_CALENDAR", "rows": v["rows"], "invalid_reason": "calendar older than the limit at retrieval", "params": params})
+            acc["rejected_stale_calendar"] = acc.get("rejected_stale_calendar", 0) + 1
+            acc["stopped"] = True
+            break
         svc.store.append(EVIDENCE, {"id": t["id"], "kind": t["kind"], "symbol": t["symbol"], "retrieved_at": at.isoformat(), "raw_sha256": sha, "status": "OK" if v["ok"] else "INVALID",
                                     "rows": v["rows"], "invalid_reason": v["reason"], "params": params})
         acc["ok" if v["ok"] else "invalid"] += 1
@@ -110,7 +115,7 @@ def _rows(store, rec, kind):
     return [d] if (kind == "uw_short_float" and isinstance(d, dict)) else d
 
 
-def load_inputs(store, symbol: str, capture_ts: datetime) -> dict:
+def load_inputs(store, symbol: str, capture_ts: datetime, ending_quarter: Optional[str] = None) -> dict:
     """The saved V2 inputs for one symbol AS OF capture_ts (anything retrieved later is invisible). None for a kind that was never collected."""
     out = {"analyst_actions": None, "est_snapshots": None, "flow": None, "short_snaps": None, "inst": None, "news": None}
     recs = [r for r in _records(store, symbol=symbol) if r["status"] == "OK" and datetime.fromisoformat(r["retrieved_at"]) <= capture_ts]
@@ -126,10 +131,16 @@ def load_inputs(store, symbol: str, capture_ts: datetime) -> dict:
     if by.get("uw_news"):
         out["news"] = _rows(store, by["uw_news"][-1], "uw_news") or []
     if by.get("uw_estimates"):
+        import smart_move_v2_snapshots as SN
         snaps = []
         for r in by["uw_estimates"]:
             rows = _rows(store, r, "uw_estimates") or []
-            fwd = sorted((x for x in rows if str(x.get("date"))[:10] >= r["retrieved_at"][:10]), key=lambda x: str(x["date"]))     # nearest period ending on/after the day it was saved (mapping unverified)
+            if ending_quarter:                                  # exact period: the fiscal quarter the upcoming report covers (the old "nearest period on/after the save day" mapping picked a different period for 92 of 92 stocks)
+                row = SN.quarter_row(rows, ending_quarter)
+                if row is not None:
+                    snaps.append({"captured_at": r["retrieved_at"], "eps": row.get("eps_estimate_average"), "revenue": row.get("revenue_estimate_average"), "period": row.get("date")})
+                continue                                        # no exact row: no snapshot, never a guess
+            fwd = sorted((x for x in rows if str(x.get("date"))[:10] >= r["retrieved_at"][:10]), key=lambda x: str(x["date"]))     # legacy mapping, kept only when the quarter is unknown
             if fwd:
                 snaps.append({"captured_at": r["retrieved_at"], "eps": fwd[0].get("eps_estimate_average"), "revenue": fwd[0].get("revenue_estimate_average"), "period": fwd[0].get("date")})
         out["est_snapshots"] = snaps
