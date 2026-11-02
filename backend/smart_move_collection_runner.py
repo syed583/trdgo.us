@@ -24,6 +24,7 @@ import smart_move_live as L  # noqa: E402
 import smart_move_outcomes as O  # noqa: E402
 import smart_move_tracking as T  # noqa: E402
 import smart_move_calendar_guard as G  # noqa: E402
+import smart_move_secret_check as SC  # noqa: E402
 import smart_move_shared_key_gate as SK  # noqa: E402
 from smvshadow import governor as gv  # noqa: E402
 
@@ -109,6 +110,7 @@ def main(argv=None) -> int:
     ap.add_argument("--profile", choices=("standard", "pilot50"), default="standard", help="pilot50: hard 50-attempt ceiling, no retries, no news paging, 3-day calendar, calendar capped at 14 requests")
     ap.add_argument("--calendar-days", type=int, default=None)
     ap.add_argument("--calendar-requests", type=int, default=None)
+    ap.add_argument("--require-rotated-from", default=None, help="8-hex fingerprint of the OLD token; a live run is BLOCKED while the active token still has this fingerprint")
     ap.add_argument("--shared-key-attestation", default=None, help="owner acknowledgement file (see smart_move_shared_key_gate); without a valid one a live run stays BLOCKED")
     a = ap.parse_args(argv)
     news_pages, retries, stage_caps = None, 1, None
@@ -140,6 +142,10 @@ def main(argv=None) -> int:
         print("BLOCKED: %s - %s" % (sk["status"], sk["reason"]))
         return 7
     if live:
+        tk = SC.inspect(ENV, old_fingerprint=a.require_rotated_from)
+        if tk["source"] == "MISSING" or tk["shape_problems"] or tk["rotated_from_old"] is False or any("DIFFERENT" in n for n in tk["notes"]):
+            print(SC.redact("BLOCKED: token configuration - source=%s problems=%s rotated=%s notes=%s" % (tk["source"], tk["shape_problems"], tk["rotated_from_old"], tk["notes"]), ENV))
+            return 4
         os.environ["UW_MAX_INFLIGHT"] = "1"                                   # one request on the wire at a time (the provider allows 3 per token across every application)
         from dotenv import load_dotenv
         load_dotenv(ENV)
@@ -156,7 +162,7 @@ def main(argv=None) -> int:
     preds = T.load_predictions(a.preds_store) if a.preds_store else []
     rep = status_report(svc, now, preds, a.tracking_dir)
     ES.write(Path(a.state_dir) / ES.STATUS_FILE, rep)
-    print(json.dumps({"job": job["id"], "mode": job["mode"], "status": job["status"], "provider_requests": job.get("requests", 0), "preflight": job["preflight"], "shared_key": {"status": sk["status"], "blocks_live": sk["blocks_live"], "reason": sk["reason"]}, "events": rep["summary"]}, indent=1, default=str))
+    print(SC.redact(json.dumps({"job": job["id"], "mode": job["mode"], "status": job["status"], "provider_requests": job.get("requests", 0), "preflight": job["preflight"], "shared_key": {"status": sk["status"], "blocks_live": sk["blocks_live"], "reason": sk["reason"]}, "events": rep["summary"]}, indent=1, default=str), ENV))
     return 0
 
 

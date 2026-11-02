@@ -97,7 +97,8 @@ class AttemptRecorder:
             outcome["bytes"] = len(body) if body is not None else 0
             return body
         except Exception as e:  # noqa: BLE001
-            outcome = {"result": "ERROR", "error_kind": getattr(e, "kind", type(e).__name__), "status": str(getattr(e, "status", ""))}
+            import smart_move_secret_check as _sc
+            outcome = {"result": "ERROR", "error_kind": getattr(e, "kind", type(e).__name__), "status": _sc.redact(str(getattr(e, "status", "")))}
             raise
         finally:
             self.path.parent.mkdir(parents=True, exist_ok=True)
