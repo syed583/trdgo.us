@@ -1,0 +1,272 @@
+[
+ {
+  "symbol": "MCD",
+  "company": "MCDONALDS",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Consumer Cyclical",
+  "etf": "XLY",
+  "market_cap": 182656431982.0
+ },
+ {
+  "symbol": "NVO",
+  "company": "NOVO NORDISK A S",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Healthcare",
+  "etf": "XLV",
+  "market_cap": 135605120000.0
+ },
+ {
+  "symbol": "UBER",
+  "company": "UBER",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Technology",
+  "etf": "XLK",
+  "market_cap": 133277047895.0
+ },
+ {
+  "symbol": "CVS",
+  "company": "CVS ",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Healthcare",
+  "etf": "XLV",
+  "market_cap": 115427075802.0
+ },
+ {
+  "symbol": "EMR",
+  "company": "EMERSON ELECTRIC",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Industrials",
+  "etf": "XLI",
+  "market_cap": 92003532000.0
+ },
+ {
+  "symbol": "DDOG",
+  "company": "DATADOG",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Technology",
+  "etf": "XLK",
+  "market_cap": 78793008536.0
+ },
+ {
+  "symbol": "GWW",
+  "company": "WW GRAINGER",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Industrials",
+  "etf": "XLI",
+  "market_cap": 64018187338.0
+ },
+ {
+  "symbol": "COR",
+  "company": "CENCORA INC",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Healthcare",
+  "etf": "XLV",
+  "market_cap": 63133259269.0
+ },
+ {
+  "symbol": "CVE",
+  "company": "CENOVUS ENERGY",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Energy",
+  "etf": "XLE",
+  "market_cap": 61643684978.0
+ },
+ {
+  "symbol": "MLM",
+  "company": "MARTIN MARIETTA MATERIALS",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Basic Materials",
+  "etf": "XLB",
+  "market_cap": 32460180054.0
+ },
+ {
+  "symbol": "RPRX",
+  "company": "ROYALTY PHARMA",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Healthcare",
+  "etf": "XLV",
+  "market_cap": 29913731970.0
+ },
+ {
+  "symbol": "SN",
+  "company": "SHARKNINJA",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Consumer Cyclical",
+  "etf": "XLY",
+  "market_cap": 29301282816.0
+ },
+ {
+  "symbol": "KHC",
+  "company": "KRAFT HEINZ",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Consumer Defensive",
+  "etf": "XLP",
+  "market_cap": 28862950270.0
+ },
+ {
+  "symbol": "MDLN",
+  "company": "Medline Inc. Class A",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Healthcare",
+  "etf": "XLV",
+  "market_cap": 28180521122.0
+ },
+ {
+  "symbol": "UTHR",
+  "company": "UNITED THERAPEUTICS",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Healthcare",
+  "etf": "XLV",
+  "market_cap": 25679515114.0
+ },
+ {
+  "symbol": "Q",
+  "company": "QNITY ELECTRONICS INC",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Technology",
+  "etf": "XLK",
+  "market_cap": 24408360712.0
+ },
+ {
+  "symbol": "GFS",
+  "company": "GLOBALFOUNDRIES",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Technology",
+  "etf": "XLK",
+  "market_cap": 23291726265.0
+ },
+ {
+  "symbol": "CDW",
+  "company": "CDW",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Technology",
+  "etf": "XLK",
+  "market_cap": 19226429945.0
+ },
+ {
+  "symbol": "ZBH",
+  "company": "ZIMMER BIOMET HOLDINGS",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Healthcare",
+  "etf": "XLV",
+  "market_cap": 18028526364.0
+ },
+ {
+  "symbol": "CRL",
+  "company": "CHARLES RIVER LABORATORIES INTERNATIONAL",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Healthcare",
+  "etf": "XLV",
+  "market_cap": 17157827986.0
+ },
+ {
+  "symbol": "CRCL",
+  "company": "Circle Internet Group",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Financial Services",
+  "etf": "XLF",
+  "market_cap": 17024063683.0
+ },
+ {
+  "symbol": "SWK",
+  "company": "STANLEY BLACK & DECKER",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Industrials",
+  "etf": "XLI",
+  "market_cap": 15621161345.0
+ },
+ {
+  "symbol": "PFGC",
+  "company": "PERFORMANCE FOOD GROUP",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Consumer Defensive",
+  "etf": "XLP",
+  "market_cap": 15603646820.0
+ },
+ {
+  "symbol": "TRMB",
+  "company": "TRIMBLE",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Technology",
+  "etf": "XLK",
+  "market_cap": 15142699329.0
+ },
+ {
+  "symbol": "FLUT",
+  "company": "FLUTTER ENTERTAINMENT PLC",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Consumer Cyclical",
+  "etf": "XLY",
+  "market_cap": 14332594434.0
+ },
+ {
+  "symbol": "W",
+  "company": "WAYFAIR",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Consumer Cyclical",
+  "etf": "XLY",
+  "market_cap": 13444420141.0
+ },
+ {
+  "symbol": "NYT",
+  "company": "NEW YORK TIMES",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Communication Services",
+  "etf": "XLC",
+  "market_cap": 11262485827.0
+ },
+ {
+  "symbol": "PODD",
+  "company": "INSULET",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Healthcare",
+  "etf": "XLV",
+  "market_cap": 10380936506.0
+ },
+ {
+  "symbol": "SOLS",
+  "company": "SOLSTICE ADVANCED MATERIALS INC",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Basic Materials",
+  "etf": "XLB",
+  "market_cap": 9618208193.0
+ },
+ {
+  "symbol": "OC",
+  "company": "OWENS CORNING",
+  "event_date": "2026-11-04",
+  "session": "BMO",
+  "sector": "Industrials",
+  "etf": "XLI",
+  "market_cap": 9576747945.0
+ }
+]
