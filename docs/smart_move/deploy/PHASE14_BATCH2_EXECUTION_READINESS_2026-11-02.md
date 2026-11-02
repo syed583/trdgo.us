@@ -73,10 +73,9 @@ Required result: `max_inflight = 2`, Options Flow `status` OK (or NO_TRADES out 
 
 ## 7. Execution (only after every PENDING above is closed and you say GO)
 1. Owner: copy `shared_key_attestation.PHASE14_TEMPLATE.json` to `C:\Users\initi\SmartMoveRun\shared_key_attestation.json`, fill `attested_by` and `attested_at` (UTC now). Valid 24 h.
-2. Dry run (zero requests), new folders:
+2. Dry run (zero requests). The live store is a full COPY of the pilot store: the original is never written, the copy keeps its KILL file, and the planner can then skip what the pilot already collected.
 ```powershell
-New-Item -ItemType Directory C:\Users\initi\SmartMoveRun\batch2_store | Out-Null ; New-Item C:\Users\initi\SmartMoveRun\batch2_store\KILL | Out-Null
-Copy-Item C:\Users\initi\SmartMoveRun\pilot_store_20261102\cal_obs.jsonl C:\Users\initi\SmartMoveRun\batch2_store\    # the saved calendar is the planning baseline; the pilot store itself is never written
+Copy-Item -Recurse C:\Users\initi\SmartMoveRun\pilot_store_20261102 C:\Users\initi\SmartMoveRun\batch2_store
 python backend\smart_move_collection_runner.py --store-dir C:\Users\initi\SmartMoveRun\batch2_store --state-dir C:\Users\initi\SmartMoveRun\batch2_run --profile batch2 --shared-key-attestation C:\Users\initi\SmartMoveRun\shared_key_attestation.json
 ```
    Expect `shared_key.status = OWNER_ATTESTED`, ceiling 50, tasks earnings 12 / snapshot_b 14 / news 17.
