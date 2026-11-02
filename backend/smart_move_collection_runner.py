@@ -137,6 +137,8 @@ def main(argv=None) -> int:
     now = datetime.fromisoformat(a.as_of) if a.as_of else datetime.now(UTC)
     if now.tzinfo is None:
         now = now.replace(tzinfo=UTC)
+    if a.shared_key_attestation:
+        os.environ[SK.ATTESTATION_ENV] = a.shared_key_attestation          # the same attestation is what the InfraFetcher choke point reads
     sk = SK.evaluate(now, a.shared_key_attestation)
     if live and sk["blocks_live"]:
         print("BLOCKED: %s - %s" % (sk["status"], sk["reason"]))

@@ -175,6 +175,8 @@ class InfraFetcher(Fetcher):
     mode = "LIVE"
 
     def __init__(self):
+        import smart_move_shared_key_gate as _gate
+        _gate.require_live_allowed()                                  # every live Smart Move script and route builds its client here: no valid owner attestation for THIS environment, no client
         import finnhub_service as fh
         import finviz_service as fz
         import unusualwhales_service as uw

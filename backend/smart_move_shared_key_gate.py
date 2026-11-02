@@ -43,6 +43,26 @@ def concurrency_policy(local_inflight: int, production_inflight: int) -> dict:
             "note": "holds only if each environment enforces its cap; it does not make provider collection on both safe at 1 + 3"}
 
 
+class LiveBlocked(RuntimeError):
+    """Raised when a live Smart Move provider client is requested while the shared-key gate blocks it."""
+
+
+ATTESTATION_ENV = "SMART_MOVE_SHARED_KEY_ATTESTATION"
+DEFAULT_ATTESTATION = Path("C:/Users/initi/SmartMoveRun/shared_key_attestation.json")
+
+
+def require_live_allowed(now: Optional[datetime] = None, env=None, **kw) -> dict:
+    """The single choke point for every live Smart Move provider client (InfraFetcher). Returns the gate result when live use is allowed, otherwise raises LiveBlocked BEFORE any provider client is built.
+    The attestation file is the one named by SMART_MOVE_SHARED_KEY_ATTESTATION, else the default path; with no valid owner attestation naming THIS environment as the designated collector, nothing live can start."""
+    import os
+    e = os.environ if env is None else env
+    path = e.get(ATTESTATION_ENV) or str(DEFAULT_ATTESTATION)
+    g = evaluate(now or datetime.now(UTC), path, **kw)
+    if g["blocks_live"]:
+        raise LiveBlocked("live provider access refused: %s - %s" % (g["status"], g["reason"]))
+    return g
+
+
 def list_processes() -> Optional[list]:
     """Command lines of running processes (Windows, read only). None when it cannot be read."""
     if sys.platform != "win32":
