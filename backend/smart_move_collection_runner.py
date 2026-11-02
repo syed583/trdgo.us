@@ -38,8 +38,12 @@ class NoNetworkFetcher(L.Fetcher):
         raise AssertionError("dry run must never call the provider (%s)" % kind)
 
 
-def build_service(store_dir, *, live: bool, authorized: int, now=None):
-    cfg = L.LiveConfig(mode="LIVE" if live else "SIMULATION", store_dir=Path(store_dir), refresh_enabled=live, authorized_daily=authorized if live else 0, spacing_s=2.0 if live else 0.0)
+PILOT_MAX = 50
+
+
+def build_service(store_dir, *, live: bool, authorized: int, now=None, retries: int = 1, tracking_days: int = 14):
+    cfg = L.LiveConfig(mode="LIVE" if live else "SIMULATION", store_dir=Path(store_dir), refresh_enabled=live, authorized_daily=authorized if live else 0, spacing_s=2.0 if live else 0.0,
+                       max_retries=retries, tracking_days_ahead=tracking_days)
     if live:
         return L.RefreshService(cfg, L.InfraFetcher(), L.SystemClock())
     return L.RefreshService(cfg, NoNetworkFetcher(), gv.FakeClock(now or datetime.now(UTC)))
@@ -79,12 +83,27 @@ def main(argv=None) -> int:
     ap.add_argument("--mode", choices=("dry-run", "live"), default="dry-run")
     ap.add_argument("--arm", action="store_true")
     ap.add_argument("--authorize-requests", type=int, default=0)
-    ap.add_argument("--ceiling", type=int, default=J.DEFAULT_CEILING)
+    ap.add_argument("--ceiling", type=int, default=None, help="provider-attempt ceiling for this run (standard default 700, pilot50 default and maximum 50)")
     ap.add_argument("--batch", type=int, default=J.DEFAULT_BATCH)
     ap.add_argument("--as-of", default=None, help="dry-run only: evaluate the plan at this past instant")
     ap.add_argument("--preds-store", action="append", default=[])
     ap.add_argument("--tracking-dir", default=None)
+    ap.add_argument("--profile", choices=("standard", "pilot50"), default="standard", help="pilot50: hard 50-attempt ceiling, no retries, no news paging, 3-day calendar, calendar capped at 14 requests")
+    ap.add_argument("--calendar-days", type=int, default=None)
+    ap.add_argument("--calendar-requests", type=int, default=None)
     a = ap.parse_args(argv)
+    news_pages, retries = None, 1
+    if a.profile != "pilot50":
+        a.ceiling = J.DEFAULT_CEILING if a.ceiling is None else a.ceiling
+    if a.profile == "pilot50":
+        if a.authorize_requests > PILOT_MAX or (a.ceiling is not None and a.ceiling > PILOT_MAX):
+            print("BLOCKED: the pilot profile never exceeds %d provider attempts" % PILOT_MAX)
+            return 6
+        a.ceiling = PILOT_MAX if a.ceiling is None else a.ceiling
+        a.batch = min(a.batch, 5)
+        a.calendar_days = 3 if a.calendar_days is None else a.calendar_days
+        a.calendar_requests = 14 if a.calendar_requests is None else a.calendar_requests
+        news_pages, retries = 1, 0
     live = a.mode == "live"
     blockers = live_gate(a) if live else []
     if live and blockers:
@@ -103,7 +122,7 @@ def main(argv=None) -> int:
         if not uw.configured():
             print("BLOCKED: provider credential missing")
             return 4
-    svc = build_service(a.store_dir, live=live, authorized=a.authorize_requests, now=now)
+    svc = build_service(a.store_dir, live=live, authorized=a.authorize_requests, now=now, retries=retries, tracking_days=a.calendar_days or 14)
     kill_was_engaged = svc.store.kill_file.exists()
     if live:
         if not kill_was_engaged:
@@ -112,7 +131,8 @@ def main(argv=None) -> int:
         svc.store.kill_file.unlink()                                      # released for this run only
         svc.gov.authorized_daily, svc.gov.enabled = a.authorize_requests, True
     try:
-        job = J.run_cycle(svc, now=now, state_dir=a.state_dir, mode="LIVE" if live else "DRY_RUN", armed=live and not blockers, ceiling=a.ceiling, batch_size=a.batch)
+        job = J.run_cycle(svc, now=now, state_dir=a.state_dir, mode="LIVE" if live else "DRY_RUN", armed=live and not blockers, ceiling=a.ceiling, batch_size=a.batch,
+                        news_pages=news_pages, calendar_requests=a.calendar_requests)
     finally:
         if live:
             svc.engage_kill_switch("collection runner: re-engaged after the run")

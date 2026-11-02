@@ -67,6 +67,11 @@ def release_lock(d: Path):
         pass
 
 
+def attempts(svc) -> int:
+    """Every governor-granted attempt (a retry counts as an attempt). The ceiling is enforced on THIS number, not on the number of tasks."""
+    return sum(svc.gov.used_day.values()) if svc.gov.used_day else 0
+
+
 # ---------------------------------------------------------------- planning
 def to_news_events(events) -> list:
     return [{"symbol": e["symbol"], "window_start_utc": e["plan"]["window_start_utc"], "cutoff_utc": e["plan"]["cutoff_utc"]} for e in events]
@@ -85,7 +90,8 @@ def build_tasks(window_events, tracking_events, store, now) -> dict:
     snaps_b = [t for t in CP.snapshot_stage_tasks_due(to_snapshot_events(window_events), est, now) if t["stage"] == "B"]
     snaps_a = [t for t in CP.snapshot_stage_tasks_due(to_snapshot_events(tracking_events), est, now) if t["stage"] == "A"]
     seen, tasks = set(), []
-    for t in sorted(news + snaps_b + snaps_a, key=lambda t: (t["cutoff_utc"], 0 if t["kind"] == "uw_news" else 1, t["symbol"])):
+    rank = lambda t: 0 if t.get("stage") == "A" else 1 if t.get("stage") == "B" else 2          # priority: Snapshot A, Snapshot B, then news (INITIAL / FINAL)  # noqa: E731
+    for t in sorted(news + snaps_b + snaps_a, key=lambda t: (rank(t), t["cutoff_utc"], t["symbol"])):
         if t["id"] not in seen:
             seen.add(t["id"])
             tasks.append(t)
@@ -109,7 +115,8 @@ def preflight(svc, tasks_by_kind: dict, *, now: datetime, ceiling: int, state: d
     except Exception:  # noqa: BLE001
         hourly = None
     daily_left = max(0, ceiling - used)
-    cal_cost = 2 * max(1, (svc.cfg.tracking_days_ahead * 5) // 7) + 2            # two sides per trading day plus one Finviz and one Finnhub request (page 1 only when page 0 is full)
+    cal_days = len(svc._trading_days(now, svc.cfg.tracking_days_ahead))
+    cal_cost = 2 * cal_days + 2                                                   # two sides per trading day plus one Finviz and one Finnhub request; EXTRA pages are added for every side/day that fills a page of 100 (cannot be known before the call)
     blockers = []
     if svc.kill_engaged:
         blockers.append("KILL_SWITCH_ENGAGED_OR_REFRESH_DISABLED")
@@ -120,7 +127,7 @@ def preflight(svc, tasks_by_kind: dict, *, now: datetime, ceiling: int, state: d
     if hourly is not None and hourly <= 0:
         blockers.append("NO_HOURLY_ALLOWANCE")
     stale = age is None or age > G.MAX_AGE_H
-    return {"calendar_age_h": age, "calendar_state": "UNKNOWN" if age is None else "STALE" if stale else "FRESH", "calendar_refresh_needed": stale, "calendar_refresh_estimate_requests": cal_cost if stale else 0,
+    return {"calendar_age_h": age, "calendar_state": "UNKNOWN" if age is None else "STALE" if stale else "FRESH", "calendar_refresh_needed": stale, "calendar_refresh_estimate_requests": cal_cost if stale else 0, "calendar_trading_days": cal_days,
             "eligible_window_events": len(window_events), "tracking_events": len(tracking_events), "tasks": {k: len(v) for k, v in tasks_by_kind.items()}, "request_estimate": rng,
             "ceiling": ceiling, "used_today": used, "daily_left": daily_left, "hourly_allowance": hourly, "spacing_s": svc.cfg.spacing_s, "estimated_minutes_at_spacing": round(rng["max"] * svc.cfg.spacing_s / 60, 1),
             "blockers": blockers, "allowed": not blockers}
@@ -128,7 +135,7 @@ def preflight(svc, tasks_by_kind: dict, *, now: datetime, ceiling: int, state: d
 
 # ---------------------------------------------------------------- the cycle
 def run_cycle(svc, *, now: datetime, state_dir, mode: str = "DRY_RUN", armed: bool = False, ceiling: int = DEFAULT_CEILING, batch_size: int = DEFAULT_BATCH,
-              events_fn: Optional[Callable] = None, stopped: Optional[Callable[[], bool]] = None) -> dict:
+              events_fn: Optional[Callable] = None, stopped: Optional[Callable[[], bool]] = None, news_pages: Optional[int] = None, calendar_requests: Optional[int] = None) -> dict:
     """events_fn(now, horizon_days) -> events (the existing eligible_events). DRY_RUN never calls the provider. LIVE needs armed=True."""
     d = Path(state_dir)
     st = _read_state(d)
@@ -153,16 +160,25 @@ def run_cycle(svc, *, now: datetime, state_dir, mode: str = "DRY_RUN", armed: bo
     elif not acquire_lock(d, now):
         job.update(status="BLOCKED", reason="OVERLAPPING_JOB_HOLDS_THE_LOCK")
     else:
+        saved_pages = C.NEWS_MAX_PAGES
+        if news_pages:
+            C.NEWS_MAX_PAGES = news_pages                                   # e.g. 1 for a pilot: no pagination can consume the ceiling
         try:
             job["status"] = "RUNNING"
             st["jobs"][job_id] = job
             _write_state(d, st)
             used_start = st["requests_by_day"].get(now.date().isoformat(), 0)
+            gov_base = attempts(svc)
             if pf["calendar_refresh_needed"]:
-                g = G.ensure_fresh(svc, budget_left=min(ceiling - used_start, pf["hourly_allowance"] if pf["hourly_allowance"] is not None else ceiling), stopped=stopped, days_ahead=svc.cfg.tracking_days_ahead)
+                g = G.ensure_fresh(svc, budget_left=min(ceiling - used_start, pf["hourly_allowance"] if pf["hourly_allowance"] is not None else ceiling), stopped=stopped, days_ahead=svc.cfg.tracking_days_ahead,
+                                   max_requests=calendar_requests)
                 job["calendar_refresh"] = g
-                used_start += g.get("requests", 0)
+                cal_attempts = attempts(svc) - gov_base                          # calendar requests counted as governor attempts
+                gov_base = attempts(svc)
+                used_start += cal_attempts
                 st["requests_by_day"][now.date().isoformat()] = used_start
+                job["requests"] += cal_attempts
+                job["calendar_attempts"] = cal_attempts
                 if not g["ok"]:
                     job.update(status="BLOCKED", reason="CALENDAR_NOT_FRESH:" + str(g.get("reason")))
                 else:
@@ -187,9 +203,12 @@ def run_cycle(svc, *, now: datetime, state_dir, mode: str = "DRY_RUN", armed: bo
                     if stopped():
                         halted = "PROVIDER_STOPPED"
                         break
-                    acc = C.run(svc, batch, max_requests=min(left, len(batch) * CP.NEWS_MAX_PAGES), checkpoint=ckpt, stopped=stopped)
-                    st["requests_by_day"][day] = st["requests_by_day"].get(day, 0) + acc["attempted"]
-                    job["requests"] += acc["attempted"]
+                    pages = news_pages or CP.NEWS_MAX_PAGES
+                    acc = C.run(svc, batch, max_requests=min(left, len(batch) * pages), checkpoint=ckpt, stopped=stopped)
+                    delta = attempts(svc) - gov_base                                  # governor attempts incl. retries: the number the ceiling is enforced on
+                    gov_base += delta
+                    st["requests_by_day"][day] = st["requests_by_day"].get(day, 0) + delta
+                    job["requests"] += delta
                     finished = set(json.loads(ckpt.read_text())["done"]) if ckpt.exists() else set()                # C.run lists a task id here only after an OK, validated response
                     ok_batch = [t for t in batch if t["id"] in finished]
                     done |= {t["id"] for t in ok_batch}
@@ -206,6 +225,7 @@ def run_cycle(svc, *, now: datetime, state_dir, mode: str = "DRY_RUN", armed: bo
                 job["status"] = ("COMPLETED" if job["tasks_done"] == len(todo) and not halted and not job["failures"] else
                                  "FAILED" if job["tasks_done"] == 0 and (job["failures"] or halted) else "PARTIAL")
         finally:
+            C.NEWS_MAX_PAGES = saved_pages
             release_lock(d)
     st["jobs"][job_id] = job
     _write_state(d, st)

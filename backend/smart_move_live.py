@@ -55,6 +55,7 @@ class LiveConfig:
     history_max_age_days: int = 7
     vol_max_age_h: float = 24.0
     calendar_days_ahead: int = 3
+    calendar_max_pages: int = 5                # UW returns at most 100 rows per page; a side/day that still fills the last page is recorded as TRUNCATED (it used to stop silently after 2 pages)
     tracking_days_ahead: int = 14              # upcoming-earnings TRACKING horizon (analyst Snapshot A); scoring still needs the strict freshness rule
     finviz_tickers: int = 100
     manual_min_interval_s: float = 60.0
@@ -365,12 +366,13 @@ class RefreshService:
         """UW premarket/afterhours for the next trading days (page 0, page 1 only when page 0 is full), one Finviz export for the largest names, one Finnhub window. budget[0] = requests left."""
         now = self.clock.now()
         days = self._trading_days(now, days_ahead)
-        uw_rows, done = [], 0
+        uw_rows, done, truncated = [], 0, []
+        reserve = 2 if budget[0] > 2 else 0                              # the Finviz and Finnhub confirmations are kept: without a second vendor no event can become eligible
         stamp = now.strftime("%Y%m%dT%H%M%S")
         for d in days:
             for side in ("premarket", "afterhours"):
                 page = 0
-                while budget[0] > 0:
+                while budget[0] > reserve:
                     rid = "uwcal-%s-%s-%s-p%d" % (stamp, d, side, page)
                     body, sha, at = self._call("uw_calendar", None, {"date": str(d), "side": side, "page": page}, rid)
                     budget[0] -= 1
@@ -381,9 +383,11 @@ class RefreshService:
                     for r in rows:
                         self.store.append("cal_obs", r)
                     uw_rows += rows
-                    if len(rows) >= 100 and page == 0:
-                        page = 1
-                        continue
+                    if len(rows) >= 100:
+                        if page + 1 < self.cfg.calendar_max_pages:
+                            page += 1
+                            continue
+                        truncated.append({"date": str(d), "side": side, "pages": page + 1})        # still full at the page cap: later rows were never seen
                     break
         tickers = pick_tickers(uw_rows, self.cfg.finviz_tickers)
         if tickers and budget[0] > 0:
@@ -403,6 +407,7 @@ class RefreshService:
                 for r in parse_calendar("finnhub_calendar", body, at, sha, rid, self.fetcher.mode):
                     self.store.append("cal_obs", r)
         st = self.store.state()
+        st["calendar_truncated"] = truncated
         st["last_calendar_refresh"] = self.clock.now().isoformat()
         self.store.save_state(st)
         return done
