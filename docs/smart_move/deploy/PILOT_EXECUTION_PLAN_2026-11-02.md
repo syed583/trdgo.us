@@ -52,3 +52,12 @@ python backend\smart_move_collection_runner.py --store-dir <live store> --state-
 * The obsolete scheduled task `SmartMove_OneTime_20261031_1705ET` (it ran an old copy of `scheduled_run.py` from `SmartMoveRun\code`) was DISABLED on 2026-11-02 after confirming it was not running; its configuration was exported first (`SmartMoveRun	ask_backups\..._before_disable_*.xml`). Rollback: `Register-ScheduledTask -Xml (Get-Content <that file> -Raw) -TaskName SmartMove_OneTime_20261031_1705ET -Force`, then enable it. Nothing was run or deleted.
 * **The ordinary localhost development backend is NOT covered by the Smart Move gate.** At start-up it launches background warmers (unless `DISABLE_WARMERS` is set) that call Unusual Whales with the shared token (one request at a time on a non-production machine). Do not run it during a pilot, or start it with `DISABLE_WARMERS=1`, because its requests would add to the shared three-request limit and the pilot's count would not include them.
 * Local lock folders do not coordinate across machines or across Windows accounts: only a common `UW_SLOT_DIR` on the SAME machine does, and nothing coordinates localhost with production.
+
+## 8. Correction (Phase 12E): what production actually runs
+
+Sections 1 to 7 were written from the NEWER local code. Production runs commit `38ca61d` (deployed 2026-10-28), which does not contain `uw_slots.py`, `uw_priority.py`, `uw_budget.py`, `uw_health.py` or the `/api/uw/health` route (they arrived in `446d305c`, not deployed). Consequences:
+
+* `https://tradgo.us/api/uw/health` shows the frontend's "Page not found" because the running backend has no such route; the host and proxy are correct.
+* In the deployed build `UW_MAX_INFLIGHT` is read after `load_dotenv()` and builds ONE in-process `threading.BoundedSemaphore(MAX_INFLIGHT)`, never above 3. There is no machine-wide slot lock, no priority class cap, no adaptive brake and no slot-lock folder; `this_process_slots`, `effective_slots`, `machine_slot_dir`, `failopen` and `peak_in_flight` do not exist in production.
+* The only runtime read-out is `max_inflight` in `GET /api/admin/flow-metrics` (admin role required).
+* The only other direct caller of the provider in that build is the manual script `backend/data_health_check.py`, which is uncapped: never run it during the pilot.
