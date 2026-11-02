@@ -19,6 +19,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "docs" / "smart_move" / "shadow_impl"))
 import smart_move_collection_jobs as J  # noqa: E402
+import smart_move_event_records as ER  # noqa: E402
+import smart_move_event_registry as REG  # noqa: E402
 import smart_move_event_status as ES  # noqa: E402
 import smart_move_live as L  # noqa: E402
 import smart_move_outcomes as O  # noqa: E402
@@ -80,6 +82,23 @@ def execute(svc, *, now, state_dir, live: bool, authorized: int, ceiling: int, b
     finally:
         if live:
             svc.engage_kill_switch("collection runner: re-engaged after the run")
+
+
+def record_events(svc, now, state_dir) -> dict:
+    """Offline planning step: turn the saved calendar observations (and any saved earnings payloads) into versioned event records in <state>/event_records.jsonl and refresh the symbol-level EventRegistry view
+    in <state>/event_registry.jsonl. Reads saved files only, sends nothing, writes only inside the state folder."""
+    def load(sha):
+        try:
+            return json.loads(svc.store.get(sha))
+        except Exception:  # noqa: BLE001
+            return None
+    payloads = ER.earnings_payloads(svc.store.read("evidence"), load, now)
+    recs = ER.records_from_saved(svc.store.read("cal_obs"), now, payloads)
+    store = ER.EventRecords(Path(state_dir) / "event_records.jsonl")
+    res = store.observe_snapshot(recs, observed=now)
+    reg = REG.EventRegistry(Path(state_dir) / "event_registry.jsonl")
+    ER.sync_registry(reg, store, now)
+    return dict(ER.summarize(store), changes={k: len(v) for k, v in res.items()}, earnings_payloads_used=len(payloads))
 
 
 def status_report(svc, now, preds, track_dir) -> dict:
@@ -162,10 +181,11 @@ def main(argv=None) -> int:
         print("BLOCKED: the kill-switch file must exist before a live run (it is released only while the run works)")
         return 6
     job = execute(svc, now=now, state_dir=a.state_dir, live=live, authorized=a.authorize_requests, ceiling=a.ceiling, batch=a.batch, news_pages=news_pages, calendar_requests=a.calendar_requests, stage_caps=stage_caps, calendar_scope=scope, max_consecutive_failures=max_fail)
+    ev_summary = record_events(svc, now, a.state_dir)
     preds = T.load_predictions(a.preds_store) if a.preds_store else []
     rep = status_report(svc, now, preds, a.tracking_dir)
     ES.write(Path(a.state_dir) / ES.STATUS_FILE, rep)
-    print(SC.redact(json.dumps({"job": job["id"], "mode": job["mode"], "status": job["status"], "provider_requests": job.get("requests", 0), "preflight": job["preflight"], "shared_key": {"status": sk["status"], "blocks_live": sk["blocks_live"], "reason": sk["reason"]}, "events": rep["summary"]}, indent=1, default=str), ENV))
+    print(SC.redact(json.dumps({"job": job["id"], "mode": job["mode"], "status": job["status"], "provider_requests": job.get("requests", 0), "preflight": job["preflight"], "shared_key": {"status": sk["status"], "blocks_live": sk["blocks_live"], "reason": sk["reason"]}, "events": rep["summary"], "event_records": ev_summary}, indent=1, default=str), ENV))
     return 0
 
 
