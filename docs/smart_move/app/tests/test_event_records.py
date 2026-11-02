@@ -384,3 +384,13 @@ def test_several_events_for_one_symbol_stay_separate_and_the_registry_is_only_a_
     st2.observe(known_obs("ZZZ", "2026-11-12", "2026-09-30", T0))
     st2.observe_snapshot([], observed=T0 + timedelta(hours=4), window=(datetime(2026, 11, 1).date(), datetime(2026, 11, 30).date()), complete=True)
     assert st2.latest("ZZZ|2026-09-30")["status"] == "REMOVED" and st2.history("ZZZ|2026-09-30")[0]["status"] == "CURRENT"
+
+
+def test_an_event_that_learned_its_quarter_is_matched_again_by_that_quarter_not_duplicated():
+    """Found by the real-store report: unknown -> quarter learned (id stays SYMBOL|UNKNOWN|date) -> the next observation with the same known quarter must be the SAME event."""
+    st = ER.EventRecords()
+    r1 = st.observe(obs("AAA", confirmed("AAA", "2026-11-04")))
+    r2 = st.observe(known_obs("AAA", "2026-11-04", "2026-09-30", T0 + timedelta(hours=1)))
+    r3 = st.observe(known_obs("AAA", "2026-11-04", "2026-09-30", T0 + timedelta(hours=2)))
+    assert r1["event_id"] == r2["event_id"] == r3["event_id"] == "AAA|UNKNOWN|2026-11-04" and r2["action"] == "UPDATED" and r3["action"] == "UNCHANGED"
+    assert st.event_ids("AAA") == ["AAA|UNKNOWN|2026-11-04"] and st.latest(r1["event_id"])["ending_fiscal_quarter"] == "2026-09-30"

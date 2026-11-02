@@ -42,19 +42,31 @@ def associate(symbol: str, published, events: Iterable[dict]) -> dict:
 
 
 # ------------------------------------------------------------------ queue
-def build_queue(audit: dict) -> list:
-    """One item per reviewable headline of a news audit (see NA.audit). Items are identified by a stable hash so a label survives re-running the audit."""
+def source_credibility(source) -> str:
+    sl = str(source or "").strip().lower()
+    return "LOW_CREDIBILITY" if sl in NA.NW.LOW_CREDIBILITY else "TRUSTED_WIRE" if sl in NA.NW.TRUSTED else "NEWSFEED_ENTITY_CHECK" if sl in NA.NW.NEWSFEED else "UNKNOWN_SOURCE"
+
+
+def build_queue(audit: dict, reviewable_only: bool = True) -> list:
+    """One item per headline of a news audit (see NA.audit). Items carry the AUTOMATED classification only; human labels live in the LabelStore and are joined at read time, so the two are never mixed.
+    reviewable_only=False also lists stale / duplicate / invalid headlines (marked reviewable=False) so a screen can show every class."""
     seen, out = set(), []
     for ev in audit["events"]:
         for h in ev["headlines"]:
-            if h["class"] not in REVIEWABLE:
+            reviewable = h["class"] in REVIEWABLE
+            if reviewable_only and not reviewable:
                 continue
             iid = item_id(ev["symbol"], h["published"], h["source"], h["headline"])
+            if h["class"] == "DUPLICATE":                                              # a repeat is listed as its own (non-reviewable) row, distinct from the canonical headline it repeats
+                iid = hashlib.sha256((iid + "|dup|" + str(h.get("record_id")) + str(h.get("retrieved_at"))).encode("utf-8")).hexdigest()[:16]
             if iid in seen:
                 continue
             seen.add(iid)
-            out.append({"item_id": iid, "event_id": ev["event_id"], "symbol": ev["symbol"], "event_date": ev["event_date"], "headline": h["headline"], "source": h["source"], "published": h["published"],
-                        "audit_class": h["class"], "audit_reason": h["reason"], "classifier_label": h.get("news_x1_category"), "labels": []})
+            pub, cut = NA._dt(h["published"]), NA._dt(ev["cutoff_utc"])
+            out.append({"item_id": iid, "event_id": ev["event_id"], "symbol": ev["symbol"], "company": ev.get("company"), "event_date": ev["event_date"], "ending_fiscal_quarter": ev.get("ending_fiscal_quarter"),
+                        "headline": h["headline"], "source": h["source"], "source_credibility": source_credibility(h["source"]), "published": h["published"], "retrieved_at": h.get("retrieved_at"), "cutoff_utc": ev["cutoff_utc"],
+                        "age_hours_at_cutoff": round((cut - pub).total_seconds() / 3600, 1) if pub and cut else None, "audit_class": h["class"], "audit_reason": h["reason"], "reviewable": reviewable,
+                        "classifier_label": h.get("news_x1_category"), "duplicate_of": h.get("duplicate_of"), "labels": []})
     return sorted(out, key=lambda r: (r["event_date"] or "", r["symbol"], r["published"] or ""))
 
 
@@ -141,3 +153,26 @@ def event_warnings(ev: dict) -> list:
 def warnings_report(audit: dict) -> dict:
     rows = [{"event_id": e["event_id"], "symbol": e["symbol"], "news_state": e["news_state"], "warnings": event_warnings(e)} for e in audit["events"]]
     return {"events": rows, "by_warning": dict(Counter(w for r in rows for w in r["warnings"])), "events_with_any_warning": sum(1 for r in rows if r["warnings"])}
+
+
+def review_progress(queue: list, store: "LabelStore") -> dict:
+    """Progress over the REVIEWABLE items only: unlabelled, labelled (reviewers agree), disputed (they disagree) or unsure."""
+    cons = store.consensus()
+    rv = [q for q in queue if q["reviewable"]]
+    st = Counter(cons.get(q["item_id"], {}).get("state", "UNLABELLED") for q in rv)
+    return {"reviewable": len(rv), "unlabelled": st.get("UNLABELLED", 0), "labelled": st.get("LABELLED", 0), "disputed": st.get("DISPUTED", 0), "unsure": st.get("UNSURE", 0),
+            "reviewers": sorted({r["reviewer"] for r in store.rows}), "percent_reviewed": round(100 * (len(rv) - st.get("UNLABELLED", 0)) / len(rv), 1) if rv else None}
+
+
+def per_event_review(queue: list, store: "LabelStore") -> dict:
+    """{event_id: {reviewable, labelled, disputed, unlabelled}} for the evidence-quality bundle."""
+    cons = store.consensus()
+    out: dict = {}
+    for q in queue:
+        if not q["reviewable"]:
+            continue
+        d = out.setdefault(q["event_id"], {"reviewable": 0, "labelled": 0, "disputed": 0, "unlabelled": 0})
+        d["reviewable"] += 1
+        stt = cons.get(q["item_id"], {}).get("state", "UNLABELLED")
+        d["labelled" if stt == "LABELLED" else "disputed" if stt == "DISPUTED" else "unlabelled"] += 1
+    return out

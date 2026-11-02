@@ -270,6 +270,11 @@ class EventRecords:
         q, known = rec["ending_fiscal_quarter"], rec["quarter_state"] == "KNOWN"
         if known and "%s|%s" % (sym, q) in self.event_ids(sym):
             return "%s|%s" % (sym, q), "UNIQUE", "EXACT_QUARTER", []                    # same company, same fiscal quarter: the same event, whatever its date
+        if known:
+            for i in self.event_ids(sym):                                               # an event that LEARNED this quarter earlier keeps its original id (it was opened as SYMBOL|UNKNOWN|date)
+                lv = self.latest(i)
+                if lv["quarter_state"] == "KNOWN" and lv["ending_fiscal_quarter"] == q:
+                    return i, "UNIQUE", "EXACT_QUARTER", []
         anchor = rec["event_date"] or (rec["vendor_dates_seen"][0] if rec["vendor_dates_seen"] else observed.date().isoformat())
         cands = []
         for v in self._open_events(sym, observed):

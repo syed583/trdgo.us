@@ -19,6 +19,8 @@ from smart_move_v2_audit_routes import router as v2_audit_router  # noqa: E402
 app.include_router(v2_audit_router)
 from smart_move_quality_routes import router as quality_router  # noqa: E402
 app.include_router(quality_router)
+from smart_move_news_review_routes import router as news_review_router  # noqa: E402
+app.include_router(news_review_router)
 
 
 @app.get("/auth/me")
