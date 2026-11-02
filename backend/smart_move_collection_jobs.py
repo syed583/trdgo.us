@@ -82,13 +82,44 @@ def to_snapshot_events(events) -> list:
             for e in events]
 
 
-def build_tasks(window_events, tracking_events, store, now) -> dict:
+class AttemptRecorder:
+    """Wraps a fetcher and appends ONE line per provider attempt (time, kind, symbol, params without credentials, outcome) to attempts.jsonl - failures and 429s included.
+    Failed attempts are otherwise visible only in the governor ledger; this is the pilot's complete, append-only attempt log."""
+
+    def __init__(self, inner, path, clock):
+        self.inner, self.path, self.clock = inner, Path(path), clock
+        self.mode = getattr(inner, "mode", "LIVE")
+
+    def fetch(self, kind, symbol, params):
+        outcome = {"result": "OK"}
+        try:
+            body = self.inner.fetch(kind, symbol, params)
+            outcome["bytes"] = len(body) if body is not None else 0
+            return body
+        except Exception as e:  # noqa: BLE001
+            outcome = {"result": "ERROR", "error_kind": getattr(e, "kind", type(e).__name__), "status": str(getattr(e, "status", ""))}
+            raise
+        finally:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with self.path.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps({"at": self.clock.now().isoformat(), "kind": kind, "symbol": symbol, "params": {k: v for k, v in (params or {}).items() if k.lower() not in ("key", "token", "authorization")}, **outcome}, sort_keys=True) + chr(10))
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+
+def build_tasks(window_events, tracking_events, store, now, stage_caps=None) -> dict:
     """window_events: events with an open 48-to-24 h window (news INITIAL/FINAL, snapshot B). tracking_events: events within the ~14-day horizon (snapshot A)."""
     recs = C._records(store)
     news = CP.news_tasks_due(to_news_events(window_events), [r for r in recs if r["kind"] == "uw_news"], now)
     est = [r for r in recs if r["kind"] == "uw_estimates"]
     snaps_b = [t for t in CP.snapshot_stage_tasks_due(to_snapshot_events(window_events), est, now) if t["stage"] == "B"]
     snaps_a = [t for t in CP.snapshot_stage_tasks_due(to_snapshot_events(tracking_events), est, now) if t["stage"] == "A"]
+    caps = stage_caps or {}
+    if "snapshot_b" in caps:
+        snaps_b = snaps_b[:caps["snapshot_b"]]                                                      # earliest cutoff first (the lists are cutoff-ordered)
+    if "snapshot_a" in caps:
+        snaps_a = snaps_a[:caps["snapshot_a"]]
     seen, tasks = set(), []
     rank = lambda t: 0 if t.get("stage") == "A" else 1 if t.get("stage") == "B" else 2          # priority: Snapshot A, Snapshot B, then news (INITIAL / FINAL)  # noqa: E731
     for t in sorted(news + snaps_b + snaps_a, key=lambda t: (rank(t), t["cutoff_utc"], t["symbol"])):
@@ -135,7 +166,7 @@ def preflight(svc, tasks_by_kind: dict, *, now: datetime, ceiling: int, state: d
 
 # ---------------------------------------------------------------- the cycle
 def run_cycle(svc, *, now: datetime, state_dir, mode: str = "DRY_RUN", armed: bool = False, ceiling: int = DEFAULT_CEILING, batch_size: int = DEFAULT_BATCH,
-              events_fn: Optional[Callable] = None, stopped: Optional[Callable[[], bool]] = None, news_pages: Optional[int] = None, calendar_requests: Optional[int] = None) -> dict:
+              events_fn: Optional[Callable] = None, stopped: Optional[Callable[[], bool]] = None, news_pages: Optional[int] = None, calendar_requests: Optional[int] = None, stage_caps: Optional[dict] = None) -> dict:
     """events_fn(now, horizon_days) -> events (the existing eligible_events). DRY_RUN never calls the provider. LIVE needs armed=True."""
     d = Path(state_dir)
     st = _read_state(d)
@@ -144,7 +175,7 @@ def run_cycle(svc, *, now: datetime, state_dir, mode: str = "DRY_RUN", armed: bo
     events_fn = events_fn or (lambda n, h=None: svc.eligible_events(n, h) if h else svc.eligible_events(n))
     window_events = events_fn(now, None)
     tracking_events = events_fn(now, svc.cfg.tracking_days_ahead)
-    tb = build_tasks(window_events, tracking_events, svc.store, now)
+    tb = build_tasks(window_events, tracking_events, svc.store, now, stage_caps)
     pf = preflight(svc, tb, now=now, ceiling=ceiling, state=st, window_events=window_events, tracking_events=tracking_events, stopped=stopped)
     job = {"id": job_id, "mode": mode, "started_utc": now.isoformat(), "preflight": pf, "requests": 0, "tasks_planned": len(tb["tasks"]), "tasks_done": 0, "failures": [], "status": "PENDING"}
     if mode != "LIVE":
@@ -183,7 +214,7 @@ def run_cycle(svc, *, now: datetime, state_dir, mode: str = "DRY_RUN", armed: bo
                     job.update(status="BLOCKED", reason="CALENDAR_NOT_FRESH:" + str(g.get("reason")))
                 else:
                     window_events, tracking_events = events_fn(svc.clock.now(), None), events_fn(svc.clock.now(), svc.cfg.tracking_days_ahead)
-                    tb = build_tasks(window_events, tracking_events, svc.store, svc.clock.now())
+                    tb = build_tasks(window_events, tracking_events, svc.store, svc.clock.now(), stage_caps)
                     job["tasks_planned"] = len(tb["tasks"])
             if job["status"] == "RUNNING":
                 done = set(st["done_tasks"])
