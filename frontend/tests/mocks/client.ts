@@ -6,6 +6,10 @@ export const smartMoveQuality = {
   summary: () => ({ __k: 'summary' }),
   events: () => ({ __k: 'events' }),
 };
+export const smartMoveSignals = {
+  summary: () => ({ __k: 'sigsummary' }),
+  rows: () => ({ __k: 'sigrows' }),
+};
 export const smartMoveNewsReview = {
   queue: () => ({ __k: 'queue' }),
   label: async () => ({ status: 'RECORDED' }),

@@ -64,6 +64,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/smart-move/board', label: 'Smart Move', icon: <Gauge size={S} /> },
     { to: '/smart-move', label: 'Smart Move Evidence', icon: <Gauge size={S} /> },
     { to: '/smart-move/tracking', label: 'Smart Move Tracking', icon: <History size={S} /> },
+    { to: '/smart-move/signals', label: 'Live Earnings Signals', icon: <Gauge size={S} /> },
     { to: '/smart-move/quality', label: 'Smart Move Quality', icon: <ShieldCheck size={S} /> },
     { to: '/smart-move/news-review', label: 'Smart Move News Review', icon: <ScrollText size={S} /> },
     { to: '/earnings-signals', label: 'Signal History', icon: <History size={S} /> },

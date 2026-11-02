@@ -1054,6 +1054,12 @@ export const smartMoveQuality = {
   events: (query: string, s?: AbortSignal) => request<any>(`/api/smart-move/quality/events?${query}`, s),
 };
 
+/** Smart Move live earnings signals: the latest validated signals (read only; no provider request, no scoring in the browser). */
+export const smartMoveSignals = {
+  summary: (s?: AbortSignal) => request<any>('/api/smart-move/live-signals/summary', s),
+  rows: (query: string, s?: AbortSignal) => request<any>(`/api/smart-move/live-signals/rows?${query}`, s),
+};
+
 /** Smart Move news review: saved headlines, human labels (append-only) and the validation gate. The only write is appending a reviewer label; no provider request. */
 export const smartMoveNewsReview = {
   queue: (query: string, s?: AbortSignal) => request<any>(`/api/smart-move/news-review/queue?${query}`, s),

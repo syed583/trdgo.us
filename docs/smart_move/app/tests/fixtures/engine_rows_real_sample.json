@@ -1,0 +1,493 @@
+{
+ "source": "real saved evidence (batch2_store copy), frozen engine output, scored offline 2026-11-02 19:40Z",
+ "rows": [
+  {
+   "symbol": "ACEL",
+   "company": "ACCEL ENTERTAINMENT",
+   "earnings_date": "2026-11-03",
+   "kind": "AMC",
+   "blocked_by": [],
+   "engine": {
+    "continuation": {
+     "signal": "NO_TRADE",
+     "bull": 0,
+     "bear": 0,
+     "available": 0,
+     "max": 40,
+     "reason_codes": [
+      "ILLIQUID_OR_UNKNOWN",
+      "INSUFFICIENT_COVERAGE"
+     ],
+     "score_before_gate": "NO_TRADE"
+    },
+    "contrarian": {
+     "signal": "NO_TRADE",
+     "bull": 0,
+     "bear": 0,
+     "available": 0,
+     "max": 40,
+     "reason_codes": [
+      "ILLIQUID_OR_UNKNOWN",
+      "INSUFFICIENT_COVERAGE"
+     ],
+     "score_before_gate": "NO_TRADE"
+    }
+   },
+   "evidence": [],
+   "available_points": 0,
+   "missing_factors": [
+    {
+     "factor": "F3",
+     "name": "Earnings-reaction history",
+     "reason": "NO_FRESH_HISTORY_OR_PRICE"
+    },
+    {
+     "factor": "F5",
+     "name": "Price / technical",
+     "reason": "NO_FRESH_PRICE_EVIDENCE"
+    },
+    {
+     "factor": "F7",
+     "name": "Volatility (skew)",
+     "reason": "NOT_CAPTURED_LIVE_IN_WINDOW"
+    },
+    {
+     "factor": "F8",
+     "name": "Sector / market",
+     "reason": "NO_FRESH_MARKET_EVIDENCE"
+    }
+   ]
+  },
+  {
+   "symbol": "ADNT",
+   "company": "ADIENT",
+   "earnings_date": "2026-11-04",
+   "kind": "BMO",
+   "blocked_by": [],
+   "engine": {
+    "continuation": {
+     "signal": "NO_TRADE",
+     "bull": 0,
+     "bear": 0,
+     "available": 0,
+     "max": 40,
+     "reason_codes": [
+      "ILLIQUID_OR_UNKNOWN",
+      "INSUFFICIENT_COVERAGE"
+     ],
+     "score_before_gate": "NO_TRADE"
+    },
+    "contrarian": {
+     "signal": "NO_TRADE",
+     "bull": 0,
+     "bear": 0,
+     "available": 0,
+     "max": 40,
+     "reason_codes": [
+      "ILLIQUID_OR_UNKNOWN",
+      "INSUFFICIENT_COVERAGE"
+     ],
+     "score_before_gate": "NO_TRADE"
+    }
+   },
+   "evidence": [],
+   "available_points": 0,
+   "missing_factors": [
+    {
+     "factor": "F3",
+     "name": "Earnings-reaction history",
+     "reason": "NO_FRESH_HISTORY_OR_PRICE"
+    },
+    {
+     "factor": "F5",
+     "name": "Price / technical",
+     "reason": "NO_FRESH_PRICE_EVIDENCE"
+    },
+    {
+     "factor": "F7",
+     "name": "Volatility (skew)",
+     "reason": "NOT_CAPTURED_LIVE_IN_WINDOW"
+    },
+    {
+     "factor": "F8",
+     "name": "Sector / market",
+     "reason": "NO_FRESH_MARKET_EVIDENCE"
+    }
+   ]
+  },
+  {
+   "symbol": "ADUS",
+   "company": "ADDUS HOMECARE",
+   "earnings_date": "2026-11-03",
+   "kind": "AMC",
+   "blocked_by": [],
+   "engine": {
+    "continuation": {
+     "signal": "NO_TRADE",
+     "bull": 0,
+     "bear": 0,
+     "available": 0,
+     "max": 40,
+     "reason_codes": [
+      "ILLIQUID_OR_UNKNOWN",
+      "INSUFFICIENT_COVERAGE"
+     ],
+     "score_before_gate": "NO_TRADE"
+    },
+    "contrarian": {
+     "signal": "NO_TRADE",
+     "bull": 0,
+     "bear": 0,
+     "available": 0,
+     "max": 40,
+     "reason_codes": [
+      "ILLIQUID_OR_UNKNOWN",
+      "INSUFFICIENT_COVERAGE"
+     ],
+     "score_before_gate": "NO_TRADE"
+    }
+   },
+   "evidence": [],
+   "available_points": 0,
+   "missing_factors": [
+    {
+     "factor": "F3",
+     "name": "Earnings-reaction history",
+     "reason": "NO_FRESH_HISTORY_OR_PRICE"
+    },
+    {
+     "factor": "F5",
+     "name": "Price / technical",
+     "reason": "NO_FRESH_PRICE_EVIDENCE"
+    },
+    {
+     "factor": "F7",
+     "name": "Volatility (skew)",
+     "reason": "NOT_CAPTURED_LIVE_IN_WINDOW"
+    },
+    {
+     "factor": "F8",
+     "name": "Sector / market",
+     "reason": "NO_FRESH_MARKET_EVIDENCE"
+    }
+   ]
+  },
+  {
+   "symbol": "ADV",
+   "company": "ADVANTAGE SOLUTIONS",
+   "earnings_date": "2026-11-04",
+   "kind": "BMO",
+   "blocked_by": [],
+   "engine": {
+    "continuation": {
+     "signal": "NO_TRADE",
+     "bull": 0,
+     "bear": 0,
+     "available": 0,
+     "max": 40,
+     "reason_codes": [
+      "ILLIQUID_OR_UNKNOWN",
+      "INSUFFICIENT_COVERAGE"
+     ],
+     "score_before_gate": "NO_TRADE"
+    },
+    "contrarian": {
+     "signal": "NO_TRADE",
+     "bull": 0,
+     "bear": 0,
+     "available": 0,
+     "max": 40,
+     "reason_codes": [
+      "ILLIQUID_OR_UNKNOWN",
+      "INSUFFICIENT_COVERAGE"
+     ],
+     "score_before_gate": "NO_TRADE"
+    }
+   },
+   "evidence": [],
+   "available_points": 0,
+   "missing_factors": [
+    {
+     "factor": "F3",
+     "name": "Earnings-reaction history",
+     "reason": "NO_FRESH_HISTORY_OR_PRICE"
+    },
+    {
+     "factor": "F5",
+     "name": "Price / technical",
+     "reason": "NO_FRESH_PRICE_EVIDENCE"
+    },
+    {
+     "factor": "F7",
+     "name": "Volatility (skew)",
+     "reason": "NOT_CAPTURED_LIVE_IN_WINDOW"
+    },
+    {
+     "factor": "F8",
+     "name": "Sector / market",
+     "reason": "NO_FRESH_MARKET_EVIDENCE"
+    }
+   ]
+  },
+  {
+   "symbol": "AATC",
+   "company": null,
+   "earnings_date": "2026-11-04",
+   "kind": "UNKNOWN",
+   "blocked_by": [
+    "CALENDAR_ESTIMATED",
+    "SINGLE_VENDOR",
+    "UNKNOWN_TIMING"
+   ],
+   "engine": {
+    "continuation": {
+     "signal": "NO_TRADE",
+     "bull": 0,
+     "bear": 0,
+     "available": 0,
+     "max": 40,
+     "reason_codes": [
+      "UNKNOWN_TIMING",
+      "NOT_TRADABLE",
+      "ILLIQUID_OR_UNKNOWN",
+      "INSUFFICIENT_COVERAGE"
+     ],
+     "score_before_gate": "NO_TRADE"
+    },
+    "contrarian": {
+     "signal": "NO_TRADE",
+     "bull": 0,
+     "bear": 0,
+     "available": 0,
+     "max": 40,
+     "reason_codes": [
+      "UNKNOWN_TIMING",
+      "NOT_TRADABLE",
+      "ILLIQUID_OR_UNKNOWN",
+      "INSUFFICIENT_COVERAGE"
+     ],
+     "score_before_gate": "NO_TRADE"
+    }
+   },
+   "evidence": [],
+   "available_points": 0,
+   "missing_factors": [
+    {
+     "factor": "F3",
+     "name": "Earnings-reaction history",
+     "reason": "NO_FRESH_HISTORY_OR_PRICE"
+    },
+    {
+     "factor": "F5",
+     "name": "Price / technical",
+     "reason": "NO_FRESH_PRICE_EVIDENCE"
+    },
+    {
+     "factor": "F7",
+     "name": "Volatility (skew)",
+     "reason": "NOT_CAPTURED_LIVE_IN_WINDOW"
+    },
+    {
+     "factor": "F8",
+     "name": "Sector / market",
+     "reason": "NO_FRESH_MARKET_EVIDENCE"
+    }
+   ]
+  },
+  {
+   "symbol": "AAUAF",
+   "company": null,
+   "earnings_date": "2026-11-04",
+   "kind": "UNKNOWN",
+   "blocked_by": [
+    "CALENDAR_ESTIMATED",
+    "SINGLE_VENDOR",
+    "UNKNOWN_TIMING"
+   ],
+   "engine": {
+    "continuation": {
+     "signal": "NO_TRADE",
+     "bull": 0,
+     "bear": 0,
+     "available": 0,
+     "max": 40,
+     "reason_codes": [
+      "UNKNOWN_TIMING",
+      "NOT_TRADABLE",
+      "ILLIQUID_OR_UNKNOWN",
+      "INSUFFICIENT_COVERAGE"
+     ],
+     "score_before_gate": "NO_TRADE"
+    },
+    "contrarian": {
+     "signal": "NO_TRADE",
+     "bull": 0,
+     "bear": 0,
+     "available": 0,
+     "max": 40,
+     "reason_codes": [
+      "UNKNOWN_TIMING",
+      "NOT_TRADABLE",
+      "ILLIQUID_OR_UNKNOWN",
+      "INSUFFICIENT_COVERAGE"
+     ],
+     "score_before_gate": "NO_TRADE"
+    }
+   },
+   "evidence": [],
+   "available_points": 0,
+   "missing_factors": [
+    {
+     "factor": "F3",
+     "name": "Earnings-reaction history",
+     "reason": "NO_FRESH_HISTORY_OR_PRICE"
+    },
+    {
+     "factor": "F5",
+     "name": "Price / technical",
+     "reason": "NO_FRESH_PRICE_EVIDENCE"
+    },
+    {
+     "factor": "F7",
+     "name": "Volatility (skew)",
+     "reason": "NOT_CAPTURED_LIVE_IN_WINDOW"
+    },
+    {
+     "factor": "F8",
+     "name": "Sector / market",
+     "reason": "NO_FRESH_MARKET_EVIDENCE"
+    }
+   ]
+  },
+  {
+   "symbol": "ABAT",
+   "company": null,
+   "earnings_date": "2026-11-04",
+   "kind": "UNKNOWN",
+   "blocked_by": [
+    "CALENDAR_ESTIMATED",
+    "SINGLE_VENDOR",
+    "UNKNOWN_TIMING"
+   ],
+   "engine": {
+    "continuation": {
+     "signal": "NO_TRADE",
+     "bull": 0,
+     "bear": 0,
+     "available": 0,
+     "max": 40,
+     "reason_codes": [
+      "UNKNOWN_TIMING",
+      "NOT_TRADABLE",
+      "ILLIQUID_OR_UNKNOWN",
+      "INSUFFICIENT_COVERAGE"
+     ],
+     "score_before_gate": "NO_TRADE"
+    },
+    "contrarian": {
+     "signal": "NO_TRADE",
+     "bull": 0,
+     "bear": 0,
+     "available": 0,
+     "max": 40,
+     "reason_codes": [
+      "UNKNOWN_TIMING",
+      "NOT_TRADABLE",
+      "ILLIQUID_OR_UNKNOWN",
+      "INSUFFICIENT_COVERAGE"
+     ],
+     "score_before_gate": "NO_TRADE"
+    }
+   },
+   "evidence": [],
+   "available_points": 0,
+   "missing_factors": [
+    {
+     "factor": "F3",
+     "name": "Earnings-reaction history",
+     "reason": "NO_FRESH_HISTORY_OR_PRICE"
+    },
+    {
+     "factor": "F5",
+     "name": "Price / technical",
+     "reason": "NO_FRESH_PRICE_EVIDENCE"
+    },
+    {
+     "factor": "F7",
+     "name": "Volatility (skew)",
+     "reason": "NOT_CAPTURED_LIVE_IN_WINDOW"
+    },
+    {
+     "factor": "F8",
+     "name": "Sector / market",
+     "reason": "NO_FRESH_MARKET_EVIDENCE"
+    }
+   ]
+  },
+  {
+   "symbol": "ABCP",
+   "company": null,
+   "earnings_date": "2026-11-04",
+   "kind": "UNKNOWN",
+   "blocked_by": [
+    "CALENDAR_ESTIMATED",
+    "SINGLE_VENDOR",
+    "UNKNOWN_TIMING"
+   ],
+   "engine": {
+    "continuation": {
+     "signal": "NO_TRADE",
+     "bull": 0,
+     "bear": 0,
+     "available": 0,
+     "max": 40,
+     "reason_codes": [
+      "UNKNOWN_TIMING",
+      "NOT_TRADABLE",
+      "ILLIQUID_OR_UNKNOWN",
+      "INSUFFICIENT_COVERAGE"
+     ],
+     "score_before_gate": "NO_TRADE"
+    },
+    "contrarian": {
+     "signal": "NO_TRADE",
+     "bull": 0,
+     "bear": 0,
+     "available": 0,
+     "max": 40,
+     "reason_codes": [
+      "UNKNOWN_TIMING",
+      "NOT_TRADABLE",
+      "ILLIQUID_OR_UNKNOWN",
+      "INSUFFICIENT_COVERAGE"
+     ],
+     "score_before_gate": "NO_TRADE"
+    }
+   },
+   "evidence": [],
+   "available_points": 0,
+   "missing_factors": [
+    {
+     "factor": "F3",
+     "name": "Earnings-reaction history",
+     "reason": "NO_FRESH_HISTORY_OR_PRICE"
+    },
+    {
+     "factor": "F5",
+     "name": "Price / technical",
+     "reason": "NO_FRESH_PRICE_EVIDENCE"
+    },
+    {
+     "factor": "F7",
+     "name": "Volatility (skew)",
+     "reason": "NOT_CAPTURED_LIVE_IN_WINDOW"
+    },
+    {
+     "factor": "F8",
+     "name": "Sector / market",
+     "reason": "NO_FRESH_MARKET_EVIDENCE"
+    }
+   ]
+  }
+ ]
+}

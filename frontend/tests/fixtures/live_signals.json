@@ -1,0 +1,636 @@
+{
+ "rows": {
+  "limit": 100,
+  "offset": 0,
+  "read_only": true,
+  "rows": [
+   {
+    "batch_id": "collect-1",
+    "company": "SYNTHETIC BUY CORP",
+    "confidence": null,
+    "confidence_note": "not shown: no existing model has a calibrated probability",
+    "consensus": {
+     "buy": 1,
+     "models_total": 1,
+     "models_valid": 1,
+     "no_trade": 0,
+     "rule": "BUY or SELL is shown only when every model with valid inputs agrees (display filter, not a score)",
+     "sell": 0,
+     "unanimous": true
+    },
+    "data_status": "SYNTHETIC",
+    "dedupe_key": "13d4b77c0bb02f99ef1c1d6d64496000b818cfe98034451d1b0c957228840fcb",
+    "event_date": "2026-11-04",
+    "evidence_complete": true,
+    "freshness": {
+     "age_hours": 2.0,
+     "newest_evidence": "2026-11-02T20:00:00+00:00",
+     "oldest_evidence": "2026-11-02T20:00:00+00:00"
+    },
+    "generated_at": "2026-11-02T22:00:00+00:00",
+    "models": [
+     {
+      "kind": null,
+      "name": "smart_move_continuation",
+      "points": {
+       "available": 30,
+       "bear": 0,
+       "bull": 6,
+       "max": 40
+      },
+      "primary": true,
+      "reason_codes": [],
+      "score": null,
+      "signal": "BUY",
+      "source": "SMART_MOVE_FROZEN_ENGINE"
+     },
+     {
+      "kind": "MODEL_NEUTRAL",
+      "name": "smart_move_contrarian",
+      "points": {
+       "available": 30,
+       "bear": 0,
+       "bull": 0,
+       "max": 40
+      },
+      "primary": false,
+      "reason_codes": [],
+      "score": null,
+      "signal": "NO_TRADE",
+      "source": "SMART_MOVE_FROZEN_ENGINE"
+     }
+    ],
+    "reason": "1 of 1 valid model(s) say BUY (single model)",
+    "schema": "smart_move.live_signal.v1",
+    "session": "BMO",
+    "session_label": "Before Open",
+    "signal": "BUY",
+    "signal_kind": "MODEL_SIGNAL",
+    "symbol": "SYNB",
+    "synthetic": true,
+    "warnings": []
+   },
+   {
+    "batch_id": "collect-1",
+    "company": "SYNTHETIC SELL CORP",
+    "confidence": null,
+    "confidence_note": "not shown: no existing model has a calibrated probability",
+    "consensus": {
+     "buy": 0,
+     "models_total": 1,
+     "models_valid": 1,
+     "no_trade": 0,
+     "rule": "BUY or SELL is shown only when every model with valid inputs agrees (display filter, not a score)",
+     "sell": 1,
+     "unanimous": true
+    },
+    "data_status": "SYNTHETIC",
+    "dedupe_key": "0eab0eec216feba464f0937e82e5bedd59c6dc968ea8b787343b03e4ceb02476",
+    "event_date": "2026-11-03",
+    "evidence_complete": true,
+    "freshness": {
+     "age_hours": 2.0,
+     "newest_evidence": "2026-11-02T20:00:00+00:00",
+     "oldest_evidence": "2026-11-02T20:00:00+00:00"
+    },
+    "generated_at": "2026-11-02T22:00:00+00:00",
+    "models": [
+     {
+      "kind": null,
+      "name": "smart_move_continuation",
+      "points": {
+       "available": 30,
+       "bear": 6,
+       "bull": 0,
+       "max": 40
+      },
+      "primary": true,
+      "reason_codes": [],
+      "score": null,
+      "signal": "SELL",
+      "source": "SMART_MOVE_FROZEN_ENGINE"
+     },
+     {
+      "kind": "MODEL_NEUTRAL",
+      "name": "smart_move_contrarian",
+      "points": {
+       "available": 30,
+       "bear": 0,
+       "bull": 0,
+       "max": 40
+      },
+      "primary": false,
+      "reason_codes": [],
+      "score": null,
+      "signal": "NO_TRADE",
+      "source": "SMART_MOVE_FROZEN_ENGINE"
+     }
+    ],
+    "reason": "1 of 1 valid model(s) say SELL (single model)",
+    "schema": "smart_move.live_signal.v1",
+    "session": "AMC",
+    "session_label": "After Close",
+    "signal": "SELL",
+    "signal_kind": "MODEL_SIGNAL",
+    "symbol": "SYNS",
+    "synthetic": true,
+    "warnings": []
+   },
+   {
+    "batch_id": "collect-1",
+    "company": "SYNTHETIC NEUTRAL CORP",
+    "confidence": null,
+    "confidence_note": "not shown: no existing model has a calibrated probability",
+    "consensus": {
+     "buy": 0,
+     "models_total": 1,
+     "models_valid": 1,
+     "no_trade": 1,
+     "rule": "BUY or SELL is shown only when every model with valid inputs agrees (display filter, not a score)",
+     "sell": 0,
+     "unanimous": true
+    },
+    "data_status": "SYNTHETIC",
+    "dedupe_key": "6cdb16ed428696d2a5d477257cf2d154461b745f7df1619ed8167a498d10a271",
+    "event_date": "2026-11-04",
+    "evidence_complete": true,
+    "freshness": {
+     "age_hours": 2.0,
+     "newest_evidence": "2026-11-02T20:00:00+00:00",
+     "oldest_evidence": "2026-11-02T20:00:00+00:00"
+    },
+    "generated_at": "2026-11-02T22:00:00+00:00",
+    "models": [
+     {
+      "kind": "MODEL_NEUTRAL",
+      "name": "smart_move_continuation",
+      "points": {
+       "available": 30,
+       "bear": 0,
+       "bull": 0,
+       "max": 40
+      },
+      "primary": true,
+      "reason_codes": [],
+      "score": null,
+      "signal": "NO_TRADE",
+      "source": "SMART_MOVE_FROZEN_ENGINE"
+     },
+     {
+      "kind": "MODEL_NEUTRAL",
+      "name": "smart_move_contrarian",
+      "points": {
+       "available": 30,
+       "bear": 0,
+       "bull": 0,
+       "max": 40
+      },
+      "primary": false,
+      "reason_codes": [],
+      "score": null,
+      "signal": "NO_TRADE",
+      "source": "SMART_MOVE_FROZEN_ENGINE"
+     }
+    ],
+    "reason": "the valid model(s) scored the event and found no edge",
+    "schema": "smart_move.live_signal.v1",
+    "session": "BMO",
+    "session_label": "Before Open",
+    "signal": "NO_TRADE",
+    "signal_kind": "MODEL_NEUTRAL",
+    "symbol": "SYNN",
+    "synthetic": true,
+    "warnings": []
+   },
+   {
+    "batch_id": "collect-1",
+    "company": "SYNTHETIC MISSING CORP",
+    "confidence": null,
+    "confidence_note": "not shown: no existing model has a calibrated probability",
+    "consensus": {
+     "buy": 0,
+     "models_total": 1,
+     "models_valid": 0,
+     "no_trade": 0,
+     "rule": "BUY or SELL is shown only when every model with valid inputs agrees (display filter, not a score)",
+     "sell": 0,
+     "unanimous": false
+    },
+    "data_status": "SYNTHETIC",
+    "dedupe_key": "90c25d23ab0d675373a1ffafd4ccb4bf8eb82c06f7cf1d06b8b96d2ce1001441",
+    "event_date": "2026-11-04",
+    "evidence_complete": false,
+    "freshness": {
+     "age_hours": 2.0,
+     "newest_evidence": "2026-11-02T20:00:00+00:00",
+     "oldest_evidence": "2026-11-02T20:00:00+00:00"
+    },
+    "generated_at": "2026-11-02T22:00:00+00:00",
+    "models": [
+     {
+      "kind": "INSUFFICIENT_INPUTS",
+      "name": "smart_move_continuation",
+      "points": {
+       "available": 30,
+       "bear": 0,
+       "bull": 0,
+       "max": 40
+      },
+      "primary": true,
+      "reason_codes": [
+       "INSUFFICIENT_COVERAGE",
+       "NOT_TRADABLE"
+      ],
+      "score": null,
+      "signal": "NO_TRADE",
+      "source": "SMART_MOVE_FROZEN_ENGINE"
+     },
+     {
+      "kind": "INSUFFICIENT_INPUTS",
+      "name": "smart_move_contrarian",
+      "points": {
+       "available": 30,
+       "bear": 0,
+       "bull": 0,
+       "max": 40
+      },
+      "primary": false,
+      "reason_codes": [
+       "INSUFFICIENT_COVERAGE",
+       "NOT_TRADABLE"
+      ],
+      "score": null,
+      "signal": "NO_TRADE",
+      "source": "SMART_MOVE_FROZEN_ENGINE"
+     }
+    ],
+    "reason": "no model has enough valid inputs: not enough of the model's required inputs are available; the stock failed the tradability check",
+    "schema": "smart_move.live_signal.v1",
+    "session": "BMO",
+    "session_label": "Before Open",
+    "signal": "NO_TRADE",
+    "signal_kind": "INSUFFICIENT_INPUTS",
+    "symbol": "SYNM",
+    "synthetic": true,
+    "warnings": [
+     "no valid prediction: this is missing data, not a neutral view"
+    ]
+   },
+   {
+    "batch_id": "collect-1",
+    "company": "SYNTHETIC STALE CORP",
+    "confidence": null,
+    "confidence_note": "not shown: no existing model has a calibrated probability",
+    "consensus": {
+     "buy": 1,
+     "models_total": 1,
+     "models_valid": 1,
+     "no_trade": 0,
+     "rule": "BUY or SELL is shown only when every model with valid inputs agrees (display filter, not a score)",
+     "sell": 0,
+     "unanimous": true
+    },
+    "data_status": "HISTORICAL",
+    "dedupe_key": "1a59b3e3cfaa493505c37654bd595a49f0e6222eb80d5e6d59ecfc9f4e34ce42",
+    "event_date": "2026-11-04",
+    "evidence_complete": true,
+    "freshness": {
+     "age_hours": 2.0,
+     "newest_evidence": "2026-11-02T20:00:00+00:00",
+     "oldest_evidence": "2026-11-02T20:00:00+00:00"
+    },
+    "generated_at": "2026-11-02T22:00:00+00:00",
+    "models": [
+     {
+      "kind": null,
+      "name": "smart_move_continuation",
+      "points": {
+       "available": 30,
+       "bear": 0,
+       "bull": 6,
+       "max": 40
+      },
+      "primary": true,
+      "reason_codes": [],
+      "score": null,
+      "signal": "BUY",
+      "source": "SMART_MOVE_FROZEN_ENGINE"
+     },
+     {
+      "kind": "MODEL_NEUTRAL",
+      "name": "smart_move_contrarian",
+      "points": {
+       "available": 30,
+       "bear": 0,
+       "bull": 0,
+       "max": 40
+      },
+      "primary": false,
+      "reason_codes": [],
+      "score": null,
+      "signal": "NO_TRADE",
+      "source": "SMART_MOVE_FROZEN_ENGINE"
+     }
+    ],
+    "reason": "1 of 1 valid model(s) say BUY (single model)",
+    "schema": "smart_move.live_signal.v1",
+    "session": "BMO",
+    "session_label": "Before Open",
+    "signal": "BUY",
+    "signal_kind": "MODEL_SIGNAL",
+    "symbol": "OLDX",
+    "synthetic": false,
+    "warnings": []
+   },
+   {
+    "batch_id": "collect-1",
+    "company": "ACCEL ENTERTAINMENT",
+    "confidence": null,
+    "confidence_note": "not shown: no existing model has a calibrated probability",
+    "consensus": {
+     "buy": 0,
+     "models_total": 1,
+     "models_valid": 0,
+     "no_trade": 0,
+     "rule": "BUY or SELL is shown only when every model with valid inputs agrees (display filter, not a score)",
+     "sell": 0,
+     "unanimous": false
+    },
+    "data_status": "UNVERIFIED",
+    "dedupe_key": "478b1980101885776483e976e605e61abf1948822978dbee75708561de678e93",
+    "event_date": "2026-11-03",
+    "evidence_complete": false,
+    "freshness": {
+     "age_hours": null,
+     "newest_evidence": null,
+     "oldest_evidence": null
+    },
+    "generated_at": "2026-11-02T22:00:00+00:00",
+    "models": [
+     {
+      "kind": "INSUFFICIENT_INPUTS",
+      "name": "smart_move_continuation",
+      "points": {
+       "available": 0,
+       "bear": 0,
+       "bull": 0,
+       "max": 40
+      },
+      "primary": true,
+      "reason_codes": [
+       "ILLIQUID_OR_UNKNOWN",
+       "INSUFFICIENT_COVERAGE"
+      ],
+      "score": null,
+      "signal": "NO_TRADE",
+      "source": "SMART_MOVE_FROZEN_ENGINE"
+     },
+     {
+      "kind": "INSUFFICIENT_INPUTS",
+      "name": "smart_move_contrarian",
+      "points": {
+       "available": 0,
+       "bear": 0,
+       "bull": 0,
+       "max": 40
+      },
+      "primary": false,
+      "reason_codes": [
+       "ILLIQUID_OR_UNKNOWN",
+       "INSUFFICIENT_COVERAGE"
+      ],
+      "score": null,
+      "signal": "NO_TRADE",
+      "source": "SMART_MOVE_FROZEN_ENGINE"
+     }
+    ],
+    "reason": "no model has enough valid inputs: liquidity is unknown or too low; not enough of the model's required inputs are available",
+    "schema": "smart_move.live_signal.v1",
+    "session": "AMC",
+    "session_label": "After Close",
+    "signal": "NO_TRADE",
+    "signal_kind": "INSUFFICIENT_INPUTS",
+    "symbol": "ACEL",
+    "synthetic": false,
+    "warnings": [
+     "no valid prediction: this is missing data, not a neutral view",
+     "update time unknown"
+    ]
+   },
+   {
+    "batch_id": "collect-1",
+    "company": "ADIENT",
+    "confidence": null,
+    "confidence_note": "not shown: no existing model has a calibrated probability",
+    "consensus": {
+     "buy": 0,
+     "models_total": 1,
+     "models_valid": 0,
+     "no_trade": 0,
+     "rule": "BUY or SELL is shown only when every model with valid inputs agrees (display filter, not a score)",
+     "sell": 0,
+     "unanimous": false
+    },
+    "data_status": "UNVERIFIED",
+    "dedupe_key": "8145b4693bb900c251843d8efd334118af47e0949d31564e777bd9c102577615",
+    "event_date": "2026-11-04",
+    "evidence_complete": false,
+    "freshness": {
+     "age_hours": null,
+     "newest_evidence": null,
+     "oldest_evidence": null
+    },
+    "generated_at": "2026-11-02T22:00:00+00:00",
+    "models": [
+     {
+      "kind": "INSUFFICIENT_INPUTS",
+      "name": "smart_move_continuation",
+      "points": {
+       "available": 0,
+       "bear": 0,
+       "bull": 0,
+       "max": 40
+      },
+      "primary": true,
+      "reason_codes": [
+       "ILLIQUID_OR_UNKNOWN",
+       "INSUFFICIENT_COVERAGE"
+      ],
+      "score": null,
+      "signal": "NO_TRADE",
+      "source": "SMART_MOVE_FROZEN_ENGINE"
+     },
+     {
+      "kind": "INSUFFICIENT_INPUTS",
+      "name": "smart_move_contrarian",
+      "points": {
+       "available": 0,
+       "bear": 0,
+       "bull": 0,
+       "max": 40
+      },
+      "primary": false,
+      "reason_codes": [
+       "ILLIQUID_OR_UNKNOWN",
+       "INSUFFICIENT_COVERAGE"
+      ],
+      "score": null,
+      "signal": "NO_TRADE",
+      "source": "SMART_MOVE_FROZEN_ENGINE"
+     }
+    ],
+    "reason": "no model has enough valid inputs: liquidity is unknown or too low; not enough of the model's required inputs are available",
+    "schema": "smart_move.live_signal.v1",
+    "session": "BMO",
+    "session_label": "Before Open",
+    "signal": "NO_TRADE",
+    "signal_kind": "INSUFFICIENT_INPUTS",
+    "symbol": "ADNT",
+    "synthetic": false,
+    "warnings": [
+     "no valid prediction: this is missing data, not a neutral view",
+     "update time unknown"
+    ]
+   },
+   {
+    "batch_id": "collect-1",
+    "company": "ADDUS HOMECARE",
+    "confidence": null,
+    "confidence_note": "not shown: no existing model has a calibrated probability",
+    "consensus": {
+     "buy": 0,
+     "models_total": 1,
+     "models_valid": 0,
+     "no_trade": 0,
+     "rule": "BUY or SELL is shown only when every model with valid inputs agrees (display filter, not a score)",
+     "sell": 0,
+     "unanimous": false
+    },
+    "data_status": "UNVERIFIED",
+    "dedupe_key": "faef6662edb3ccbf82fd9243711cea1dd0060941cbd2dac5552120151efeec41",
+    "event_date": "2026-11-03",
+    "evidence_complete": false,
+    "freshness": {
+     "age_hours": null,
+     "newest_evidence": null,
+     "oldest_evidence": null
+    },
+    "generated_at": "2026-11-02T22:00:00+00:00",
+    "models": [
+     {
+      "kind": "INSUFFICIENT_INPUTS",
+      "name": "smart_move_continuation",
+      "points": {
+       "available": 0,
+       "bear": 0,
+       "bull": 0,
+       "max": 40
+      },
+      "primary": true,
+      "reason_codes": [
+       "ILLIQUID_OR_UNKNOWN",
+       "INSUFFICIENT_COVERAGE"
+      ],
+      "score": null,
+      "signal": "NO_TRADE",
+      "source": "SMART_MOVE_FROZEN_ENGINE"
+     },
+     {
+      "kind": "INSUFFICIENT_INPUTS",
+      "name": "smart_move_contrarian",
+      "points": {
+       "available": 0,
+       "bear": 0,
+       "bull": 0,
+       "max": 40
+      },
+      "primary": false,
+      "reason_codes": [
+       "ILLIQUID_OR_UNKNOWN",
+       "INSUFFICIENT_COVERAGE"
+      ],
+      "score": null,
+      "signal": "NO_TRADE",
+      "source": "SMART_MOVE_FROZEN_ENGINE"
+     }
+    ],
+    "reason": "no model has enough valid inputs: liquidity is unknown or too low; not enough of the model's required inputs are available",
+    "schema": "smart_move.live_signal.v1",
+    "session": "AMC",
+    "session_label": "After Close",
+    "signal": "NO_TRADE",
+    "signal_kind": "INSUFFICIENT_INPUTS",
+    "symbol": "ADUS",
+    "synthetic": false,
+    "warnings": [
+     "no valid prediction: this is missing data, not a neutral view",
+     "update time unknown"
+    ]
+   }
+  ],
+  "status": "OK",
+  "total": 8
+ },
+ "summary": {
+  "as_of": "2026-11-02T22:00:00+00:00",
+  "by_data_status": {
+   "HISTORICAL": 1,
+   "SYNTHETIC": 4,
+   "UNVERIFIED": 3
+  },
+  "coverage": {
+   "2026-11-03": {
+    "buy": 0,
+    "complete_data": 1,
+    "eligible_companies": 3,
+    "live": 0,
+    "no_trade": 2,
+    "no_trade_reasons": {
+     "INSUFFICIENT_INPUTS": 2
+    },
+    "no_valid_prediction": 2,
+    "partial_data": 0,
+    "sell": 1
+   },
+   "2026-11-04": {
+    "buy": 2,
+    "complete_data": 3,
+    "eligible_companies": 5,
+    "live": 0,
+    "no_trade": 3,
+    "no_trade_reasons": {
+     "INSUFFICIENT_INPUTS": 2,
+     "MODEL_NEUTRAL": 1
+    },
+    "no_valid_prediction": 2,
+    "partial_data": 0,
+    "sell": 0
+   },
+   "TOTAL": {
+    "buy": 2,
+    "complete_data": 4,
+    "eligible_companies": 8,
+    "live": 0,
+    "no_trade": 5,
+    "no_trade_reasons": {
+     "INSUFFICIENT_INPUTS": 4,
+     "MODEL_NEUTRAL": 1
+    },
+    "no_valid_prediction": 4,
+    "partial_data": 0,
+    "sell": 1
+   }
+  },
+  "dates": [
+   "2026-11-03",
+   "2026-11-04"
+  ],
+  "marker_valid": true,
+  "notes": [
+   "Confidence is not shown: no existing model has a calibrated probability.",
+   "A batch of 50 provider attempts covers only part of the earnings calendar."
+  ],
+  "read_only": true,
+  "status": "OK"
+ }
+}
