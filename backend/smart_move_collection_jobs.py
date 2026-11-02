@@ -15,6 +15,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Optional
+from zoneinfo import ZoneInfo
 
 import smart_move_calendar_guard as G
 import smart_move_collection_ext as X
@@ -185,12 +186,15 @@ def preflight(svc, tasks_by_kind: dict, *, now: datetime, ceiling: int, state: d
     age = G.calendar_age_h(svc.store, now)
     day = now.date().isoformat()
     used = state["requests_by_day"].get(day, 0)
+    # The governor seeds its own daily count (US/Eastern date) from the STORE's request log, so requests already logged in a copied store count against today's cap even though this job's state says 0.
+    et_day = now.astimezone(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+    gov_used = int(getattr(svc.gov, "used_day", {}).get(et_day, 0)) if getattr(svc, "gov", None) is not None else 0
     rng = request_range(tasks_by_kind["tasks"])
     try:
         hourly = int(svc.gov.hourly_allowance())
     except Exception:  # noqa: BLE001
         hourly = None
-    daily_left = max(0, ceiling - used)
+    daily_left = max(0, ceiling - max(used, gov_used))
     cal_days = len(svc._trading_days(now, svc.cfg.tracking_days_ahead)) if not scope_dates else len({s[0] for s in scope_dates})
     cal_cost = (2 * cal_days if not scope_dates else len(scope_dates)) + 2                                                   # two sides per trading day plus one Finviz and one Finnhub request; EXTRA pages are added for every side/day that fills a page of 100 (cannot be known before the call)
     blockers = []
@@ -199,13 +203,13 @@ def preflight(svc, tasks_by_kind: dict, *, now: datetime, ceiling: int, state: d
     if stopped():
         blockers.append("PROVIDER_STOPPED_TODAY")
     if daily_left <= 0:
-        blockers.append("RUN_CEILING_REACHED")
+        blockers.append("RUN_CEILING_REACHED" if used >= ceiling else "GOVERNOR_DAILY_CAP_ALREADY_USED_IN_THIS_STORE (%d logged for %s)" % (gov_used, et_day))
     if hourly is not None and hourly <= 0:
         blockers.append("NO_HOURLY_ALLOWANCE")
     stale = age is None or age > G.MAX_AGE_H
     return {"calendar_age_h": age, "calendar_state": "UNKNOWN" if age is None else "STALE" if stale else "FRESH", "calendar_refresh_needed": stale, "calendar_refresh_estimate_requests": cal_cost if stale else 0, "calendar_trading_days": cal_days, "calendar_dates": ["%s %s" % (s[0], s[1]) for s in scope_dates] if scope_dates else None,
             "eligible_window_events": len(window_events), "tracking_events": len(tracking_events), "tasks": {k: len(v) for k, v in tasks_by_kind.items()}, "request_estimate": rng,
-            "ceiling": ceiling, "used_today": used, "daily_left": daily_left, "hourly_allowance": hourly, "spacing_s": svc.cfg.spacing_s, "estimated_minutes_at_spacing": round(rng["max"] * svc.cfg.spacing_s / 60, 1),
+            "ceiling": ceiling, "used_today": max(used, gov_used), "governor_used_today": gov_used, "daily_left": daily_left, "hourly_allowance": hourly, "spacing_s": svc.cfg.spacing_s, "estimated_minutes_at_spacing": round(rng["max"] * svc.cfg.spacing_s / 60, 1),
             "blockers": blockers, "allowed": not blockers}
 
 

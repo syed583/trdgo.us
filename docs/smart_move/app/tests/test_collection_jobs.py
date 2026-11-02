@@ -329,3 +329,21 @@ def test_runner_dry_run_writes_the_status_report_with_zero_requests_and_the_rout
     assert j["available"] is True and j["sends_requests"] is False and j["summary"]["events"] == 0
     monkeypatch.setenv("SMART_MOVE_COLLECTION_STATE_DIR", str(tmp_path / "none"))
     assert TestClient(srv.app).get("/api/smart-move/tracking/collection-status").json()["available"] is False
+
+
+def test_preflight_counts_the_requests_the_governor_already_logged_in_a_copied_store(tmp_path):
+    """Found live: a store copied from an earlier run carries that run's request log; the governor counts it against today's cap, so the preflight must say so instead of reporting a full budget."""
+    f = Stub()
+    svc, _ = make(tmp_path, f)
+    for i in range(50):
+        svc.store.append("requests", {"at": svc.clock.now().isoformat(), "kind": "uw_news", "symbol": "S%d" % i, "request_id": "old%d" % i, "attempts": 1, "provider": "UNUSUAL_WHALES"})
+    svc2 = L.RefreshService(svc.cfg, f, svc.clock, store=svc.store)                      # a service built on the copied store seeds its counters from that log
+    fresh(svc2)
+    job = J.run_cycle(svc2, now=svc2.clock.now(), state_dir=tmp_path / "state", mode="DRY_RUN", events_fn=events(["A"]), ceiling=50)
+    pf = job["preflight"]
+    assert pf["governor_used_today"] == 50 and pf["daily_left"] == 0 and pf["allowed"] is False
+    assert any(b.startswith("GOVERNOR_DAILY_CAP_ALREADY_USED_IN_THIS_STORE") for b in pf["blockers"])
+    svc3, _ = make(tmp_path / "clean", Stub())
+    fresh(svc3)
+    clean = J.run_cycle(svc3, now=svc3.clock.now(), state_dir=tmp_path / "state2", mode="DRY_RUN", events_fn=events(["A"]), ceiling=50)["preflight"]
+    assert clean["governor_used_today"] == 0 and clean["daily_left"] == 50 and clean["allowed"] is True
