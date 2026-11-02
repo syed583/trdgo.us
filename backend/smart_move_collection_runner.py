@@ -19,6 +19,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "docs" / "smart_move" / "shadow_impl"))
 import smart_move_collection_jobs as J  # noqa: E402
+import smart_move_engine20 as E20  # noqa: E402
 import smart_move_event_records as ER  # noqa: E402
 import smart_move_event_registry as REG  # noqa: E402
 import smart_move_event_status as ES  # noqa: E402
@@ -92,6 +93,52 @@ def outcome_events(svc, now) -> list:
             and r["event_date"] < now.date().isoformat()]
 
 
+def engine20_profile(a, svc, now, live: bool) -> int:
+    """Collect the frozen engine's evidence for a selected set of stocks. Dry run: select, plan, print, write the plan; zero requests. Live (separately gated like every live run): the kill file is released only for the run
+    and always re-engaged; a calendar refresh happens only if the calendar is older than 5 h and is counted in the same ceiling."""
+    d = Path(a.state_dir)
+    d.mkdir(parents=True, exist_ok=True)
+    caps = {}
+    for o in svc.store.read("cal_obs"):
+        try:
+            caps[o["symbol"]] = float(o["marketcap"])
+        except (KeyError, TypeError, ValueError):
+            pass
+    rows = L.LiveScorer(svc).score_all(now)
+    selected = E20.select_top(rows, caps, now, n=a.select_top, event_date=a.select_date, session=a.select_session)
+    cal_needed = G.needs_refresh(svc.store, now)
+    cal_est = 4 if cal_needed else 0
+    plan = E20.plan_tasks(svc, selected, now, budget=a.ceiling - cal_est, with_f7=a.with_f7)
+    summary = {"mode": "LIVE" if live else "DRY_RUN", "profile": "engine20", "as_of": now.isoformat(), "selected": selected, "calendar_refresh_needed": cal_needed, "calendar_attempts_reserved": cal_est,
+               "attempts_planned_for_evidence": plan["attempts_planned"], "total_attempts_planned": plan["attempts_planned"] + cal_est, "ceiling": a.ceiling, "spare": plan["spare"],
+               "stocks_fully_funded": plan["stocks_fully_funded"], "stocks_already_fresh": plan["already_fresh_stocks"], "unfunded": [(t["kind"], t["symbol"]) for t in plan["unfunded"]],
+               "tasks": [(t["kind"], t["symbol"], t["why"]) for t in plan["funded"]], "provider_requests": 0}
+    (d / "engine20_plan.json").write_text(json.dumps(summary, indent=1, default=str), encoding="utf-8")
+    if not live:
+        print(json.dumps({k: v for k, v in summary.items() if k != "tasks"}, indent=1, default=str))
+        return 0
+    svc.store.kill_file.unlink()
+    svc.gov.authorized_daily, svc.gov.enabled = a.authorize_requests, True
+    try:
+        used = 0
+        if cal_needed:
+            g = G.ensure_fresh(svc, budget_left=a.ceiling, stopped=lambda: bool(svc.gov.stopped_until and svc.clock.now() < svc.gov.stopped_until), max_requests=cal_est, dates=J.useful_calendar_slots(svc.clock.now()))
+            used = g.get("requests", 0)
+            summary["calendar_refresh"] = g
+            if not g["ok"]:
+                (d / "engine20_plan.json").write_text(json.dumps(summary, indent=1, default=str), encoding="utf-8")
+                print("BLOCKED: calendar not fresh:", g.get("reason"))
+                return 6
+        plan = E20.plan_tasks(svc, selected, svc.clock.now(), budget=a.ceiling - used, with_f7=a.with_f7)
+        res = E20.run(svc, plan["funded"], now=svc.clock.now(), ceiling=a.ceiling - used, state_dir=d, stopped=lambda: bool(svc.gov.stopped_until and svc.clock.now() < svc.gov.stopped_until), max_consecutive_failures=3)
+        rep = E20.report(svc, selected, svc.clock.now())
+        (d / "engine20_report.json").write_text(json.dumps(rep, indent=1, default=str), encoding="utf-8")
+        print(json.dumps({"requests_attempted": res["requests_attempted"] + used, "ok": res["ok"], "failed": res["failed"], "halted": res["halted"], "counts": rep["counts"]}, indent=1))
+        return 0
+    finally:
+        svc.engage_kill_switch("engine20 run finished: re-engaged")
+
+
 def record_events(svc, now, state_dir) -> dict:
     """Offline planning step: turn the saved calendar observations (and any saved earnings payloads) into versioned event records in <state>/event_records.jsonl and refresh the symbol-level EventRegistry view
     in <state>/event_registry.jsonl. Reads saved files only, sends nothing, writes only inside the state folder."""
@@ -139,16 +186,20 @@ def main(argv=None) -> int:
     ap.add_argument("--as-of", default=None, help="dry-run only: evaluate the plan at this past instant")
     ap.add_argument("--preds-store", action="append", default=[])
     ap.add_argument("--tracking-dir", default=None)
-    ap.add_argument("--profile", choices=("standard", "pilot50", "batch2"), default="standard", help="pilot50: hard 50-attempt ceiling, no retries, no news paging, 3-day calendar, calendar capped at 14 requests")
+    ap.add_argument("--profile", choices=("standard", "pilot50", "batch2", "engine20"), default="standard", help="pilot50: hard 50-attempt ceiling, no retries, no news paging, 3-day calendar, calendar capped at 14 requests")
     ap.add_argument("--calendar-days", type=int, default=None)
     ap.add_argument("--calendar-requests", type=int, default=None)
+    ap.add_argument("--select-top", type=int, default=20, help="engine20 profile: how many stocks (vendor-confirmed, window open, ranked by market cap)")
+    ap.add_argument("--select-date", default=None, help="engine20 profile: only events on this date, e.g. 2026-11-04")
+    ap.add_argument("--select-session", default=None, choices=("BMO", "AMC"), help="engine20 profile: only this announcement session")
+    ap.add_argument("--with-f7", action="store_true", help="engine20 profile: also request volatility context and IV rank (2 more requests per stock)")
     ap.add_argument("--require-rotated-from", default=None, help="8-hex fingerprint of the OLD token; a live run is BLOCKED while the active token still has this fingerprint")
     ap.add_argument("--shared-key-attestation", default=None, help="owner acknowledgement file (see smart_move_shared_key_gate); without a valid one a live run stays BLOCKED")
     a = ap.parse_args(argv)
     news_pages, retries, stage_caps, scope, max_fail = None, 1, None, "horizon", None
-    if a.profile not in ("pilot50", "batch2"):
+    if a.profile not in ("pilot50", "batch2", "engine20"):
         a.ceiling = J.DEFAULT_CEILING if a.ceiling is None else a.ceiling
-    if a.profile in ("pilot50", "batch2"):
+    if a.profile in ("pilot50", "batch2", "engine20"):
         if a.authorize_requests > PILOT_MAX or (a.ceiling is not None and a.ceiling > PILOT_MAX):
             print("BLOCKED: the pilot profile never exceeds %d provider attempts" % PILOT_MAX)
             return 6
@@ -195,6 +246,8 @@ def main(argv=None) -> int:
     if live and not kill_was_engaged:
         print("BLOCKED: the kill-switch file must exist before a live run (it is released only while the run works)")
         return 6
+    if a.profile == "engine20":
+        return engine20_profile(a, svc, now, live)
     job = execute(svc, now=now, state_dir=a.state_dir, live=live, authorized=a.authorize_requests, ceiling=a.ceiling, batch=a.batch, news_pages=news_pages, calendar_requests=a.calendar_requests, stage_caps=stage_caps, calendar_scope=scope, max_consecutive_failures=max_fail, outcome_events_fn=(lambda n: outcome_events(svc, n)) if a.profile == "batch2" else None)
     ev_summary = record_events(svc, now, a.state_dir)
     preds = T.load_predictions(a.preds_store) if a.preds_store else []
