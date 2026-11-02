@@ -202,3 +202,13 @@ def test_localhost_can_be_compared_with_the_production_admin_page_by_last_four_c
     other = SC.inspect(f, env={}, backups=(), production_last4=OLD[-4:])
     assert same["matches_production_last4"] is True and other["matches_production_last4"] is False and SC.inspect(f, env={}, backups=())["matches_production_last4"] is None
     assert NEW not in json.dumps(same)
+
+
+def test_an_attestation_written_by_windows_powershell_with_a_bom_and_seven_digit_seconds_is_read(tmp_path, monkeypatch):
+    monkeypatch.delenv("APP_ENV", raising=False)
+    f = tmp_path / "att_ps.json"
+    stamp = OFF.strftime("%Y-%m-%dT%H:%M:%S") + ".1234567Z"                                              # PowerShell's ToString("o")
+    body = '{"attested_by": "owner", "attested_at": "%s", "acknowledges_shared_token_three_slot_limit": true, "acknowledges_production_and_other_app_use_not_visible": true, "designated_collector": "localhost", "production_provider_traffic_paused": false, "production_uw_max_inflight": 2, "market_hours_ok": true}' % stamp
+    f.write_bytes(bytes([0xEF, 0xBB, 0xBF]) + body.encode("utf-8"))
+    g = SK.evaluate(OFF, f, processes=nothing, tasks=nothing)
+    assert g["status"] == "OWNER_ATTESTED" and not g["blocks_live"]

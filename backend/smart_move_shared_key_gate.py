@@ -99,7 +99,7 @@ def read_attestation(path, now: datetime) -> dict:
     if not p.exists():
         return {"valid": False, "why": "attestation file not found"}
     try:
-        a = json.loads(p.read_text(encoding="utf-8"))
+        a = json.loads(p.read_text(encoding="utf-8-sig"))                    # Windows PowerShell writes a BOM with -Encoding UTF8
         at = datetime.fromisoformat(a["attested_at"])
         at = at if at.tzinfo else at.replace(tzinfo=UTC)
     except (ValueError, KeyError, OSError):
