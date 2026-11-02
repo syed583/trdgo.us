@@ -1,0 +1,732 @@
+{
+ "accuracy": {
+  "claim_allowed": false,
+  "claim_text": "NO ACCURACY CLAIM: sample too small or no verified comparable pairs",
+  "comparable_pairs": 1,
+  "exclusions": {
+   "OUTCOME_NOT_VERIFIED:QUARANTINED_CORPORATE_ACTION": 1,
+   "PREDICTION_NOT_ADMISSIBLE:CAPTURED_AFTER_CUTOFF": 1
+  },
+  "flat_band_pct": 0.5,
+  "outcomes_by_verification": {
+   "UNVERIFIED:NO_PRICE_EVIDENCE_SAVED": 3,
+   "UNVERIFIED:PENDING_REACTION_SESSION_NOT_CLOSED": 1,
+   "UNVERIFIED:QUARANTINED_CORPORATE_ACTION": 1,
+   "VERIFIED": 2
+  },
+  "predictions_admissible": 2,
+  "predictions_total": 3,
+  "variants": {
+   "continuation": {
+    "abstained_no_trade_n": 0,
+    "compared_events": 1,
+    "confusion": {
+     "BUY": {
+      "DOWN": 0,
+      "FLAT": 0,
+      "UP": 1
+     },
+     "NO_TRADE": {
+      "DOWN": 0,
+      "FLAT": 0,
+      "UP": 0
+     },
+     "SELL": {
+      "DOWN": 0,
+      "FLAT": 0,
+      "UP": 0
+     }
+    },
+    "decided_n": 1,
+    "direction_only_hit_rate": 1.0,
+    "direction_only_hits": 1,
+    "direction_only_n": 1,
+    "earnings_weeks": 1,
+    "minimum_decided_required": 100,
+    "minimum_sample_met": false,
+    "minimum_weeks_required": 8,
+    "strict_hit_ci95": [
+     0.207,
+     1.0
+    ],
+    "strict_hit_rate": 1.0,
+    "strict_hits": 1
+   }
+  }
+ },
+ "as_of": "2026-11-14T12:00:00+00:00",
+ "events": [
+  {
+   "analyst_pairing_eligible": true,
+   "capture_status": "CAPTURED_ADMISSIBLE",
+   "capture_window": {
+    "cutoff": "2026-11-11T21:00:00+00:00",
+    "opens": "2026-11-10T21:00:00+00:00"
+   },
+   "company": "ALPHA SYNTHETIC CORP",
+   "complete": false,
+   "cutoff_utc": "2026-11-11T21:00:00+00:00",
+   "ending_fiscal_quarter": "2026-09-30",
+   "eps_revision_pct": 10.0,
+   "event_date": "2026-11-12",
+   "event_id": "SYN1|2026-09-30",
+   "evidence": {
+    "calendar": "VERIFIED",
+    "news": "VERIFIED",
+    "outcome": "VERIFIED",
+    "prediction": "VERIFIED",
+    "price_bars": "VERIFIED",
+    "quarter": "VERIFIED",
+    "snapshot_pair": "VERIFIED"
+   },
+   "has_admissible_prediction": true,
+   "ineligible_reasons": [],
+   "missing": [
+    "FLOW_NOT_COLLECTED"
+   ],
+   "news_counts": {
+    "DUPLICATE": 0,
+    "INVALID": 0,
+    "IRRELEVANT": 1,
+    "STALE": 0,
+    "UNVERIFIED": 0,
+    "VALID": 1
+   },
+   "news_freshest_valid_age_hours": 30.0,
+   "news_review": null,
+   "news_state": "HAS_VALID_HEADLINES",
+   "news_valid": 1,
+   "news_warnings": [
+    "POSSIBLE_TICKER_COLLISION_OR_OFF_TOPIC"
+   ],
+   "observed_at": "2026-11-10T22:00:00+00:00",
+   "outcome_class": "UP",
+   "outcome_state": "OUTCOME_COMPUTABLE",
+   "outcome_timing_basis": "EVENT_RECORD",
+   "pairing_reasons": [],
+   "pairing_state": "PAIRED",
+   "prediction_eligible": true,
+   "prediction_validity": "PREDICTION_AT_OR_BEFORE_CUTOFF",
+   "quarter_known_before_cutoff": true,
+   "quarter_payload_sha256": "9b53f3aae473",
+   "quarter_reason": null,
+   "quarter_retrieved_at": "2026-11-10T20:00:00+00:00",
+   "quarter_state": "KNOWN",
+   "release_basis": "NOMINAL_AMC",
+   "release_time_verified": false,
+   "revenue_revision_pct": 4.0,
+   "session": "AMC",
+   "signal_use": "NONE: missing, unverified or ineligible evidence is never a positive or negative trading signal",
+   "snapshot_a": {
+    "eps": 1.0,
+    "period": "2026-09-30",
+    "raw_sha256": "106e2317c2d9681b2cf7b7ff47064d73666a808b7624af5adf08a065da18a9bc",
+    "retrieved_at": "2026-10-27T15:00:00+00:00",
+    "revenue": 100.0
+   },
+   "snapshot_b": {
+    "eps": 1.1,
+    "period": "2026-09-30",
+    "raw_sha256": "ec80de444f7b8f58584fab3e9bfad16b9bb229de7ad22ce3db4403a28714ab6f",
+    "retrieved_at": "2026-11-10T23:00:00+00:00",
+    "revenue": 104.0
+   },
+   "snapshot_gap_days": 14,
+   "status": "CURRENT",
+   "symbol": "SYN1",
+   "vendor_reasons": [
+    "VENDOR_AGREEMENT_NOT_COMPANY_CONFIRMATION"
+   ],
+   "vendor_status": "VENDOR_CONFIRMED",
+   "version": 1,
+   "warnings": [
+    "RELEASE_TIME_NOT_VERIFIED"
+   ]
+  },
+  {
+   "analyst_pairing_eligible": false,
+   "capture_status": "WINDOW_CLOSED_NO_ADMISSIBLE_PREDICTION",
+   "capture_window": {
+    "cutoff": "2026-11-11T21:00:00+00:00",
+    "opens": "2026-11-10T21:00:00+00:00"
+   },
+   "company": "BRAVO SYNTHETIC CORP",
+   "complete": false,
+   "cutoff_utc": "2026-11-11T21:00:00+00:00",
+   "ending_fiscal_quarter": "QUARTER_UNKNOWN",
+   "eps_revision_pct": null,
+   "event_date": "2026-11-12",
+   "event_id": "SYN2|UNKNOWN|2026-11-12",
+   "evidence": {
+    "calendar": "VERIFIED",
+    "news": "MISSING",
+    "outcome": "MISSING",
+    "prediction": "MISSING",
+    "price_bars": "MISSING",
+    "quarter": "MISSING",
+    "snapshot_pair": "INELIGIBLE"
+   },
+   "has_admissible_prediction": false,
+   "ineligible_reasons": [],
+   "missing": [
+    "QUARTER_UNKNOWN",
+    "SNAPSHOT_PAIR_MISSING",
+    "NEWS_NOT_COLLECTED",
+    "PRICE_BARS_NOT_SAVED",
+    "FLOW_NOT_COLLECTED"
+   ],
+   "news_counts": {},
+   "news_freshest_valid_age_hours": null,
+   "news_review": null,
+   "news_state": "NOT_COLLECTED",
+   "news_valid": 0,
+   "news_warnings": [
+    "MISSING_NEWS_NOT_COLLECTED"
+   ],
+   "observed_at": "2026-11-10T22:00:00+00:00",
+   "outcome_class": null,
+   "outcome_state": "NO_PRICE_EVIDENCE_SAVED",
+   "outcome_timing_basis": "EVENT_RECORD",
+   "pairing_reasons": [
+    "QUARTER_NOT_KNOWN:QUARTER_UNKNOWN"
+   ],
+   "pairing_state": "NOT_PAIRABLE",
+   "prediction_eligible": true,
+   "prediction_validity": "NO_PREDICTION",
+   "quarter_known_before_cutoff": null,
+   "quarter_payload_sha256": null,
+   "quarter_reason": "NO_EARNINGS_PAYLOAD",
+   "quarter_retrieved_at": null,
+   "quarter_state": "QUARTER_UNKNOWN",
+   "release_basis": "NOMINAL_AMC",
+   "release_time_verified": false,
+   "revenue_revision_pct": null,
+   "session": "AMC",
+   "signal_use": "NONE: missing, unverified or ineligible evidence is never a positive or negative trading signal",
+   "snapshot_a": null,
+   "snapshot_b": null,
+   "snapshot_gap_days": null,
+   "status": "CURRENT",
+   "symbol": "SYN2",
+   "vendor_reasons": [
+    "VENDOR_AGREEMENT_NOT_COMPANY_CONFIRMATION"
+   ],
+   "vendor_status": "VENDOR_CONFIRMED",
+   "version": 1,
+   "warnings": [
+    "RELEASE_TIME_NOT_VERIFIED"
+   ]
+  },
+  {
+   "analyst_pairing_eligible": false,
+   "capture_status": "NOT_ELIGIBLE",
+   "capture_window": {
+    "cutoff": "2026-11-11T21:00:00+00:00",
+    "opens": "2026-11-10T21:00:00+00:00"
+   },
+   "company": "CHARLIE SYNTHETIC CORP",
+   "complete": false,
+   "cutoff_utc": "2026-11-11T21:00:00+00:00",
+   "ending_fiscal_quarter": "2026-09-30",
+   "eps_revision_pct": null,
+   "event_date": "2026-11-12",
+   "event_id": "SYN3|2026-09-30",
+   "evidence": {
+    "calendar": "UNVERIFIED",
+    "news": "MISSING",
+    "outcome": "MISSING",
+    "prediction": "MISSING",
+    "price_bars": "MISSING",
+    "quarter": "VERIFIED",
+    "snapshot_pair": "INELIGIBLE"
+   },
+   "has_admissible_prediction": false,
+   "ineligible_reasons": [
+    "SOURCE_ESTIMATION"
+   ],
+   "missing": [
+    "CALENDAR_NOT_CONFIRMED",
+    "SNAPSHOT_PAIR_MISSING",
+    "NEWS_NOT_COLLECTED",
+    "PRICE_BARS_NOT_SAVED",
+    "FLOW_NOT_COLLECTED"
+   ],
+   "news_counts": {},
+   "news_freshest_valid_age_hours": null,
+   "news_review": null,
+   "news_state": "NOT_COLLECTED",
+   "news_valid": 0,
+   "news_warnings": [
+    "MISSING_NEWS_NOT_COLLECTED"
+   ],
+   "observed_at": "2026-11-10T22:00:00+00:00",
+   "outcome_class": null,
+   "outcome_state": "NO_PRICE_EVIDENCE_SAVED",
+   "outcome_timing_basis": "EVENT_RECORD",
+   "pairing_reasons": [
+    "EVENT_NOT_PREDICTION_ELIGIBLE"
+   ],
+   "pairing_state": "NOT_PAIRABLE",
+   "prediction_eligible": false,
+   "prediction_validity": "NO_PREDICTION",
+   "quarter_known_before_cutoff": true,
+   "quarter_payload_sha256": "327e07ddb222",
+   "quarter_reason": null,
+   "quarter_retrieved_at": "2026-11-10T20:00:00+00:00",
+   "quarter_state": "KNOWN",
+   "release_basis": "NOMINAL_AMC",
+   "release_time_verified": false,
+   "revenue_revision_pct": null,
+   "session": "AMC",
+   "signal_use": "NONE: missing, unverified or ineligible evidence is never a positive or negative trading signal",
+   "snapshot_a": null,
+   "snapshot_b": null,
+   "snapshot_gap_days": null,
+   "status": "CURRENT",
+   "symbol": "SYN3",
+   "vendor_reasons": [
+    "UW_FLAG_ESTIMATION"
+   ],
+   "vendor_status": "ESTIMATED",
+   "version": 1,
+   "warnings": [
+    "RELEASE_TIME_NOT_VERIFIED"
+   ]
+  },
+  {
+   "analyst_pairing_eligible": true,
+   "capture_status": "CAPTURED_ADMISSIBLE",
+   "capture_window": {
+    "cutoff": "2026-11-11T21:00:00+00:00",
+    "opens": "2026-11-10T21:00:00+00:00"
+   },
+   "company": "DELTA SYNTHETIC CORP",
+   "complete": false,
+   "cutoff_utc": "2026-11-11T21:00:00+00:00",
+   "ending_fiscal_quarter": "2026-09-30",
+   "eps_revision_pct": null,
+   "event_date": "2026-11-12",
+   "event_id": "SYN4|2026-09-30",
+   "evidence": {
+    "calendar": "VERIFIED",
+    "news": "MISSING",
+    "outcome": "UNVERIFIED",
+    "prediction": "VERIFIED",
+    "price_bars": "VERIFIED",
+    "quarter": "VERIFIED",
+    "snapshot_pair": "MISSING"
+   },
+   "has_admissible_prediction": true,
+   "ineligible_reasons": [],
+   "missing": [
+    "SNAPSHOT_PAIR_MISSING",
+    "NEWS_NOT_COLLECTED",
+    "FLOW_NOT_COLLECTED"
+   ],
+   "news_counts": {},
+   "news_freshest_valid_age_hours": null,
+   "news_review": null,
+   "news_state": "NOT_COLLECTED",
+   "news_valid": 0,
+   "news_warnings": [
+    "MISSING_NEWS_NOT_COLLECTED"
+   ],
+   "observed_at": "2026-11-10T22:00:00+00:00",
+   "outcome_class": null,
+   "outcome_state": "QUARANTINED_CORPORATE_ACTION",
+   "outcome_timing_basis": "EVENT_RECORD",
+   "pairing_reasons": [
+    "NO_SNAPSHOT_B_IN_WINDOW"
+   ],
+   "pairing_state": "UNPAIRED",
+   "prediction_eligible": true,
+   "prediction_validity": "PREDICTION_AT_OR_BEFORE_CUTOFF",
+   "quarter_known_before_cutoff": true,
+   "quarter_payload_sha256": "5953e035156f",
+   "quarter_reason": null,
+   "quarter_retrieved_at": "2026-11-10T20:00:00+00:00",
+   "quarter_state": "KNOWN",
+   "release_basis": "NOMINAL_AMC",
+   "release_time_verified": false,
+   "revenue_revision_pct": null,
+   "session": "AMC",
+   "signal_use": "NONE: missing, unverified or ineligible evidence is never a positive or negative trading signal",
+   "snapshot_a": null,
+   "snapshot_b": null,
+   "snapshot_gap_days": null,
+   "status": "CURRENT",
+   "symbol": "SYN4",
+   "vendor_reasons": [
+    "VENDOR_AGREEMENT_NOT_COMPANY_CONFIRMATION"
+   ],
+   "vendor_status": "VENDOR_CONFIRMED",
+   "version": 1,
+   "warnings": [
+    "RELEASE_TIME_NOT_VERIFIED"
+   ]
+  },
+  {
+   "analyst_pairing_eligible": true,
+   "capture_status": "WINDOW_CLOSED_NO_ADMISSIBLE_PREDICTION",
+   "capture_window": {
+    "cutoff": "2026-11-11T21:00:00+00:00",
+    "opens": "2026-11-10T21:00:00+00:00"
+   },
+   "company": "ECHO SYNTHETIC CORP",
+   "complete": false,
+   "cutoff_utc": "2026-11-11T21:00:00+00:00",
+   "ending_fiscal_quarter": "2026-09-30",
+   "eps_revision_pct": null,
+   "event_date": "2026-11-12",
+   "event_id": "SYN5|2026-09-30",
+   "evidence": {
+    "calendar": "VERIFIED",
+    "news": "MISSING",
+    "outcome": "MISSING",
+    "prediction": "MISSING",
+    "price_bars": "MISSING",
+    "quarter": "VERIFIED",
+    "snapshot_pair": "MISSING"
+   },
+   "has_admissible_prediction": false,
+   "ineligible_reasons": [],
+   "missing": [
+    "SNAPSHOT_PAIR_MISSING",
+    "NEWS_EMPTY_RESPONSE",
+    "PRICE_BARS_NOT_SAVED",
+    "FLOW_NOT_COLLECTED"
+   ],
+   "news_counts": {
+    "DUPLICATE": 0,
+    "INVALID": 0,
+    "IRRELEVANT": 0,
+    "STALE": 0,
+    "UNVERIFIED": 0,
+    "VALID": 0
+   },
+   "news_freshest_valid_age_hours": null,
+   "news_review": null,
+   "news_state": "EMPTY_PROVIDER_RESPONSE",
+   "news_valid": 0,
+   "news_warnings": [
+    "EMPTY_NEWS_RESPONSE"
+   ],
+   "observed_at": "2026-11-10T22:00:00+00:00",
+   "outcome_class": null,
+   "outcome_state": "NO_PRICE_EVIDENCE_SAVED",
+   "outcome_timing_basis": "EVENT_RECORD",
+   "pairing_reasons": [
+    "NO_SNAPSHOT_B_IN_WINDOW"
+   ],
+   "pairing_state": "UNPAIRED",
+   "prediction_eligible": true,
+   "prediction_validity": "NO_PREDICTION",
+   "quarter_known_before_cutoff": true,
+   "quarter_payload_sha256": "2e837e9c6d6a",
+   "quarter_reason": null,
+   "quarter_retrieved_at": "2026-11-10T20:00:00+00:00",
+   "quarter_state": "KNOWN",
+   "release_basis": "NOMINAL_AMC",
+   "release_time_verified": false,
+   "revenue_revision_pct": null,
+   "session": "AMC",
+   "signal_use": "NONE: missing, unverified or ineligible evidence is never a positive or negative trading signal",
+   "snapshot_a": null,
+   "snapshot_b": null,
+   "snapshot_gap_days": null,
+   "status": "CURRENT",
+   "symbol": "SYN5",
+   "vendor_reasons": [
+    "VENDOR_AGREEMENT_NOT_COMPANY_CONFIRMATION"
+   ],
+   "vendor_status": "VENDOR_CONFIRMED",
+   "version": 1,
+   "warnings": [
+    "RELEASE_TIME_NOT_VERIFIED"
+   ]
+  },
+  {
+   "analyst_pairing_eligible": true,
+   "capture_status": "WAITING_FOR_WINDOW",
+   "capture_window": {
+    "cutoff": "2026-11-18T21:00:00+00:00",
+    "opens": "2026-11-17T21:00:00+00:00"
+   },
+   "company": "FOXTROT SYNTHETIC CORP",
+   "complete": false,
+   "cutoff_utc": "2026-11-18T21:00:00+00:00",
+   "ending_fiscal_quarter": "2026-09-30",
+   "eps_revision_pct": null,
+   "event_date": "2026-11-19",
+   "event_id": "SYN6|2026-09-30",
+   "evidence": {
+    "calendar": "VERIFIED",
+    "news": "MISSING",
+    "outcome": "MISSING",
+    "prediction": "MISSING",
+    "price_bars": "MISSING",
+    "quarter": "VERIFIED",
+    "snapshot_pair": "MISSING"
+   },
+   "has_admissible_prediction": false,
+   "ineligible_reasons": [],
+   "missing": [
+    "SNAPSHOT_PAIR_MISSING",
+    "NEWS_NOT_COLLECTED",
+    "PRICE_BARS_NOT_SAVED",
+    "FLOW_NOT_COLLECTED"
+   ],
+   "news_counts": {},
+   "news_freshest_valid_age_hours": null,
+   "news_review": null,
+   "news_state": "NOT_COLLECTED",
+   "news_valid": 0,
+   "news_warnings": [
+    "MISSING_NEWS_NOT_COLLECTED"
+   ],
+   "observed_at": "2026-11-12T20:00:00+00:00",
+   "outcome_class": null,
+   "outcome_state": "PENDING_REACTION_SESSION_NOT_CLOSED",
+   "outcome_timing_basis": "EVENT_RECORD",
+   "pairing_reasons": [
+    "NO_SNAPSHOT_B_IN_WINDOW"
+   ],
+   "pairing_state": "UNPAIRED",
+   "prediction_eligible": true,
+   "prediction_validity": "NO_PREDICTION",
+   "quarter_known_before_cutoff": true,
+   "quarter_payload_sha256": "694ac9eeb118",
+   "quarter_reason": null,
+   "quarter_retrieved_at": "2026-11-12T18:00:00+00:00",
+   "quarter_state": "KNOWN",
+   "release_basis": "NOMINAL_AMC",
+   "release_time_verified": false,
+   "revenue_revision_pct": null,
+   "session": "AMC",
+   "signal_use": "NONE: missing, unverified or ineligible evidence is never a positive or negative trading signal",
+   "snapshot_a": null,
+   "snapshot_b": null,
+   "snapshot_gap_days": null,
+   "status": "CURRENT",
+   "symbol": "SYN6",
+   "vendor_reasons": [
+    "VENDOR_AGREEMENT_NOT_COMPANY_CONFIRMATION"
+   ],
+   "vendor_status": "VENDOR_CONFIRMED",
+   "version": 1,
+   "warnings": [
+    "RELEASE_TIME_NOT_VERIFIED"
+   ]
+  },
+  {
+   "analyst_pairing_eligible": true,
+   "capture_status": "PREDICTION_NOT_ADMISSIBLE",
+   "capture_window": {
+    "cutoff": "2026-11-11T21:00:00+00:00",
+    "opens": "2026-11-10T21:00:00+00:00"
+   },
+   "company": "GOLF SYNTHETIC CORP",
+   "complete": false,
+   "cutoff_utc": "2026-11-11T21:00:00+00:00",
+   "ending_fiscal_quarter": "2026-09-30",
+   "eps_revision_pct": null,
+   "event_date": "2026-11-12",
+   "event_id": "SYN7|2026-09-30",
+   "evidence": {
+    "calendar": "VERIFIED",
+    "news": "MISSING",
+    "outcome": "VERIFIED",
+    "prediction": "INELIGIBLE",
+    "price_bars": "VERIFIED",
+    "quarter": "VERIFIED",
+    "snapshot_pair": "MISSING"
+   },
+   "has_admissible_prediction": false,
+   "ineligible_reasons": [],
+   "missing": [
+    "SNAPSHOT_PAIR_MISSING",
+    "NEWS_NOT_COLLECTED",
+    "FLOW_NOT_COLLECTED"
+   ],
+   "news_counts": {},
+   "news_freshest_valid_age_hours": null,
+   "news_review": null,
+   "news_state": "NOT_COLLECTED",
+   "news_valid": 0,
+   "news_warnings": [
+    "MISSING_NEWS_NOT_COLLECTED"
+   ],
+   "observed_at": "2026-11-10T22:00:00+00:00",
+   "outcome_class": "DOWN",
+   "outcome_state": "OUTCOME_COMPUTABLE",
+   "outcome_timing_basis": "EVENT_RECORD",
+   "pairing_reasons": [
+    "NO_SNAPSHOT_B_IN_WINDOW"
+   ],
+   "pairing_state": "UNPAIRED",
+   "prediction_eligible": true,
+   "prediction_validity": "PREDICTION_CAPTURED_AFTER_CUTOFF",
+   "quarter_known_before_cutoff": true,
+   "quarter_payload_sha256": "689cd13d05c7",
+   "quarter_reason": null,
+   "quarter_retrieved_at": "2026-11-10T20:00:00+00:00",
+   "quarter_state": "KNOWN",
+   "release_basis": "NOMINAL_AMC",
+   "release_time_verified": false,
+   "revenue_revision_pct": null,
+   "session": "AMC",
+   "signal_use": "NONE: missing, unverified or ineligible evidence is never a positive or negative trading signal",
+   "snapshot_a": null,
+   "snapshot_b": null,
+   "snapshot_gap_days": null,
+   "status": "CURRENT",
+   "symbol": "SYN7",
+   "vendor_reasons": [
+    "VENDOR_AGREEMENT_NOT_COMPANY_CONFIRMATION"
+   ],
+   "vendor_status": "VENDOR_CONFIRMED",
+   "version": 1,
+   "warnings": [
+    "RELEASE_TIME_NOT_VERIFIED"
+   ]
+  }
+ ],
+ "generated_at": "2026-11-02T17:55:57.149119+00:00",
+ "label": "SYNTHETIC EXAMPLE DATA - not market data",
+ "notes": [
+  "All symbols, prices and headlines are invented for layout and state testing.",
+  "Nothing on this bundle is market data."
+ ],
+ "schema": "smart_move.quality_report.v1",
+ "source": "SYNTHETIC_FIXTURE",
+ "summary": {
+  "by_capture_status": {
+   "CAPTURED_ADMISSIBLE": 2,
+   "NOT_ELIGIBLE": 1,
+   "PREDICTION_NOT_ADMISSIBLE": 1,
+   "WAITING_FOR_WINDOW": 1,
+   "WINDOW_CLOSED_NO_ADMISSIBLE_PREDICTION": 2
+  },
+  "by_pairing_state": {
+   "NOT_PAIRABLE": 2,
+   "PAIRED": 1,
+   "UNPAIRED": 4
+  },
+  "by_quarter_state": {
+   "KNOWN": 6,
+   "QUARTER_UNKNOWN": 1
+  },
+  "by_vendor_status": {
+   "ESTIMATED": 1,
+   "VENDOR_CONFIRMED": 6
+  },
+  "complete": 0,
+  "events": 7,
+  "evidence_classes": {
+   "calendar": {
+    "UNVERIFIED": 1,
+    "VERIFIED": 6
+   },
+   "news": {
+    "MISSING": 6,
+    "VERIFIED": 1
+   },
+   "outcome": {
+    "MISSING": 4,
+    "UNVERIFIED": 1,
+    "VERIFIED": 2
+   },
+   "prediction": {
+    "INELIGIBLE": 1,
+    "MISSING": 4,
+    "VERIFIED": 2
+   },
+   "price_bars": {
+    "MISSING": 4,
+    "VERIFIED": 3
+   },
+   "quarter": {
+    "MISSING": 1,
+    "VERIFIED": 6
+   },
+   "snapshot_pair": {
+    "INELIGIBLE": 2,
+    "MISSING": 4,
+    "VERIFIED": 1
+   }
+  },
+  "missing_by_code": {
+   "CALENDAR_NOT_CONFIRMED": 1,
+   "FLOW_NOT_COLLECTED": 7,
+   "NEWS_EMPTY_RESPONSE": 1,
+   "NEWS_NOT_COLLECTED": 5,
+   "PRICE_BARS_NOT_SAVED": 4,
+   "QUARTER_UNKNOWN": 1,
+   "SNAPSHOT_PAIR_MISSING": 6
+  },
+  "news": {
+   "by_class": {
+    "IRRELEVANT": 1,
+    "VALID": 1
+   },
+   "by_news_state": {
+    "EMPTY_PROVIDER_RESPONSE": 1,
+    "HAS_VALID_HEADLINES": 1,
+    "NOT_COLLECTED": 5
+   },
+   "by_reason": {
+    "ENTITY_MISMATCH_TICKER_COLLISION_OR_OTHER_COMPANY": 1,
+    "PRE_CUTOFF_FRESH_TRUSTED_SOURCE_NAMES_THE_COMPANY": 1
+   },
+   "events": 7,
+   "events_with_valid_headline": 1,
+   "headlines": 2,
+   "news_records": 2,
+   "news_records_for_symbols_with_no_event": [],
+   "note": "Research audit only. Sentiment scores and NEWS_GUIDANCE are not touched; provider sentiment is never used.",
+   "period_relevance": {
+    "NO_PERIOD_MENTION": 2
+   },
+   "provider_sentiment": {
+    "neutral": 2
+   }
+  },
+  "outcomes": {
+   "by_state": {
+    "NO_PRICE_EVIDENCE_SAVED": 3,
+    "OUTCOME_COMPUTABLE": 2,
+    "PENDING_REACTION_SESSION_NOT_CLOSED": 1,
+    "QUARANTINED_CORPORATE_ACTION": 1
+   },
+   "events": 7,
+   "note": "Nothing is invented: an outcome exists only where saved regular-session bars cover both sessions and were retrieved after the reaction close. No prediction accuracy is measured here.",
+   "outcome_computable": 2,
+   "outcome_computable_by_class": {
+    "DOWN": 1,
+    "UP": 1
+   },
+   "outcome_computable_timing_basis": {
+    "EVENT_RECORD": 2
+   },
+   "prediction_validity_among_computable": {
+    "PREDICTION_AT_OR_BEFORE_CUTOFF": 1,
+    "PREDICTION_CAPTURED_AFTER_CUTOFF": 1
+   },
+   "session_rule_disagreements_with_oracle": 0,
+   "usable_for_accuracy_measurement": 1
+  },
+  "pairing_ready": 5,
+  "prediction_ready": 6,
+  "predictions": {
+   "admissible": 2,
+   "reasons": {
+    "CAPTURED_AFTER_CUTOFF": 1
+   },
+   "total": 3
+  },
+  "warnings_by_code": {
+   "RELEASE_TIME_NOT_VERIFIED": 7
+  }
+ },
+ "synthetic": true
+}

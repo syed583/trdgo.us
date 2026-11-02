@@ -1054,6 +1054,12 @@ export const smartMoveQuality = {
   events: (query: string, s?: AbortSignal) => request<any>(`/api/smart-move/quality/events?${query}`, s),
 };
 
+/** Smart Move news review: saved headlines, human labels (append-only) and the validation gate. The only write is appending a reviewer label; no provider request. */
+export const smartMoveNewsReview = {
+  queue: (query: string, s?: AbortSignal) => request<any>(`/api/smart-move/news-review/queue?${query}`, s),
+  label: (body: { item_id: string; label: string; reviewer: string; note?: string }) => smPost('/api/smart-move/news-review/label', body),
+};
+
 /** Smart Move earnings board: eligible upcoming events with an honest status (read only; saved data; no provider request). */
 export const smartMoveBoard = {
   board: (query: string, s?: AbortSignal) => request<any>(`/api/smart-move/board?${query}`, s),

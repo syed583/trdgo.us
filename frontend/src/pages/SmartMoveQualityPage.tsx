@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { AlertTriangle, FlaskConical, Info, RefreshCw, ShieldCheck, X } from 'lucide-react';
 import type { PageContext } from '../App';
 import { smartMoveQuality } from '../api/client';
@@ -19,6 +20,26 @@ const nice = (s?: string | null) => (s ? s.replace(/_/g, ' ').toLowerCase() : '�
 
 function Badge({ text, tone }: { text: string; tone?: 'green' | 'red' | 'amber' | 'gray' | 'blue' }) {
   return <span className={`sm-q-badge ${tone || 'gray'}`}>{text}</span>;
+}
+
+const EVIDENCE_KEYS: [string, string][] = [['calendar', 'Cal'], ['quarter', 'Qtr'], ['snapshot_pair', 'A/B'], ['news', 'News'], ['price_bars', 'Px'], ['prediction', 'Pred'], ['outcome', 'Out']];
+const CLASS_TONE: Record<string, 'green' | 'amber' | 'gray' | 'red'> = { VERIFIED: 'green', UNVERIFIED: 'amber', MISSING: 'gray', INELIGIBLE: 'red' };
+
+/** Four-state evidence matrix for one event: verified / unverified / missing / ineligible. Missing is shown as missing, never as a positive or negative. */
+function EvidenceMatrix({ ev }: { ev: Record<string, string> | undefined }) {
+  if (!ev) return <span className="sm-q-muted">—</span>;
+  return (
+    <span className="sm-q-matrix" aria-label="Evidence status">
+      {EVIDENCE_KEYS.map(([k, label]) => <span key={k} className={`sm-q-cell ${CLASS_TONE[ev[k]] || 'gray'}`} title={`${nice(k)}: ${ev[k].toLowerCase()}`}>{label}</span>)}
+    </span>
+  );
+}
+
+function ageText(iso?: string | null): string {
+  if (!iso) return 'unknown age';
+  const h = (Date.now() - new Date(iso).getTime()) / 3600_000;
+  if (!Number.isFinite(h)) return 'unknown age';
+  return h < 1 ? 'under an hour old' : h < 48 ? `${Math.round(h)} h old` : `${Math.round(h / 24)} days old`;
 }
 
 function vendorTone(s: string): 'green' | 'amber' | 'red' | 'gray' {
@@ -75,6 +96,13 @@ export default function SmartMoveQualityPage({ ctx }: { ctx: PageContext }) {
             </div>
           </div>
 
+          {!synthetic && s.generated_at && (Date.now() - new Date(s.generated_at).getTime()) > 24 * 3600_000 && (
+            <div className="sm-fresh stale" role="alert"><AlertTriangle size={14} /> This report was built {ageText(s.generated_at)}; evidence saved since then is not included. Rebuild it offline before relying on it.</div>
+          )}
+          <div className="sm-q-legend" role="note">
+            <b>Evidence states:</b> <Badge text="verified" tone="green" /> present and passes its point-in-time test · <Badge text="unverified" tone="amber" /> present but not provable · <Badge text="missing" tone="gray" /> not collected or not yet available ·{' '}
+            <Badge text="ineligible" tone="red" /> collected but unusable. <b>Missing or unverified evidence is never a positive or negative signal.</b>
+          </div>
           <div className="sm-summary">
             <div className="sm-card"><div className="sm-card-k">Events</div><div className="sm-card-v">{s.summary.events}</div></div>
             <div className="sm-card"><div className="sm-card-k">Prediction-eligible</div><div className="sm-card-v">{s.summary.prediction_ready}</div></div>
@@ -117,7 +145,7 @@ export default function SmartMoveQualityPage({ ctx }: { ctx: PageContext }) {
               {evs.data && !rows.length && <div className="sm-none">No events match these filters.</div>}
               {rows.length > 0 && (
                 <div className="sm-table-wrap"><table className="sm-table sm-q-table">
-                  <thead><tr><th>Symbol</th><th>Earnings</th><th>Calendar</th><th>Eligible</th><th>Fiscal quarter</th><th>Pairing</th><th>News</th><th>Outcome</th><th>Missing evidence</th></tr></thead>
+                  <thead><tr><th>Symbol</th><th>Earnings</th><th>Calendar</th><th>Eligible</th><th>Fiscal quarter</th><th>Pairing</th><th>News</th><th>Outcome</th><th>Evidence</th></tr></thead>
                   <tbody>{rows.map((e) => (
                     <tr key={e.event_id + e.version} onClick={() => setOpen(e)} className="sm-q-row" tabIndex={0} onKeyDown={(k) => { if (k.key === 'Enter') setOpen(e); }}>
                       <td><b>{e.symbol}</b><div className="sm-q-muted">{e.company || '—'}</div></td>
@@ -129,7 +157,7 @@ export default function SmartMoveQualityPage({ ctx }: { ctx: PageContext }) {
                       <td><Badge text={nice(e.pairing_state)} tone={e.pairing_state === 'PAIRED' ? 'green' : e.pairing_state === 'UNPAIRED' ? 'amber' : 'gray'} /></td>
                       <td><Badge text={nice(e.news_state)} tone={e.news_state === 'HAS_VALID_HEADLINES' ? 'green' : 'amber'} /></td>
                       <td>{e.outcome_state === 'OUTCOME_COMPUTABLE' ? <><Badge text={`${e.outcome_class} · ${e.outcome_timing_basis === 'EVENT_RECORD' ? 'verified' : 'unverified'}`} tone={e.outcome_timing_basis === 'EVENT_RECORD' ? 'green' : 'amber'} /></> : <Badge text={nice(e.outcome_state)} tone="gray" />}</td>
-                      <td>{e.missing.length ? e.missing.map((c: string) => <Badge key={c} text={nice(c)} tone="amber" />) : <Badge text="complete" tone="green" />}</td>
+                      <td><EvidenceMatrix ev={e.evidence} /></td>
                     </tr>
                   ))}</tbody>
                 </table></div>
@@ -140,8 +168,22 @@ export default function SmartMoveQualityPage({ ctx }: { ctx: PageContext }) {
             </>
           )}
 
-          {tab === 'news' && (
-            <>
+          {tab === 'news' && <NewsPanel s={s} />}
+
+          {tab === 'outcomes' && <OutcomesPanel s={s} />}
+        </>
+      )}
+
+      {open && <EventDetail open={open} synthetic={synthetic} onClose={() => setOpen(null)} />}
+    </div>
+  );
+}
+
+
+/** The news tab: automated headline classes, per-event news states and the (disabled) guidance notice. */
+export function NewsPanel({ s }: { s: any }) {
+  return (
+<>
               <h3 className="sm-h">Headline classes (all saved news)</h3>
               <div className="sm-summary">
                 {['VALID', 'STALE', 'DUPLICATE', 'IRRELEVANT', 'UNVERIFIED', 'INVALID'].map((k) => (
@@ -152,13 +194,17 @@ export default function SmartMoveQualityPage({ ctx }: { ctx: PageContext }) {
               <div className="sm-q-chips">
                 {Object.entries<number>(s.summary.news.by_news_state || {}).map(([k, n]) => <Badge key={k} text={`${nice(k)}: ${n}`} tone={k === 'HAS_VALID_HEADLINES' ? 'green' : 'amber'} />)}
               </div>
+              <div className="sm-fresh"><Link to="/smart-move/news-review">Open the headline review screen</Link> to label saved headlines. Automated classes and human labels are shown separately.</div>
               <div className="sm-fresh"><ShieldCheck size={14} /> News guidance scoring stays <b>disabled</b>: no independently labelled sample exists. The provider's own sentiment label is not used.</div>
               {!Object.keys(s.summary.news.by_news_state || {}).length && <div className="sm-none">No news was audited.</div>}
             </>
-          )}
+  );
+}
 
-          {tab === 'outcomes' && (
-            <>
+/** The outcomes tab: verified vs unverified outcomes, the accuracy table with sample sizes, and why predictions did not count. Every number comes from the report; nothing is computed or defaulted here. */
+export function OutcomesPanel({ s }: { s: any }) {
+  return (
+<>
               <div className="sm-fresh"><Info size={14} /> {s.accuracy.claim_text} Flat band ±{s.accuracy.flat_band_pct}% (inclusive).</div>
               <h3 className="sm-h">Outcomes: verified and unverified are kept apart</h3>
               <div className="sm-q-chips">
@@ -182,13 +228,14 @@ export default function SmartMoveQualityPage({ ctx }: { ctx: PageContext }) {
                 <ul className="sm-q-list">{Object.entries<number>(s.accuracy.exclusions).map(([k, n]) => <li key={k}><b>{n}</b> {nice(k)}</li>)}</ul>
               ) : <div className="sm-none">Nothing excluded.</div>}
             </>
-          )}
-        </>
-      )}
+  );
+}
 
-      {open && (
-        <aside className="sm-q-drawer" role="dialog" aria-label={`${open.symbol} evidence detail`}>
-          <button className="ghost-btn sm-q-close" onClick={() => setOpen(null)} aria-label="Close"><X size={14} /></button>
+/** The event detail drawer. */
+export function EventDetail({ open, synthetic, onClose }: { open: any; synthetic: boolean; onClose: () => void }) {
+  return (
+<aside className="sm-q-drawer" role="dialog" aria-label={`${open.symbol} evidence detail`}>
+          <button className="ghost-btn sm-q-close" onClick={onClose} aria-label="Close"><X size={14} /></button>
           <h3>{open.symbol} <small>{open.company}</small></h3>
           <div className="sm-q-muted">{synthetic ? 'SYNTHETIC EXAMPLE, not market data' : 'Saved evidence, not a prediction'} · event {open.event_id} · version {open.version}</div>
           <dl className="sm-q-dl">
@@ -196,14 +243,24 @@ export default function SmartMoveQualityPage({ ctx }: { ctx: PageContext }) {
             <dt>Calendar</dt><dd>{nice(open.vendor_status)} · observed {fmtTime(open.observed_at)}<br />{(open.vendor_reasons || []).map(nice).join(', ') || '—'}</dd>
             <dt>Eligibility</dt><dd>{open.prediction_eligible ? 'prediction-eligible' : `not eligible: ${(open.ineligible_reasons || []).map(nice).join(', ')}`}<br />pairing {open.analyst_pairing_eligible ? 'eligible' : 'not eligible'}</dd>
             <dt>Fiscal quarter</dt><dd>{open.quarter_state === 'KNOWN' ? `period ending ${open.ending_fiscal_quarter}, from provider field ending_fiscal_quarter, payload ${open.quarter_payload_sha256}, saved ${fmtTime(open.quarter_retrieved_at)}, ${open.quarter_known_before_cutoff ? 'known before the cutoff' : 'learned AFTER the cutoff'}` : `${nice(open.quarter_state)} (${nice(open.quarter_reason)})`}</dd>
-            <dt>Snapshot A/B</dt><dd>{nice(open.pairing_state)}{open.pairing_reasons?.length ? `: ${open.pairing_reasons.map(nice).join(', ')}` : ''}</dd>
-            <dt>News</dt><dd>{nice(open.news_state)} · {open.news_valid} valid headline(s){open.news_warnings?.length ? ` · warnings: ${open.news_warnings.map(nice).join(', ')}` : ''}</dd>
+            <dt>Capture status</dt><dd>{nice(open.capture_status)}{open.capture_window?.opens ? ` · window ${fmtTime(open.capture_window.opens)} to ${fmtTime(open.capture_window.cutoff)}` : ''}</dd>
+            <dt>Snapshot A/B</dt><dd>{nice(open.pairing_state)}{open.pairing_reasons?.length ? `: ${open.pairing_reasons.map(nice).join(', ')}` : ''}
+              {open.snapshot_a && open.snapshot_b ? (
+                <div className="sm-q-revision" data-testid="revision-evidence">
+                  A {fmtTime(open.snapshot_a.retrieved_at)}: EPS {open.snapshot_a.eps ?? '—'} · revenue {open.snapshot_a.revenue ?? '—'}<br />
+                  B {fmtTime(open.snapshot_b.retrieved_at)}: EPS {open.snapshot_b.eps ?? '—'} · revenue {open.snapshot_b.revenue ?? '—'}<br />
+                  {open.snapshot_gap_days} days apart · EPS revision {open.eps_revision_pct ?? '—'}% · revenue revision {open.revenue_revision_pct ?? '—'}% (provider values as saved)
+                </div>
+              ) : <div className="sm-q-muted" data-testid="revision-unavailable">No A/B revision evidence: Snapshot A and B are not both available for this event's quarter.</div>}</dd>
+            <dt>News</dt><dd>{nice(open.news_state)} · {open.news_valid} valid headline(s){open.news_freshest_valid_age_hours != null ? ` · freshest valid ${open.news_freshest_valid_age_hours} h before the cutoff` : ''}
+              {open.news_warnings?.length ? ` · warnings: ${open.news_warnings.map(nice).join(', ')}` : ''}
+              {Object.keys(open.news_counts || {}).length > 0 && <div className="sm-q-muted">{Object.entries<number>(open.news_counts).map(([k, n]) => `${k.toLowerCase()} ${n}`).join(' · ')}</div>}</dd>
+            <dt>Human review</dt><dd>{open.news_review ? `${open.news_review.labelled} labelled · ${open.news_review.disputed} disputed · ${open.news_review.unlabelled} not yet reviewed of ${open.news_review.reviewable}` : 'no reviewable headlines for this event'}</dd>
             <dt>Prediction</dt><dd>{open.has_admissible_prediction ? 'an admissible prediction exists (captured inside the window, before the cutoff)' : nice(open.prediction_validity)}</dd>
             <dt>Outcome</dt><dd>{open.outcome_state === 'OUTCOME_COMPUTABLE' ? `${open.outcome_class}, timing from ${open.outcome_timing_basis === 'EVENT_RECORD' ? 'the event record (verified)' : 'a vendor label only (UNVERIFIED)'}` : nice(open.outcome_state)}</dd>
+            <dt>Evidence</dt><dd><EvidenceMatrix ev={open.evidence} /><div className="sm-q-muted">{open.signal_use}</div></dd>
             <dt>Missing</dt><dd>{open.missing.length ? open.missing.map(nice).join(', ') : 'nothing'}{open.warnings.length ? ` · warnings: ${open.warnings.map(nice).join(', ')}` : ''}</dd>
           </dl>
         </aside>
-      )}
-    </div>
   );
 }
