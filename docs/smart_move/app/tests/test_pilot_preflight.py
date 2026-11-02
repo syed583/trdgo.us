@@ -247,3 +247,53 @@ def test_pilot_profile_defaults_to_a_fifty_ceiling_and_rejects_a_larger_explicit
     st = J._read_state(tmp_path / "ok")
     assert list(st["jobs"].values())[0]["preflight"]["ceiling"] == 50
     assert RUNNER.main(["--store-dir", str(store), "--state-dir", str(tmp_path / "no"), "--profile", "pilot50", "--ceiling", "51"]) == 6
+
+
+# ------------------------------------------------------------------ pilot calendar scope: only dates whose window can be open now
+def test_useful_calendar_dates_are_exactly_the_event_dates_with_an_open_window():
+    after_close = datetime(2026, 11, 2, 22, 0, tzinfo=UTC)          # Mon 17:00 ET, after the close
+    assert [str(d) for d in J.useful_calendar_dates(after_close)] == ["2026-11-04"]                  # 3 Nov windows closed (cutoffs 2 Nov), 5 Nov windows open only from 3 Nov 06:00 ET
+    morning = datetime(2026, 11, 2, 14, 0, tzinfo=UTC)               # Mon 09:00 ET
+    assert [str(d) for d in J.useful_calendar_dates(morning)] == ["2026-11-03", "2026-11-04"]        # 3 Nov AMC and 4 Nov BMO/AMC windows are open
+    friday_night = datetime(2026, 11, 6, 23, 0, tzinfo=UTC)          # Fri 18:00 ET: Monday's windows open only on Saturday
+    assert J.useful_calendar_dates(friday_night) == []
+    saturday_night = datetime(2026, 11, 7, 23, 0, tzinfo=UTC)
+    assert [str(d) for d in J.useful_calendar_dates(saturday_night)] == ["2026-11-09"]               # Saturday: Monday's BMO and AMC windows are open
+
+
+def test_the_pilot_calendar_refresh_requests_only_the_useful_dates_and_keeps_the_vendor_calls(tmp_path):
+    after_close = datetime(2026, 11, 2, 22, 0, tzinfo=UTC)
+    prov = provider_for([("PAA", "2026-11-04", "AMC"), ("PAB", "2026-11-04", "BMO"), ("OLD", "2026-11-03", "AMC")])
+    svc, _ = service(tmp_path, prov, start=after_close)
+    svc.refresh_calendar([14], dates=J.useful_calendar_dates(after_close))
+    uw_dates = {c[2]["date"] for c in prov.calls if c[0] == "uw_calendar"}
+    assert uw_dates == {"2026-11-04"} and prov.count("uw_calendar") == 2 and prov.count("finviz_calendar") == 1 and prov.count("finnhub_calendar") == 1
+    fh = [c for c in prov.calls if c[0] == "finnhub_calendar"][0][2]
+    assert fh == {"from": "2026-11-04", "to": "2026-11-04"}
+
+
+def test_a_busy_target_day_fits_the_fourteen_request_calendar_cap_with_the_pilot_scope(tmp_path):
+    after_close = datetime(2026, 11, 2, 22, 0, tzinfo=UTC)
+    rows = [uw("B%03d" % i, "2026-11-04", "premarket", flag="estimation") for i in range(256)] + [uw("A%03d" % i, "2026-11-04", "postmarket", flag="estimation") for i in range(400)]
+    prov = Provider(rows)
+    svc, _ = service(tmp_path, prov, start=after_close)
+    done = svc.refresh_calendar([14], dates=J.useful_calendar_dates(after_close))
+    assert done <= 14 and prov.count("uw_calendar") == 3 + 5 and svc.store.state()["calendar_truncated"] == []      # 256 rows = 3 pages, 400 rows = 5 pages (the last one empty)
+    busy_earlier = [uw("C%03d" % i, "2026-11-02", "postmarket", flag="estimation") for i in range(206)] + [uw("D%03d" % i, "2026-11-03", "premarket", flag="estimation") for i in range(200)]         + [uw("F%03d" % i, "2026-11-03", "postmarket", flag="estimation") for i in range(274)]
+    old_style = Provider(rows + busy_earlier)                                                                  # the real calendar is busy on the days before the target day
+    svc2, _ = service(tmp_path / "old", old_style, start=after_close)
+    svc2.refresh_calendar([14], 3)                                                                              # the unscoped 3-day refresh starts at today and runs out before reaching 4 Nov after-close
+    assert not any(c[2]["date"] == "2026-11-04" and c[2]["side"] == "afterhours" for c in old_style.calls if c[0] == "uw_calendar")
+
+
+def test_pilot_run_with_scope_collects_the_open_window_events_within_fifty(tmp_path):
+    after_close = datetime(2026, 11, 2, 22, 0, tzinfo=UTC)
+    ev = [(sym("E", i), "2026-11-04", "BMO" if i % 2 else "AMC") for i in range(60)]
+    prov = provider_for(ev)
+    svc, _ = service(tmp_path, prov, start=after_close)
+    job = J.run_cycle(svc, now=after_close, state_dir=tmp_path / "st", mode="LIVE", armed=True, ceiling=50, batch_size=5, news_pages=1, calendar_requests=14, stage_caps={"snapshot_a": 0, "snapshot_b": 18}, calendar_scope="useful")
+    cal = prov.count("uw_calendar") + prov.count("finviz_calendar") + prov.count("finnhub_calendar")
+    assert {c[2]["date"] for c in prov.calls if c[0] == "uw_calendar"} == {"2026-11-04"}
+    assert cal <= 14 and prov.count("uw_estimates") == 18 and len(prov.calls) == 50 and prov.count("uw_news") == 50 - cal - 18
+    est = [c[1] for c in prov.calls if c[0] == "uw_estimates"]
+    assert all(s.startswith("E") for s in est) and job["preflight"]["calendar_dates"] == ["2026-11-04"]

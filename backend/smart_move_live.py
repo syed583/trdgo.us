@@ -364,10 +364,11 @@ class RefreshService:
         n = self.cfg.calendar_days_ahead if ahead is None else ahead
         return [(today + timedelta(days=k)) for k in range(0, n + 1) if mc.is_trading_day(today + timedelta(days=k))]
 
-    def refresh_calendar(self, budget: list, days_ahead=None) -> int:
+    def refresh_calendar(self, budget: list, days_ahead=None, dates=None) -> int:
         """UW premarket/afterhours for the next trading days (page 0, page 1 only when page 0 is full), one Finviz export for the largest names, one Finnhub window. budget[0] = requests left."""
         now = self.clock.now()
-        days = self._trading_days(now, days_ahead)
+        mc_ = co._mc()
+        days = sorted(d for d in dates if mc_.is_trading_day(d)) if dates else self._trading_days(now, days_ahead)       # `dates`: only these event dates (a pilot skips days whose windows cannot be open)
         uw_rows, done, truncated = [], 0, []
         reserve = 2 if budget[0] > 2 else 0                              # the Finviz and Finnhub confirmations are kept: without a second vendor no event can become eligible
         stamp = now.strftime("%Y%m%dT%H%M%S")
