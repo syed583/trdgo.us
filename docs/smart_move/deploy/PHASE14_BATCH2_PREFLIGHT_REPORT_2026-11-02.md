@@ -29,6 +29,14 @@
 115 events have an open window (Nov 4 before the open). Calendar 4 (refreshes `2026-11-04 premarket` and `afterhours`), earnings payloads 12, Snapshot B 14, news 17 (page 0), daily bars 0, Snapshot A 0. **About 47 attempts of 50**, spacing 2 s, one in flight, about 2 to 3 minutes. Known cost: none beyond the flat subscription.
 Cannot come out of this batch: any Snapshot A/B pair, any verified outcome, any accuracy figure.
 
+## 3b. Owner-reported VPS checks (recorded 2026-11-02 19:15 UTC; OWNER-REPORTED, not verified by Claude)
+* Scheduled-task search `Prod-Signals*` on the production Windows VPS: no matches.
+* Process search for `record.py`, `measure_feed`, `prod_supervisor`, `us-signals-platform` on the VPS: no matches.
+* Production authenticated `max_inflight` = 2; Options Flow status OK with 5 trades.
+* Meaning: no matching task or process on the CHECKED VPS. This does not prove other machines are inactive.
+* Still requiring owner confirmation (not visible to the gate): (a) any other PC, laptop or server of yours or a colleague that runs the signals platform, recorder, a dev backend with its warmers on (`DISABLE_WARMERS` not set), `backend\data_health_check.py` or any script using the same token; (b) any AI/MCP client or notebook configured with the same Unusual Whales token; (c) any other developer's `.env` holding the token. The signature covers these; there is no technical check for them.
+* Collector kill switch: still ENGAGED (`batch2_store\KILL` present). Attestation: not yet signed (live file absent at 19:15 UTC).
+
 ## 4. Remaining risks
 1. **Licence:** owner-reported only; keep Unusual Whales' written confirmation.
 2. **Other machines on the token** are invisible to the gate. One unseen consumer would turn a request into a 429; the run then stops (it never retries) and the rest of the day is blocked.
