@@ -22,6 +22,7 @@ import smart_move_collection_jobs as J  # noqa: E402
 import smart_move_event_records as ER  # noqa: E402
 import smart_move_event_registry as REG  # noqa: E402
 import smart_move_event_status as ES  # noqa: E402
+import smart_move_snapshot_pairs as SPR  # noqa: E402
 import smart_move_live as L  # noqa: E402
 import smart_move_outcomes as O  # noqa: E402
 import smart_move_tracking as T  # noqa: E402
@@ -98,7 +99,12 @@ def record_events(svc, now, state_dir) -> dict:
     res = store.observe_snapshot(recs, observed=now)
     reg = REG.EventRegistry(Path(state_dir) / "event_registry.jsonl")
     ER.sync_registry(reg, store, now)
-    return dict(ER.summarize(store), changes={k: len(v) for k, v in res.items()}, earnings_payloads_used=len(payloads))
+    def est_rows(sha):
+        body = load(sha)
+        d = body.get("data") if isinstance(body, dict) else None
+        return (d.get("estimates") if isinstance(d, dict) else d) if d is not None else None
+    pairs = SPR.pair_all(store, [r for r in svc.store.read("v2_evidence") if r.get("kind") == "uw_estimates"], est_rows, now, SPR.PairStore(Path(state_dir) / "snapshot_pairs.jsonl"))
+    return dict(ER.summarize(store), changes={k: len(v) for k, v in res.items()}, earnings_payloads_used=len(payloads), snapshot_pairs=dict(pairs["counts"], reasons=pairs["reasons"]))
 
 
 def status_report(svc, now, preds, track_dir) -> dict:
