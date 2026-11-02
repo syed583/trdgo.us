@@ -1,0 +1,11 @@
+{
+  "_instructions": "TEMPLATE, INVALID AS IS. The OWNER fills attested_by and attested_at (UTC, now) and copies this to C:\\Users\\initi\\SmartMoveRun\\shared_key_attestation.json ONLY after production UW_MAX_INFLIGHT=2 is applied and verified. Valid for 24 h. Delete it after the run.",
+  "attested_by": "",
+  "attested_at": "",
+  "designated_collector": "localhost",
+  "production_uw_max_inflight": 2,
+  "production_provider_traffic_paused": false,
+  "market_hours_ok": false,
+  "acknowledges_shared_token_three_slot_limit": true,
+  "acknowledges_production_and_other_app_use_not_visible": true
+}
