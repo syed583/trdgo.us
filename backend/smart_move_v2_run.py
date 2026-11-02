@@ -26,6 +26,18 @@ from smvshadow import governor as gv  # noqa: E402
 UTC = timezone.utc
 
 
+
+def inherit_blocks(gates: list, blocked_by) -> list:
+    """V1's live scorer records calendar blocks (STALE_CALENDAR, CALENDAR_*, NO_EVENT_DATE, ...) in `blocked_by`, and only copies them into the signal's reason codes when V1 itself had a BUY/SELL.
+    V2 inherits V1's gates and never relaxes them, so every V1 block is passed on: a known V2 gate keeps its own code, any other block becomes BLOCKED_BY_GATE. This can only turn a BUY/SELL into NO_TRADE."""
+    out = list(gates)
+    known = ("OUT_OF_WINDOW", "UNKNOWN_TIMING", "TIMING_CONTRADICTED", "NOT_TRADABLE", "ILLIQUID_OR_UNKNOWN", "STALE_EVIDENCE", "BLOCKED_BY_GATE", "SUSPECT_WINDOW")
+    for b in blocked_by or []:
+        code = b if b in known else "BLOCKED_BY_GATE"
+        if code not in out:
+            out.append(code)
+    return out
+
 def _close_series(rows):
     return {d: v[3] for d, v in ad.regular_series(rows).items()}
 
@@ -62,6 +74,7 @@ def run(run_dir, as_of: datetime, *, extra: dict | None = None, v2_store=None, s
             ex = (extra or {}).get(sym) or (V2C.load_inputs(v2_store, sym, datetime.fromisoformat(r["capture_ts"]), ending_quarter=__import__("smart_move_v2_snapshots").ending_quarter(erows, ed)) if v2_store is not None else {})
             cap_dt = datetime.fromisoformat(r["capture_ts"])
             gates = [c for c in r["engine"]["continuation"]["reason_codes"] if c in ("OUT_OF_WINDOW", "UNKNOWN_TIMING", "TIMING_CONTRADICTED", "NOT_TRADABLE", "ILLIQUID_OR_UNKNOWN", "STALE_EVIDENCE", "BLOCKED_BY_GATE", "SUSPECT_WINDOW")]
+            gates = inherit_blocks(gates, r.get("blocked_by"))
             res = {}
             for v in ("continuation", "contrarian"):
                 facs = V2.from_v1(r["subscores"][v])
