@@ -368,12 +368,25 @@ class RefreshService:
         """UW premarket/afterhours for the next trading days (page 0, page 1 only when page 0 is full), one Finviz export for the largest names, one Finnhub window. budget[0] = requests left."""
         now = self.clock.now()
         mc_ = co._mc()
-        days = sorted(d for d in dates if mc_.is_trading_day(d)) if dates else self._trading_days(now, days_ahead)       # `dates`: only these event dates (a pilot skips days whose windows cannot be open)
+        side_only = {}
+        if dates:
+            ds = []
+            for x in dates:
+                if isinstance(x, tuple):                                                    # (date, "premarket" | "afterhours"): only that side of that day
+                    side_only.setdefault(x[0], set()).add(x[1])
+                    ds.append(x[0])
+                else:
+                    ds.append(x)
+            days = sorted({d for d in ds if mc_.is_trading_day(d)})                         # only these event dates (a pilot skips days and sides whose windows cannot be open)
+        else:
+            days = self._trading_days(now, days_ahead)
         uw_rows, done, truncated = [], 0, []
         reserve = 2 if budget[0] > 2 else 0                              # the Finviz and Finnhub confirmations are kept: without a second vendor no event can become eligible
         stamp = now.strftime("%Y%m%dT%H%M%S")
         for d in days:
             for side in ("premarket", "afterhours"):
+                if side not in side_only.get(d, ("premarket", "afterhours")):
+                    continue
                 page = 0
                 while budget[0] > reserve:
                     rid = "uwcal-%s-%s-%s-p%d" % (stamp, d, side, page)

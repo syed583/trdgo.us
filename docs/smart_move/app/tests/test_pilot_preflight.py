@@ -296,4 +296,22 @@ def test_pilot_run_with_scope_collects_the_open_window_events_within_fifty(tmp_p
     assert {c[2]["date"] for c in prov.calls if c[0] == "uw_calendar"} == {"2026-11-04"}
     assert cal <= 14 and prov.count("uw_estimates") == 18 and len(prov.calls) == 50 and prov.count("uw_news") == 50 - cal - 18
     est = [c[1] for c in prov.calls if c[0] == "uw_estimates"]
-    assert all(s.startswith("E") for s in est) and job["preflight"]["calendar_dates"] == ["2026-11-04"]
+    assert all(s.startswith("E") for s in est) and job["preflight"]["calendar_dates"] == ["2026-11-04 premarket", "2026-11-04 afterhours"]
+
+
+def test_useful_calendar_slots_are_per_side_and_halve_the_cost_during_the_day():
+    morning = datetime(2026, 11, 2, 14, 20, tzinfo=UTC)               # Mon 09:20 ET (market hours)
+    slots = J.useful_calendar_slots(morning)
+    assert [(str(d), side) for d, side in slots] == [("2026-11-03", "afterhours"), ("2026-11-04", "premarket")]   # 3 Nov AMC (closes 16:00 ET today) and 4 Nov BMO (closes 06:00 ET tomorrow)
+    evening = datetime(2026, 11, 2, 22, 0, tzinfo=UTC)               # Mon 17:00 ET
+    assert [(str(d), side) for d, side in J.useful_calendar_slots(evening)] == [("2026-11-04", "premarket"), ("2026-11-04", "afterhours")]
+
+
+def test_a_slot_refresh_requests_only_those_sides_and_stays_inside_the_cap(tmp_path):
+    morning = datetime(2026, 11, 2, 14, 20, tzinfo=UTC)
+    rows = [uw("G%03d" % i, "2026-11-03", "postmarket", flag="estimation") for i in range(274)] + [uw("H%03d" % i, "2026-11-04", "premarket", flag="estimation") for i in range(256)]         + [uw("X%03d" % i, "2026-11-03", "premarket", flag="estimation") for i in range(200)] + [uw("Y%03d" % i, "2026-11-04", "postmarket", flag="estimation") for i in range(400)]
+    prov = Provider(rows)
+    svc, _ = service(tmp_path, prov, start=morning)
+    done = svc.refresh_calendar([14], dates=J.useful_calendar_slots(morning))
+    sides = sorted({(c[2]["date"], c[2]["side"]) for c in prov.calls if c[0] == "uw_calendar"})
+    assert sides == [("2026-11-03", "afterhours"), ("2026-11-04", "premarket")] and prov.count("uw_calendar") == 6 and prov.count("finnhub_calendar") == 1 and done == 6 + prov.count("finviz_calendar") + 1 and done <= 8   # filler tickers contain digits, so no Finviz request here
