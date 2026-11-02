@@ -58,8 +58,11 @@ def _iso(x) -> str:
 def extract_quarter(rows, event_date, *, retrieved_at, as_of, payload_sha256: Optional[str] = None) -> dict:
     """Quarter state for ONE event from a saved earnings payload. Never infers from dates; only accepts, rejects or reports unknown."""
     out = {"state": QUARTER_UNKNOWN, "ending_fiscal_quarter": QUARTER_UNKNOWN, "reason": None, "source": None}
-    if not rows:
+    if rows is None:
         out["reason"] = "NO_EARNINGS_PAYLOAD"
+        return out
+    if not rows:
+        out["reason"] = "EMPTY_EARNINGS_PAYLOAD"                                 # a payload was saved but lists no report at all (not the same as no payload)
         return out
     if retrieved_at is None or _dt(retrieved_at) > _dt(as_of):
         out["reason"] = "PAYLOAD_RETRIEVED_AFTER_AS_OF"                          # point in time: a later retrieval must not describe an earlier moment
@@ -120,7 +123,7 @@ def calobs_from_rows(rows: Iterable[dict]) -> dict:
     return out
 
 
-def build_observation(symbol: str, pairs: list, as_of, *, earnings_rows=None, earnings_retrieved_at=None, earnings_sha256=None, verified_release_utc=None) -> dict:
+def build_observation(symbol: str, pairs: list, as_of, *, earnings_rows=None, earnings_retrieved_at=None, earnings_sha256=None, verified_release_utc=None, earnings_others=None) -> dict:
     """The content of one event record as it can be known at `as_of` (no id/version yet). pairs: [(CalObs, raw_row)]. Vendor evidence, including conflicting dates, is preserved verbatim."""
     as_of = _dt(as_of)
     seen = [(o, r) for o, r in pairs if o.observed_at <= as_of]
@@ -139,23 +142,34 @@ def build_observation(symbol: str, pairs: list, as_of, *, earnings_rows=None, ea
     rel = release_info(plan["basis"] if plan else None, session, plan, verified_release_utc)
     q = extract_quarter(earnings_rows, event_date, retrieved_at=earnings_retrieved_at, as_of=as_of, payload_sha256=earnings_sha256) if earnings_rows is not None else \
         extract_quarter(None, event_date, retrieved_at=None, as_of=as_of)
+    for o_rows, o_ts, o_sha in (earnings_others or []):                          # older saved payloads for the same symbol: a different KNOWN quarter for the same report date is a conflict, never a silent pick
+        q2 = extract_quarter(o_rows, event_date, retrieved_at=o_ts, as_of=as_of, payload_sha256=o_sha)
+        if q["state"] == "KNOWN" and (q2["state"] == "AMBIGUOUS" or (q2["state"] == "KNOWN" and q2["ending_fiscal_quarter"] != q["ending_fiscal_quarter"])):
+            q = dict(q, state="AMBIGUOUS", ending_fiscal_quarter=QUARTER_UNKNOWN, reason="CONFLICTING_EARNINGS_PAYLOADS", source=None)
+    cutoff = plan["cutoff_utc"] if plan else None
+    q_before_cutoff = None if cutoff is None or q["state"] != "KNOWN" else _dt(q["source"]["retrieved_at"]) <= cutoff
+    after_cutoff = cutoff is not None and as_of > cutoff                          # observed once the 24 h cutoff had already passed: it cannot be established retroactively
     reasons = list(dict.fromkeys(ev["no_trade_reasons"] or ev["reasons"] if not ev["eligible_for_shadow"] else []))
     if session == "UNKNOWN" and "UNKNOWN_TIMING" not in reasons:
         reasons.append("UNKNOWN_TIMING")
-    eligible = bool(ev["eligible_for_shadow"]) and session in ("BMO", "AMC") and not conflict and event_date is not None
+    if after_cutoff and "OBSERVED_AFTER_CUTOFF" not in reasons:
+        reasons.append("OBSERVED_AFTER_CUTOFF")
+    eligible = bool(ev["eligible_for_shadow"]) and session in ("BMO", "AMC") and not conflict and event_date is not None and not after_cutoff
+    pairing = eligible and q["state"] == "KNOWN" and q_before_cutoff is True
+    blockers = ([] if eligible else ["EVENT_NOT_ELIGIBLE"]) + ([] if q["state"] == "KNOWN" else [q["state"] + ":" + str(q["reason"])]) + (["QUARTER_LEARNED_AFTER_CUTOFF"] if q["state"] == "KNOWN" and q_before_cutoff is not True else [])
     return {"schema": SCHEMA, "symbol": symbol, "event_date": event_date, "session": session, "vendor_status": ev["status"], "vendor_reasons": list(ev["reasons"]), "vendor_conflict": bool(conflict),
             "vendor_dates_seen": dates, "vendors": vendors, "stale_vendor_rows": ev.get("stale_vendor_rows") or [], "observed_at": _iso(as_of),
             "calendar_observed_at": _iso(ev["calendar_observed_at"]) if ev["calendar_observed_at"] else None, **rel,
-            "ending_fiscal_quarter": q["ending_fiscal_quarter"], "quarter_state": q["state"], "quarter_reason": q["reason"], "quarter_source": q["source"],
+            "ending_fiscal_quarter": q["ending_fiscal_quarter"], "quarter_state": q["state"], "quarter_reason": q["reason"], "quarter_source": q["source"], "quarter_known_before_cutoff": q_before_cutoff, "observed_after_cutoff": after_cutoff,
             "window_start_utc": plan["window_start_utc"].isoformat() if plan else None, "cutoff_utc": plan["cutoff_utc"].isoformat() if plan else None,
-            "prediction_eligible": eligible, "ineligible_reasons": [] if eligible else (reasons or ["NOT_CONFIRMED"]), "analyst_pairing_eligible": eligible and q["state"] == "KNOWN",
-            "pairing_blockers": [] if eligible and q["state"] == "KNOWN" else (([] if eligible else ["EVENT_NOT_ELIGIBLE"]) + ([] if q["state"] == "KNOWN" else [q["state"] + ":" + str(q["reason"])]))}
+            "prediction_eligible": eligible, "ineligible_reasons": [] if eligible else (reasons or ["NOT_CONFIRMED"]), "analyst_pairing_eligible": pairing,
+            "pairing_blockers": [] if pairing else blockers, "identity_state": "UNIQUE", "identity_basis": None, "identity_candidates": [], "prior_version_quarter": None}
 
 
 def _signature(rec: dict) -> tuple:
     """What counts as a CHANGE of an event (timestamps, hashes and request ids do not)."""
     return (rec["event_date"], rec["session"], rec["vendor_status"], tuple(rec["vendor_reasons"]), rec["vendor_conflict"], tuple(rec["vendor_dates_seen"]), rec["ending_fiscal_quarter"], rec["quarter_state"],
-            rec["quarter_reason"], rec["prediction_eligible"], tuple(rec["ineligible_reasons"]), rec["release_basis"], rec["release_time_verified"])
+            rec["quarter_reason"], rec["prediction_eligible"], tuple(rec["ineligible_reasons"]), rec["release_basis"], rec["release_time_verified"], rec["quarter_known_before_cutoff"], rec["identity_state"])
 
 
 def record_hash(rec: dict) -> str:
@@ -249,27 +263,41 @@ class EventRecords:
                 out.append(v)
         return out
 
-    def _identify(self, rec: dict) -> str:
+    def _identify(self, rec: dict) -> tuple:
+        """-> (event_id, identity_state, identity_basis, candidates). A known fiscal quarter IS the identity. Without one, date proximity (REBOOK_WINDOW_DAYS, a heuristic) may link an observation to an open event
+        of the same symbol only when exactly ONE such event qualifies; with several the identity is AMBIGUOUS and a separate, ineligible event is opened instead of forcing a merge."""
         sym, observed = rec["symbol"], _dt(rec["observed_at"])
-        q = rec["ending_fiscal_quarter"]
-        if rec["quarter_state"] == "KNOWN":
-            for i in self.event_ids(sym):
-                if self.latest(i)["ending_fiscal_quarter"] == q:
-                    return i                                                        # same company, same fiscal quarter: the same event, whatever its date
+        q, known = rec["ending_fiscal_quarter"], rec["quarter_state"] == "KNOWN"
+        if known and "%s|%s" % (sym, q) in self.event_ids(sym):
+            return "%s|%s" % (sym, q), "UNIQUE", "EXACT_QUARTER", []                    # same company, same fiscal quarter: the same event, whatever its date
         anchor = rec["event_date"] or (rec["vendor_dates_seen"][0] if rec["vendor_dates_seen"] else observed.date().isoformat())
+        cands = []
         for v in self._open_events(sym, observed):
-            if v["quarter_state"] == "KNOWN" and rec["quarter_state"] == "KNOWN" and v["ending_fiscal_quarter"] != q:
-                continue                                                            # two known, different quarters are never the same event
-            ref = v["event_date"] or anchor
-            if rec["event_date"] is None or abs((date.fromisoformat(rec["event_date"]) - date.fromisoformat(ref)).days) <= REBOOK_WINDOW_DAYS:
-                return v["event_id"]
-        return "%s|%s" % (sym, q) if rec["quarter_state"] == "KNOWN" else "%s|UNKNOWN|%s" % (sym, anchor)
+            if v.get("identity_state") == "AMBIGUOUS":
+                continue
+            if known and v["quarter_state"] == "KNOWN":
+                continue                                                                # two known, different quarters are never the same event
+            ref = v["event_date"]
+            if rec["event_date"] is None or ref is None or abs((date.fromisoformat(rec["event_date"]) - date.fromisoformat(ref)).days) <= REBOOK_WINDOW_DAYS:
+                cands.append(v["event_id"])
+        new_id = "%s|%s" % (sym, q) if known else "%s|UNKNOWN|%s" % (sym, anchor)
+        if len(cands) == 1:
+            return cands[0], "UNIQUE", "DATE_PROXIMITY_HEURISTIC", cands
+        if len(cands) > 1:
+            return new_id, ("UNIQUE" if known else "AMBIGUOUS"), ("EXACT_QUARTER_NEW" if known else None), cands
+        return new_id, "UNIQUE", "NEW", []
 
     # -- writes
     def observe(self, rec: dict) -> dict:
         """Add one observation. Returns {"action": NEW | UNCHANGED | RESCHEDULED | UPDATED | REVIVED, "event_id", "version"}."""
-        eid = self._identify(rec)
+        eid, istate, ibasis, cands = self._identify(rec)
+        rec = dict(rec, identity_state=istate, identity_basis=ibasis, identity_candidates=cands)
+        if istate == "AMBIGUOUS":                                                       # unresolved identity is never eligible
+            rec.update(prediction_eligible=False, analyst_pairing_eligible=False, ineligible_reasons=list(dict.fromkeys(list(rec["ineligible_reasons"]) + ["IDENTITY_AMBIGUOUS"])),
+                       pairing_blockers=list(dict.fromkeys(list(rec["pairing_blockers"]) + ["EVENT_NOT_ELIGIBLE", "IDENTITY_AMBIGUOUS"])))
         prev = self.latest(eid)
+        if prev is not None and rec["quarter_state"] != "KNOWN":                        # a quarter that was known for an earlier version is never silently dropped from the lineage
+            rec["prior_version_quarter"] = prev["ending_fiscal_quarter"] if prev["quarter_state"] == "KNOWN" else prev.get("prior_version_quarter")
         if prev is not None and prev["status"] == CURRENT and _signature(prev) == _signature(rec):
             return {"action": "UNCHANGED", "event_id": eid, "version": prev["version"]}              # duplicate observation: no new version
         new = dict(rec, event_id=eid, status=CURRENT, version=(prev["version"] + 1) if prev else 1, change_reasons=[],
@@ -319,21 +347,25 @@ class EventRecords:
 
 # ------------------------------------------------------------------------------------------------ building from saved evidence
 def earnings_payloads(evidence_rows: Iterable[dict], load: Callable[[str], Optional[object]], as_of) -> dict:
-    """{symbol: (rows, retrieved_at, sha256)} from saved `earnings` evidence retrieved at or before as_of (the newest such record per symbol). load(sha) returns the decoded JSON body or None."""
-    best = {}
+    """{symbol: (rows, retrieved_at, sha256, others)} from saved `earnings` evidence. The newest payload retrieved at or before as_of is chosen and `others` lists the older ones (conflict check). A symbol whose
+    only payloads were retrieved AFTER as_of gets the earliest of them so the record says PAYLOAD_RETRIEVED_AFTER_AS_OF instead of pretending nothing was saved. load(sha) returns the decoded JSON body or None."""
+    by_sym: dict = {}
     for r in evidence_rows:
-        if r.get("kind") != "earnings" or r.get("status", "OK") != "OK":
-            continue
-        if _dt(r["retrieved_at"]) > _dt(as_of):
-            continue
-        if r["symbol"] not in best or r["retrieved_at"] > best[r["symbol"]]["retrieved_at"]:
-            best[r["symbol"]] = r
+        if r.get("kind") == "earnings" and r.get("status", "OK") == "OK":
+            by_sym.setdefault(r["symbol"], []).append(r)
     out = {}
-    for s, r in best.items():
-        body = load(r["raw_sha256"])
-        data = body.get("data") if isinstance(body, dict) else None
-        if isinstance(data, list):
-            out[s] = (data, r["retrieved_at"], r["raw_sha256"])
+    for s, recs in by_sym.items():
+        usable = []
+        for r in sorted(recs, key=lambda r: r["retrieved_at"]):
+            body = load(r["raw_sha256"])
+            data = body.get("data") if isinstance(body, dict) else None
+            if isinstance(data, list):
+                usable.append((data, r["retrieved_at"], r["raw_sha256"]))
+        before = [u for u in usable if _dt(u[1]) <= _dt(as_of)]
+        if before:
+            out[s] = before[-1] + (before[:-1],)
+        elif usable:
+            out[s] = usable[0] + ([],)
     return out
 
 
@@ -342,8 +374,9 @@ def records_from_saved(cal_rows: Iterable[dict], as_of, payloads: Optional[dict]
     payloads = payloads or {}
     out = []
     for sym, pairs in sorted(calobs_from_rows(cal_rows).items()):
-        er, ts, sha = payloads.get(sym, (None, None, None))
-        out.append(build_observation(sym, pairs, as_of, earnings_rows=er, earnings_retrieved_at=ts, earnings_sha256=sha))
+        p = payloads.get(sym)
+        er, ts, sha, others = (p[0], p[1], p[2], p[3] if len(p) > 3 else []) if p else (None, None, None, [])
+        out.append(build_observation(sym, pairs, as_of, earnings_rows=er, earnings_retrieved_at=ts, earnings_sha256=sha, earnings_others=others))
     return out
 
 
@@ -364,7 +397,9 @@ def sync_registry(registry, records: EventRecords, observed) -> dict:
 def summarize(records: EventRecords) -> dict:
     cur = list(records.current().values())
     from collections import Counter
-    return {"events_current": len(cur), "by_vendor_status": dict(Counter(v["vendor_status"] for v in cur)), "by_session": dict(Counter(v["session"] for v in cur)),
+    latest = [records.latest(i) for i in records.event_ids()]                           # one row per event (NOT per stored line): the unit every count below reconciles to
+    return {"events_total": len(latest), "events_by_status": dict(Counter(v["status"] for v in latest)), "quarter_reason_current": dict(Counter(str(v["quarter_reason"]) for v in cur)),
+            "identity_ambiguous": sum(1 for v in cur if v.get("identity_state") == "AMBIGUOUS"), "events_current": len(cur), "by_vendor_status": dict(Counter(v["vendor_status"] for v in cur)), "by_session": dict(Counter(v["session"] for v in cur)),
             "prediction_eligible": sum(1 for v in cur if v["prediction_eligible"]), "pairing_eligible": sum(1 for v in cur if v["analyst_pairing_eligible"]),
             "quarter_state": dict(Counter(v["quarter_state"] for v in cur)), "vendor_conflicts": sum(1 for v in cur if v["vendor_conflict"]),
             "release_time_verified": sum(1 for v in cur if v["release_time_verified"]), "versions": len(records.versions)}

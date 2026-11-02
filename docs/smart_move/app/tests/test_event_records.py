@@ -285,3 +285,102 @@ def test_the_event_record_module_does_not_import_scoring_or_provider_code():
     for banned in ("scorer", "smart_move_v2", "unusualwhales_service", "smart_move_live", "InfraFetcher", "urllib", "requests", "grader"):
         assert banned not in text, banned
     assert "NEWS_GUIDANCE" not in src
+
+
+# ------------------------------------------------------------------ Priority 1 audit: regression tests for the confirmed defects
+def known_obs(sym, date, quarter, at, kind="BMO", retrieved=None):
+    return obs(sym, confirmed(sym, date, kind, at=at), as_of=at + timedelta(minutes=10), earnings_rows=[erow(date, quarter)], earnings_retrieved_at=retrieved or at, earnings_sha256="c" * 64)
+
+
+def test_quarter_known_before_the_cutoff_makes_pairing_possible():
+    o = known_obs("AAA", "2026-11-04", "2026-09-30", T0)                                                               # cutoff 2026-11-03 11:00Z; payload retrieved 11-02 16:00Z
+    assert o["quarter_known_before_cutoff"] is True and o["analyst_pairing_eligible"] is True and o["observed_after_cutoff"] is False
+
+
+def test_quarter_first_known_after_the_cutoff_never_makes_the_earlier_prediction_eligible():
+    late = T0 + timedelta(days=2)                                                                                        # 2026-11-04 16:00Z: the cutoff (11-03 11:00Z) has passed
+    o = known_obs("AAA", "2026-11-04", "2026-09-30", late)
+    assert o["quarter_state"] == "KNOWN" and o["quarter_known_before_cutoff"] is False
+    assert o["analyst_pairing_eligible"] is False and "QUARTER_LEARNED_AFTER_CUTOFF" in o["pairing_blockers"]
+    assert o["observed_after_cutoff"] is True and o["prediction_eligible"] is False and "OBSERVED_AFTER_CUTOFF" in o["ineligible_reasons"]
+    st = ER.EventRecords()
+    st.observe(obs("AAA", confirmed("AAA", "2026-11-04")))                                                               # observed before the cutoff, quarter unknown
+    st.observe(o)
+    before = T0 + timedelta(hours=12)                                                                                    # 11-03 04:00Z, before the cutoff
+    assert st.eligible(before, pairing=True) == [] and [v["event_id"] for v in st.eligible(before)] == ["AAA|UNKNOWN|2026-11-04"]
+    assert st.as_of("AAA|UNKNOWN|2026-11-04", before)["analyst_pairing_eligible"] is False
+
+
+def test_missing_empty_and_late_payloads_get_distinct_reasons():
+    ev = [{"kind": "earnings", "symbol": s, "retrieved_at": r.isoformat(), "raw_sha256": s, "status": "OK"} for s, r in (("LATE", T0 + timedelta(hours=2)), ("EMPTY", T0 - timedelta(hours=2)))]
+    pl = ER.earnings_payloads(ev, lambda sha: {"data": [erow("2026-11-04", "2026-09-30")] if sha == "LATE" else []}, T0)
+    assert set(pl) == {"LATE", "EMPTY"}                                                                                  # a payload retrieved after as_of is still reported, not silently dropped
+    rows = confirmed("LATE", "2026-11-04") + confirmed("EMPTY", "2026-11-04") + confirmed("NONE", "2026-11-04")
+    got = {r["symbol"]: r["quarter_reason"] for r in ER.records_from_saved(rows, T0, pl)}
+    assert got == {"LATE": "PAYLOAD_RETRIEVED_AFTER_AS_OF", "EMPTY": "EMPTY_EARNINGS_PAYLOAD", "NONE": "NO_EARNINGS_PAYLOAD"}
+
+
+def test_conflicting_earnings_payloads_for_the_same_report_date_are_ambiguous():
+    ev = [{"kind": "earnings", "symbol": "AAA", "retrieved_at": (T0 - timedelta(days=1)).isoformat(), "raw_sha256": "old"},
+          {"kind": "earnings", "symbol": "AAA", "retrieved_at": (T0 - timedelta(hours=2)).isoformat(), "raw_sha256": "new"}]
+    pl = ER.earnings_payloads(ev, lambda sha: {"data": [erow("2026-11-04", "2026-09-30" if sha == "old" else "2026-06-30")]}, T0)
+    r = ER.records_from_saved(confirmed("AAA", "2026-11-04"), T0, pl)[0]
+    assert r["quarter_state"] == "AMBIGUOUS" and r["quarter_reason"] == "CONFLICTING_EARNINGS_PAYLOADS" and r["ending_fiscal_quarter"] == "QUARTER_UNKNOWN" and r["analyst_pairing_eligible"] is False
+    same = ER.earnings_payloads(ev, lambda sha: {"data": [erow("2026-11-04", "2026-09-30")]}, T0)                        # agreeing payloads are not a conflict
+    assert ER.records_from_saved(confirmed("AAA", "2026-11-04"), T0, same)[0]["quarter_state"] == "KNOWN"
+
+
+def test_reschedule_inside_and_beyond_the_21_day_window():
+    st = ER.EventRecords()
+    st.observe(obs("AAA", confirmed("AAA", "2026-11-10")))
+    r1 = st.observe(obs("AAA", confirmed("AAA", "2026-11-30", at=T0 + timedelta(hours=1)), as_of=T0 + timedelta(hours=2)))    # 20 days: linked, lineage kept
+    assert r1["action"] == "RESCHEDULED" and r1["event_id"] == "AAA|UNKNOWN|2026-11-10"
+    assert st.latest(r1["event_id"])["identity_basis"] == "DATE_PROXIMITY_HEURISTIC" and st.latest(r1["event_id"])["original_date"] == "2026-11-10"
+    r2 = st.observe(obs("AAA", confirmed("AAA", "2027-01-05", at=T0 + timedelta(hours=3)), as_of=T0 + timedelta(hours=4)))     # 36 days from 11-30: a separate event
+    assert r2["action"] == "NEW" and r2["event_id"] == "AAA|UNKNOWN|2027-01-05" and len(st.event_ids("AAA")) == 2
+
+
+def test_two_distinct_known_quarters_close_together_are_never_merged_and_an_unknown_between_is_ambiguous():
+    st = ER.EventRecords()
+    st.observe(known_obs("CCC", "2026-11-20", "2026-09-30", T0))
+    st.observe(known_obs("CCC", "2026-12-05", "2026-10-31", T0 + timedelta(hours=1)))
+    assert st.event_ids("CCC") == ["CCC|2026-09-30", "CCC|2026-10-31"]
+    amb = obs("CCC", confirmed("CCC", "2026-11-28", at=T0 + timedelta(hours=2)), as_of=T0 + timedelta(hours=3))           # within 21 days of BOTH
+    r = st.observe(amb)
+    assert r["action"] == "NEW" and r["event_id"] == "CCC|UNKNOWN|2026-11-28"
+    v = st.latest(r["event_id"])
+    assert v["identity_state"] == "AMBIGUOUS" and v["identity_candidates"] == ["CCC|2026-09-30", "CCC|2026-10-31"]
+    assert v["prediction_eligible"] is False and "IDENTITY_AMBIGUOUS" in v["ineligible_reasons"] and v["analyst_pairing_eligible"] is False
+    assert [len(st.history(i)) for i in ("CCC|2026-09-30", "CCC|2026-10-31")] == [1, 1]                                  # neither known event was touched
+    assert st.observe(amb)["action"] == "UNCHANGED"                                                                      # repeating it does not churn versions
+
+
+def test_a_known_quarter_is_not_silently_dropped_when_the_date_moves_and_the_new_row_is_missing():
+    st = ER.EventRecords()
+    st.observe(known_obs("BBB", "2026-11-10", "2026-09-30", T0))
+    moved = obs("BBB", confirmed("BBB", "2026-11-17", at=T0 + timedelta(hours=1)), as_of=T0 + timedelta(hours=2), earnings_rows=[erow("2026-11-10", "2026-09-30")],
+                earnings_retrieved_at=T0, earnings_sha256="c" * 64)
+    r = st.observe(moved)
+    v = st.latest(r["event_id"])
+    assert r["action"] == "RESCHEDULED" and r["event_id"] == "BBB|2026-09-30" and v["quarter_state"] == "QUARTER_UNKNOWN" and v["analyst_pairing_eligible"] is False
+    assert v["prior_version_quarter"] == "2026-09-30" and st.history("BBB|2026-09-30")[0]["ending_fiscal_quarter"] == "2026-09-30"
+    again = known_obs("BBB", "2026-11-17", "2026-09-30", T0 + timedelta(hours=3))                                        # the provider later lists the new date: same event, quarter restored
+    assert st.observe(again)["event_id"] == "BBB|2026-09-30"
+
+
+def test_several_events_for_one_symbol_stay_separate_and_the_registry_is_only_a_projection(tmp_path):
+    st = ER.EventRecords(tmp_path / "ev.jsonl")
+    st.observe(known_obs("AAA", "2026-11-04", "2026-09-30", T0))
+    st.observe(known_obs("AAA", "2027-02-10", "2026-12-31", T0 + timedelta(hours=1), kind="AMC"))
+    reg = REG.EventRegistry(tmp_path / "reg.jsonl")
+    ER.sync_registry(reg, st, T0 + timedelta(hours=2))
+    assert st.event_ids("AAA") == ["AAA|2026-09-30", "AAA|2026-12-31"] and set(st.current()) == {"AAA|2026-09-30", "AAA|2026-12-31"}
+    before = (tmp_path / "ev.jsonl").read_bytes()
+    ER.sync_registry(reg, st, T0 + timedelta(hours=3))                                                                   # the projection never writes to the event store
+    assert (tmp_path / "ev.jsonl").read_bytes() == before
+    st.observe_snapshot([], observed=T0 + timedelta(days=5))                                                             # the first event's date passed: closed but kept
+    assert st.latest("AAA|2026-09-30")["status"] == "OCCURRED" and st.latest("AAA|2026-12-31")["status"] == "CURRENT" and len(st.history("AAA|2026-09-30")) == 2
+    st2 = ER.EventRecords()
+    st2.observe(known_obs("ZZZ", "2026-11-12", "2026-09-30", T0))
+    st2.observe_snapshot([], observed=T0 + timedelta(hours=4), window=(datetime(2026, 11, 1).date(), datetime(2026, 11, 30).date()), complete=True)
+    assert st2.latest("ZZZ|2026-09-30")["status"] == "REMOVED" and st2.history("ZZZ|2026-09-30")[0]["status"] == "CURRENT"
