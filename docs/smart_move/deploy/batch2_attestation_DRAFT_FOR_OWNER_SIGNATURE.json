@@ -1,0 +1,20 @@
+{
+  "_instructions": "UNSIGNED DRAFT prepared by Claude for owner review. It is INVALID until the OWNER types attested_by and attested_at (UTC, within 24 h and not in the future) and copies it to C:\\Users\\initi\\SmartMoveRun\\shared_key_attestation.json. Do not sign it unless every statement below is true at that moment. Delete the live copy after the run.",
+  "attested_by": "",
+  "attested_at": "",
+  "run": "phase14-batch2",
+  "designated_collector": "localhost",
+  "production_uw_max_inflight": 2,
+  "production_provider_traffic_paused": false,
+  "market_hours_ok": false,
+  "acknowledges_shared_token_three_slot_limit": true,
+  "acknowledges_production_and_other_app_use_not_visible": true,
+  "owner_reported_statements_to_confirm_when_signing": [
+    "Production USStockReader runs with UW_MAX_INFLIGHT=2 and the authenticated max_inflight reads 2 (owner-reported 2026-11-02).",
+    "Production Options Flow returned status OK with 5 trades after the restart (owner-reported).",
+    "No other application or machine uses the Unusual Whales token during the run, beyond production at 2 and this collector at 1.",
+    "Unusual Whales has authorized storing raw responses, historical analysis and backtesting, and displaying derived analytics to TRDGO.US users (OWNER-REPORTED; not independently verified by Claude).",
+    "The Unusual Whales subscription is active (owner-reported).",
+    "The run starts after the 16:00 ET close, inside the window in the preflight report."
+  ]
+}
