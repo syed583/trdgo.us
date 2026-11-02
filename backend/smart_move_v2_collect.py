@@ -94,10 +94,11 @@ def plan(symbols: Iterable[str], store, now: datetime, *, include_news: bool = F
     return tasks
 
 
-def run(svc, tasks: list, *, max_requests: int, checkpoint: Optional[Path] = None, stopped: Callable[[], bool] = lambda: False, calendar_ok: Optional[Callable[[datetime], bool]] = None) -> dict:
+def run(svc, tasks: list, *, max_requests: int, checkpoint: Optional[Path] = None, stopped: Callable[[], bool] = lambda: False, calendar_ok: Optional[Callable[[datetime], bool]] = None, max_consecutive_failures: Optional[int] = None) -> dict:
     """Sequential (one request in flight, within the shared 3-slot limit). Stops on a provider stop; resumes from the checkpoint without repeating finished task IDs."""
     done = set(json.loads(Path(checkpoint).read_text())["done"]) if checkpoint and Path(checkpoint).exists() else set()
     tasks = list(tasks)
+    consecutive = 0
     acc = {"planned": len(tasks), "attempted": 0, "ok": 0, "failed": 0, "invalid": 0, "skipped_resume": 0, "by_kind": {}, "stopped": False, "failures": []}
     for t in tasks:
         if t["id"] in done:
@@ -120,8 +121,13 @@ def run(svc, tasks: list, *, max_requests: int, checkpoint: Optional[Path] = Non
         if body is None:
             acc["failed"] += 1
             acc["failures"].append({"kind": t["kind"], "symbol": t["symbol"], "reason": "NOT_DONE (denied, failed or provider stop)"})
+            consecutive += 1
             if stopped():
                 acc["stopped"] = True
+                break
+            if max_consecutive_failures and consecutive >= max_consecutive_failures:            # repeated provider failures (e.g. HTTP 5xx) are a stop signal, not something to keep spending attempts on
+                acc["stopped"] = True
+                acc["halt_reason"] = "CONSECUTIVE_FAILURES"
                 break
             continue
         v = validate(t["kind"], body)
@@ -132,6 +138,7 @@ def run(svc, tasks: list, *, max_requests: int, checkpoint: Optional[Path] = Non
             break
         svc.store.append(EVIDENCE, {"id": t["id"], "kind": t["kind"], "symbol": t["symbol"], "retrieved_at": at.isoformat(), "raw_sha256": sha, "status": "OK" if v["ok"] else "INVALID",
                                     "rows": v["rows"], "invalid_reason": v["reason"], "params": params})
+        consecutive = 0 if v["ok"] else consecutive + 1
         acc["ok" if v["ok"] else "invalid"] += 1
         if v["ok"] and t["kind"] == "uw_news":
             page = int(t.get("page") or 0)

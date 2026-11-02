@@ -205,7 +205,8 @@ def preflight(svc, tasks_by_kind: dict, *, now: datetime, ceiling: int, state: d
 
 # ---------------------------------------------------------------- the cycle
 def run_cycle(svc, *, now: datetime, state_dir, mode: str = "DRY_RUN", armed: bool = False, ceiling: int = DEFAULT_CEILING, batch_size: int = DEFAULT_BATCH,
-              events_fn: Optional[Callable] = None, stopped: Optional[Callable[[], bool]] = None, news_pages: Optional[int] = None, calendar_requests: Optional[int] = None, stage_caps: Optional[dict] = None, calendar_scope: str = "horizon") -> dict:
+              events_fn: Optional[Callable] = None, stopped: Optional[Callable[[], bool]] = None, news_pages: Optional[int] = None, calendar_requests: Optional[int] = None, stage_caps: Optional[dict] = None, calendar_scope: str = "horizon",
+              max_consecutive_failures: Optional[int] = None) -> dict:
     """events_fn(now, horizon_days) -> events (the existing eligible_events). DRY_RUN never calls the provider. LIVE needs armed=True."""
     d = Path(state_dir)
     st = _read_state(d)
@@ -275,7 +276,7 @@ def run_cycle(svc, *, now: datetime, state_dir, mode: str = "DRY_RUN", armed: bo
                         halted = "PROVIDER_STOPPED"
                         break
                     pages = news_pages or CP.NEWS_MAX_PAGES
-                    acc = C.run(svc, batch, max_requests=min(left, len(batch) * pages), checkpoint=ckpt, stopped=stopped)
+                    acc = C.run(svc, batch, max_requests=min(left, len(batch) * pages), checkpoint=ckpt, stopped=stopped, max_consecutive_failures=max_consecutive_failures)
                     delta = attempts(svc) - gov_base                                  # governor attempts incl. retries: the number the ceiling is enforced on
                     gov_base += delta
                     st["requests_by_day"][day] = st["requests_by_day"].get(day, 0) + delta
@@ -289,7 +290,7 @@ def run_cycle(svc, *, now: datetime, state_dir, mode: str = "DRY_RUN", armed: bo
                     st["jobs"][job_id] = job
                     _write_state(d, st)                                                # persisted after every batch: a crash resumes from here
                     if acc["stopped"] or acc.get("budget_exhausted"):
-                        halted = "PROVIDER_STOP" if acc["stopped"] else "BUDGET_EXHAUSTED"
+                        halted = acc.get("halt_reason") or ("PROVIDER_STOP" if acc["stopped"] else "BUDGET_EXHAUSTED")
                         break
                 if halted:
                     job["halted"] = halted

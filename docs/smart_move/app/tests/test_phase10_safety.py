@@ -167,3 +167,24 @@ def test_the_provider_client_would_resend_a_429_three_more_times_unless_infra_fe
         assert fetcher.uw is uw
     finally:
         uw.set_background(False)
+
+
+# ------------------------------------------------------------------ repeated provider failures (HTTP 5xx) end the pilot
+def test_three_failed_requests_in_a_row_halt_the_pilot_and_stop_spending_attempts(tmp_path):
+    syms = [T.sym("K", i) for i in range(30)]
+    prov = T.provider_for([(s, "2026-11-03", "AMC") for s in syms], fail_symbols=set(syms))              # every evidence request fails (like a run of HTTP 503s)
+    svc, _ = T.service(tmp_path, prov, start=datetime(2026, 11, 2, 15, 0, tzinfo=UTC), retries=0)
+    job = J.run_cycle(svc, now=datetime(2026, 11, 2, 15, 0, tzinfo=UTC), state_dir=tmp_path / "st", mode="LIVE", armed=True, ceiling=50, batch_size=5, news_pages=1, calendar_requests=14,
+                      stage_caps={"snapshot_a": 0, "snapshot_b": 18}, calendar_scope="useful", max_consecutive_failures=3)
+    evidence_calls = [c for c in prov.calls if c[0] in ("uw_estimates", "uw_news")]
+    assert len(evidence_calls) == 3 and job["status"] == "FAILED" and job["halted"] == "CONSECUTIVE_FAILURES"
+    assert sum(svc.gov.used_day.values()) == len(prov.calls) <= 50
+
+
+def test_isolated_failures_do_not_halt_the_pilot(tmp_path):
+    syms = [T.sym("M", i) for i in range(30)]
+    prov = T.provider_for([(s, "2026-11-03", "AMC") for s in syms], fail_symbols={s for i, s in enumerate(syms) if i % 3 == 0})     # every third symbol fails: never three in a row
+    svc, _ = T.service(tmp_path, prov, start=datetime(2026, 11, 2, 15, 0, tzinfo=UTC), retries=0)
+    job = J.run_cycle(svc, now=datetime(2026, 11, 2, 15, 0, tzinfo=UTC), state_dir=tmp_path / "st", mode="LIVE", armed=True, ceiling=50, batch_size=5, news_pages=1, calendar_requests=14,
+                      stage_caps={"snapshot_a": 0, "snapshot_b": 18}, calendar_scope="useful", max_consecutive_failures=3)
+    assert job.get("halted") != "CONSECUTIVE_FAILURES" and len([c for c in prov.calls if c[0] in ("uw_estimates", "uw_news")]) > 10 and len(prov.calls) <= 50
