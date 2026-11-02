@@ -141,6 +141,24 @@ def report():
     return rep
 
 
+@router.get("/events")
+def events(mode: str = Query("LIVE", pattern="^(LIVE|SIMULATION)$")):
+    """Per-event PASS / FAIL / FLAT rows, continuation vs contrarian_partial_factor comparison, calendar freshness and accuracy status. Saved data only."""
+    from datetime import datetime, timezone
+    import smart_move_report as RP
+    preds, outs, stores, _ = _data()
+    newest = None
+    for sd in stores:
+        for r in T._read_jsonl(Path(sd) / "cal_obs.jsonl"):
+            try:
+                t = datetime.fromisoformat(r["observed_at"])
+            except (KeyError, ValueError, TypeError):
+                continue
+            newest = t if newest is None or t > newest else newest
+    age = round((datetime.now(timezone.utc) - newest).total_seconds() / 3600, 3) if newest else None
+    return RP.build(preds, outs, mode=mode, calendar_age_h=age)
+
+
 @router.get("/{rest:path}")
 def unknown(rest: str):
     raise HTTPException(404, "unknown tracking route")

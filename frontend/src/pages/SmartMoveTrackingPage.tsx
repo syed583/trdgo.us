@@ -41,6 +41,7 @@ export default function SmartMoveTrackingPage({ ctx }: { ctx: PageContext }) {
   const acc = useApi<any>((s) => smartMoveTracking.accuracy(mode, s), [mode]);
   const ana = useApi<any>((s) => smartMoveTracking.analytics(mode, s), [mode], { refreshMs: 30_000 });
   const outc = useApi<any>((s) => smartMoveTracking.outcomes(s), [mode], { refreshMs: 30_000 });
+  const evs = useApi<any>((s) => smartMoveTracking.events(mode, s), [mode], { refreshMs: 60_000 });
   const [dim, setDim] = useState('sector');
 
   const st = status.data;
@@ -54,6 +55,17 @@ export default function SmartMoveTrackingPage({ ctx }: { ctx: PageContext }) {
   return (
     <div className="sm">
       <PageHead title="Smart Move Tracking" subtitle="Saved predictions, their version history and outcome tracking. Read only: nothing here contacts a data provider or edits a prediction." />
+      {evs.data && (
+        <div className="sm-banner" role="region" aria-label="Accuracy status">
+          <div>
+            <b>{evs.data.accuracy.headline}</b>
+            {' '}· {mode === 'SIMULATION' ? 'SIMULATED data, not model performance' : 'forward / live predictions'}
+            {' '}· calendar {evs.data.calendar.status}{evs.data.calendar.age_h != null ? ` (${evs.data.calendar.age_h} h old, frozen limit 6 h)` : ''}
+            <div>{Object.entries<any>(evs.data.accuracy.strategies).map(([k, v]) => `${k}: ${v.pass} PASS / ${v.fail} FAIL / ${v.flat} FLAT (verified outcomes ${v.verified_outcomes}, no trade or incomplete ${v.no_trade_or_incomplete})`).join(' | ')}</div>
+            <div>Continuation vs contrarian_partial_factor (not the baseline full mirror): {Object.entries<number>(evs.data.comparison.relations).map(([k, n]) => `${k.toLowerCase().replace('_', ' ')} ${n}`).join(', ') || 'no events'}. Development results are never shown here as verified live performance.</div>
+          </div>
+        </div>
+      )}
       <div className="sm-banner">
         <AlertTriangle size={16} />
         <div>Shadow research only; no trade is placed. <b>No accuracy claim is allowed</b> until the pre-registered minimum sample (100 decided events per variant over 8 earnings weeks) and an evidence audit are met. The numbers below are descriptive.</div>
