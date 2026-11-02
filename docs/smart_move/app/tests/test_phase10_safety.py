@@ -131,3 +131,39 @@ def test_zero_provider_requests_in_the_dry_run_of_the_pilot_profile(tmp_path):
     svc.refresh_calendar([0], 3)                                                                         # budget 0: nothing
     job = J.run_cycle(svc, now=T.NOW, state_dir=tmp_path / "st", mode="DRY_RUN", ceiling=50)
     assert prov.calls == [] and job["provider_requests"] == 0
+
+
+# ------------------------------------------------------------------ hidden provider-client retries (found in the Phase 12 final review)
+def _fake_429_opener(calls):
+    import io
+    import urllib.error
+
+    class Opener:
+        def open(self, request, timeout=None):
+            calls.append(request.full_url)
+            raise urllib.error.HTTPError(request.full_url, 429, "Too Many Requests", {}, io.BytesIO(b'{"error":"concurrent_limit_exceeded"}'))
+    return Opener()
+
+
+def test_the_provider_client_would_resend_a_429_three_more_times_unless_infra_fetcher_switches_that_off(monkeypatch):
+    import unusualwhales_service as uw
+    monkeypatch.setenv("UNUSUAL_WHALES_API_KEY", "FAKEKEY0123456789abcdefghijklmnop")
+    calls = []
+    monkeypatch.setattr(uw, "_OPENER", _fake_429_opener(calls))
+    monkeypatch.setattr(uw.time, "sleep", lambda s: None)
+    monkeypatch.setattr(uw, "_backoff", lambda *a, **k: 0.0)
+    uw.set_background(True)
+    try:
+        monkeypatch.setattr(uw, "BG_MAX_RETRIES", 3)                                                      # the client's own default
+        r = uw.get("/api/probe/one", {})
+        assert len(calls) == 4 and r["status"] == "RATE_LIMITED"                                          # four real sends for ONE governed request: the hidden retries
+        calls.clear()
+        uw._bg_cooldown.update(until=0.0, level=0)                                                         # the first 429 had also started the client's own background cool-down
+        monkeypatch.setattr(SK, "require_live_allowed", lambda *a, **k: {})
+        fetcher = L.InfraFetcher()                                                                         # constructing the live client removes them
+        assert uw.BG_MAX_RETRIES == 0
+        r2 = uw.get("/api/probe/two", {})
+        assert len(calls) == 1 and r2["status"] == "RATE_LIMITED"                                          # exactly one send, then the 429 reaches the governor, which stops the run
+        assert fetcher.uw is uw
+    finally:
+        uw.set_background(False)

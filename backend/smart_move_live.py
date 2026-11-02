@@ -180,6 +180,9 @@ class InfraFetcher(Fetcher):
         import finnhub_service as fh
         import finviz_service as fz
         import unusualwhales_service as uw
+        # The provider client retries a rate-limited (429) background request up to BG_MAX_RETRIES more times on its own; those re-sends would be real provider attempts that the Smart Move governor never
+        # counts and that contradict "stop at the first 429". Retries are the governor's job here (counted, capped, none in the pilot), so the client's own are switched off for this process.
+        uw.BG_MAX_RETRIES = 0
         self.uw, self.fz, self.fh = uw, fz, fh
 
     def _uw(self, path, params):
