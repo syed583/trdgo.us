@@ -30,6 +30,42 @@ def _latest_collection():
     return fs[-1] if fs else None
 
 
+def _latest_findings():
+    import glob
+    fs = sorted(glob.glob(os.path.join(_dirs()["audits"], "findings_*.json")))
+    return fs[-1] if fs else None
+
+
+def _latest_v2c():
+    import glob
+    import json as _j
+    files = sorted(glob.glob(os.path.join(_dirs()["v2"], "v2c_run_*.json")))
+    return (files[-1], _j.load(open(files[-1], encoding="utf-8"))) if files else (None, None)
+
+
+@router.get("/v2c")
+def v2c_predictions(variant: str = Query("continuation", pattern="^(continuation|contrarian)$")):
+    """RESEARCH CANDIDATE (v2c-1) per-stock results from the saved candidate file. Research only; accuracy is NOT VERIFIED and never shown as a percentage."""
+    f, body = _latest_v2c()
+    if body is None:
+        return {"available": False, "status": "UNAVAILABLE", "message": "No V2 candidate file saved yet.", "events": []}
+    root = os.getenv("SMART_MOVE_RUN_ROOT") or DEFAULT_RUN_ROOT
+    uni = set(B.load_run_results(root).keys())
+    out = []
+    for e in body["events"]:
+        if (e["symbol"], str(e["earnings_date"])[:10]) not in uni:
+            continue
+        x = e["v2c"][variant]
+        out.append({"symbol": e["symbol"], "earnings_date": e["earnings_date"], "signal": x["signal"], "display_status": x["display_status"], "category": x["category"], "primary_cause": x["primary_cause"],
+                    "secondary_causes": x["secondary_causes"], "explanation": x["explanation"], "bull": x["bull"], "bear": x["bear"], "available_points": x["available_points"],
+                    "directional_available_points": x["directional_available_points"], "missing_points": x["missing_points"], "factor_gaps": x["factor_gaps"], "scored_as_of": e.get("scored_as_of"),
+                    "frozen_v2_signal": x["frozen_v2_signal"], "eligibility": e.get("eligibility")})
+    return {"available": True, "status": body["status"], "version": body["version"], "config_hash": body["config_hash"], "audit_hash": body.get("audit_hash"), "base_version": body["base_version"],
+            "summary": body["summary"], "frozen_v2_counts": body["frozen_v2_counts"], "accuracy": body["accuracy"], "changes": body["changes"], "scoring_changes": body["scoring_changes"],
+            "factor_redistribution": body["factor_redistribution"], "usable_for_decisions": False, "variant": variant,
+            "banner": "RESEARCH CANDIDATE (v2c-1): scoring, weights and thresholds are identical to the frozen V2; only the status logic names WHY a stock is incomplete or no-trade. No accuracy is verified; research only.", "events": out}
+
+
 @router.get("/v2/collection")
 def v2_collection():
     """Report of the newest one-time V2 collection run (provider access, attempts, errors, kill switch)."""
@@ -94,7 +130,7 @@ def audits_generate():
     d = _dirs()
     f, _b = _latest_v2()
     tests = os.path.join(d["audits"], "test_results.json")
-    return AR.generate(os.getenv("SMART_MOVE_RUN_ROOT") or DEFAULT_RUN_ROOT, d["audits"], now=now, v2_file=f, tests_file=tests if os.path.exists(tests) else None, backup_root=d["backups"], v2_collection_file=_latest_collection())
+    return AR.generate(os.getenv("SMART_MOVE_RUN_ROOT") or DEFAULT_RUN_ROOT, d["audits"], now=now, v2_file=f, tests_file=tests if os.path.exists(tests) else None, backup_root=d["backups"], v2_collection_file=_latest_collection(), v2c_file=_latest_v2c()[0], findings_file=_latest_findings())
 
 
 @router.get("/audits/{name}.{ext}")

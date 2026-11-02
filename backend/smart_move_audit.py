@@ -40,7 +40,7 @@ def _sha(obj) -> str:
     return hashlib.sha256(json.dumps(obj, sort_keys=True, default=str).encode()).hexdigest()
 
 
-def build(run_root, *, now: datetime, v2_file=None, tests: Optional[dict] = None, backup_root=None, saved_rows=None, plan_fn=None, outcomes: Optional[list] = None, v2_collection: Optional[dict] = None) -> dict:
+def build(run_root, *, now: datetime, v2_file=None, tests: Optional[dict] = None, backup_root=None, saved_rows=None, plan_fn=None, outcomes: Optional[list] = None, v2_collection: Optional[dict] = None, v2c: Optional[dict] = None, findings: Optional[dict] = None) -> dict:
     reports = B.load_run_reports(run_root)
     if not reports:
         return {"ok": False, "error": "no run report found", "generated_utc": now.isoformat()}
@@ -137,6 +137,18 @@ def build(run_root, *, now: datetime, v2_file=None, tests: Optional[dict] = None
                     diffs["opposite"].append("%s %s" % (sym, v))
             diffs["v1_original_vs_v2"][v] = dict(c)
         v2["signal_differences"] = diffs
+    cand = None
+    if v2c:
+        cand = {"version": v2c["version"], "status": v2c["status"], "config_hash": v2c["config_hash"], "base_version": v2c["base_version"], "counts": v2c["summary"]["counts"], "primary_causes": v2c["summary"]["primary_causes"],
+                "frozen_v2_counts": v2c["frozen_v2_counts"], "scoring_changes": v2c["scoring_changes"], "factor_redistribution": v2c["factor_redistribution"], "accuracy": v2c["accuracy"], "stocks": len(v2c["events"]),
+                "changes": v2c["changes"]}
+    fnd = None
+    if findings:
+        fb = findings["flow_lookback_backtest"]
+        fnd = {"analyst_history": {k: findings["analyst_history"][k] for k in ("stocks_with_two_or_more", "max_span_hours", "stocks_with_a_changed_value", "usable_revisions", "conclusion")},
+               "news_schema": {k: findings["news_schema"][k] for k in ("headlines", "sentiment", "conclusion")},
+               "flow_lookback": {"events": fb["events_total"], "verdict": fb["verdict"], "windows": {L: {"qualifying": w["qualifying_events"], "decided": w["decided_buy_sell"], "hits": w["hits"], "ci95": w["ci95"]} for L, w in fb["windows"].items()}},
+               "accuracy": findings["accuracy"]}
     # ---- outcomes / accuracy
     outs = [o for o in (outcomes or []) if o.get("mode", "LIVE") == "LIVE" and o.get("move_pct") is not None]
     omap = {(o["symbol"], str(o["earnings_date"])[:10]): o["move_pct"] for o in outs}
@@ -185,6 +197,11 @@ def build(run_root, *, now: datetime, v2_file=None, tests: Optional[dict] = None
             d("CRITICAL" if c["check"] in ("kill_switch_engaged", "no_duplicate_symbols", "evidence_hashes_present", "no_provider_stop") else "HIGH", "health", "%s: %s" % (c["check"], c["detail"]), "Investigate before relying on the board")
     for f in (tests or {}).get("failures", []):
         d(f.get("severity", "LOW"), "tests", f["name"] + ": " + f["why"], f.get("action", "see test notes"))
+    if fnd:
+        if fnd["analyst_history"]["usable_revisions"] == 0:
+            d("MED", "analyst", "No saved consensus history of 7+ days (longest %s h): revision points (10) unavailable" % fnd["analyst_history"]["max_span_hours"], "Take a 2nd snapshot 7+ days after the first (needs authorization)")
+        d("MED", "options flow", "Lookback review inconclusive: %s" % fnd["flow_lookback"]["verdict"].split(":")[0], "Keep 5 days until an out-of-sample test with >= 100 decided events exists")
+        d("MED", "news", "Sentiment label undocumented and uniform (%s)" % ", ".join("%s %d" % kv for kv in fnd["news_schema"]["sentiment"].items()), "Get the provider definition, then a labelled sample")
     rank = {"CRITICAL": 0, "HIGH": 1, "MED": 2, "LOW": 3}
     defects.sort(key=lambda x: rank.get(x["severity"], 9))                          # most severe first: a HIGH item is never the one cut from the two-page PDF
     verdict = "PARTIAL" if not any(x["severity"] == "CRITICAL" for x in defects) else "BLOCKED"
@@ -194,7 +211,7 @@ def build(run_root, *, now: datetime, v2_file=None, tests: Optional[dict] = None
         "models": {"V1": {"points": 40, "status": "FROZEN, in use for the board (shadow research)"}, "V2": {"points": 100, "status": V2.STATUS + " / UNAVAILABLE for decisions", "version": V2.VERSION, "config_hash": V2.CONFIG_HASH}},
         "events": {"calendar_events": summary["total"] + len(boards["continuation"]["removed_events"]), "eligible": summary["total"], "evaluated": summary["evaluated"], "pending": counts["continuation"].get("PENDING", 0),
                    "incomplete": counts["continuation"].get("DATA_INCOMPLETE", 0), "excluded_removed": len(boards["continuation"]["removed_events"]), "removed": boards["continuation"]["removed_events"]},
-        "signals": counts, "signals_v2": v2.get("signals"), "evidence_coverage": dict(cov), "top_signals": tops, "disagreements": {"count": len(dis), "symbols": dis},
+        "candidate": cand, "findings": fnd, "signals": counts, "signals_v2": v2.get("signals"), "evidence_coverage": dict(cov), "top_signals": tops, "disagreements": {"count": len(dis), "symbols": dis},
         "provider": provider, "windows": windows, "liquidity": liquidity, "v2": v2, "outcomes": outcome, "v1_vs_v2": comparison, "operations": ops,
         "tests": tests or {"recorded": NV}, "defects": defects, "verdict": verdict,
         "verdict_reasons": [x["defect"] for x in defects if x["severity"] in ("HIGH", "CRITICAL")][:4],

@@ -18,7 +18,7 @@ import smart_move_audit_pdf as PDF  # noqa: E402
 DEFAULT_ROOT = r"C:\Users\initi\SmartMoveRun"
 
 
-def generate(run_root, audit_root, *, now=None, v2_file=None, tests_file=None, backup_root=None, saved_rows=None, plan_fn=None, v2_collection_file=None) -> dict:
+def generate(run_root, audit_root, *, now=None, v2_file=None, tests_file=None, backup_root=None, saved_rows=None, plan_fn=None, v2_collection_file=None, v2c_file=None, findings_file=None) -> dict:
     now = now or datetime.now(timezone.utc)
     if saved_rows is None:
         import smart_move_routes as R
@@ -32,7 +32,9 @@ def generate(run_root, audit_root, *, now=None, v2_file=None, tests_file=None, b
     track = Path(TR.DEFAULT_TRACK_DIR)
     import smart_move_outcomes as O
     rec = A.build(run_root, now=now, v2_file=v2_file, tests=tests, backup_root=backup_root, saved_rows=saved_rows, plan_fn=plan_fn, outcomes=O.latest(track) if track.exists() else [],
-                  v2_collection=json.loads(Path(v2_collection_file).read_text(encoding="utf-8")) if v2_collection_file and Path(v2_collection_file).exists() else None)
+                  v2_collection=json.loads(Path(v2_collection_file).read_text(encoding="utf-8")) if v2_collection_file and Path(v2_collection_file).exists() else None,
+                  v2c=json.loads(Path(v2c_file).read_text(encoding="utf-8")) if v2c_file and Path(v2c_file).exists() else None,
+                  findings=json.loads(Path(findings_file).read_text(encoding="utf-8")) if findings_file and Path(findings_file).exists() else None)
     if rec.get("ok") is False:
         return rec
     saved = A.save(rec, audit_root)

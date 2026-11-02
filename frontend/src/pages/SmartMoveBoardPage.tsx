@@ -90,6 +90,23 @@ function V2Panel({ v2, other, variant, coll, v1rows }: { v2: any; other: any; va
   );
 }
 
+function CandPanel({ cand }: { cand: any }) {
+  if (!cand?.available) return null;
+  const c = cand.summary?.counts?.[cand.variant] || {};
+  const p = cand.summary?.primary_causes?.[cand.variant] || {};
+  const f = cand.frozen_v2_counts?.[cand.variant] || {};
+  return (
+    <div className="sm-bd-summary" role="region" aria-label="V2 candidate summary">
+      <div className="sm-bd-sumhead"><b>V2 candidate {cand.version} (RESEARCH ONLY)</b> · {cand.variant} · BUY {c.BUY || 0} · SELL {c.SELL || 0} · NO TRADE {c.NO_TRADE || 0} · DATA INCOMPLETE {c.DATA_INCOMPLETE || 0} · accuracy <b>NOT VERIFIED</b></div>
+      <div className="sm-bd-sumgrid">
+        <span>Frozen V2 baseline: BUY {f.BUY || 0} · SELL {f.SELL || 0} · NO TRADE {f.NO_TRADE || 0} · DATA INCOMPLETE {f.DATA_INCOMPLETE || 0}</span>
+        {Object.entries<number>(p).map(([k, n]) => <span key={k}>Incomplete because {k.replace(/_/g, ' ').toLowerCase()} <b>{n}</b></span>)}
+      </div>
+      <div className="sm-bd-next">{cand.banner} Weights, thresholds and factor rules are identical to the frozen V2; nothing is redistributed.</div>
+    </div>
+  );
+}
+
 function OpsPanel({ ops, error }: { ops: any; error?: string | null }) {
   if (error) return <div className="sm-fresh stale"><AlertTriangle size={14} /> Operations status unavailable: {error}</div>;
   if (!ops) return null;
@@ -120,7 +137,7 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
   const [sector, setSector] = useState('');
   const [date, setDate] = useState('');
   const [evidenceF, setEvidenceF] = useState('');
-  const [model, setModel] = useState<'V1' | 'V2'>('V1');
+  const [model, setModel] = useState<'V1' | 'V2' | 'V2C'>('V1');
   const [auditMsg, setAuditMsg] = useState('');
   const [open, setOpen] = useState('');
   const [, setTick] = useState(0);
@@ -140,6 +157,9 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
   const audits = useApi<any>((s) => smartMoveBoard.audits(s), [auditMsg], { refreshMs: 60_000 });
   const coll = useApi<any>((s) => smartMoveBoard.v2Collection(s), [], { refreshMs: 60_000 });
   const v2c = useApi<any>((s) => smartMoveBoard.v2(variant === 'continuation' ? 'contrarian' : 'continuation', s), [variant], { refreshMs: 60_000 });
+  const cand = useApi<any>((s) => smartMoveBoard.v2c(variant, s), [variant], { refreshMs: 60_000 });
+  const candBy: Record<string, any> = {};
+  (cand.data?.events || []).forEach((e: any) => { candBy[`${e.symbol}|${e.earnings_date}`] = e; });
   const outcomes = useApi<any>((s) => smartMoveTracking.outcomes(s), [], { refreshMs: 60_000 });
   const v2By: Record<string, any> = {};
   (v2.data?.events || []).forEach((e: any) => { v2By[`${e.symbol}|${e.earnings_date}`] = e; });
@@ -204,12 +224,14 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
         <b>Model</b>
         <button className={`sm-tab ${model === 'V1' ? 'on' : ''}`} onClick={() => setModel('V1')}>V1 · 40 points (frozen)</button>
         <button className={`sm-tab ${model === 'V2' ? 'on' : ''}`} onClick={() => setModel('V2')}>V2 · 100 points (EXPERIMENTAL, unavailable for decisions)</button>
+        <button className={`sm-tab ${model === 'V2C' ? 'on' : ''}`} onClick={() => setModel('V2C')}>V2 candidate v2c-1 (RESEARCH ONLY)</button>
         <span style={{ flex: 1 }} />
         <button className="ghost-btn" onClick={generate} title="Builds the audit record and the two-page PDF from saved data; sends no provider request">Generate audit</button>
         {audits.data?.audits?.length > 0 && <a className="ghost-btn" href={`/api/smart-move/audits/${audits.data.audits[audits.data.audits.length - 1].file}.pdf`} target="_blank" rel="noreferrer">Latest audit PDF</a>}
         {auditMsg && <span className="sm-bd-asof">{auditMsg}</span>}
       </div>
       {model === 'V2' && <div className="sm-banner" role="note"><AlertTriangle size={16} /><div>{v2.data?.banner || 'V2 results are not available.'} Config hash {String(v2.data?.config_hash || '').slice(0, 12)}. Missing factors are never turned into signals.</div></div>}
+      {model === 'V2C' && <CandPanel cand={cand.data} />}
       <V2Panel v2={v2.data} other={v2c.data} variant={variant} coll={coll.data?.report} v1rows={allRows} />
       <OpsPanel ops={ops.data} error={ops.error} />
       {(d?.removed_events?.length > 0 || d?.rescheduled_events?.length > 0) && (
@@ -274,7 +296,10 @@ export default function SmartMoveBoardPage({ ctx }: { ctx: PageContext }) {
                         <small>closes {fmtDubai(r.window.cutoff_utc)}<br />{fmtNY(r.window.cutoff_utc)}</small>
                       </td>
                       <td>
-                        {model === 'V2' && v2By[key]
+                        {model === 'V2C' && candBy[key]
+                          ? <><span className={`sm-bd-pill ${candBy[key].display_status === 'DATA_INCOMPLETE' ? 'data_incomplete' : candBy[key].display_status.toLowerCase()}`}><i />{`V2C ${candBy[key].display_status === 'DATA_INCOMPLETE' ? 'DATA INCOMPLETE' : candBy[key].display_status === 'NO_TRADE' ? 'NO TRADE' : candBy[key].display_status} (RESEARCH)`}</span>
+                              <small>{candBy[key].primary_cause.replace(/_/g, ' ').toLowerCase()}{candBy[key].secondary_causes.length ? ` + ${candBy[key].secondary_causes.map((c: string) => c.replace(/_/g, ' ').toLowerCase()).join(', ')}` : ''}. {candBy[key].explanation} Available {candBy[key].available_points}/100, directional {candBy[key].directional_available_points}/100. V1: {STATUS_LABEL[r.status as Status]}; frozen V2: {candBy[key].frozen_v2_signal}.</small></>
+                          : model === 'V2' && v2By[key]
                           ? <><span className={`sm-bd-pill ${v2By[key].display_status === 'DATA_INCOMPLETE' ? 'data_incomplete' : v2By[key].signal.toLowerCase()}`}><i />{v2By[key].display_status === 'DATA_INCOMPLETE' ? 'V2 DATA INCOMPLETE' : v2By[key].signal === 'NO_TRADE' ? 'V2 NO TRADE' : `V2 ${v2By[key].signal} (EXPERIMENTAL)`}</span>
                               <small>{v2By[key].explanation} V1 says {STATUS_LABEL[r.status as Status]}.</small></>
                           : <><StatusPill status={r.status} /><small>{r.status_why}</small></>}

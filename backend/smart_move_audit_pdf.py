@@ -86,8 +86,13 @@ def page1(r, lim):
         for v in ("continuation", "contrarian"):
             c = v2s[v]
             rows.append(["V2 " + v.capitalize() + " (exp.)", c.get("BUY", 0), c.get("SELL", 0), c.get("NO_TRADE", 0), P('<font color="#b26a00"><b>%d</b></font>' % c.get("DATA_INCOMPLETE", 0)), c.get("PENDING", 0)])
+    cd = r.get("candidate")
+    if cd:
+        for v in ("continuation", "contrarian"):
+            c = cd["counts"][v]
+            rows.append(["V2 candidate %s (research)" % v.capitalize(), c.get("BUY", 0), c.get("SELL", 0), c.get("NO_TRADE", 0), P('<font color="#b26a00"><b>%d</b></font>' % c.get("DATA_INCOMPLETE", 0)), 0])
     cov = r["evidence_coverage"]
-    s += [tbl(rows, [40 * mm, 20 * mm, 20 * mm, 26 * mm, 36 * mm, 22 * mm]),
+    s += [tbl(rows, [52 * mm, 16 * mm, 16 * mm, 24 * mm, 34 * mm, 20 * mm]),
           P("Evidence coverage: " + " | ".join("%s: %d" % (k, v) for k, v in cov.items()) + ". Missing data is shown as DATA INCOMPLETE, never as a neutral or negative signal.")]
     oc = r["outcomes"]
     s += [P("Actual outcomes: <b>%d graded</b>. %s" % (oc["graded"], oc["accuracy"] if not oc["graded"] else "Descriptive hit rates are on page 2; not enough decided events for any accuracy claim."))]
@@ -116,11 +121,11 @@ def page2(r, lim):
     v2, pv, ops = r["v2"], r["provider"], r["operations"]
     cl = v2.get("collection")
     s = [Paragraph("TECHNICAL VALIDATION AND PROBLEM AUDIT", TITLE), Spacer(1, 2), Paragraph("1. V2 factor coverage (all 10 parameters)", H)]
-    rows = [hdr(["Factor", "Pts", "Stocks with data", "Data", "Source / endpoint", "Note"])]
+    rows = [hdr(["Factor", "Pts", "Stocks with data", "Data", "Note (endpoints are in the JSON record)"])]
     for f in v2["factors"]:
         have = ("%s / %s" % (f["stocks_with_data"], f["stocks"]) + (" (%d part.)" % f["partial"] if f.get("partial") else "")) if f["stocks"] is not None else NA
-        rows.append([f["factor"], f["points"], have, pill(f["data_status"]), P(f["source"]), P(f["note"])])
-    s += [tbl(rows, [30 * mm, 8 * mm, 30 * mm, 18 * mm, 48 * mm, 40 * mm]),
+        rows.append([f["factor"], f["points"], have, pill(f["data_status"]), P(f["note"])])
+    s += [tbl(rows, [30 * mm, 8 * mm, 32 * mm, 20 * mm, 84 * mm]),
           P("V2: at most %s of 100 points have data (%s directional; 60 required, and the implied-move factor is magnitude-only so it does not count). Averages %s available / %s directional; %s stocks reach 60 directional. V2 results: %s. Missing is not negative." % (
               ("%g" % v2["available_points_max"]) if v2.get("available_points_max") is not None else NA, ("%g" % v2["directional_available_max"]) if v2.get("directional_available_max") is not None else NA,
               v2.get("average_available", NA), v2.get("average_directional", NA), v2.get("stocks_60_plus_directional", NA),
@@ -134,17 +139,27 @@ def page2(r, lim):
                    ", ".join(k.replace("uw_", "") + " " + v.split(" ")[0] for k, v in ((cl or {}).get("endpoint_access") or {}).items()), (cl or {}).get("failures", 0), len((cl or {}).get("stop_events") or []),
                    (cl or {}).get("open_window_events"), len((cl or {}).get("expired_before_collection") or [])))]] if cl else []) + [
                ["Subscription / limits", P(pv["subscription"] + ". " + pv["limits"])],
-               ["Capture windows", P("evaluated %d | open, no prediction %d | closed and missed %d | not yet open %d" % (w["evaluated"], w["open_without_prediction"], w["late_or_expired"], w["ahead"]))],
-               ["Liquidity / entry (V1)", P(" | ".join("%s: %d" % (k, v) for k, v in lq.items()))]], [36 * mm, 138 * mm])]
+               ["Windows / liquidity (V1)", P("windows: evaluated %d, open without prediction %d, closed and missed %d. " % (w["evaluated"], w["open_without_prediction"], w["late_or_expired"]) + " | ".join("%s: %d" % (k.split(" (")[0], v) for k, v in lq.items()))]], [36 * mm, 138 * mm])]
     o, cmpv = r["outcomes"], r["v1_vs_v2"]
     s += [Paragraph("3. Outcomes, accuracy, V1 versus V2", H),
           tbl([[P("<b>Outcomes graded</b>"), P("%d. Accuracy: %s" % (o["graded"], o["accuracy"]))], [P("<b>V1 vs V2</b>"), P(cmpv["verdict"])]] + ([[P("<b>V1 descriptive</b>"), P(" | ".join("%s: %d decided, hit %s, 95%% CI %s (BUY %d/%d, SELL %d/%d)" % (v, x["decided"], x["hit_rate"], x["ci95"], x["buy"]["hits"], x["buy"]["n"], x["sell"]["hits"], x["sell"]["n"]) for v, x in o["v1_descriptive"].items()))]] if o.get("v1_descriptive") else []), [36 * mm, 138 * mm], head=False)]
+    cd, fn = r.get("candidate"), r.get("findings")
+    if cd and fn:
+        cc = cd["counts"]["continuation"]
+        pcz = cd["primary_causes"]["continuation"]
+        fl = fn["flow_lookback"]
+        s += [Paragraph("3b. V2 research candidate and evidence findings", H),
+              tbl([[P("<b>Candidate %s</b>" % cd["version"]), P("RESEARCH ONLY. Weights, thresholds, factor rules and the 100 points are identical to the frozen V2; no redistribution. It only names WHY a stock is incomplete: Continuation BUY %d, SELL %d, NO TRADE %d, DATA INCOMPLETE %d (%s). Accuracy NOT VERIFIED." % (
+                    cc.get("BUY", 0), cc.get("SELL", 0), cc.get("NO_TRADE", 0), cc.get("DATA_INCOMPLETE", 0), ", ".join("%s %d" % (k.replace("_", " ").lower(), n) for k, n in sorted(pcz.items(), key=lambda kv: -kv[1]))))],
+                   [P("<b>Analyst history</b>"), P("longest saved consensus history %s h, %d of %d stocks changed: below the 7-day band, so the revision factor stays unavailable (nothing manufactured)." % (fn["analyst_history"]["max_span_hours"], fn["analyst_history"]["stocks_with_a_changed_value"], fn["analyst_history"]["stocks_with_two_or_more"]))],
+                   [P("<b>Flow lookback</b>"), P("point-in-time backtest on %d past events: qualifying events at 5/10/15/30 d = %s; decided <= %d, far below 100: %s" % (fl["events"], "/".join(str(fl["windows"][k]["qualifying"]) for k in ("5", "10", "15", "30")), max(w["decided"] for w in fl["windows"].values()), fl["verdict"].split(":")[0]))],
+                   [P("<b>News / guidance</b>"), P("%d saved labels, all %s: meaning undocumented, factor stays BLOCKED and unscored." % (fn["news_schema"]["headlines"], ", ".join(fn["news_schema"]["sentiment"])))]], [36 * mm, 138 * mm], head=False)]
     t = r["tests"]
     bk = ops["backup"]
     bks = "VERIFIED: %s (%d files)" % (bk["folder"], bk["files"]) if isinstance(bk, dict) and bk.get("ok") else str(bk)
     s += [Paragraph("4. Operations and tests", H),
           tbl([[P("<b>Scheduler</b>"), P(ops["scheduler"] + "; est. %s requests/day for this universe" % ops["estimated_daily_requests"])],
-               [P("<b>Kill switch</b>"), pill(ops["kill_switch"])], [P("<b>Health checks</b>"), pill("PASS" if ops["health_ok"] else "FAIL")], [P("<b>Backup</b>"), P(bks)],
+               [P("<b>Kill switch / health / backup</b>"), P("kill switch <b>%s</b> | health checks <b>%s</b> | backup %s" % (ops["kill_switch"], "PASS" if ops["health_ok"] else "FAIL", bks))],
                [P("<b>Tests</b>"), P(t.get("summary", t.get("recorded", NV)) if isinstance(t, dict) else NV)]], [36 * mm, 138 * mm], head=False)]
     s += [Paragraph("5. Defects and required actions", H)]
     d = r["defects"][:lim]

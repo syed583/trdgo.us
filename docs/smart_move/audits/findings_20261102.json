@@ -1,0 +1,190 @@
+{
+ "generated_utc": "2026-11-02T14:09:23.464245+04:00",
+ "analyst_history": {
+  "source": "UW calendar street_mean_est at each saved calendar request (point-in-time, EPS only)",
+  "stocks_with_observations": 116,
+  "stocks_with_two_or_more": 116,
+  "max_span_hours": 13.3,
+  "stocks_with_a_changed_value": 0,
+  "required_gap": "7 days (frozen V2 band)",
+  "provider_revision_fields": {
+   "quarter_rows": 2913,
+   "null": 2913
+  },
+  "usable_revisions": 0,
+  "conclusion": "NO genuine revision history of at least 7 days exists in any saved record (longest 13.3 h; 0 changes). The revision factor stays unavailable; nothing is manufactured and today's consensus is never used as an older one."
+ },
+ "news_schema": {
+  "stocks_sampled": [
+   "AAPL",
+   "PLTR",
+   "VRTX",
+   "WMB"
+  ],
+  "headlines": 56,
+  "sentiment": {
+   "neutral": 56
+  },
+  "is_major": {
+   "True": 38,
+   "False": 18
+  },
+  "sources": {
+   "Blockchain News": 28,
+   "Tradex": 14,
+   "Business Wire": 10,
+   "GlobeNewswire": 2,
+   "PR NewsWire": 1,
+   "Unusual Whales": 1
+  },
+  "tickers_per_headline_mean": 1.3,
+  "documented_semantics": "NONE: api_spec.yaml shows only example values (positive, neutral) and does not define who assigns the label or whether it refers to the headline or to a listed ticker",
+  "conclusion": "UNVERIFIED: 56 identical labels carry no information; the factor stays BLOCKED and unscored. Analyst actions are already used in the ANALYST factor, so they are not reused here (no double counting). No timestamped guidance field exists in the saved payloads."
+ },
+ "flow_lookback_backtest": {
+  "events_total": 4625,
+  "stocks": 93,
+  "windows": {
+   "5": {
+    "states": {
+     "NONE_IN_WINDOW": 4199,
+     "NO_ALERTS": 347,
+     "NOT_ENOUGH": 76,
+     "QUALIFIES": 3
+    },
+    "qualifying_events": 3,
+    "coverage_of_events": 0.0006,
+    "decided_buy_sell": 3,
+    "hits": 1,
+    "hit_rate": 0.333,
+    "ci95": [
+     0.061,
+     0.792
+    ],
+    "walk_forward_halves": {
+     "older_events": {
+      "decided": 0,
+      "hits": 0,
+      "ci95": null
+     },
+     "newer_events": {
+      "decided": 3,
+      "hits": 1,
+      "ci95": [
+       0.061,
+       0.792
+      ]
+     }
+    },
+    "leaked_alerts_excluded": 288115,
+    "minimum_sample_met": false
+   },
+   "10": {
+    "states": {
+     "NONE_IN_WINDOW": 4161,
+     "NO_ALERTS": 347,
+     "NOT_ENOUGH": 114,
+     "QUALIFIES": 3
+    },
+    "qualifying_events": 3,
+    "coverage_of_events": 0.0006,
+    "decided_buy_sell": 3,
+    "hits": 1,
+    "hit_rate": 0.333,
+    "ci95": [
+     0.061,
+     0.792
+    ],
+    "walk_forward_halves": {
+     "older_events": {
+      "decided": 0,
+      "hits": 0,
+      "ci95": null
+     },
+     "newer_events": {
+      "decided": 3,
+      "hits": 1,
+      "ci95": [
+       0.061,
+       0.792
+      ]
+     }
+    },
+    "leaked_alerts_excluded": 288115,
+    "minimum_sample_met": false
+   },
+   "15": {
+    "states": {
+     "NONE_IN_WINDOW": 4135,
+     "NO_ALERTS": 347,
+     "NOT_ENOUGH": 137,
+     "QUALIFIES": 6
+    },
+    "qualifying_events": 6,
+    "coverage_of_events": 0.0013,
+    "decided_buy_sell": 4,
+    "hits": 1,
+    "hit_rate": 0.25,
+    "ci95": [
+     0.046,
+     0.699
+    ],
+    "walk_forward_halves": {
+     "older_events": {
+      "decided": 0,
+      "hits": 0,
+      "ci95": null
+     },
+     "newer_events": {
+      "decided": 4,
+      "hits": 1,
+      "ci95": [
+       0.046,
+       0.699
+      ]
+     }
+    },
+    "leaked_alerts_excluded": 288115,
+    "minimum_sample_met": false
+   },
+   "30": {
+    "states": {
+     "NONE_IN_WINDOW": 4083,
+     "NO_ALERTS": 347,
+     "NOT_ENOUGH": 183,
+     "QUALIFIES": 12
+    },
+    "qualifying_events": 12,
+    "coverage_of_events": 0.0026,
+    "decided_buy_sell": 8,
+    "hits": 4,
+    "hit_rate": 0.5,
+    "ci95": [
+     0.215,
+     0.785
+    ],
+    "walk_forward_halves": {
+     "older_events": {
+      "decided": 0,
+      "hits": 0,
+      "ci95": null
+     },
+     "newer_events": {
+      "decided": 8,
+      "hits": 4,
+      "ci95": [
+       0.215,
+       0.785
+      ]
+     }
+    },
+    "leaked_alerts_excluded": 288115,
+    "minimum_sample_met": false
+   }
+  },
+  "note": "descriptive only; no window is selected; flat band +-0.5% (frozen grader)",
+  "verdict": "INCONCLUSIVE: no window reaches 100 decided events; the windows cannot be ranked on accuracy"
+ },
+ "outcomes_available": 0,
+ "accuracy": "NOT VERIFIED: no actual outcome exists for any prediction made in this system; no accuracy percentage is reported"
+}

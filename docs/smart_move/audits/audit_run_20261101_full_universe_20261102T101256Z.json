@@ -1,0 +1,696 @@
+{
+ "schema": "smart-move-audit/1",
+ "title": "TRDGO-US SMART MOVE - EARNINGS PREDICTION AUDIT",
+ "generated_utc": "2026-11-02T10:12:56.030767+00:00",
+ "run_id": "run_20261101_full_universe",
+ "mode": "REAL",
+ "event": {
+  "dates": [
+   "2026-11-02"
+  ],
+  "timing": {
+   "AMC": 100,
+   "BMO": 22
+  }
+ },
+ "models": {
+  "V1": {
+   "points": 40,
+   "status": "FROZEN, in use for the board (shadow research)"
+  },
+  "V2": {
+   "points": 100,
+   "status": "EXPERIMENTAL / UNAVAILABLE for decisions",
+   "version": "v2-exp-2",
+   "config_hash": "16b9b2e149d99bac886c776b0b836f917878a23800a50d82d76387b443965863"
+  }
+ },
+ "events": {
+  "calendar_events": 123,
+  "eligible": 122,
+  "evaluated": 122,
+  "pending": 0,
+  "incomplete": 23,
+  "excluded_removed": 1,
+  "removed": [
+   {
+    "symbol": "APPS",
+    "earnings_date": "2026-11-02",
+    "why": "no longer in the current event registry (removed or rescheduled)"
+   }
+  ]
+ },
+ "candidate": {
+  "version": "v2c-1",
+  "status": "RESEARCH_CANDIDATE",
+  "config_hash": "0356a2ffea532456ea1c10386b70dc85c34a866b34c701686289ebb994aa369b",
+  "base_version": "v2-exp-2",
+  "counts": {
+   "continuation": {
+    "NO_TRADE": 5,
+    "DATA_INCOMPLETE": 90
+   },
+   "contrarian": {
+    "NO_TRADE": 5,
+    "DATA_INCOMPLETE": 90
+   }
+  },
+  "primary_causes": {
+   "continuation": {
+    "MISSING_REQUIRED": 47,
+    "STALE_CALENDAR": 42,
+    "API_FAILED": 1
+   },
+   "contrarian": {
+    "MISSING_REQUIRED": 47,
+    "STALE_CALENDAR": 42,
+    "API_FAILED": 1
+   }
+  },
+  "frozen_v2_counts": {
+   "continuation": {
+    "NO_TRADE": 5,
+    "DATA_INCOMPLETE": 90
+   },
+   "contrarian": {
+    "NO_TRADE": 5,
+    "DATA_INCOMPLETE": 90
+   }
+  },
+  "scoring_changes": [],
+  "factor_redistribution": [],
+  "accuracy": "NOT VERIFIED: no actual outcomes exist; no accuracy percentage is shown",
+  "stocks": 95,
+  "changes": [
+   "GENUINE_NO_TRADE for known ineligibility with complete data (known 20-day dollar volume < $20M)",
+   "named primary cause for every DATA_INCOMPLETE",
+   "valid absence of flow reported as informational, no directional credit"
+  ]
+ },
+ "findings": {
+  "analyst_history": {
+   "stocks_with_two_or_more": 116,
+   "max_span_hours": 13.3,
+   "stocks_with_a_changed_value": 0,
+   "usable_revisions": 0,
+   "conclusion": "NO genuine revision history of at least 7 days exists in any saved record (longest 13.3 h; 0 changes). The revision factor stays unavailable; nothing is manufactured and today's consensus is never used as an older one."
+  },
+  "news_schema": {
+   "headlines": 56,
+   "sentiment": {
+    "neutral": 56
+   },
+   "conclusion": "UNVERIFIED: 56 identical labels carry no information; the factor stays BLOCKED and unscored. Analyst actions are already used in the ANALYST factor, so they are not reused here (no double counting). No timestamped guidance field exists in the saved payloads."
+  },
+  "flow_lookback": {
+   "events": 4625,
+   "verdict": "INCONCLUSIVE: no window reaches 100 decided events; the windows cannot be ranked on accuracy",
+   "windows": {
+    "5": {
+     "qualifying": 3,
+     "decided": 3,
+     "hits": 1,
+     "ci95": [
+      0.061,
+      0.792
+     ]
+    },
+    "10": {
+     "qualifying": 3,
+     "decided": 3,
+     "hits": 1,
+     "ci95": [
+      0.061,
+      0.792
+     ]
+    },
+    "15": {
+     "qualifying": 6,
+     "decided": 4,
+     "hits": 1,
+     "ci95": [
+      0.046,
+      0.699
+     ]
+    },
+    "30": {
+     "qualifying": 12,
+     "decided": 8,
+     "hits": 4,
+     "ci95": [
+      0.215,
+      0.785
+     ]
+    }
+   }
+  },
+  "accuracy": "NOT VERIFIED: no actual outcome exists for any prediction made in this system; no accuracy percentage is reported"
+ },
+ "signals": {
+  "continuation": {
+   "BUY": 8,
+   "SELL": 7,
+   "NO_TRADE": 84,
+   "DATA_INCOMPLETE": 23,
+   "PENDING": 0
+  },
+  "contrarian": {
+   "BUY": 8,
+   "SELL": 21,
+   "NO_TRADE": 70,
+   "DATA_INCOMPLETE": 23,
+   "PENDING": 0
+  }
+ },
+ "signals_v2": {
+  "continuation": {
+   "NO_TRADE": 5,
+   "DATA_INCOMPLETE": 90
+  },
+  "contrarian": {
+   "NO_TRADE": 5,
+   "DATA_INCOMPLETE": 90
+  }
+ },
+ "evidence_coverage": {
+  "complete (40/40)": 112,
+  "partial": 10
+ },
+ "top_signals": [
+  {
+   "symbol": "VAL",
+   "variant": "continuation",
+   "signal": "BUY",
+   "score": 30,
+   "available": 40,
+   "evidence": "40/40",
+   "reason": "RULE"
+  },
+  {
+   "symbol": "RIG",
+   "variant": "continuation",
+   "signal": "BUY",
+   "score": 26,
+   "available": 40,
+   "evidence": "40/40",
+   "reason": "RULE"
+  },
+  {
+   "symbol": "HLF",
+   "variant": "continuation",
+   "signal": "BUY",
+   "score": 26,
+   "available": 40,
+   "evidence": "40/40",
+   "reason": "RULE"
+  },
+  {
+   "symbol": "ICHR",
+   "variant": "continuation",
+   "signal": "SELL",
+   "score": 34,
+   "available": 40,
+   "evidence": "40/40",
+   "reason": "RULE"
+  },
+  {
+   "symbol": "AESI",
+   "variant": "continuation",
+   "signal": "SELL",
+   "score": 24,
+   "available": 40,
+   "evidence": "40/40",
+   "reason": "RULE"
+  },
+  {
+   "symbol": "ADEA",
+   "variant": "continuation",
+   "signal": "SELL",
+   "score": 23,
+   "available": 40,
+   "evidence": "40/40",
+   "reason": "RULE"
+  },
+  {
+   "symbol": "TVTX",
+   "variant": "contrarian",
+   "signal": "BUY",
+   "score": 28,
+   "available": 40,
+   "evidence": "40/40",
+   "reason": "RULE"
+  },
+  {
+   "symbol": "AEIS",
+   "variant": "contrarian",
+   "signal": "BUY",
+   "score": 25,
+   "available": 40,
+   "evidence": "40/40",
+   "reason": "RULE"
+  },
+  {
+   "symbol": "GRAB",
+   "variant": "contrarian",
+   "signal": "BUY",
+   "score": 23,
+   "available": 40,
+   "evidence": "40/40",
+   "reason": "RULE"
+  },
+  {
+   "symbol": "ESRT",
+   "variant": "contrarian",
+   "signal": "SELL",
+   "score": 38,
+   "available": 40,
+   "evidence": "40/40",
+   "reason": "RULE"
+  },
+  {
+   "symbol": "CE",
+   "variant": "contrarian",
+   "signal": "SELL",
+   "score": 35,
+   "available": 40,
+   "evidence": "40/40",
+   "reason": "RULE"
+  },
+  {
+   "symbol": "FANG",
+   "variant": "contrarian",
+   "signal": "SELL",
+   "score": 31,
+   "available": 40,
+   "evidence": "40/40",
+   "reason": "RULE"
+  }
+ ],
+ "disagreements": {
+  "count": 0,
+  "symbols": []
+ },
+ "provider": {
+  "attempts_total": 455,
+  "by_provider": {
+   "UNUSUAL_WHALES": 455
+  },
+  "errors": 0,
+  "stop_events_401_429": 0,
+  "cap": 700,
+  "budget_utilisation_pct": 65.0,
+  "latest_evidence_retrieved_utc": "2026-10-31T21:54:03.591707+00:00",
+  "run_updated_utc": "2026-10-31T21:54:48.026697+00:00",
+  "run_status": "OK",
+  "subscription": "ACTIVE (all 6 V2 endpoints answered with data on 1 Nov; no 401); renewal and dashboard quota NOT VERIFIED",
+  "limits": "3 in-flight per token (UW support, 23 Oct): not re-verified; run used 1 in flight, 2 s pacing"
+ },
+ "windows": {
+  "late_or_expired": 0,
+  "open_without_prediction": 0,
+  "ahead": 0,
+  "evaluated": 122
+ },
+ "liquidity": {
+  "NOT_TRADABLE (entry session already passed)": 22,
+  "ILLIQUID_OR_UNKNOWN (20-day avg dollar volume < $20M)": 42,
+  "INSUFFICIENT_COVERAGE": 1
+ },
+ "v2": {
+  "status": "EXPERIMENTAL",
+  "version": "v2-exp-2",
+  "config_hash": "16b9b2e149d99bac886c776b0b836f917878a23800a50d82d76387b443965863",
+  "readiness": "UNAVAILABLE: saved evidence covers at most 55 of 100 points (60 required); 4 factors have no saved data and 1 is BLOCKED",
+  "factors": [
+   {
+    "factor": "F3",
+    "points": 15,
+    "stocks_with_data": 51,
+    "partial": 0,
+    "stocks": 95,
+    "data_status": "READY",
+    "source": "UW /api/earnings/{t} + /ohlc/1d",
+    "note": "saved in every run"
+   },
+   {
+    "factor": "F5",
+    "points": 10,
+    "stocks_with_data": 53,
+    "partial": 0,
+    "stocks": 95,
+    "data_status": "READY",
+    "source": "UW /api/stock/{t}/ohlc/1d",
+    "note": "saved in every run"
+   },
+   {
+    "factor": "F7",
+    "points": 10,
+    "stocks_with_data": 53,
+    "partial": 0,
+    "stocks": 95,
+    "data_status": "READY",
+    "source": "UW /volatility/context + /iv-rank",
+    "note": "collected live in window only"
+   },
+   {
+    "factor": "F8",
+    "points": 5,
+    "stocks_with_data": 53,
+    "partial": 0,
+    "stocks": 95,
+    "data_status": "READY",
+    "source": "UW ohlc SPY + sector ETF",
+    "note": "saved in every run"
+   },
+   {
+    "factor": "ANALYST",
+    "points": 15,
+    "stocks_with_data": 93,
+    "partial": 93,
+    "stocks": 95,
+    "data_status": "PARTIAL",
+    "source": "UW /screener/analysts, /earnings-estimates",
+    "note": "actions (5 pts) collected; revisions (10 pts) need a 2nd snapshot"
+   },
+   {
+    "factor": "OPTIONS_FLOW",
+    "points": 15,
+    "stocks_with_data": 7,
+    "partial": 0,
+    "stocks": 95,
+    "data_status": "PARTIAL",
+    "source": "UW /api/stock/{t}/flow-alerts",
+    "note": "collected; few stocks pass the activity rules"
+   },
+   {
+    "factor": "IMPLIED_VS_HIST",
+    "points": 10,
+    "stocks_with_data": 91,
+    "partial": 0,
+    "stocks": 95,
+    "data_status": "PARTIAL",
+    "source": "UW /api/earnings/{t} (expected_move_perc)",
+    "note": "magnitude only, no direction"
+   },
+   {
+    "factor": "SHORT_INST",
+    "points": 5,
+    "stocks_with_data": 93,
+    "partial": 0,
+    "stocks": 95,
+    "data_status": "PARTIAL",
+    "source": "UW /shorts/{t}/interest-float/v2, /institution/{t}/ownership",
+    "note": "collected; FINRA lagged, 13F partial"
+   },
+   {
+    "factor": "REL_STRENGTH",
+    "points": 5,
+    "stocks_with_data": 95,
+    "partial": 0,
+    "stocks": 95,
+    "data_status": "READY",
+    "source": "derived from saved ohlc (stock, SPY, sector ETF)",
+    "note": "overlaps V1 F5/F8 evidence"
+   },
+   {
+    "factor": "NEWS_GUIDANCE",
+    "points": 10,
+    "stocks_with_data": 0,
+    "partial": 0,
+    "stocks": 95,
+    "data_status": "BLOCKED",
+    "source": "UW /api/news/headlines (sentiment unverified)",
+    "note": "no structured guidance field"
+   }
+  ],
+  "signals": {
+   "continuation": {
+    "NO_TRADE": 5,
+    "DATA_INCOMPLETE": 90
+   },
+   "contrarian": {
+    "NO_TRADE": 5,
+    "DATA_INCOMPLETE": 90
+   }
+  },
+  "audit_hash": "4899044cb041076a4661ada94133f376c779e80391a04f8606402bd5b7b85ac0",
+  "source_run": "run_20261101_full_universe",
+  "available_points_max": 80.0,
+  "directional_available_max": 70.0,
+  "evidence_complete_stocks": 0,
+  "average_available": 47.5,
+  "average_directional": 37.9,
+  "stocks_60_plus_directional": 5,
+  "collection": {
+   "stocks_collected": 94,
+   "attempts_total": 512,
+   "cap": 700,
+   "by_kind": {
+    "uw_analysts": 94,
+    "uw_estimates": 94,
+    "uw_flow_alerts": 94,
+    "uw_short_float": 94,
+    "uw_inst_own": 94,
+    "uw_news": 3
+   },
+   "probe_symbol": "AAPL",
+   "endpoint_access": {
+    "uw_analysts": "OK (50 rows)",
+    "uw_estimates": "OK (41 rows)",
+    "uw_flow_alerts": "OK (100 rows)",
+    "uw_short_float": "OK (128 rows)",
+    "uw_inst_own": "OK (100 rows)",
+    "uw_news": "OK (25 rows)"
+   },
+   "failures": 6,
+   "stop_events": [],
+   "status": "OK",
+   "window_closed": [
+    "DOC",
+    "ERO",
+    "FOX",
+    "GRAB",
+    "IAUX",
+    "PAM"
+   ],
+   "expired_before_collection": [
+    "MAR",
+    "ETR",
+    "IDXX",
+    "PEG",
+    "EL",
+    "L",
+    "TSEM",
+    "CHKP",
+    "TEM",
+    "CNA",
+    "FOXA",
+    "KRYS",
+    "AXSM",
+    "CHH",
+    "CIFR",
+    "AKR",
+    "KOS",
+    "NSSC",
+    "ALX",
+    "TATT",
+    "III"
+   ],
+   "open_window_events": 116,
+   "kill_switch_final": true,
+   "first_collection_utc": "2026-11-01T10:38:54.584646+00:00",
+   "last_collection_utc": "2026-11-01T20:00:15.361738+00:00"
+  },
+  "signal_differences": {
+   "v1_original_vs_v2": {
+    "continuation": {
+     "NO_TRADE->NO_TRADE": 80,
+     "SELL->NO_TRADE": 7,
+     "BUY->NO_TRADE": 8
+    },
+    "contrarian": {
+     "SELL->NO_TRADE": 21,
+     "NO_TRADE->NO_TRADE": 68,
+     "BUY->NO_TRADE": 6
+    }
+   },
+   "opposite": []
+  }
+ },
+ "outcomes": {
+  "graded": 0,
+  "accuracy": "NOT AVAILABLE (no graded outcomes yet; no accuracy is claimed)",
+  "claim_allowed": false,
+  "v1_descriptive": null,
+  "average_move_pct": null
+ },
+ "v1_vs_v2": {
+  "verdict": "INCONCLUSIVE: minimum sample (100 decided per variant for both models over 8+ earnings weeks) not met",
+  "variants": {
+   "continuation": {
+    "v1": {
+     "graded": 0,
+     "decided": 0,
+     "coverage": null,
+     "no_trade": 0,
+     "hit_rate": null,
+     "ci95": null,
+     "buy": {
+      "n": 0,
+      "hits": 0
+     },
+     "sell": {
+      "n": 0,
+      "hits": 0
+     },
+     "net_mean_pct_with_cost": null
+    },
+    "v2": {
+     "graded": 0,
+     "decided": 0,
+     "coverage": null,
+     "no_trade": 0,
+     "hit_rate": null,
+     "ci95": null,
+     "buy": {
+      "n": 0,
+      "hits": 0
+     },
+     "sell": {
+      "n": 0,
+      "hits": 0
+     },
+     "net_mean_pct_with_cost": null
+    },
+    "sample_sufficient": false
+   },
+   "contrarian": {
+    "v1": {
+     "graded": 0,
+     "decided": 0,
+     "coverage": null,
+     "no_trade": 0,
+     "hit_rate": null,
+     "ci95": null,
+     "buy": {
+      "n": 0,
+      "hits": 0
+     },
+     "sell": {
+      "n": 0,
+      "hits": 0
+     },
+     "net_mean_pct_with_cost": null
+    },
+    "v2": {
+     "graded": 0,
+     "decided": 0,
+     "coverage": null,
+     "no_trade": 0,
+     "hit_rate": null,
+     "ci95": null,
+     "buy": {
+      "n": 0,
+      "hits": 0
+     },
+     "sell": {
+      "n": 0,
+      "hits": 0
+     },
+     "net_mean_pct_with_cost": null
+    },
+    "sample_sufficient": false
+   }
+  },
+  "graded_events": 0
+ },
+ "operations": {
+  "scheduler": "PLAN ONLY; recurring live collection disabled; no task registered",
+  "kill_switch": "ENGAGED",
+  "health_ok": true,
+  "health_problems": [],
+  "backup": {
+   "folder": "run_20261101_full_universe_20261101T095303Z",
+   "ok": true,
+   "files": 515,
+   "mismatched_or_missing": []
+  },
+  "estimated_daily_requests": 503
+ },
+ "tests": {
+  "summary": "Smart Move suite 191 passed / 1 skipped / 0 failed (2026-11-02); frontend tsc + production build clean; main-repo backend suite 1262 passed / 4 skipped (clean baseline, 2026-11-01). Recorded by the developer run, not re-executed by the audit.",
+  "recorded_utc": "2026-11-02",
+  "failures": [
+   {
+    "name": "worktree backend/tests (6 files)",
+    "why": "fail only in the feature/smart-move worktree: gitignored .env.dev missing, and test_moves_replay needs tools/moves_replay.py from another branch; the same tests pass on the main checkout",
+    "severity": "LOW",
+    "action": "none for Smart Move; run backend tests from the main checkout"
+   },
+   {
+    "name": "calendar guard not yet proven live",
+    "why": "the one-time V2 run refreshed the calendar once (41-42 stocks captured against a calendar older than 6 h); the per-request guard is committed (0a46d675) and covered by mock tests but has never run against the provider",
+    "severity": "MED",
+    "action": "confirm in the next supervised collection (needs authorization)"
+   }
+  ]
+ },
+ "defects": [
+  {
+   "severity": "HIGH",
+   "component": "outcomes",
+   "defect": "No outcome has ever been collected or graded; accuracy is unknown",
+   "action": "Run outcome collection after the reaction sessions close (needs separate live approval)"
+  },
+  {
+   "severity": "MED",
+   "component": "scheduler",
+   "defect": "scheduler_tick --execute is tested with mocks only; never run live",
+   "action": "Review seed-store convention, then a supervised first execution"
+  },
+  {
+   "severity": "MED",
+   "component": "provider",
+   "defect": "Subscription, renewal (1 Nov) and 3-concurrent limit not re-verified today",
+   "action": "Owner to confirm in the Unusual Whales dashboard"
+  },
+  {
+   "severity": "MED",
+   "component": "tests",
+   "defect": "calendar guard not yet proven live: the one-time V2 run refreshed the calendar once (41-42 stocks captured against a calendar older than 6 h); the per-request guard is committed (0a46d675) and covered by mock tests but has never run against the provider",
+   "action": "confirm in the next supervised collection (needs authorization)"
+  },
+  {
+   "severity": "MED",
+   "component": "analyst",
+   "defect": "No saved consensus history of 7+ days (longest 13.3 h): revision points (10) unavailable",
+   "action": "Take a 2nd snapshot 7+ days after the first (needs authorization)"
+  },
+  {
+   "severity": "MED",
+   "component": "options flow",
+   "defect": "Lookback review inconclusive: INCONCLUSIVE",
+   "action": "Keep 5 days until an out-of-sample test with >= 100 decided events exists"
+  },
+  {
+   "severity": "MED",
+   "component": "news",
+   "defect": "Sentiment label undocumented and uniform (neutral 56)",
+   "action": "Get the provider definition, then a labelled sample"
+  },
+  {
+   "severity": "LOW",
+   "component": "tests",
+   "defect": "worktree backend/tests (6 files): fail only in the feature/smart-move worktree: gitignored .env.dev missing, and test_moves_replay needs tools/moves_replay.py from another branch; the same tests pass on the main checkout",
+   "action": "none for Smart Move; run backend tests from the main checkout"
+  }
+ ],
+ "verdict": "PARTIAL",
+ "verdict_reasons": [
+  "No outcome has ever been collected or graded; accuracy is unknown"
+ ],
+ "evidence_timestamp_utc": "2026-10-31T21:54:03.591707+00:00",
+ "data_labels": "REAL saved evidence; no simulated or mock data in this record",
+ "board_counts_source": "board build over the registry universe at generation time",
+ "audit_hash": "e365300652eef37af40c9b0b9bae1138f1c3336352d6e9331715f90c9da36ec4"
+}
