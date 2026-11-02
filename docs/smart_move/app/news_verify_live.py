@@ -28,6 +28,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--tickers", required=True)
+    ap.add_argument("--page", type=int, default=0, help="documented paging parameter (starts on page 0; page 0 is not sent)")
     ap.add_argument("--companies", default="", help="optional SYMBOL=Company Name;... for the research classifier")
     a = ap.parse_args(argv)
     tickers = [t.strip().upper() for t in a.tickers.split(",") if t.strip()]
@@ -79,10 +80,13 @@ def main(argv=None) -> int:
     svc = L.RefreshService(cfg, RecordingFetcher(), L.SystemClock())
     tasks = [t for t in C.plan(tickers, svc.store, svc.clock.now(), include_news=True) if t["kind"] == "uw_news"]
     assert len(tasks) == len(tickers) <= MAX_REQUESTS
+    if a.page:
+        for t in tasks:
+            t["page"], t["id"] = a.page, "%s-p%d" % (t["id"], a.page)
     started = datetime.now(UTC)
     acc = C.run(svc, tasks, max_requests=MAX_REQUESTS, stopped=lambda: bool(svc.gov.stopped_until and svc.clock.now() < svc.gov.stopped_until))
     companies = dict(p.split("=", 1) for p in a.companies.split(";") if "=" in p)
-    report = {"started_utc": started.isoformat(), "max_requests_authorized": MAX_REQUESTS, "tickers": tickers, "accounting": acc, "ledger_entries": len(svc.gov.ledger), "per_ticker": {},
+    report = {"started_utc": started.isoformat(), "max_requests_authorized": MAX_REQUESTS, "page": a.page, "tickers": tickers, "accounting": acc, "ledger_entries": len(svc.gov.ledger), "per_ticker": {},
               "credentials_in_report": False}
     for sym in tickers:
         recs = [r for r in svc.store.read(C.EVIDENCE) if r["symbol"] == sym and r["kind"] == "uw_news"]
