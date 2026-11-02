@@ -152,3 +152,20 @@ def test_the_module_imports_no_scoring_provider_or_network_code_and_frozen_files
     assert not [ln for ln in imports if any(w in ln for w in ("smart_move_v2 ", "scorer", "uw_client", "requests", "httpx", "urllib", "socket", "smart_move_live", "smart_move_outcomes"))]
     assert "smart_move_v2_collect" not in src
     assert hashlib.sha256((ROOT / "backend" / "smart_move_v2.py").read_bytes()).hexdigest().startswith("de2d8f9612934338")
+
+
+# ---------------------------------------------------------------- audit corrections
+def test_a_pair_without_any_measurable_revision_is_not_reported_as_paired():
+    b = est("AAA", B_AT, 1.10, 105)
+    zero = est("AAA", A_AT, 0, 0)                                                            # baseline of zero: no percentage exists
+    none = dict(est("AAA", A_AT + timedelta(days=1), 1, 1, tag="n"), _rows=[{"horizon": "fiscal quarter", "date": "2026-09-30", "eps_estimate_average": None, "revenue_estimate_average": None}])
+    assert run([zero, b])["reasons"] == ["NO_MEASURABLE_REVISION"] and run([none, b])["state"] == "UNPAIRED"
+    assert run([zero, est("AAA", A_AT + timedelta(days=1), 1.0, 100, tag="ok"), b])["state"] == "PAIRED"   # a later usable A is preferred over an unusable one
+
+
+def test_conflicting_rows_for_the_event_quarter_exclude_the_payload():
+    b = est("AAA", B_AT, 1.10, 105)
+    a = est("AAA", A_AT, 1.0, 100)
+    a["_rows"] = a["_rows"] + [{"horizon": "fiscal quarter", "date": "2026-09-30", "eps_estimate_average": "2.0", "revenue_estimate_average": "100"}]
+    v = run([a, b])
+    assert v["state"] == "UNPAIRED" and any(x["reason"] == "CONFLICTING_ROWS_FOR_EVENT_QUARTER" for x in v["excluded_payloads"])

@@ -50,7 +50,12 @@ def _snapshots(estimate_recs: Iterable[dict], load_rows: Callable[[str], Optiona
             excluded.append({"raw_sha256": r["raw_sha256"], "retrieved_at": r["retrieved_at"], "reason": "DUPLICATE_PAYLOAD"})
             continue
         seen.add(r["raw_sha256"])
-        row = SN.quarter_row(load_rows(r["raw_sha256"]), quarter)
+        rows = load_rows(r["raw_sha256"]) or []
+        same = [x for x in rows if x.get("horizon") == "fiscal quarter" and str(x.get("date"))[:10] == quarter]
+        if len({(x.get("eps_estimate_average"), x.get("revenue_estimate_average")) for x in same}) > 1:
+            excluded.append({"raw_sha256": r["raw_sha256"], "retrieved_at": r["retrieved_at"], "reason": "CONFLICTING_ROWS_FOR_EVENT_QUARTER"})     # two different values for one quarter: never pick one
+            continue
+        row = SN.quarter_row(rows, quarter)
         if row is None:
             excluded.append({"raw_sha256": r["raw_sha256"], "retrieved_at": r["retrieved_at"], "reason": "NO_ROW_FOR_EVENT_QUARTER"})
             continue
@@ -108,7 +113,11 @@ def pair_event(records: "ER.EventRecords", event_id: str, estimate_recs: Iterabl
     if not ok:
         out.update(state=UNPAIRED, reasons=["GAP_A_TO_B_NOT_7_TO_60_DAYS"], snapshot_b=_view(b))
         return out
-    a = ok[-1]                                                                                # the most recent A that still leaves a measurable gap
+    measurable = [s for s in ok if _pct(b["eps"], s["eps"]) is not None or _pct(b["revenue"], s["revenue"]) is not None]
+    if not measurable:
+        out.update(state=UNPAIRED, reasons=["NO_MEASURABLE_REVISION"], snapshot_b=_view(b))   # a pair with no numeric, non-zero baseline measures nothing
+        return out
+    a = measurable[-1]                                                                        # the most recent A that still leaves a measurable gap
     at_a = records.as_of(event_id, _dt(a["retrieved_at"]))
     out.update(state=PAIRED, reasons=[], snapshot_a=_view(a), snapshot_b=_view(b), gap_days=(t_b - _dt(a["retrieved_at"])).days, event_version_at_a=at_a["version"] if at_a else None,
                event_version_at_b=at_b["version"], eps_revision_pct=_pct(b["eps"], a["eps"]), revenue_revision_pct=_pct(b["revenue"], a["revenue"]),
