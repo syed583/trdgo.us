@@ -31,7 +31,7 @@ def needs_refresh(store, now: datetime, max_age_h: float = MAX_AGE_H) -> bool:
     return age is None or age > max_age_h
 
 
-def ensure_fresh(svc, *, budget_left: int, max_age_h: float = MAX_AGE_H, stopped=lambda: False) -> dict:
+def ensure_fresh(svc, *, budget_left: int, max_age_h: float = MAX_AGE_H, stopped=lambda: False, days_ahead=None) -> dict:
     now = svc.clock.now()
     before = calendar_age_h(svc.store, now)
     out = {"checked_at": now.isoformat(), "age_before_h": before, "refreshed": False, "requests": 0, "ok": True, "reason": None}
@@ -43,7 +43,7 @@ def ensure_fresh(svc, *, budget_left: int, max_age_h: float = MAX_AGE_H, stopped
     if budget_left < MIN_BUDGET_FOR_REFRESH:
         return dict(out, ok=False, reason="BUDGET_TOO_LOW_FOR_CALENDAR_REFRESH (%d left, %d needed)" % (budget_left, MIN_BUDGET_FOR_REFRESH))
     budget = [min(REFRESH_MAX_REQUESTS, budget_left)]
-    done = svc.refresh_calendar(budget)
+    done = svc.refresh_calendar(budget) if days_ahead is None else svc.refresh_calendar(budget, days_ahead)
     out.update(refreshed=True, requests=done)
     after = calendar_age_h(svc.store, svc.clock.now())
     out["age_after_h"] = after

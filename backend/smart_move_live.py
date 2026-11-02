@@ -55,6 +55,7 @@ class LiveConfig:
     history_max_age_days: int = 7
     vol_max_age_h: float = 24.0
     calendar_days_ahead: int = 3
+    tracking_days_ahead: int = 14              # upcoming-earnings TRACKING horizon (analyst Snapshot A); scoring still needs the strict freshness rule
     finviz_tickers: int = 100
     manual_min_interval_s: float = 60.0
     manual_max_requests: int = 50
@@ -354,15 +355,16 @@ class RefreshService:
         newest = max(datetime.fromisoformat(o["observed_at"]) for o in obs)
         return now - newest >= timedelta(hours=self.cfg.calendar_interval_h)
 
-    def _trading_days(self, now):
+    def _trading_days(self, now, ahead=None):
         today = now.astimezone(co.ET).date()
         mc = co._mc()
-        return [(today + timedelta(days=k)) for k in range(0, self.cfg.calendar_days_ahead + 1) if mc.is_trading_day(today + timedelta(days=k))]
+        n = self.cfg.calendar_days_ahead if ahead is None else ahead
+        return [(today + timedelta(days=k)) for k in range(0, n + 1) if mc.is_trading_day(today + timedelta(days=k))]
 
-    def refresh_calendar(self, budget: list) -> int:
+    def refresh_calendar(self, budget: list, days_ahead=None) -> int:
         """UW premarket/afterhours for the next trading days (page 0, page 1 only when page 0 is full), one Finviz export for the largest names, one Finnhub window. budget[0] = requests left."""
         now = self.clock.now()
-        days = self._trading_days(now)
+        days = self._trading_days(now, days_ahead)
         uw_rows, done = [], 0
         stamp = now.strftime("%Y%m%dT%H%M%S")
         for d in days:
@@ -415,15 +417,16 @@ class RefreshService:
             out.setdefault(r["symbol"], []).append((o, r))
         return out
 
-    def eligible_events(self, now):
-        """Events the vendor rules accept (VENDOR_CONFIRMED / COMPANY_VERIFIED) whose capture window is open now. Deadline-ordered."""
+    def eligible_events(self, now, horizon_days=None):
+        """Events the vendor rules accept (VENDOR_CONFIRMED / COMPANY_VERIFIED) whose capture window is open now. Deadline-ordered.
+        horizon_days (tracking only): instead of 'window open now', every accepted event whose assumed release is between now and now + horizon_days and whose cutoff has not passed."""
         out = []
         for sym, pairs in self._calobs().items():
             ev = cc.evaluate(sym, [o for o, _ in pairs], now, now.astimezone(co.ET).date())
             if not ev["eligible_for_shadow"] or (self.focus is not None and sym not in self.focus):
                 continue
             plan = co.plan_event(ev["event_date"], ev["kind"])
-            if plan["window_start_utc"] <= now <= plan["cutoff_utc"]:
+            if (plan["window_start_utc"] <= now <= plan["cutoff_utc"]) if horizon_days is None else (now <= plan["cutoff_utc"] and plan["assumed_release_utc"] <= now + timedelta(days=horizon_days)):
                 sector = next((r["sector"] for _, r in pairs if r.get("sector")), None)
                 try:
                     cap = max(float(r["marketcap"]) for _, r in pairs if r.get("marketcap"))

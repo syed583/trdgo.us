@@ -116,3 +116,62 @@ def revision_eligibility(ledger_rows: Iterable[dict], symbol: str, period: str, 
 
 def snapshot_budget(tracked_stocks: int, days: int = 1) -> dict:
     return {"tracked_stocks": tracked_stocks, "requests_per_day": tracked_stocks, "requests": tracked_stocks * days, "minutes_per_day_at_2s_spacing": round(tracked_stocks * 2 / 60, 1)}
+
+
+# ---------------------------------------------------------------- analyst two-snapshot design (A about 10 days before the release, B inside the prediction window)
+SNAP_A_FROM_DAYS, SNAP_A_TO_DAYS = 12, 9      # Snapshot A is due between release-12 d and release-9 d, so that B (at or after release-48 h) is always at least 7 days later
+SNAP_A_LOOKBACK_DAYS = 58                     # an earlier estimate record of the same stock still counts as A while it is at most 58 days older than release-9 d (B must stay within 60 days)
+
+
+def snapshot_stage(release, window_start, cutoff, now) -> Optional[str]:
+    """A, B or None. B: from the moment the window opens until 1 h before the cutoff. A: the tracking window described above. Never after the cutoff."""
+    rel, ws, co, now = _t(release), _t(window_start), _t(cutoff), _t(now)
+    if ws <= now <= co - timedelta(hours=FINAL_PASS_END_H):
+        return "B"
+    if rel - timedelta(days=SNAP_A_FROM_DAYS) <= now <= rel - timedelta(days=SNAP_A_TO_DAYS):
+        return "A"
+    return None
+
+
+def snapshot_stage_tasks_due(events: Iterable[dict], estimate_records: Iterable[dict], now) -> list:
+    """events: [{symbol, event_date, release_utc, window_start_utc, cutoff_utc}]. Dedup is by (symbol, event date, stage); an OK estimates record that already satisfies the stage is not requested again.
+    A rescheduled event (new event date) gets its own stage keys, but an earlier OK record that is still within the A lookback is reused, so nothing is requested twice for the same history."""
+    now = _t(now)
+    ok = [(r["symbol"], _t(r["retrieved_at"])) for r in estimate_records if r.get("status") == "OK"]
+    out = []
+    for e in events:
+        stage = snapshot_stage(e["release_utc"], e["window_start_utc"], e["cutoff_utc"], now)
+        if stage is None:
+            continue
+        rel, ws = _t(e["release_utc"]), _t(e["window_start_utc"])
+        if stage == "B":
+            satisfied = any(s == e["symbol"] and ws <= t <= now for s, t in ok)
+        else:
+            lo, hi = rel - timedelta(days=SNAP_A_TO_DAYS + SNAP_A_LOOKBACK_DAYS), rel - timedelta(days=SNAP_A_TO_DAYS)
+            satisfied = any(s == e["symbol"] and lo <= t <= hi for s, t in ok)
+        if satisfied:
+            continue
+        out.append({"kind": "uw_estimates", "symbol": e["symbol"], "stage": stage, "event_date": str(e["event_date"])[:10], "cutoff_utc": _t(e["cutoff_utc"]).isoformat(),
+                    "id": "uw_estimates-%s-%s-%s" % (e["symbol"], str(e["event_date"])[:10], stage)})
+    return sorted(out, key=lambda t: (t["cutoff_utc"], t["symbol"], t["stage"]))
+
+
+def revision_state(snapshots: list, cutoff) -> dict:
+    """snapshots: [{retrieved_at, period_rows: {fiscal_quarter_end: {eps, revenue}}}] of ONE stock, each holding every quarter row of its saved response. A revision needs a quarter that appears in both snapshots,
+    retrieved 7 to 60 days apart, neither after the cutoff. Otherwise ANALYST is INSUFFICIENT_HISTORY with the reason. Provider values are used exactly as saved."""
+    co = _t(cutoff)
+    snaps = sorted(((_t(s["retrieved_at"]), s["period_rows"]) for s in snapshots if _t(s["retrieved_at"]) <= co), key=lambda x: x[0])
+    if len(snaps) < 2:
+        return {"state": "INSUFFICIENT_HISTORY", "reason": "FEWER_THAN_TWO_SNAPSHOTS_BEFORE_CUTOFF", "snapshots": len(snaps)}
+    latest_t, latest_rows = snaps[-1]
+    for t, rows in snaps[:-1]:
+        gap = (latest_t - t).days
+        if not (MIN_GAP_DAYS <= gap <= MAX_AGE_DAYS):
+            continue
+        for q in sorted(set(rows) & set(latest_rows), reverse=True):
+            a, b = latest_rows[q], rows[q]
+            return {"state": "REVISION_MEASURABLE", "quarter": q, "from": t.isoformat(), "to": latest_t.isoformat(), "gap_days": gap,
+                    "eps_revision_pct": round((a["eps"] - b["eps"]) / abs(b["eps"]) * 100, 3) if a.get("eps") is not None and b.get("eps") else None,
+                    "revenue_revision_pct": round((a["revenue"] - b["revenue"]) / abs(b["revenue"]) * 100, 3) if a.get("revenue") is not None and b.get("revenue") else None}
+        return {"state": "INSUFFICIENT_HISTORY", "reason": "NO_COMMON_FISCAL_QUARTER_IN_THE_TWO_SNAPSHOTS", "snapshots": len(snaps)}
+    return {"state": "INSUFFICIENT_HISTORY", "reason": "SNAPSHOTS_NOT_7_TO_60_DAYS_APART", "snapshots": len(snaps), "gap_days": (latest_t - snaps[0][0]).days}

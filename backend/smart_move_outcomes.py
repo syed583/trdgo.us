@@ -23,6 +23,23 @@ from smvshadow import cutoff as co  # noqa: E402
 UTC = timezone.utc
 SAFETY_DELAY_MIN = 30
 FILE = "outcome_details.jsonl"
+QUARANTINE_FILE = "outcome_quarantine.jsonl"
+SPLIT_DENOMINATORS = (2, 3, 4, 5, 6, 8, 10, 15, 20)
+SPLIT_TOLERANCE = 0.03                    # |close ratio / n - 1| within 3 % of a simple split ratio
+REVIEW_MOVE_PCT = 40.0                    # a large move that matches no split is graded but flagged for review
+
+
+def corporate_action_suspect(base_close: float, reaction_close: float) -> Optional[dict]:
+    """QUARANTINE ONLY - no adjustment formula. A raw close-to-close ratio that sits on a simple forward (1/n) or reverse (n) split ratio is probably a corporate action, not an earnings reaction:
+    the outcome is marked UNVERIFIED instead of being given a misleading PASS or FAIL. The conservative side wins: a genuine -50 % move is quarantined too, for the owner to review."""
+    if not base_close or not reaction_close:
+        return None
+    r = reaction_close / base_close
+    for n in SPLIT_DENOMINATORS:
+        for cand, kind in ((1.0 / n, "SUSPECTED_FORWARD_SPLIT_1_FOR_%d" % n), (float(n), "SUSPECTED_REVERSE_SPLIT_%d_FOR_1" % n)):
+            if abs(r / cand - 1) <= SPLIT_TOLERANCE:
+                return {"kind": kind, "ratio": round(r, 6)}
+    return None
 
 
 def due(event_date: date, kind: str, now: datetime) -> dict:
@@ -46,7 +63,12 @@ def compute(symbol: str, event_date, kind: str, rows, now: datetime, *, mode: st
     move = (r[3] / b[3] - 1) * 100
     if abs(move) > 100:
         return dict(out, status="IMPLAUSIBLE", move_pct=None)
-    return dict(out, status="GRADED", move_pct=round(move, 6), base_close=b[3], reaction_open=r[0], reaction_close=r[3], gap_pct=round((r[0] / b[3] - 1) * 100, 6))
+    ca = corporate_action_suspect(b[3], r[3])
+    if ca:
+        return dict(out, status="UNVERIFIED_CORPORATE_ACTION", move_pct=None, raw_move_pct=round(move, 6), base_close=b[3], reaction_close=r[3], suspected=ca["kind"], close_ratio=ca["ratio"],
+                    reason="raw close-to-close ratio matches a simple split ratio; not graded PASS/FAIL until the owner reviews it (no adjustment is applied)")
+    return dict(out, status="GRADED", move_pct=round(move, 6), base_close=b[3], reaction_open=r[0], reaction_close=r[3], gap_pct=round((r[0] / b[3] - 1) * 100, 6),
+                review_flag="LARGE_MOVE_NOT_A_SPLIT_RATIO" if abs(move) >= REVIEW_MOVE_PCT else None)
 
 
 def record(track_dir, outcome: dict) -> dict:
@@ -55,6 +77,15 @@ def record(track_dir, outcome: dict) -> dict:
     p.parent.mkdir(parents=True, exist_ok=True)
     prior = [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()] if p.exists() else []
     chain = [o for o in prior if (o["symbol"], o["earnings_date"], o["mode"]) == (outcome["symbol"], outcome["earnings_date"], outcome["mode"])]
+    if outcome["status"] == "UNVERIFIED_CORPORATE_ACTION":
+        q = Path(track_dir) / QUARANTINE_FILE
+        have = {(json.loads(l)["symbol"], json.loads(l)["earnings_date"], json.loads(l)["mode"]) for l in q.read_text(encoding="utf-8").splitlines() if l.strip()} if q.exists() else set()
+        key = (outcome["symbol"], outcome["earnings_date"], outcome["mode"])
+        if key in have:
+            return {"result": "quarantine_duplicate", "status": outcome["status"]}
+        with q.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(outcome, sort_keys=True) + chr(10))
+        return {"result": "quarantined", "status": outcome["status"]}
     if outcome["status"] != "GRADED":
         return {"result": "not_graded", "status": outcome["status"]}
     if chain and abs(chain[-1]["move_pct"] - outcome["move_pct"]) < 1e-9:
@@ -63,6 +94,31 @@ def record(track_dir, outcome: dict) -> dict:
     with p.open("a", encoding="utf-8") as f:
         f.write(json.dumps(row, sort_keys=True) + "\n")
     return {"result": "correction" if chain else "recorded", "version": row["version"]}
+
+
+def load_quarantine(track_dir) -> list:
+    p = Path(track_dir) / QUARANTINE_FILE
+    return [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()] if p.exists() else []
+
+
+def readiness(events: Iterable[dict], track_dir, now: datetime) -> dict:
+    """Per event: graded / quarantined / DUE (collectable now, no outcome yet) / WAITING (reaction session not closed or safety delay not passed) / UNKNOWN_TIMING. Local only."""
+    graded = {(o["symbol"], o["earnings_date"]) for o in latest(track_dir)}
+    quar = {(o["symbol"], o["earnings_date"]) for o in load_quarantine(track_dir)}
+    out = {}
+    for e in events:
+        ed = str(e["earnings_date"])[:10]
+        key = (e["symbol"].upper(), ed)
+        if key in graded:
+            out[key] = {"state": "GRADED"}
+        elif key in quar:
+            out[key] = {"state": "UNVERIFIED_CORPORATE_ACTION"}
+        elif e.get("kind") not in ("BMO", "AMC"):
+            out[key] = {"state": "UNKNOWN_TIMING"}
+        else:
+            d = due(date.fromisoformat(ed), e["kind"], now)
+            out[key] = {"state": "DUE" if d["due"] else "WAITING", "earliest_fetch_utc": d["earliest_fetch_utc"].isoformat()}
+    return {"by_event": {"%s|%s" % k: v for k, v in out.items()}, "counts": {s: sum(1 for v in out.values() if v["state"] == s) for s in ("GRADED", "UNVERIFIED_CORPORATE_ACTION", "DUE", "WAITING", "UNKNOWN_TIMING")}}
 
 
 def latest(track_dir) -> list:

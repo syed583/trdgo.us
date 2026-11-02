@@ -159,6 +159,16 @@ def events(mode: str = Query("LIVE", pattern="^(LIVE|SIMULATION)$")):
     return RP.build(preds, outs, mode=mode, calendar_age_h=age)
 
 
+@router.get("/collection-status")
+def collection_status():
+    """Per-event completeness (calendar freshness, BMO/AMC, news passes, analyst snapshots A/B, flow, price, coverage, prediction and outcome status) from the last saved runner report. Read only."""
+    f = Path(os.getenv("SMART_MOVE_COLLECTION_STATE_DIR") or "C:/Users/initi/SmartMoveRun/collection_state") / "event_status.json"
+    if not f.exists():
+        return {"available": False, "message": "no collection status saved yet (run the collection runner in dry-run mode)"}
+    import json as _j
+    return dict(_j.loads(f.read_text(encoding="utf-8")), available=True, read_only=True, sends_requests=False)
+
+
 @router.get("/{rest:path}")
 def unknown(rest: str):
     raise HTTPException(404, "unknown tracking route")

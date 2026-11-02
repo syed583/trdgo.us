@@ -1,0 +1,212 @@
+"""Operational collection workflow for news (INITIAL / FINAL passes) and analyst-estimate snapshots (A about 10 days before, B inside the prediction window).
+
+Safe by construction:
+  * DRY_RUN is the default and never calls the provider (not even the calendar); it only plans, counts and persists a PENDING job record;
+  * LIVE needs `armed=True` (set only by the runner after its explicit flags), a released kill switch and a positive allowance - otherwise the job is BLOCKED and nothing is sent;
+  * every request goes through the existing governed path (RefreshService._call: authorization cap, 2 s spacing, hourly share, 401/403/429 stop, kill switch);
+  * run state is persisted after every batch (done task ids, requests per day, job statuses) so an interrupted run resumes without repeating a request; a lock file prevents two jobs from running at once.
+Job statuses: PENDING (planned, nothing sent), RUNNING, COMPLETED, PARTIAL (some tasks done, then stopped / ceiling / failures), FAILED (nothing succeeded), BLOCKED (not allowed to start).
+It changes no score, threshold or stored prediction.
+"""
+from __future__ import annotations
+
+import json
+import os
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Callable, Optional
+
+import smart_move_calendar_guard as G
+import smart_move_collection_plan as CP
+import smart_move_v2_collect as C
+
+UTC = timezone.utc
+STATUSES = ("PENDING", "RUNNING", "COMPLETED", "PARTIAL", "FAILED", "BLOCKED")
+DEFAULT_CEILING = 700
+DEFAULT_BATCH = 10
+LOCK_STALE_H = 2.0
+STATE_FILE, LOCK_FILE = "collection_state.json", "collection.lock"
+
+
+# ---------------------------------------------------------------- persistent state
+def _read_state(d: Path) -> dict:
+    f = d / STATE_FILE
+    return json.loads(f.read_text(encoding="utf-8")) if f.exists() else {"version": 1, "jobs": {}, "done_tasks": [], "requests_by_day": {}}
+
+
+def _write_state(d: Path, st: dict):
+    d.mkdir(parents=True, exist_ok=True)
+    tmp = d / (STATE_FILE + ".tmp")
+    tmp.write_text(json.dumps(st, indent=1, sort_keys=True), encoding="utf-8")
+    os.replace(tmp, d / STATE_FILE)
+
+
+def acquire_lock(d: Path, now: datetime) -> bool:
+    d.mkdir(parents=True, exist_ok=True)
+    f = d / LOCK_FILE
+    try:
+        fd = os.open(str(f), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        try:
+            t = datetime.fromisoformat(json.loads(f.read_text(encoding="utf-8"))["at"])
+        except (ValueError, KeyError, OSError):
+            return False
+        if now - t < timedelta(hours=LOCK_STALE_H):
+            return False
+        f.unlink()                                                  # a lock older than LOCK_STALE_H belongs to a dead run
+        return acquire_lock(d, now)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(json.dumps({"at": now.isoformat(), "pid": os.getpid()}))
+    return True
+
+
+def release_lock(d: Path):
+    try:
+        (d / LOCK_FILE).unlink()
+    except FileNotFoundError:
+        pass
+
+
+# ---------------------------------------------------------------- planning
+def to_news_events(events) -> list:
+    return [{"symbol": e["symbol"], "window_start_utc": e["plan"]["window_start_utc"], "cutoff_utc": e["plan"]["cutoff_utc"]} for e in events]
+
+
+def to_snapshot_events(events) -> list:
+    return [{"symbol": e["symbol"], "event_date": e["event_date"], "release_utc": e["plan"]["assumed_release_utc"], "window_start_utc": e["plan"]["window_start_utc"], "cutoff_utc": e["plan"]["cutoff_utc"]}
+            for e in events]
+
+
+def build_tasks(window_events, tracking_events, store, now) -> dict:
+    """window_events: events with an open 48-to-24 h window (news INITIAL/FINAL, snapshot B). tracking_events: events within the ~14-day horizon (snapshot A)."""
+    recs = C._records(store)
+    news = CP.news_tasks_due(to_news_events(window_events), [r for r in recs if r["kind"] == "uw_news"], now)
+    est = [r for r in recs if r["kind"] == "uw_estimates"]
+    snaps_b = [t for t in CP.snapshot_stage_tasks_due(to_snapshot_events(window_events), est, now) if t["stage"] == "B"]
+    snaps_a = [t for t in CP.snapshot_stage_tasks_due(to_snapshot_events(tracking_events), est, now) if t["stage"] == "A"]
+    seen, tasks = set(), []
+    for t in sorted(news + snaps_b + snaps_a, key=lambda t: (t["cutoff_utc"], 0 if t["kind"] == "uw_news" else 1, t["symbol"])):
+        if t["id"] not in seen:
+            seen.add(t["id"])
+            tasks.append(t)
+    return {"news": news, "snapshot_b": snaps_b, "snapshot_a": snaps_a, "tasks": tasks}
+
+
+def request_range(tasks: list) -> dict:
+    news = sum(1 for t in tasks if t["kind"] == "uw_news")
+    other = len(tasks) - news
+    return {"min": len(tasks), "max": news * CP.NEWS_MAX_PAGES + other}
+
+
+def preflight(svc, tasks_by_kind: dict, *, now: datetime, ceiling: int, state: dict, window_events, tracking_events, stopped: Callable[[], bool] = lambda: False) -> dict:
+    """Everything that must be known before a run. Reads local state only."""
+    age = G.calendar_age_h(svc.store, now)
+    day = now.date().isoformat()
+    used = state["requests_by_day"].get(day, 0)
+    rng = request_range(tasks_by_kind["tasks"])
+    try:
+        hourly = int(svc.gov.hourly_allowance())
+    except Exception:  # noqa: BLE001
+        hourly = None
+    daily_left = max(0, ceiling - used)
+    cal_cost = 2 * max(1, (svc.cfg.tracking_days_ahead * 5) // 7) + 2            # two sides per trading day plus one Finviz and one Finnhub request (page 1 only when page 0 is full)
+    blockers = []
+    if svc.kill_engaged:
+        blockers.append("KILL_SWITCH_ENGAGED_OR_REFRESH_DISABLED")
+    if stopped():
+        blockers.append("PROVIDER_STOPPED_TODAY")
+    if daily_left <= 0:
+        blockers.append("RUN_CEILING_REACHED")
+    if hourly is not None and hourly <= 0:
+        blockers.append("NO_HOURLY_ALLOWANCE")
+    stale = age is None or age > G.MAX_AGE_H
+    return {"calendar_age_h": age, "calendar_state": "UNKNOWN" if age is None else "STALE" if stale else "FRESH", "calendar_refresh_needed": stale, "calendar_refresh_estimate_requests": cal_cost if stale else 0,
+            "eligible_window_events": len(window_events), "tracking_events": len(tracking_events), "tasks": {k: len(v) for k, v in tasks_by_kind.items()}, "request_estimate": rng,
+            "ceiling": ceiling, "used_today": used, "daily_left": daily_left, "hourly_allowance": hourly, "spacing_s": svc.cfg.spacing_s, "estimated_minutes_at_spacing": round(rng["max"] * svc.cfg.spacing_s / 60, 1),
+            "blockers": blockers, "allowed": not blockers}
+
+
+# ---------------------------------------------------------------- the cycle
+def run_cycle(svc, *, now: datetime, state_dir, mode: str = "DRY_RUN", armed: bool = False, ceiling: int = DEFAULT_CEILING, batch_size: int = DEFAULT_BATCH,
+              events_fn: Optional[Callable] = None, stopped: Optional[Callable[[], bool]] = None) -> dict:
+    """events_fn(now, horizon_days) -> events (the existing eligible_events). DRY_RUN never calls the provider. LIVE needs armed=True."""
+    d = Path(state_dir)
+    st = _read_state(d)
+    stopped = stopped or (lambda: bool(svc.gov.stopped_until and svc.clock.now() < svc.gov.stopped_until))      # the governor's own 401/403/429 stop for the day
+    job_id = "collect-" + now.strftime("%Y%m%dT%H%M%S")
+    events_fn = events_fn or (lambda n, h=None: svc.eligible_events(n, h) if h else svc.eligible_events(n))
+    window_events = events_fn(now, None)
+    tracking_events = events_fn(now, svc.cfg.tracking_days_ahead)
+    tb = build_tasks(window_events, tracking_events, svc.store, now)
+    pf = preflight(svc, tb, now=now, ceiling=ceiling, state=st, window_events=window_events, tracking_events=tracking_events, stopped=stopped)
+    job = {"id": job_id, "mode": mode, "started_utc": now.isoformat(), "preflight": pf, "requests": 0, "tasks_planned": len(tb["tasks"]), "tasks_done": 0, "failures": [], "status": "PENDING"}
+    if mode != "LIVE":
+        job.update(dry_run=True, provider_requests=0, note="dry run: nothing was sent, not even the calendar refresh")
+        st["jobs"][job_id] = job
+        _write_state(d, st)
+        return job
+    # ---- LIVE
+    if not armed:
+        job.update(status="BLOCKED", reason="NOT_ARMED (the runner arms a live run only with its explicit authorization flags)")
+    elif not pf["allowed"]:
+        job.update(status="BLOCKED", reason=",".join(pf["blockers"]))
+    elif not acquire_lock(d, now):
+        job.update(status="BLOCKED", reason="OVERLAPPING_JOB_HOLDS_THE_LOCK")
+    else:
+        try:
+            job["status"] = "RUNNING"
+            st["jobs"][job_id] = job
+            _write_state(d, st)
+            used_start = st["requests_by_day"].get(now.date().isoformat(), 0)
+            if pf["calendar_refresh_needed"]:
+                g = G.ensure_fresh(svc, budget_left=min(ceiling - used_start, pf["hourly_allowance"] if pf["hourly_allowance"] is not None else ceiling), stopped=stopped, days_ahead=svc.cfg.tracking_days_ahead)
+                job["calendar_refresh"] = g
+                used_start += g.get("requests", 0)
+                st["requests_by_day"][now.date().isoformat()] = used_start
+                if not g["ok"]:
+                    job.update(status="BLOCKED", reason="CALENDAR_NOT_FRESH:" + str(g.get("reason")))
+                else:
+                    window_events, tracking_events = events_fn(svc.clock.now(), None), events_fn(svc.clock.now(), svc.cfg.tracking_days_ahead)
+                    tb = build_tasks(window_events, tracking_events, svc.store, svc.clock.now())
+                    job["tasks_planned"] = len(tb["tasks"])
+            if job["status"] == "RUNNING":
+                done = set(st["done_tasks"])
+                todo = [t for t in tb["tasks"] if t["id"] not in done]
+                ckpt = d / ("checkpoint_%s.json" % job_id)
+                halted = None
+                for i in range(0, len(todo), batch_size):
+                    batch = todo[i:i + batch_size]
+                    day = svc.clock.now().date().isoformat()
+                    left = ceiling - st["requests_by_day"].get(day, 0)
+                    if left <= 0:
+                        halted = "RUN_CEILING_REACHED"
+                        break
+                    if svc.kill_engaged:
+                        halted = "KILL_SWITCH"
+                        break
+                    if stopped():
+                        halted = "PROVIDER_STOPPED"
+                        break
+                    acc = C.run(svc, batch, max_requests=min(left, len(batch) * CP.NEWS_MAX_PAGES), checkpoint=ckpt, stopped=stopped)
+                    st["requests_by_day"][day] = st["requests_by_day"].get(day, 0) + acc["attempted"]
+                    job["requests"] += acc["attempted"]
+                    finished = set(json.loads(ckpt.read_text())["done"]) if ckpt.exists() else set()                # C.run lists a task id here only after an OK, validated response
+                    ok_batch = [t for t in batch if t["id"] in finished]
+                    done |= {t["id"] for t in ok_batch}
+                    job["tasks_done"] += len(ok_batch)
+                    job["failures"] += acc["failures"] + ([{"kind": "invalid", "reason": "INVALID_RESPONSE"}] * acc["invalid"])
+                    st["done_tasks"] = sorted(done)
+                    st["jobs"][job_id] = job
+                    _write_state(d, st)                                                # persisted after every batch: a crash resumes from here
+                    if acc["stopped"] or acc.get("budget_exhausted"):
+                        halted = "PROVIDER_STOP" if acc["stopped"] else "BUDGET_EXHAUSTED"
+                        break
+                if halted:
+                    job["halted"] = halted
+                job["status"] = ("COMPLETED" if job["tasks_done"] == len(todo) and not halted and not job["failures"] else
+                                 "FAILED" if job["tasks_done"] == 0 and (job["failures"] or halted) else "PARTIAL")
+        finally:
+            release_lock(d)
+    st["jobs"][job_id] = job
+    _write_state(d, st)
+    return job

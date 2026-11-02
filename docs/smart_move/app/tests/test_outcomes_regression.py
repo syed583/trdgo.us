@@ -40,13 +40,22 @@ def test_a_missing_close_never_grades_and_never_defaults_to_flat():
     assert r["status"] == "MISSING_BARS" and r["move_pct"] is None and RP.pass_fail("BUY", r["move_pct"]) is None
 
 
-def test_known_gap_unadjusted_split_is_graded_as_a_real_move_and_only_over_100_pct_is_rejected():
-    """DOCUMENTED GAP, no adjustment rule introduced: a 2-for-1 split in raw closes grades as -50 % (counted as DOWN). Only moves beyond 100 % are marked IMPLAUSIBLE."""
+def test_a_split_sized_close_ratio_is_quarantined_unverified_and_never_graded_pass_or_fail(tmp_path):
+    """No adjustment formula is applied: a raw ratio on a simple split ratio is marked UNVERIFIED_CORPORATE_ACTION with the raw move kept for review."""
     now = datetime(2026, 11, 5, 22, tzinfo=UTC)
-    split = O.compute("S", "2026-11-02", "AMC", [bar("2026-11-02", 100, 100), bar("2026-11-03", 50, 50)], now)
-    assert split["status"] == "GRADED" and abs(split["move_pct"] + 50.0) < 1e-6
-    reverse = O.compute("R", "2026-11-02", "AMC", [bar("2026-11-02", 10, 10), bar("2026-11-03", 25, 25)], now)
-    assert reverse["status"] == "IMPLAUSIBLE" and reverse["move_pct"] is None
+    split = O.compute("S", "2026-11-02", "AMC", [bar("2026-11-02", 100, 100), bar("2026-11-03", 50, 50)], now, mode="SIMULATION")
+    assert split["status"] == "UNVERIFIED_CORPORATE_ACTION" and split["move_pct"] is None and abs(split["raw_move_pct"] + 50.0) < 1e-6 and split["suspected"] == "SUSPECTED_FORWARD_SPLIT_1_FOR_2"
+    assert RP.pass_fail("BUY", split["move_pct"]) is None and RP.pass_fail("SELL", split["move_pct"]) is None
+    rev = O.compute("R", "2026-11-02", "AMC", [bar("2026-11-02", 10, 10), bar("2026-11-03", 20, 20)], now)
+    assert rev["status"] == "UNVERIFIED_CORPORATE_ACTION" and rev["suspected"] == "SUSPECTED_REVERSE_SPLIT_2_FOR_1"
+    assert O.record(tmp_path, split)["result"] == "quarantined" and O.record(tmp_path, split)["result"] == "quarantine_duplicate"
+    assert O.latest(tmp_path) == [] and len(O.load_quarantine(tmp_path)) == 1                         # never in the graded outcomes
+    huge = O.compute("H", "2026-11-02", "AMC", [bar("2026-11-02", 10, 10), bar("2026-11-03", 30, 30)], now)
+    assert huge["status"] == "IMPLAUSIBLE" or huge["status"] == "GRADED"                                # +200 %: beyond the plausibility limit, or graded with a flag; never a split
+    big = O.compute("B", "2026-11-02", "AMC", [bar("2026-11-02", 100, 100), bar("2026-11-03", 145, 145)], now)
+    assert big["status"] == "GRADED" and big["review_flag"] == "LARGE_MOVE_NOT_A_SPLIT_RATIO"
+    normal = O.compute("N", "2026-11-02", "AMC", [bar("2026-11-02", 100, 100), bar("2026-11-03", 104, 104)], now)
+    assert normal["status"] == "GRADED" and normal["review_flag"] is None
 
 
 def test_duplicate_outcome_is_not_rewritten(tmp_path):
