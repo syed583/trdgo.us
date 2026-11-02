@@ -58,7 +58,11 @@ def active_token(env_file=DEFAULT_ENV_FILE, env=os.environ) -> Optional[str]:
     return (env.get(ENV_VAR) or "").strip() or read_env_file(env_file)
 
 
-def inspect(env_file=DEFAULT_ENV_FILE, env=os.environ, backups: Iterable = DEFAULT_BACKUPS, old_fingerprint: Optional[str] = None) -> dict:
+def last4(token: Optional[str]) -> Optional[str]:
+    return token[-4:] if token and len(token) >= 8 else None
+
+
+def inspect(env_file=DEFAULT_ENV_FILE, env=os.environ, backups: Iterable = DEFAULT_BACKUPS, old_fingerprint: Optional[str] = None, production_last4: Optional[str] = None) -> dict:
     proc = (env.get(ENV_VAR) or "").strip() or None
     filev = read_env_file(env_file)
     tok = proc or filev
@@ -76,7 +80,8 @@ def inspect(env_file=DEFAULT_ENV_FILE, env=os.environ, backups: Iterable = DEFAU
     rotated = None if not old_fingerprint else bool(fp and fp != old_fingerprint)
     return {"source": source, "env_file": str(env_file), "length": len(tok) if tok else 0, "fingerprint": fp, "shape_problems": shape_problems(tok), "notes": notes,
             "file_token_fingerprint": fingerprint(filev) if filev else None, "process_token_fingerprint": fingerprint(proc) if proc else None,
-            "rotated_from_old": rotated, "backup_copies": bk,
+            "rotated_from_old": rotated, "last4": last4(tok), "matches_production_last4": (None if not production_last4 else bool(tok) and last4(tok) == production_last4.strip()[-4:]),
+            "backup_copies": bk,
             "ready_for_connectivity_test": bool(tok) and not shape_problems(tok) and rotated is not False and not any("DIFFERENT" in n for n in notes),
             "note": "no provider request was made; the token itself is never shown"}
 
@@ -95,8 +100,9 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Inspect the Unusual Whales token source (no provider request, token never shown).")
     ap.add_argument("--env-file", default=str(DEFAULT_ENV_FILE))
     ap.add_argument("--old-fingerprint", default=None, help="8-hex fingerprint of the token being replaced; reports whether the active token is different")
+    ap.add_argument("--production-last4", default=None, help="the last four characters the production admin page / audit script shows; reports whether localhost holds the same token")
     a = ap.parse_args(argv)
-    print(json.dumps(inspect(a.env_file, old_fingerprint=a.old_fingerprint), indent=1))
+    print(json.dumps(inspect(a.env_file, old_fingerprint=a.old_fingerprint, production_last4=a.production_last4), indent=1))
     return 0
 
 

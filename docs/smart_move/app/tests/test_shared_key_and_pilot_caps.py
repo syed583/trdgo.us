@@ -11,17 +11,21 @@ sys.path.insert(0, str(ROOT / "backend"))
 import smart_move_collection_jobs as J  # noqa: E402
 import smart_move_collection_runner as RUNNER  # noqa: E402
 import smart_move_live as L  # noqa: E402
+import smart_move_secret_check as SC  # noqa: E402
 import smart_move_shared_key_gate as SK  # noqa: E402
 import test_pilot_preflight as T  # noqa: E402
 from smvshadow import governor as gv  # noqa: E402
 
 UTC = timezone.utc
+from test_secret_check import NEW, OLD, envfile  # noqa: E402
+
 OFF = datetime(2026, 11, 2, 23, 0, tzinfo=UTC)          # 18:00 ET Monday: outside the session
 IN = datetime(2026, 11, 2, 15, 0, tzinfo=UTC)           # 10:00 ET Monday: in session
 
 
 def att(tmp_path, at=OFF, **over):
-    d = {"attested_by": "owner", "attested_at": at.isoformat(), "acknowledges_shared_token_three_slot_limit": True, "acknowledges_production_and_other_app_use_not_visible": True}
+    d = {"attested_by": "owner", "attested_at": at.isoformat(), "acknowledges_shared_token_three_slot_limit": True, "acknowledges_production_and_other_app_use_not_visible": True,
+         "designated_collector": "localhost", "production_provider_traffic_paused": True}
     d.update(over)
     f = tmp_path / "att.json"
     f.write_text(json.dumps(d))
@@ -151,3 +155,50 @@ def test_dry_run_leaves_the_kill_switch_untouched_and_sends_nothing(tmp_path):
     svc.engage_kill_switch("x")
     job = RUNNER.execute(svc, now=T.NOW, state_dir=tmp_path / "s3", live=False, authorized=0, ceiling=50, batch=5)
     assert job["mode"] == "DRY_RUN" and prov.calls == [] and svc.store.kill_file.exists()
+
+
+# ------------------------------------------------------------------ one token, two environments
+def test_concurrency_partition_is_safe_only_when_the_caps_sum_to_at_most_three():
+    assert SK.concurrency_policy(1, 3)["safe_without_coordinator"] is False          # localhost 1 + today's production default 3 = 4 slots wanted
+    assert SK.concurrency_policy(1, 2)["safe_without_coordinator"] is True and SK.concurrency_policy(0, 3)["safe_without_coordinator"] is True
+    assert SK.concurrency_policy(1, 1)["sum"] == 2 and "does not make provider collection on both safe" in SK.concurrency_policy(1, 3)["note"]
+
+
+def test_environment_detection_uses_app_env_and_defaults_to_localhost():
+    assert SK.this_environment({"APP_ENV": "production"}) == "production" and SK.this_environment({"APP_ENV": "Production "}) == "production"
+    assert SK.this_environment({}) == "localhost" and SK.this_environment({"APP_ENV": "development"}) == "localhost"
+
+
+def test_a_live_run_needs_a_designated_collector_matching_this_environment(tmp_path, monkeypatch):
+    monkeypatch.delenv("APP_ENV", raising=False)
+    none = SK.evaluate(OFF, att(tmp_path, designated_collector=None), processes=nothing, tasks=nothing)
+    assert none["blocks_live"] and "designated_collector" in none["reason"]
+    prod = SK.evaluate(OFF, att(tmp_path, designated_collector="production"), processes=nothing, tasks=nothing)
+    assert prod["blocks_live"] and "not the designated collector" in prod["reason"]            # localhost may not collect when production is designated
+    ok = SK.evaluate(OFF, att(tmp_path), processes=nothing, tasks=nothing)
+    assert not ok["blocks_live"] and ok["status"] == "OWNER_ATTESTED"
+
+
+def test_a_localhost_collector_needs_production_paused_or_capped_at_two(tmp_path, monkeypatch):
+    monkeypatch.delenv("APP_ENV", raising=False)
+    neither = SK.evaluate(OFF, att(tmp_path, production_provider_traffic_paused=False), processes=nothing, tasks=nothing)
+    assert neither["blocks_live"] and "paused" in neither["reason"]
+    capped3 = SK.evaluate(OFF, att(tmp_path, production_provider_traffic_paused=False, production_uw_max_inflight=3), processes=nothing, tasks=nothing)
+    assert capped3["blocks_live"]
+    capped2 = SK.evaluate(OFF, att(tmp_path, production_provider_traffic_paused=False, production_uw_max_inflight=2), processes=nothing, tasks=nothing)
+    assert not capped2["blocks_live"]
+
+
+def test_the_production_designation_matches_only_on_a_production_server(tmp_path, monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    ok = SK.evaluate(OFF, att(tmp_path, designated_collector="production"), processes=nothing, tasks=nothing)
+    assert not ok["blocks_live"]
+    assert SK.evaluate(OFF, att(tmp_path), processes=nothing, tasks=nothing)["blocks_live"]            # attested for localhost, but this is production
+
+
+def test_localhost_can_be_compared_with_the_production_admin_page_by_last_four_characters_only(tmp_path):
+    f = envfile(tmp_path, NEW)
+    same = SC.inspect(f, env={}, backups=(), production_last4=NEW[-4:])
+    other = SC.inspect(f, env={}, backups=(), production_last4=OLD[-4:])
+    assert same["matches_production_last4"] is True and other["matches_production_last4"] is False and SC.inspect(f, env={}, backups=())["matches_production_last4"] is None
+    assert NEW not in json.dumps(same)

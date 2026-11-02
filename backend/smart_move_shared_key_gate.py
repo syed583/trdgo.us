@@ -25,6 +25,22 @@ PROVIDER_LIMIT = "3 simultaneous in-flight requests per token, across all machin
 KNOWN_CONSUMER_PATTERNS = ("record.py", "measure_feed", "prod_supervisor", "us-signals-platform")
 KNOWN_TASKS = ("Prod-Signals-1-backend", "Prod-Signals-3-recorder", "Prod-Signals-4-engine")
 ATTESTATION_MAX_AGE_H = 24.0
+PROVIDER_SLOTS = 3
+ENVIRONMENTS = ("localhost", "production")
+
+
+def this_environment(env=None) -> str:
+    """production when APP_ENV=production (the server), otherwise localhost."""
+    import os
+    return "production" if ((env if env is not None else os.environ).get("APP_ENV") or "").strip().lower() == "production" else "localhost"
+
+
+def concurrency_policy(local_inflight: int, production_inflight: int) -> dict:
+    """Static partition of the token's three slots. Two environments cannot see each other's requests, so the ONLY guarantee available without a shared coordinator is that the sum of the two
+    hard caps does not exceed three AND each environment really enforces its own cap (process gate + machine slots). 1 + 3 (today's production default) = 4 is NOT safe; 1 + 2 = 3 is."""
+    total = local_inflight + production_inflight
+    return {"local_cap": local_inflight, "production_cap": production_inflight, "sum": total, "safe_without_coordinator": total <= PROVIDER_SLOTS,
+            "note": "holds only if each environment enforces its cap; it does not make provider collection on both safe at 1 + 3"}
 
 
 def list_processes() -> Optional[list]:
@@ -72,7 +88,23 @@ def read_attestation(path, now: datetime) -> dict:
         return {"valid": False, "why": "attestation lacks the required acknowledgements"}
     if now - at > timedelta(hours=ATTESTATION_MAX_AGE_H) or at > now + timedelta(minutes=5):
         return {"valid": False, "why": "attestation is older than %.0f h or dated in the future" % ATTESTATION_MAX_AGE_H}
-    return {"valid": True, "attested_by": a["attested_by"], "attested_at": at.isoformat(), "market_hours_ok": a.get("market_hours_ok") is True}
+    return {"valid": True, "attested_by": a["attested_by"], "attested_at": at.isoformat(), "market_hours_ok": a.get("market_hours_ok") is True, "designated_collector": a.get("designated_collector"),
+            "production_provider_traffic_paused": a.get("production_provider_traffic_paused") is True, "production_uw_max_inflight": a.get("production_uw_max_inflight")}
+
+
+def designation_problem(att: dict, here: str) -> Optional[str]:
+    """Only ONE environment may make live provider requests unless the caps are partitioned. The attestation must name the designated collector and it must be THIS environment; a localhost collector also
+    needs production's provider traffic paused, or production capped at 2 in flight (1 + 2 = 3)."""
+    d = att.get("designated_collector")
+    if d not in ENVIRONMENTS:
+        return "attestation must name designated_collector: localhost or production"
+    if d != here:
+        return "this environment (%s) is not the designated collector (%s)" % (here, d)
+    if here == "localhost":
+        cap = att.get("production_uw_max_inflight")
+        if not att.get("production_provider_traffic_paused") and not (isinstance(cap, int) and 1 <= cap and cap + 1 <= PROVIDER_SLOTS):
+            return "localhost collection needs production provider traffic paused, or production UW_MAX_INFLIGHT <= 2 (1 + 2 = 3)"
+    return None
 
 
 def evaluate(now: datetime, attestation_path=None, *, processes: Callable[[], Optional[list]] = list_processes, tasks: Callable[[], Optional[list]] = enabled_tasks) -> dict:
@@ -91,6 +123,9 @@ def evaluate(now: datetime, attestation_path=None, *, processes: Callable[[], Op
     if conflict:
         status, blocks = "NOT_VERIFIED", True
         why = "another consumer is running/enabled on this machine, or this machine could not be inspected"
+    elif att["valid"] and designation_problem(att, this_environment()):
+        status, blocks = "NOT_VERIFIED", True
+        why = designation_problem(att, this_environment())
     elif att["valid"] and (not session or att.get("market_hours_ok")):
         status, blocks, why = "OWNER_ATTESTED", False, "no local conflict found; cross-machine use is not visible and is covered only by the owner's attestation"
     else:
