@@ -46,9 +46,11 @@ def run(store: Path = STORE, v2r: Path = V2R, v1store: Path = V1STORE, recovery:
         if r.get("company"):
             companies[r["symbol"]] = r["company"]
     rec = json.loads((recovery or sorted((RUN / "audits_recovery").glob("recovery_audit_*.json"))[-1]).read_text(encoding="utf-8"))
+    rp = store.parent / "report.json"
+    failed = json.loads(rp.read_text(encoding="utf-8")).get("failures", []) if rp.exists() else []
     snaps = [{"symbol": r["symbol"], "retrieved_at": r["retrieved_at"]} for r in evidence if r.get("kind") == "uw_estimates" and r.get("status") == "OK"]
     out = {"generated_utc": now.isoformat(), "read_only": True, "provider_requests": 0, "events": len(events),
-           "flow": DQ.flow_audit(events, evidence, load), "news": DQ.news_audit(events, evidence, load, companies), "root_causes": DQ.root_cause_table(rec),
+           "flow": DQ.flow_audit(events, evidence, load), "news": DQ.news_audit(events, evidence, load, companies), "news_coverage": DQ.news_coverage(events, evidence, load, companies, failed), "root_causes": DQ.root_cause_table(rec),
            "analyst_readiness": DQ.analyst_readiness(snaps, [e["symbol"] for e in events], now)}
     out["store_unchanged"] = _hash_tree(store) == before
     return out

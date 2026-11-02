@@ -216,7 +216,10 @@ class InfraFetcher(Fetcher):
         if kind == "uw_inst_own":
             return self._uw("/api/institution/%s/ownership" % symbol, {"limit": params.get("limit", 100)})
         if kind == "uw_news":
-            return self._uw("/api/news/headlines", {"ticker": symbol, "limit": params.get("limit", 25)})
+            q = {"ticker": symbol, "limit": params.get("limit", 25)}
+            if params.get("page"):
+                q["page"] = params["page"]                                   # documented paging parameter (starts on page 0, so page 0 is simply omitted)
+            return self._uw("/api/news/headlines", q)
         if kind == "finviz_calendar":
             data = self.fz._get({"v": "152", "t": ",".join(params["tickers"]), "c": "1,68"})
             if data is None:

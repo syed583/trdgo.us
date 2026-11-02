@@ -59,7 +59,7 @@ def main(argv=None):
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--v1-run", required=True)
     ap.add_argument("--cap", type=int, default=700)
-    ap.add_argument("--news-sample", type=int, default=3)
+    ap.add_argument("--news-sample", type=int, default=-1, help="stocks that also get a news request after the probe stock: -1 = every eligible stock (default; still bound by the cap, spacing and hourly share), 0 = none, N = first N (the old default was 3, which is why only 4 stocks had news)")
     ap.add_argument("--calendar-budget", type=int, default=0, help="full phase only: re-run the vendor calendar refresh with this many requests (counted in the cap); the probe's 12 requests were too few to reach the Finviz/Finnhub confirmation")
     a = ap.parse_args(argv)
     out, v1 = Path(a.out_dir), Path(a.v1_run)
@@ -167,9 +167,9 @@ def main(argv=None):
                     break
                 cut = datetime.fromisoformat(closing[sym]) if isinstance(closing[sym], str) else closing[sym]
                 tasks = [t for t in C.plan([sym], svc.store, svc.clock.now()) if t["kind"] in good_kinds]
-                if news_left > 0 and probe["by_kind"].get("uw_news", {}).get("status") == "OK" and sym != probe["symbol"]:
+                if news_left != 0 and probe["by_kind"].get("uw_news", {}).get("status") == "OK" and sym != probe["symbol"]:
                     tasks += [t for t in C.plan([sym], svc.store, svc.clock.now(), include_news=True) if t["kind"] == "uw_news"]
-                    news_left -= 1
+                    news_left -= 1 if news_left > 0 else 0
                 if not tasks:
                     done_symbols.add(sym)
                     continue

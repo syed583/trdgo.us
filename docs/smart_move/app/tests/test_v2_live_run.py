@@ -68,7 +68,7 @@ def test_probe_then_full_respects_the_cap_the_kill_switch_and_never_repeats(tmp_
     pr = json.loads((out / "probe.json").read_text())
     assert set(pr["by_kind"]) == {"uw_analysts", "uw_estimates", "uw_flow_alerts", "uw_short_float", "uw_inst_own", "uw_news"} and all(v["status"] == "OK" for v in pr["by_kind"].values())
     assert (out / "store" / "KILL").exists()
-    assert run(monkeypatch, "full", out, v1, prov, clock, "--cap", "120") in (0, 5)
+    assert run(monkeypatch, "full", out, v1, prov, clock, "--cap", "120", "--news-sample", "3") in (0, 5)
     rep = json.loads((out / "report.json").read_text())
     assert rep["attempts_total"] <= 120 and rep["kill_switch_final"]["engaged"] and not rep["stop_events"] and (out / "store" / "KILL").exists()
     assert len(set(prov.v2_calls)) == len(prov.v2_calls)                                  # no V2 request repeated

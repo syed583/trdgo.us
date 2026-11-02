@@ -175,3 +175,62 @@ def analyst_readiness(snapshot_rows: list, symbols: Iterable[str], now: datetime
                                 "persist the v2_estimate_snapshots ledger (rebuild is idempotent and append-only) from the evidence records",
                                 "events whose cutoff is at least 7 days after the first snapshot can then score the revision half (10 of 15 ANALYST points)"],
             "note": "Events already past their cutoff cannot be repaired. The action half (5 points) does not depend on history."}
+
+
+NEWS_STATES = ("OK", "FILTERED_ONLY", "NO_PRE_CUTOFF_NEWS", "EMPTY", "FAILED", "NOT_ATTEMPTED")
+
+
+def news_coverage(events: Iterable[dict], evidence: Iterable[dict], load: Callable[[str], Optional[dict]], companies: dict, failed_calls: Iterable[dict] = ()) -> dict:
+    """Per stock: was news attempted, and what came back. Successful, empty, failed, filtered and not-attempted are kept apart (an empty or missing record is never read as neutral news).
+
+    OK = at least one in-window, pre-cutoff, entity-verified headline; FILTERED_ONLY = headlines in window but none verified; NO_PRE_CUTOFF_NEWS = headlines exist but none inside the lookback before the capture;
+    EMPTY = the provider answered with zero rows; FAILED = a saved record that is not OK; NOT_ATTEMPTED = no request was ever recorded. NEWS_GUIDANCE scoring is blocked regardless."""
+    recs = defaultdict(list)
+    for r in evidence:
+        if r.get("kind") == "uw_news":
+            recs[r["symbol"]].append(r)
+    states, per, headlines, pre_cutoff, dup = Counter(), [], 0, 0, 0
+    failed_syms = {f["symbol"] for f in failed_calls if f.get("kind") == "uw_news"}          # failed calls leave no evidence record; the run report lists them (symbol, kind)
+    for e in events:
+        sym, cap = e["symbol"], FX._t(e["scored_as_of"])
+        rs = recs.get(sym)
+        if not rs and sym in failed_syms:
+            states["FAILED"] += 1
+            per.append({"symbol": sym, "state": "FAILED", "statuses": ["CALL_FAILED_NO_RECORD"]})
+            continue
+        if not rs:
+            states["NOT_ATTEMPTED"] += 1
+            per.append({"symbol": sym, "state": "NOT_ATTEMPTED"})
+            continue
+        ok = [r for r in rs if r.get("status") == "OK"]
+        if not ok:
+            states["FAILED"] += 1
+            per.append({"symbol": sym, "state": "FAILED", "statuses": sorted({str(r.get("status")) for r in rs})})
+            continue
+        rows, seen = [], set()
+        for r in ok:
+            for h in (load(r["raw_sha256"]) or {}).get("data") or []:
+                k = (h.get("created_at"), h.get("source"), str(h.get("headline", "")).strip().lower())
+                if k in seen:
+                    dup += 1
+                    continue
+                seen.add(k)
+                rows.append(h)
+        headlines += len(rows)
+        if not rows:
+            states["EMPTY"] += 1
+            per.append({"symbol": sym, "state": "EMPTY"})
+            continue
+        cls = [NW.classify(h, sym, companies.get(sym), cap) for h in rows]
+        in_window = [c for c in cls if c["category"] not in ("OUT_OF_WINDOW", "NOT_PRE_ANNOUNCEMENT", "NO_TIMESTAMP")]
+        verified = [c for c in in_window if c["label"] != "UNVERIFIED"]
+        pre_cutoff += len(in_window)
+        st = "OK" if verified else "FILTERED_ONLY" if in_window else "NO_PRE_CUTOFF_NEWS"
+        states[st] += 1
+        per.append({"symbol": sym, "state": st, "headlines": len(rows), "in_window_pre_cutoff": len(in_window), "verified": len(verified)})
+    n = len(per)
+    attempted = n - states["NOT_ATTEMPTED"]
+    return {"eligible_stocks": n, "news_attempted": attempted, "states": {k: states.get(k, 0) for k in NEWS_STATES}, "stocks_with_stored_news": sum(states.get(k, 0) for k in ("OK", "FILTERED_ONLY", "NO_PRE_CUTOFF_NEWS")),
+            "stocks_without_stored_news": n - sum(states.get(k, 0) for k in ("OK", "FILTERED_ONLY", "NO_PRE_CUTOFF_NEWS")), "stored_headlines": headlines, "duplicate_headlines_removed": dup,
+            "valid_pre_cutoff_headlines": pre_cutoff, "news_guidance_eligible": 0, "per_stock": per,
+            "note": "news_guidance_eligible is 0 by design: NEWS_GUIDANCE scoring stays blocked until classification is validated on independently labelled headlines and the owner approves."}

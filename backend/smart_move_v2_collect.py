@@ -24,6 +24,37 @@ KINDS = {
     "uw_news": ("/api/news/headlines", {"limit": 25}, ("created_at",), 1),
 }
 CORE = ("uw_analysts", "uw_estimates", "uw_flow_alerts", "uw_short_float", "uw_inst_own")
+NEWS_LOOKBACK_DAYS = 7          # the news classifier's lookback (smart_move_news.LOOKBACK_DAYS)
+NEWS_MAX_PAGES = 3              # pages 0..2 of 25 headlines per stock; a full page whose oldest headline is still inside the lookback may hide newer-than-lookback items on the next page
+
+
+def news_next_page(rows, limit: int, page: int, now: datetime) -> bool:
+    """True when this page was full AND its oldest headline is still inside the lookback (so the next page may hold more in-window headlines) and the page cap is not reached."""
+    if not rows or len(rows) < limit or page + 1 >= NEWS_MAX_PAGES:
+        return False
+    stamps = []
+    for r in rows:
+        try:
+            t = datetime.fromisoformat(str(r.get("created_at")).replace("Z", "+00:00"))
+            stamps.append(t if t.tzinfo else t.replace(tzinfo=UTC))
+        except (TypeError, ValueError):
+            continue
+    return bool(stamps) and min(stamps) > now - timedelta(days=NEWS_LOOKBACK_DAYS)
+
+
+def merge_news(store, recs) -> list:
+    """All saved pages of one stock's headlines (latest record per page), de-duplicated on (publication time, source, headline); the stored bodies are never modified."""
+    latest = {}
+    for r in sorted(recs, key=lambda r: r["retrieved_at"]):
+        latest[(r.get("params") or {}).get("page", 0)] = r
+    seen, out = set(), []
+    for pg in sorted(latest):
+        for h in _rows(store, latest[pg], "uw_news") or []:
+            k = (h.get("created_at"), h.get("source"), str(h.get("headline", "")).strip().lower())
+            if k not in seen:
+                seen.add(k)
+                out.append(h)
+    return out
 
 
 def validate(kind: str, body: bytes) -> dict:
@@ -66,6 +97,7 @@ def plan(symbols: Iterable[str], store, now: datetime, *, include_news: bool = F
 def run(svc, tasks: list, *, max_requests: int, checkpoint: Optional[Path] = None, stopped: Callable[[], bool] = lambda: False, calendar_ok: Optional[Callable[[datetime], bool]] = None) -> dict:
     """Sequential (one request in flight, within the shared 3-slot limit). Stops on a provider stop; resumes from the checkpoint without repeating finished task IDs."""
     done = set(json.loads(Path(checkpoint).read_text())["done"]) if checkpoint and Path(checkpoint).exists() else set()
+    tasks = list(tasks)
     acc = {"planned": len(tasks), "attempted": 0, "ok": 0, "failed": 0, "invalid": 0, "skipped_resume": 0, "by_kind": {}, "stopped": False, "failures": []}
     for t in tasks:
         if t["id"] in done:
@@ -80,6 +112,8 @@ def run(svc, tasks: list, *, max_requests: int, checkpoint: Optional[Path] = Non
         params = dict(KINDS[t["kind"]][1])
         if t["kind"] in ("uw_analysts", "uw_news"):
             params["ticker"] = t["symbol"]
+        if t["kind"] == "uw_news" and t.get("page"):
+            params["page"] = t["page"]
         body, sha, at = svc._call(t["kind"], t["symbol"], params, t["id"])
         acc["attempted"] += 1
         acc["by_kind"][t["kind"]] = acc["by_kind"].get(t["kind"], 0) + 1
@@ -99,6 +133,15 @@ def run(svc, tasks: list, *, max_requests: int, checkpoint: Optional[Path] = Non
         svc.store.append(EVIDENCE, {"id": t["id"], "kind": t["kind"], "symbol": t["symbol"], "retrieved_at": at.isoformat(), "raw_sha256": sha, "status": "OK" if v["ok"] else "INVALID",
                                     "rows": v["rows"], "invalid_reason": v["reason"], "params": params})
         acc["ok" if v["ok"] else "invalid"] += 1
+        if v["ok"] and t["kind"] == "uw_news":
+            page = int(t.get("page") or 0)
+            try:
+                rows = json.loads(body).get("data")
+            except (TypeError, ValueError):
+                rows = None
+            if isinstance(rows, list) and news_next_page(rows, int(params.get("limit", 25)), page, at):
+                tasks.append({"kind": "uw_news", "symbol": t["symbol"], "id": "%s-p%d" % (t["id"].split("-p")[0], page + 1), "page": page + 1})
+                acc["news_pages_added"] = acc.get("news_pages_added", 0) + 1
         if v["ok"]:
             done.add(t["id"])
             if checkpoint:
@@ -129,7 +172,7 @@ def load_inputs(store, symbol: str, capture_ts: datetime, ending_quarter: Option
     if by.get("uw_inst_own"):
         out["inst"] = _rows(store, by["uw_inst_own"][-1], "uw_inst_own") or []
     if by.get("uw_news"):
-        out["news"] = _rows(store, by["uw_news"][-1], "uw_news") or []
+        out["news"] = merge_news(store, by["uw_news"])
     if by.get("uw_estimates"):
         import smart_move_v2_snapshots as SN
         snaps = []
