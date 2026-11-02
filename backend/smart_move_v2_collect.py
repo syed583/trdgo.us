@@ -22,6 +22,9 @@ KINDS = {
     "uw_short_float": ("/api/shorts/{t}/interest-float/v2", {}, ("market_date",), 10),      # snapshots 10+ days apart give the positioning change
     "uw_inst_own": ("/api/institution/{t}/ownership", {"limit": 100}, ("filing_date",), 30),
     "uw_news": ("/api/news/headlines", {"limit": 25}, ("created_at",), 1),
+    # Phase 14 extension jobs (planned by smart_move_collection_ext; NOT in CORE, so plan() never schedules them on its own)
+    "uw_earnings": ("/api/earnings/{t}", {"limit": 24}, ("report_date",), 7),                # exact fiscal-quarter evidence: provider field ending_fiscal_quarter
+    "uw_ohlc": ("/api/stock/{t}/ohlc/1d", {"timeframe": "1M"}, ("date", "close"), 1),        # daily bars for outcome validation (about 21 sessions)
 }
 CORE = ("uw_analysts", "uw_estimates", "uw_flow_alerts", "uw_short_float", "uw_inst_own")
 NEWS_LOOKBACK_DAYS = 7          # the news classifier's lookback (smart_move_news.LOOKBACK_DAYS)
@@ -136,8 +139,19 @@ def run(svc, tasks: list, *, max_requests: int, checkpoint: Optional[Path] = Non
             acc["rejected_stale_calendar"] = acc.get("rejected_stale_calendar", 0) + 1
             acc["stopped"] = True
             break
-        svc.store.append(EVIDENCE, {"id": t["id"], "kind": t["kind"], "symbol": t["symbol"], "retrieved_at": at.isoformat(), "raw_sha256": sha, "status": "OK" if v["ok"] else "INVALID",
-                                    "rows": v["rows"], "invalid_reason": v["reason"], "params": params})
+        rec = {"id": t["id"], "kind": t["kind"], "symbol": t["symbol"], "retrieved_at": at.isoformat(), "raw_sha256": sha, "status": "OK" if v["ok"] else "INVALID",
+               "rows": v["rows"], "invalid_reason": v["reason"], "params": params}
+        if t["kind"] == "uw_ohlc" and v["ok"]:                                              # bars that fail validation are QUARANTINED (counted here, excluded from outcome use); the raw body is kept
+            import smart_move_collection_ext as X
+            try:
+                q = X.bar_quality(json.loads(body).get("data"), at)
+            except (TypeError, ValueError):
+                q = {"bars_accepted": 0, "bars_quarantined": 0, "quarantine_reasons": ["UNPARSEABLE"], "last_bar_date": None}
+            rec.update(q)
+            if q["bars_accepted"] == 0:
+                rec.update(status="INVALID", invalid_reason="NO_VALID_BARS")
+                v = dict(v, ok=False)
+        svc.store.append(EVIDENCE, rec)
         consecutive = 0 if v["ok"] else consecutive + 1
         acc["ok" if v["ok"] else "invalid"] += 1
         if v["ok"] and t["kind"] == "uw_news":

@@ -356,7 +356,7 @@ def earnings_payloads(evidence_rows: Iterable[dict], load: Callable[[str], Optio
     only payloads were retrieved AFTER as_of gets the earliest of them so the record says PAYLOAD_RETRIEVED_AFTER_AS_OF instead of pretending nothing was saved. load(sha) returns the decoded JSON body or None."""
     by_sym: dict = {}
     for r in evidence_rows:
-        if r.get("kind") == "earnings" and r.get("status", "OK") == "OK":
+        if r.get("kind") in ("earnings", "uw_earnings") and r.get("status", "OK") == "OK":
             by_sym.setdefault(r["symbol"], []).append(r)
     out = {}
     for s, recs in by_sym.items():

@@ -72,17 +72,24 @@ def live_gate(args, env=os.environ) -> list:
     return why
 
 
-def execute(svc, *, now, state_dir, live: bool, authorized: int, ceiling: int, batch: int, news_pages=None, calendar_requests=None, stage_caps=None, calendar_scope="horizon", max_consecutive_failures=None) -> dict:
+def execute(svc, *, now, state_dir, live: bool, authorized: int, ceiling: int, batch: int, news_pages=None, calendar_requests=None, stage_caps=None, calendar_scope="horizon", max_consecutive_failures=None, outcome_events_fn=None) -> dict:
     """One collection cycle. A live cycle releases the kill-switch file only for its own duration and ALWAYS re-engages it afterwards, whatever happens."""
     if live:
         svc.store.kill_file.unlink()
         svc.gov.authorized_daily, svc.gov.enabled = authorized, True
     try:
         return J.run_cycle(svc, now=now, state_dir=state_dir, mode="LIVE" if live else "DRY_RUN", armed=live, ceiling=ceiling, batch_size=batch,
-                           news_pages=news_pages, calendar_requests=calendar_requests, stage_caps=stage_caps, calendar_scope=calendar_scope, max_consecutive_failures=max_consecutive_failures)
+                           news_pages=news_pages, calendar_requests=calendar_requests, stage_caps=stage_caps, calendar_scope=calendar_scope, max_consecutive_failures=max_consecutive_failures, outcome_events_fn=outcome_events_fn)
     finally:
         if live:
             svc.engage_kill_switch("collection runner: re-engaged after the run")
+
+
+def outcome_events(svc, now) -> list:
+    """Events with a BMO/AMC session recorded in the saved calendar (the event record, not a vendor label alone) whose date has passed: the candidates for daily-bar collection once their reaction session has closed."""
+    recs = ER.records_from_saved(svc.store.read("cal_obs"), now, {})
+    return [{"symbol": r["symbol"], "event_date": r["event_date"], "session": r["session"]} for r in recs if r["event_date"] and r["session"] in ("BMO", "AMC")
+            and r["event_date"] < now.date().isoformat()]
 
 
 def record_events(svc, now, state_dir) -> dict:
@@ -132,16 +139,16 @@ def main(argv=None) -> int:
     ap.add_argument("--as-of", default=None, help="dry-run only: evaluate the plan at this past instant")
     ap.add_argument("--preds-store", action="append", default=[])
     ap.add_argument("--tracking-dir", default=None)
-    ap.add_argument("--profile", choices=("standard", "pilot50"), default="standard", help="pilot50: hard 50-attempt ceiling, no retries, no news paging, 3-day calendar, calendar capped at 14 requests")
+    ap.add_argument("--profile", choices=("standard", "pilot50", "batch2"), default="standard", help="pilot50: hard 50-attempt ceiling, no retries, no news paging, 3-day calendar, calendar capped at 14 requests")
     ap.add_argument("--calendar-days", type=int, default=None)
     ap.add_argument("--calendar-requests", type=int, default=None)
     ap.add_argument("--require-rotated-from", default=None, help="8-hex fingerprint of the OLD token; a live run is BLOCKED while the active token still has this fingerprint")
     ap.add_argument("--shared-key-attestation", default=None, help="owner acknowledgement file (see smart_move_shared_key_gate); without a valid one a live run stays BLOCKED")
     a = ap.parse_args(argv)
     news_pages, retries, stage_caps, scope, max_fail = None, 1, None, "horizon", None
-    if a.profile != "pilot50":
+    if a.profile not in ("pilot50", "batch2"):
         a.ceiling = J.DEFAULT_CEILING if a.ceiling is None else a.ceiling
-    if a.profile == "pilot50":
+    if a.profile in ("pilot50", "batch2"):
         if a.authorize_requests > PILOT_MAX or (a.ceiling is not None and a.ceiling > PILOT_MAX):
             print("BLOCKED: the pilot profile never exceeds %d provider attempts" % PILOT_MAX)
             return 6
@@ -152,6 +159,8 @@ def main(argv=None) -> int:
         news_pages, retries, scope, max_fail = 1, 0, "useful", 3                # pilot: three failed requests in a row (e.g. HTTP 5xx) end the run
                                    # pilot: refresh only the event dates whose 48-to-24 h window can be open now
         stage_caps = {"snapshot_a": 0, "snapshot_b": 18}                      # 3-day pilot: no Snapshot A; Snapshot B at most 18; news gets what the 50-attempt ceiling leaves
+        if a.profile == "batch2":                                             # Phase 14 batch: the same hard 50-attempt ceiling, no retries, no paging; earnings payloads first, then Snapshot B, news, price bars
+            stage_caps = {"snapshot_a": 0, "snapshot_b": 14, "earnings": 12, "ohlc": 3, "news": 17}
     live = a.mode == "live"
     blockers = live_gate(a) if live else []
     if live and blockers:
@@ -186,7 +195,7 @@ def main(argv=None) -> int:
     if live and not kill_was_engaged:
         print("BLOCKED: the kill-switch file must exist before a live run (it is released only while the run works)")
         return 6
-    job = execute(svc, now=now, state_dir=a.state_dir, live=live, authorized=a.authorize_requests, ceiling=a.ceiling, batch=a.batch, news_pages=news_pages, calendar_requests=a.calendar_requests, stage_caps=stage_caps, calendar_scope=scope, max_consecutive_failures=max_fail)
+    job = execute(svc, now=now, state_dir=a.state_dir, live=live, authorized=a.authorize_requests, ceiling=a.ceiling, batch=a.batch, news_pages=news_pages, calendar_requests=a.calendar_requests, stage_caps=stage_caps, calendar_scope=scope, max_consecutive_failures=max_fail, outcome_events_fn=(lambda n: outcome_events(svc, n)) if a.profile == "batch2" else None)
     ev_summary = record_events(svc, now, a.state_dir)
     preds = T.load_predictions(a.preds_store) if a.preds_store else []
     rep = status_report(svc, now, preds, a.tracking_dir)

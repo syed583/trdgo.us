@@ -46,7 +46,7 @@ def build_records(store: Path, times: list, path: Path) -> "ER.EventRecords":
             return json.loads(ps.get(sha))
         except Exception:  # noqa: BLE001
             return None
-    cal, evid = _jsonl(store / "cal_obs.jsonl"), _jsonl(store / "evidence.jsonl")
+    cal, evid = _jsonl(store / "cal_obs.jsonl"), _jsonl(store / "evidence.jsonl") + _jsonl(store / "v2_evidence.jsonl")
     rs = ER.EventRecords(path)
     for t in times:
         t = datetime.fromisoformat(t)

@@ -222,6 +222,10 @@ class InfraFetcher(Fetcher):
             return self._uw("/api/shorts/%s/interest-float/v2" % symbol, {})
         if kind == "uw_inst_own":
             return self._uw("/api/institution/%s/ownership" % symbol, {"limit": params.get("limit", 100)})
+        if kind == "uw_earnings":
+            return self._uw("/api/earnings/%s" % symbol, {"limit": params.get("limit", 24)})
+        if kind == "uw_ohlc":
+            return self._uw("/api/stock/%s/ohlc/1d" % symbol, {"timeframe": params.get("timeframe", "1M")})
         if kind == "uw_news":
             q = {"ticker": symbol, "limit": params.get("limit", 25)}
             if params.get("page"):

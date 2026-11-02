@@ -90,22 +90,26 @@ def load_bars(store_dirs: Iterable[str]) -> dict:
     out: dict = {}
     seen = set()
     for d in store_dirs:
-        f = Path(d) / "evidence.jsonl"
-        if not f.exists():
-            continue
         st = PayloadStore(d)
-        for ln in f.read_text(encoding="utf-8-sig").splitlines():
-            if not ln.strip():
+        for fname, kinds in (("evidence.jsonl", ("ohlc",)), ("v2_evidence.jsonl", ("uw_ohlc",))):                  # V1 bars, and the Phase 14 collector's bars
+            f = Path(d) / fname
+            if not f.exists():
                 continue
-            r = json.loads(ln)
-            if r.get("kind") != "ohlc" or r["raw_sha256"] in seen:
-                continue
-            seen.add(r["raw_sha256"])
-            try:
-                rows = json.loads(st.get(r["raw_sha256"])).get("data") or []
-            except Exception:  # noqa: BLE001
-                continue
-            out.setdefault(r["symbol"], []).append({"retrieved_at": r["retrieved_at"], "raw_sha256": r["raw_sha256"], "rows": rows})
+            for ln in f.read_text(encoding="utf-8-sig").splitlines():
+                if not ln.strip():
+                    continue
+                r = json.loads(ln)
+                if r.get("kind") not in kinds or r["raw_sha256"] in seen or r.get("status", "OK") != "OK":
+                    continue
+                seen.add(r["raw_sha256"])
+                try:
+                    rows = json.loads(st.get(r["raw_sha256"])).get("data") or []
+                except Exception:  # noqa: BLE001
+                    continue
+                if r["kind"] == "uw_ohlc":                                                                      # quarantined bars never reach an outcome
+                    import smart_move_price_bars as PB
+                    rows = PB.validate_rows([x for x in rows if isinstance(x, dict)], r["retrieved_at"])["accepted"]
+                out.setdefault(r["symbol"], []).append({"retrieved_at": r["retrieved_at"], "raw_sha256": r["raw_sha256"], "rows": rows})
     return out
 
 

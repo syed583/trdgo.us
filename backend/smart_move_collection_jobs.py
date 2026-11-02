@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 import smart_move_calendar_guard as G
+import smart_move_collection_ext as X
 import smart_move_collection_plan as CP
 import smart_move_v2_collect as C
 
@@ -147,7 +148,7 @@ class AttemptRecorder:
         return getattr(self.inner, name)
 
 
-def build_tasks(window_events, tracking_events, store, now, stage_caps=None) -> dict:
+def build_tasks(window_events, tracking_events, store, now, stage_caps=None, outcome_events=None) -> dict:
     """window_events: events with an open 48-to-24 h window (news INITIAL/FINAL, snapshot B). tracking_events: events within the ~14-day horizon (snapshot A)."""
     recs = C._records(store)
     news = CP.news_tasks_due(to_news_events(window_events), [r for r in recs if r["kind"] == "uw_news"], now)
@@ -159,13 +160,18 @@ def build_tasks(window_events, tracking_events, store, now, stage_caps=None) -> 
         snaps_b = snaps_b[:caps["snapshot_b"]]                                                      # earliest cutoff first (the lists are cutoff-ordered)
     if "snapshot_a" in caps:
         snaps_a = snaps_a[:caps["snapshot_a"]]
+    if "news" in caps:
+        news = news[:caps["news"]]
+    earn = X.earnings_tasks_due(to_snapshot_events(window_events) + to_snapshot_events(tracking_events), recs, now, caps.get("earnings", 0)) if caps.get("earnings") else []       # extension jobs only when a cap is given
+    ohlc = X.ohlc_tasks_due(outcome_events or [], recs, now, caps.get("ohlc", 0)) if caps.get("ohlc") else []
     seen, tasks = set(), []
-    rank = lambda t: 0 if t.get("stage") == "A" else 1 if t.get("stage") == "B" else 2          # priority: Snapshot A, Snapshot B, then news (INITIAL / FINAL)  # noqa: E731
-    for t in sorted(news + snaps_b + snaps_a, key=lambda t: (rank(t), t["cutoff_utc"], t["symbol"])):
+    # priority: earnings payloads (fiscal quarter), Snapshot A, Snapshot B, news (INITIAL / FINAL), then price bars for completed reaction sessions
+    rank = lambda t: -1 if t.get("stage") == "E" else 0 if t.get("stage") == "A" else 1 if t.get("stage") == "B" else 3 if t.get("stage") == "O" else 2  # noqa: E731
+    for t in sorted(news + snaps_b + snaps_a + earn + ohlc, key=lambda t: (rank(t), t["cutoff_utc"], t["symbol"])):
         if t["id"] not in seen:
             seen.add(t["id"])
             tasks.append(t)
-    return {"news": news, "snapshot_b": snaps_b, "snapshot_a": snaps_a, "tasks": tasks}
+    return {"news": news, "snapshot_b": snaps_b, "snapshot_a": snaps_a, "earnings": earn, "ohlc": ohlc, "tasks": tasks}
 
 
 def request_range(tasks: list) -> dict:
@@ -206,7 +212,7 @@ def preflight(svc, tasks_by_kind: dict, *, now: datetime, ceiling: int, state: d
 # ---------------------------------------------------------------- the cycle
 def run_cycle(svc, *, now: datetime, state_dir, mode: str = "DRY_RUN", armed: bool = False, ceiling: int = DEFAULT_CEILING, batch_size: int = DEFAULT_BATCH,
               events_fn: Optional[Callable] = None, stopped: Optional[Callable[[], bool]] = None, news_pages: Optional[int] = None, calendar_requests: Optional[int] = None, stage_caps: Optional[dict] = None, calendar_scope: str = "horizon",
-              max_consecutive_failures: Optional[int] = None) -> dict:
+              max_consecutive_failures: Optional[int] = None, outcome_events_fn: Optional[Callable] = None) -> dict:
     """events_fn(now, horizon_days) -> events (the existing eligible_events). DRY_RUN never calls the provider. LIVE needs armed=True."""
     d = Path(state_dir)
     st = _read_state(d)
@@ -215,7 +221,8 @@ def run_cycle(svc, *, now: datetime, state_dir, mode: str = "DRY_RUN", armed: bo
     events_fn = events_fn or (lambda n, h=None: svc.eligible_events(n, h) if h else svc.eligible_events(n))
     window_events = events_fn(now, None)
     tracking_events = events_fn(now, svc.cfg.tracking_days_ahead)
-    tb = build_tasks(window_events, tracking_events, svc.store, now, stage_caps)
+    outcome_events = outcome_events_fn(now) if outcome_events_fn else None
+    tb = build_tasks(window_events, tracking_events, svc.store, now, stage_caps, outcome_events)
     pf = preflight(svc, tb, now=now, ceiling=ceiling, state=st, window_events=window_events, tracking_events=tracking_events, stopped=stopped,
                    scope_dates=useful_calendar_slots(now) if calendar_scope == "useful" else None)
     job = {"id": job_id, "mode": mode, "started_utc": now.isoformat(), "preflight": pf, "requests": 0, "tasks_planned": len(tb["tasks"]), "tasks_done": 0, "failures": [], "status": "PENDING"}
@@ -255,7 +262,7 @@ def run_cycle(svc, *, now: datetime, state_dir, mode: str = "DRY_RUN", armed: bo
                     job.update(status="BLOCKED", reason="CALENDAR_NOT_FRESH:" + str(g.get("reason")))
                 else:
                     window_events, tracking_events = events_fn(svc.clock.now(), None), events_fn(svc.clock.now(), svc.cfg.tracking_days_ahead)
-                    tb = build_tasks(window_events, tracking_events, svc.store, svc.clock.now(), stage_caps)
+                    tb = build_tasks(window_events, tracking_events, svc.store, svc.clock.now(), stage_caps, outcome_events)
                     job["tasks_planned"] = len(tb["tasks"])
             if job["status"] == "RUNNING":
                 done = set(st["done_tasks"])
