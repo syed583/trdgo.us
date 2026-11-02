@@ -28,8 +28,8 @@ AUDIT_FINDINGS = [
      "evidence": "_sentiment({'side': None, 'right': 'C'}) -> BEARISH; _sentiment({'side': None, 'right': 'P'}) -> BULLISH (checked offline).",
      "status": "NOT FIXED (production service must not be modified): classify() here returns UNKNOWN_SIDE. Needs owner approval before the live function is changed."},
     {"id": "FRONTEND_TYPE_DRIFT", "where": "frontend/src/api/client.ts::FlowTrade", "severity": "INCONSISTENCY",
-     "what": "FlowTrade lists type 'Call'|'Put', kind 'SWEEP'|'BLOCK'|'SPLIT'|'SINGLE' and sentiment 'Bullish'|'Bearish'; the backend row sends CALL|PUT, SWEEP|BLOCK|PRINT and BULLISH|BEARISH|NEUTRAL.",
-     "status": "REPORTED by audit_contract(); the page shapes some rows itself (type fallback), so it is not a proven runtime failure."},
+     "what": "FlowTrade listed type 'Call'|'Put', kind 'SWEEP'|'BLOCK'|'SPLIT'|'SINGLE' and sentiment 'Bullish'|'Bearish'; the backend row sends CALL|PUT, SWEEP|BLOCK|PRINT and BULLISH|BEARISH|NEUTRAL.",
+     "status": "TYPES FIXED in frontend/src/api/client.ts (the union now accepts the backend values and keeps the legacy ones). Still reported: exchanges/prints are required by the type but not sent by `_trade`."},
 ]
 
 
@@ -135,15 +135,15 @@ def frontend_type_fields(source: str, name: str = "FlowTrade") -> dict:
 
 
 def audit_contract(backend_source: str, frontend_source: str) -> dict:
+    """A backend value the frontend type does not ACCEPT is a break; a frontend value the backend never sends is only legacy. `consistent` needs no unaccepted backend value and no field the type requires but the row lacks."""
     be, fe = backend_row_keys(backend_source), frontend_type_fields(frontend_source)
-    domains = {}
-    for f in ("type", "kind", "sentiment"):
-        domains[f] = sorted(re.findall(r"'([^']+)'", fe.get(f, "")))
     expected = {"type": {"CALL", "PUT"}, "kind": {"SWEEP", "BLOCK", "PRINT"}, "sentiment": {"BULLISH", "BEARISH", "NEUTRAL"}}
-    drift = {f: {"frontend_declares": domains[f], "backend_sends": sorted(expected[f]), "case_or_member_mismatch": sorted(set(domains[f]) ^ expected[f])} for f in domains
-             if {d.upper() for d in domains[f]} != expected[f] or set(domains[f]) != expected[f]}
-    return {"backend_keys": be, "frontend_fields": sorted(fe), "frontend_only_fields": sorted(set(fe) - set(be)), "backend_only_fields": sorted(set(be) - set(fe)), "value_domain_drift": drift,
-            "consistent": not drift and not (set(fe) - set(be))}
+    declared = {f: set(re.findall(r"'([^']+)'", fe.get(f, ""))) for f in expected}
+    unaccepted = {f: sorted(expected[f] - declared[f]) for f in expected if expected[f] - declared[f]}
+    legacy = {f: sorted(declared[f] - expected[f]) for f in expected if declared[f] - expected[f]}
+    required_missing = sorted(f for f in set(fe) - set(be))
+    return {"backend_keys": be, "frontend_fields": sorted(fe), "frontend_only_fields": required_missing, "backend_only_fields": sorted(set(be) - set(fe)), "unaccepted_backend_values": unaccepted,
+            "frontend_legacy_values": legacy, "consistent": not unaccepted and not required_missing}
 
 
 def audit_file_pair(root) -> dict:

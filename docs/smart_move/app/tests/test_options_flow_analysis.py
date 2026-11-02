@@ -60,12 +60,13 @@ def test_ui_states_never_leave_a_panel_blank():
     assert all(OF.ui_state(e, NOW)["headline"] for e in (None, {"status": "NO_TRADES"}, {"status": "OK", "trades": t}))
 
 
-def test_contract_audit_finds_the_known_frontend_backend_drift_in_the_real_files():
+def test_contract_audit_accepts_the_fixed_frontend_types_and_detects_the_old_drift():
     r = OF.audit_file_pair(ROOT)
     assert {"symbol", "option_symbol", "right", "strike", "expiry", "volume", "premium", "side", "sweep", "kind", "sentiment", "type", "epoch"} <= set(r["backend_keys"])
-    assert r["consistent"] is False and set(r["value_domain_drift"]) == {"type", "kind", "sentiment"}
-    assert {"exchanges", "prints"} <= set(r["frontend_only_fields"])
-    assert r["value_domain_drift"]["kind"]["backend_sends"] == ["BLOCK", "PRINT", "SWEEP"] and "SPLIT" in r["value_domain_drift"]["kind"]["frontend_declares"]
+    assert r["unaccepted_backend_values"] == {} and r["frontend_legacy_values"]["kind"] == ["SINGLE", "SPLIT"] and {"exchanges", "prints"} <= set(r["frontend_only_fields"]) and r["consistent"] is False
+    old_ts = "export interface FlowTrade {" + chr(10) + "  type: 'Call' | 'Put';" + chr(10) + "  kind: 'SWEEP' | 'BLOCK' | 'SPLIT' | 'SINGLE';" + chr(10) + "  sentiment: 'Bullish' | 'Bearish';" + chr(10) + "}" + chr(10)
+    old = OF.audit_contract((ROOT / "backend" / "uw_flow_service.py").read_text(encoding="utf-8"), old_ts)
+    assert old["unaccepted_backend_values"] == {"type": ["CALL", "PUT"], "kind": ["PRINT"], "sentiment": ["BEARISH", "BULLISH", "NEUTRAL"]}
 
 
 def test_the_documented_sentiment_defect_matches_the_live_function_and_the_live_service_is_unchanged():

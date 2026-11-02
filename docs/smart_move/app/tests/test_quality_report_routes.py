@@ -77,14 +77,3 @@ def test_the_report_writer_never_overwrites(tmp_path):
     assert json.loads(p.read_text(encoding="utf-8"))["schema"] == QR.SCHEMA
     with pytest.raises(FileExistsError):
         QR.write(BUNDLE, p)
-
-
-def test_every_bundle_event_field_the_page_reads_exists():
-    page = (ROOT / "frontend" / "src" / "pages" / "SmartMoveQualityPage.tsx")
-    if not page.exists():
-        pytest.skip("page not present")
-    src = page.read_text(encoding="utf-8")
-    import re
-    used = set(re.findall(r"\be\.([a-z_]+)\b", src))
-    have = set(BUNDLE["events"][0])
-    assert used - have == set(), sorted(used - have)

@@ -225,13 +225,16 @@ export interface FlowTrade {
   expiry_label: string;
   strike: number;
   right: 'C' | 'P';
-  type: 'Call' | 'Put';
+  /** Backend sends CALL / PUT; some screens still send the title-cased form, so both are accepted. */
+  type: 'CALL' | 'PUT' | 'Call' | 'Put';
   contracts: number;
   price: number;
   notional: number;
-  kind: 'SWEEP' | 'BLOCK' | 'SPLIT' | 'SINGLE';
+  /** Backend sends SWEEP / BLOCK / PRINT; SPLIT and SINGLE are legacy values kept so older payloads still type-check. */
+  kind: 'SWEEP' | 'BLOCK' | 'PRINT' | 'SPLIT' | 'SINGLE';
   side: string;
-  sentiment: 'Bullish' | 'Bearish';
+  /** Backend sends upper case and NEUTRAL for a mid print; the title-cased form is the legacy shape. */
+  sentiment: 'BULLISH' | 'BEARISH' | 'NEUTRAL' | 'Bullish' | 'Bearish' | 'Neutral';
   sentiment_confidence?: 'HIGH' | 'LOW';
   exchanges: string[];
   prints: number;
@@ -1043,6 +1046,12 @@ export const smartMoveTracking = {
   analytics: (mode: string, s?: AbortSignal) => request<any>(`/api/smart-move/tracking/analytics?mode=${encodeURIComponent(mode)}`, s),
   outcomes: (s?: AbortSignal) => request<any>('/api/smart-move/tracking/outcomes', s),
   events: (mode: string, s?: AbortSignal) => request<any>(`/api/smart-move/tracking/events?mode=${encodeURIComponent(mode)}`, s),
+};
+
+/** Smart Move evidence quality: ONE saved report bundle (read only; no provider request). */
+export const smartMoveQuality = {
+  summary: (s?: AbortSignal) => request<any>('/api/smart-move/quality/summary', s),
+  events: (query: string, s?: AbortSignal) => request<any>(`/api/smart-move/quality/events?${query}`, s),
 };
 
 /** Smart Move earnings board: eligible upcoming events with an honest status (read only; saved data; no provider request). */

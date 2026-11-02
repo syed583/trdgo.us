@@ -47,6 +47,7 @@ const OptionScannerPage = lazy(() => import('./pages/OptionScannerPage'));
 const SmartMovePage = lazy(() => import('./pages/SmartMovePage'));
 const SmartMoveTrackingPage = lazy(() => import('./pages/SmartMoveTrackingPage'));
 const SmartMoveBoardPage = lazy(() => import('./pages/SmartMoveBoardPage'));
+const SmartMoveQualityPage = lazy(() => import('./pages/SmartMoveQualityPage'));
 const UnusualActivityPage = lazy(() => import('./pages/UnusualActivityPage'));
 const InstitutionalPage = lazy(() => import('./pages/InstitutionalPage'));
 const StrategyTradesPage = lazy(() => import('./pages/StrategyTradesPage'));
@@ -409,6 +410,7 @@ function Shell() {
           <Route path="/smart-move" element={<SmartMovePage ctx={ctx} />} />
           <Route path="/smart-move/tracking" element={<SmartMoveTrackingPage ctx={ctx} />} />
           <Route path="/smart-move/board" element={<SmartMoveBoardPage ctx={ctx} />} />
+          <Route path="/smart-move/quality" element={<SmartMoveQualityPage ctx={ctx} />} />
           <Route path="/earnings-equity" element={<EarningsEquityPage ctx={ctx} />} />
           <Route path="/earnings-equity/:symbol" element={<EarningsEquityPage ctx={ctx} />} />
           <Route path="/earnings-options" element={<EarningsOptionsPage ctx={ctx} />} />
