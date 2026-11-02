@@ -45,6 +45,7 @@ class NoNetworkFetcher(L.Fetcher):
 
 
 PILOT_MAX = 50
+DAILY_LIMIT_MAX = 100
 
 
 def build_service(store_dir, *, live: bool, authorized: int, now=None, retries: int = 1, tracking_days: int = 14, attempts_path=None):
@@ -73,14 +74,14 @@ def live_gate(args, env=os.environ) -> list:
     return why
 
 
-def execute(svc, *, now, state_dir, live: bool, authorized: int, ceiling: int, batch: int, news_pages=None, calendar_requests=None, stage_caps=None, calendar_scope="horizon", max_consecutive_failures=None, outcome_events_fn=None) -> dict:
+def execute(svc, *, now, state_dir, live: bool, authorized: int, ceiling: int, batch: int, news_pages=None, calendar_requests=None, stage_caps=None, calendar_scope="horizon", max_consecutive_failures=None, outcome_events_fn=None, daily_limit=None) -> dict:
     """One collection cycle. A live cycle releases the kill-switch file only for its own duration and ALWAYS re-engages it afterwards, whatever happens."""
     if live:
         svc.store.kill_file.unlink()
         svc.gov.authorized_daily, svc.gov.enabled = authorized, True
     try:
         return J.run_cycle(svc, now=now, state_dir=state_dir, mode="LIVE" if live else "DRY_RUN", armed=live, ceiling=ceiling, batch_size=batch,
-                           news_pages=news_pages, calendar_requests=calendar_requests, stage_caps=stage_caps, calendar_scope=calendar_scope, max_consecutive_failures=max_consecutive_failures, outcome_events_fn=outcome_events_fn)
+                           news_pages=news_pages, calendar_requests=calendar_requests, stage_caps=stage_caps, calendar_scope=calendar_scope, max_consecutive_failures=max_consecutive_failures, outcome_events_fn=outcome_events_fn, daily_limit=daily_limit)
     finally:
         if live:
             svc.engage_kill_switch("collection runner: re-engaged after the run")
@@ -118,7 +119,7 @@ def engine20_profile(a, svc, now, live: bool) -> int:
         print(json.dumps({k: v for k, v in summary.items() if k != "tasks"}, indent=1, default=str))
         return 0
     svc.store.kill_file.unlink()
-    svc.gov.authorized_daily, svc.gov.enabled = a.authorize_requests, True
+    svc.gov.authorized_daily, svc.gov.enabled = (a.daily_limit or a.authorize_requests), True
     try:
         used = 0
         if cal_needed:
@@ -181,6 +182,7 @@ def main(argv=None) -> int:
     ap.add_argument("--mode", choices=("dry-run", "live"), default="dry-run")
     ap.add_argument("--arm", action="store_true")
     ap.add_argument("--authorize-requests", type=int, default=0)
+    ap.add_argument("--daily-limit", type=int, default=None, help="owner-authorized internal daily attempt limit for the governor (US/Eastern date, counts attempts already logged in the store); max %d. The per-run ceiling stays at most %d additional attempts" % (DAILY_LIMIT_MAX, PILOT_MAX))
     ap.add_argument("--ceiling", type=int, default=None, help="provider-attempt ceiling for this run (standard default 700, pilot50 default and maximum 50)")
     ap.add_argument("--batch", type=int, default=J.DEFAULT_BATCH)
     ap.add_argument("--as-of", default=None, help="dry-run only: evaluate the plan at this past instant")
@@ -199,6 +201,9 @@ def main(argv=None) -> int:
     news_pages, retries, stage_caps, scope, max_fail = None, 1, None, "horizon", None
     if a.profile not in ("pilot50", "batch2", "engine20"):
         a.ceiling = J.DEFAULT_CEILING if a.ceiling is None else a.ceiling
+    if a.daily_limit is not None and (a.profile not in ("pilot50", "batch2", "engine20") or a.daily_limit > DAILY_LIMIT_MAX or a.daily_limit < a.authorize_requests):
+        print("BLOCKED: --daily-limit is only for the pilot-family profiles, at most %d, and not below --authorize-requests" % DAILY_LIMIT_MAX)
+        return 6
     if a.profile in ("pilot50", "batch2", "engine20"):
         if a.authorize_requests > PILOT_MAX or (a.ceiling is not None and a.ceiling > PILOT_MAX):
             print("BLOCKED: the pilot profile never exceeds %d provider attempts" % PILOT_MAX)
@@ -241,14 +246,14 @@ def main(argv=None) -> int:
         if not uw.configured():
             print("BLOCKED: provider credential missing")
             return 4
-    svc = build_service(a.store_dir, live=live, authorized=a.authorize_requests, now=now, retries=retries, tracking_days=a.calendar_days or 14, attempts_path=Path(a.state_dir) / "attempts.jsonl")
+    svc = build_service(a.store_dir, live=live, authorized=a.daily_limit or a.authorize_requests, now=now, retries=retries, tracking_days=a.calendar_days or 14, attempts_path=Path(a.state_dir) / "attempts.jsonl")
     kill_was_engaged = svc.store.kill_file.exists()
     if live and not kill_was_engaged:
         print("BLOCKED: the kill-switch file must exist before a live run (it is released only while the run works)")
         return 6
     if a.profile == "engine20":
         return engine20_profile(a, svc, now, live)
-    job = execute(svc, now=now, state_dir=a.state_dir, live=live, authorized=a.authorize_requests, ceiling=a.ceiling, batch=a.batch, news_pages=news_pages, calendar_requests=a.calendar_requests, stage_caps=stage_caps, calendar_scope=scope, max_consecutive_failures=max_fail, outcome_events_fn=(lambda n: outcome_events(svc, n)) if a.profile == "batch2" else None)
+    job = execute(svc, now=now, state_dir=a.state_dir, live=live, authorized=a.daily_limit or a.authorize_requests, ceiling=a.ceiling, batch=a.batch, news_pages=news_pages, calendar_requests=a.calendar_requests, stage_caps=stage_caps, calendar_scope=scope, max_consecutive_failures=max_fail, outcome_events_fn=(lambda n: outcome_events(svc, n)) if a.profile == "batch2" else None, daily_limit=a.daily_limit)
     ev_summary = record_events(svc, now, a.state_dir)
     preds = T.load_predictions(a.preds_store) if a.preds_store else []
     rep = status_report(svc, now, preds, a.tracking_dir)

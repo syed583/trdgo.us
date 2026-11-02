@@ -181,7 +181,7 @@ def request_range(tasks: list) -> dict:
     return {"min": len(tasks), "max": news * CP.NEWS_MAX_PAGES + other}
 
 
-def preflight(svc, tasks_by_kind: dict, *, now: datetime, ceiling: int, state: dict, window_events, tracking_events, stopped: Callable[[], bool] = lambda: False, scope_dates=None) -> dict:
+def preflight(svc, tasks_by_kind: dict, *, now: datetime, ceiling: int, state: dict, window_events, tracking_events, stopped: Callable[[], bool] = lambda: False, scope_dates=None, daily_limit: Optional[int] = None) -> dict:
     """Everything that must be known before a run. Reads local state only."""
     age = G.calendar_age_h(svc.store, now)
     day = now.date().isoformat()
@@ -194,7 +194,11 @@ def preflight(svc, tasks_by_kind: dict, *, now: datetime, ceiling: int, state: d
         hourly = int(svc.gov.hourly_allowance())
     except Exception:  # noqa: BLE001
         hourly = None
+    # the run ceiling bounds THIS job's additional attempts; the governor's daily limit (when given) bounds the whole ET day including what the store already logged
     daily_left = max(0, ceiling - max(used, gov_used))
+    if daily_limit is not None:
+        daily_left = max(0, ceiling - used)
+        daily_left = max(0, min(daily_left, daily_limit - gov_used))
     cal_days = len(svc._trading_days(now, svc.cfg.tracking_days_ahead)) if not scope_dates else len({s[0] for s in scope_dates})
     cal_cost = (2 * cal_days if not scope_dates else len(scope_dates)) + 2                                                   # two sides per trading day plus one Finviz and one Finnhub request; EXTRA pages are added for every side/day that fills a page of 100 (cannot be known before the call)
     blockers = []
@@ -209,14 +213,14 @@ def preflight(svc, tasks_by_kind: dict, *, now: datetime, ceiling: int, state: d
     stale = age is None or age > G.MAX_AGE_H
     return {"calendar_age_h": age, "calendar_state": "UNKNOWN" if age is None else "STALE" if stale else "FRESH", "calendar_refresh_needed": stale, "calendar_refresh_estimate_requests": cal_cost if stale else 0, "calendar_trading_days": cal_days, "calendar_dates": ["%s %s" % (s[0], s[1]) for s in scope_dates] if scope_dates else None,
             "eligible_window_events": len(window_events), "tracking_events": len(tracking_events), "tasks": {k: len(v) for k, v in tasks_by_kind.items()}, "request_estimate": rng,
-            "ceiling": ceiling, "used_today": max(used, gov_used), "governor_used_today": gov_used, "daily_left": daily_left, "hourly_allowance": hourly, "spacing_s": svc.cfg.spacing_s, "estimated_minutes_at_spacing": round(rng["max"] * svc.cfg.spacing_s / 60, 1),
+            "ceiling": ceiling, "used_today": max(used, gov_used), "governor_used_today": gov_used, "governor_daily_limit": daily_limit, "daily_left": daily_left, "hourly_allowance": hourly, "spacing_s": svc.cfg.spacing_s, "estimated_minutes_at_spacing": round(rng["max"] * svc.cfg.spacing_s / 60, 1),
             "blockers": blockers, "allowed": not blockers}
 
 
 # ---------------------------------------------------------------- the cycle
 def run_cycle(svc, *, now: datetime, state_dir, mode: str = "DRY_RUN", armed: bool = False, ceiling: int = DEFAULT_CEILING, batch_size: int = DEFAULT_BATCH,
               events_fn: Optional[Callable] = None, stopped: Optional[Callable[[], bool]] = None, news_pages: Optional[int] = None, calendar_requests: Optional[int] = None, stage_caps: Optional[dict] = None, calendar_scope: str = "horizon",
-              max_consecutive_failures: Optional[int] = None, outcome_events_fn: Optional[Callable] = None) -> dict:
+              max_consecutive_failures: Optional[int] = None, outcome_events_fn: Optional[Callable] = None, daily_limit: Optional[int] = None) -> dict:
     """events_fn(now, horizon_days) -> events (the existing eligible_events). DRY_RUN never calls the provider. LIVE needs armed=True."""
     d = Path(state_dir)
     st = _read_state(d)
@@ -228,7 +232,7 @@ def run_cycle(svc, *, now: datetime, state_dir, mode: str = "DRY_RUN", armed: bo
     outcome_events = outcome_events_fn(now) if outcome_events_fn else None
     tb = build_tasks(window_events, tracking_events, svc.store, now, stage_caps, outcome_events)
     pf = preflight(svc, tb, now=now, ceiling=ceiling, state=st, window_events=window_events, tracking_events=tracking_events, stopped=stopped,
-                   scope_dates=useful_calendar_slots(now) if calendar_scope == "useful" else None)
+                   scope_dates=useful_calendar_slots(now) if calendar_scope == "useful" else None, daily_limit=daily_limit)
     job = {"id": job_id, "mode": mode, "started_utc": now.isoformat(), "preflight": pf, "requests": 0, "tasks_planned": len(tb["tasks"]), "tasks_done": 0, "failures": [], "status": "PENDING"}
     if mode != "LIVE":
         job.update(dry_run=True, provider_requests=0, note="dry run: nothing was sent, not even the calendar refresh")

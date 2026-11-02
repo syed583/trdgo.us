@@ -347,3 +347,18 @@ def test_preflight_counts_the_requests_the_governor_already_logged_in_a_copied_s
     fresh(svc3)
     clean = J.run_cycle(svc3, now=svc3.clock.now(), state_dir=tmp_path / "state2", mode="DRY_RUN", events_fn=events(["A"]), ceiling=50)["preflight"]
     assert clean["governor_used_today"] == 0 and clean["daily_left"] == 50 and clean["allowed"] is True
+
+
+def test_owner_daily_limit_100_keeps_the_logged_pilot_attempts_and_leaves_50_additional(tmp_path):
+    f = Stub()
+    svc, _ = make(tmp_path, f)
+    for i in range(50):
+        svc.store.append("requests", {"at": svc.clock.now().isoformat(), "kind": "uw_news", "symbol": "S%d" % i, "request_id": "old%d" % i, "attempts": 1, "provider": "UNUSUAL_WHALES"})
+    svc2 = L.RefreshService(svc.cfg, f, svc.clock, store=svc.store)
+    fresh(svc2)
+    pf = J.run_cycle(svc2, now=svc2.clock.now(), state_dir=tmp_path / "s", mode="DRY_RUN", events_fn=events(["A"]), ceiling=50, daily_limit=100)["preflight"]
+    assert pf["governor_used_today"] == 50 and pf["governor_daily_limit"] == 100 and pf["daily_left"] == 50
+    pf = J.run_cycle(svc2, now=svc2.clock.now(), state_dir=tmp_path / "s2", mode="DRY_RUN", events_fn=events(["A"]), ceiling=50, daily_limit=60)["preflight"]
+    assert pf["daily_left"] == 10                                               # a lower owner limit still caps the day
+    assert len(svc2.store.read("requests")) == 50                               # the ledger is untouched
+
