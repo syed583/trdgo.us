@@ -7,21 +7,21 @@ Public code lives in `syed583/trdgo.us` (public). The Stage C kit and the Stage 
 
 ## Phase 0: find out what is really installed (read only)
 ```powershell
-$p0Commit = 'a2826be2155ebf52da935ea7ca1145c30a055b2f'     # the A.4 release below; this phase only DOWNLOADS it, nothing is installed
+$p0Commit = 'a43522a21b3ef5c4ef88f600839173193daae927'     # the A.4 release below; this phase only DOWNLOADS it, nothing is installed
 $p0Dir = "C:\apps\_deploy_probe_$(Get-Date -Format yyyyMMdd_HHmmss)"; New-Item -ItemType Directory -Path $p0Dir | Out-Null
 Invoke-WebRequest "https://github.com/syed583/trdgo.us/archive/$p0Commit.zip" -OutFile "$p0Dir\a4.zip" -UseBasicParsing
 Expand-Archive "$p0Dir\a4.zip" "$p0Dir\x"
 $p0Pkg = (Get-ChildItem "$p0Dir\x")[0].FullName + '\deploy\earnings_monitor'
-if ((Get-FileHash "$p0Pkg\MANIFEST.sha256").Hash.ToLower() -ne '29e3e292d83b96c39fe76d7f80f4f42cc92beda055bce0bd0c01d7ab857e5a90') { throw 'STOP: manifest mismatch' }
+if ((Get-FileHash "$p0Pkg\MANIFEST.sha256").Hash.ToLower() -ne '1c10e61ae14f1a3597a2d8a511917a83c00475583f4d6e46a198380f0201b0d4') { throw 'STOP: manifest mismatch' }
 & "$p0Pkg\identify_installed_version.ps1" -Packages "A4=$p0Pkg"
 ```
 It prints, per release, how many installed files are identical and "INSTALLED (every file identical)" for the one that is. To compare with Stage A or A.2 as well, download their archives the same way (commits `d48f4900a8a66d5b2572ac5c68536d72319d02d5` and `499d57326b5dd1e24328597b25aa3b814efea822`) and add them to `-Packages` as `StageA=<path>,A2=<path>`. Tested against Stage A, A.2 and A.4 installations: each was recognised and the others were not. Reads files only.
 
 ## Phase 1: Stage A.4 (monitor + dashboard, cache-only)
-Branch `release/stage-a4`, commit `a2826be2155ebf52da935ea7ca1145c30a055b2f`, manifest SHA-256 `29e3e292d83b96c39fe76d7f80f4f42cc92beda055bce0bd0c01d7ab857e5a90`, 134 files. The Update works from Stage A or from A.2 (it replaces monitor files and the frontend; `main.py` and `.env` are untouched).
+Branch `release/stage-a4`, commit `a43522a21b3ef5c4ef88f600839173193daae927`, manifest SHA-256 `1c10e61ae14f1a3597a2d8a511917a83c00475583f4d6e46a198380f0201b0d4`, 134 files. The Update works from Stage A or from A.2 (it replaces monitor files and the frontend; `main.py` and `.env` are untouched).
 ```powershell
-$a4Commit = 'a2826be2155ebf52da935ea7ca1145c30a055b2f'
-$a4Anchor = '29e3e292d83b96c39fe76d7f80f4f42cc92beda055bce0bd0c01d7ab857e5a90'
+$a4Commit = 'a43522a21b3ef5c4ef88f600839173193daae927'
+$a4Anchor = '1c10e61ae14f1a3597a2d8a511917a83c00475583f4d6e46a198380f0201b0d4'
 $a4Dir = "C:\apps\_deploy_a4_$(Get-Date -Format yyyyMMdd_HHmmss)"; New-Item -ItemType Directory -Path $a4Dir | Out-Null
 Invoke-WebRequest "https://github.com/syed583/trdgo.us/archive/$a4Commit.zip" -OutFile "$a4Dir\a4.zip" -UseBasicParsing
 Expand-Archive "$a4Dir\a4.zip" "$a4Dir\x"
