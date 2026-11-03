@@ -105,11 +105,18 @@ def engine20_profile(a, svc, now, live: bool) -> int:
             caps[o["symbol"]] = float(o["marketcap"])
         except (KeyError, TypeError, ValueError):
             pass
-    rows = L.LiveScorer(svc).score_all(now)
     audit = []
     kinds = ("ohlc", "earnings") + (("vol_context", "iv_rank") if a.with_f7 else ())             # only the kinds this run would actually fund decide whether a stock still needs work
-    pending = {t["symbol"] for t in svc.plan_evidence(now) if t.get("symbol") and t["kind"] in kinds} if a.select_policy == "deadline" else None
-    selected = E20.select_top(rows, caps, now, policy=a.select_policy, pending=pending, audit=audit, n=a.select_top, event_date=a.select_date, session=a.select_session, only=[x.strip().upper() for x in a.select_symbols.split(",") if x.strip()] if a.select_symbols else None)
+
+    def choose(t):
+        """Selection at time t. Called again after a calendar refresh: the refresh changes which events are vendor-confirmed, so a selection made before it would be empty or stale."""
+        audit.clear()
+        rows = L.LiveScorer(svc).score_all(t)
+        pending = {x["symbol"] for x in svc.plan_evidence(t) if x.get("symbol") and x["kind"] in kinds} if a.select_policy == "deadline" else None
+        selected = E20.select_top(rows, caps, t, policy=a.select_policy, pending=pending, audit=audit, n=a.select_top, event_date=a.select_date, session=a.select_session, only=[x.strip().upper() for x in a.select_symbols.split(",") if x.strip()] if a.select_symbols else None)
+        return selected
+
+    selected = choose(now)
     cal_needed = G.needs_refresh(svc.store, now)
     cal_est = 4 if cal_needed else 0
     plan = E20.plan_tasks(svc, selected, now, budget=a.ceiling - cal_est, with_f7=a.with_f7)
@@ -134,7 +141,14 @@ def engine20_profile(a, svc, now, live: bool) -> int:
                 (d / "engine20_plan.json").write_text(json.dumps(summary, indent=1, default=str), encoding="utf-8")
                 print("BLOCKED: calendar not fresh:", g.get("reason"))
                 return 6
+        if cal_needed:
+            selected = choose(svc.clock.now())                                  # the refreshed calendar decides who is eligible: re-select (this was missing: a run that refreshed the calendar used its empty pre-refresh selection)
+            summary["selected"] = selected
+            (d / "engine20_selection.json").write_text(json.dumps({"policy": a.select_policy, "slots": a.select_top, "as_of": svc.clock.now().isoformat(), "decisions": audit, "after_calendar_refresh": True}, indent=1, default=str), encoding="utf-8")
         plan = E20.plan_tasks(svc, selected, svc.clock.now(), budget=a.ceiling - used, with_f7=a.with_f7)
+        summary.update(attempts_planned_for_evidence=plan["attempts_planned"], spare=plan["spare"], stocks_fully_funded=plan["stocks_fully_funded"], stocks_already_fresh=plan["already_fresh_stocks"],
+                       unfunded=[(t["kind"], t["symbol"]) for t in plan["unfunded"]], tasks=[(t["kind"], t["symbol"], t["why"]) for t in plan["funded"]], total_attempts_planned=plan["attempts_planned"] + used)
+        (d / "engine20_plan.json").write_text(json.dumps(summary, indent=1, default=str), encoding="utf-8")                  # the plan file describes what was actually run, after the refresh
         res = E20.run(svc, plan["funded"], now=svc.clock.now(), ceiling=a.ceiling - used, state_dir=d, stopped=lambda: bool(svc.gov.stopped_until and svc.clock.now() < svc.gov.stopped_until), max_consecutive_failures=3)
         rep = E20.report(svc, selected, svc.clock.now())
         (d / "engine20_report.json").write_text(json.dumps(rep, indent=1, default=str), encoding="utf-8")
