@@ -77,7 +77,7 @@
 .sm-mini { width: 100%; border-collapse: collapse; font-size: 12px; margin: 6px 0; }
 .sm-mini th { text-align: left; color: var(--text-mute); font-weight: 600; font-size: 11px; padding: 4px 6px; border-bottom: 1px solid var(--border); }
 .sm-mini td { padding: 4px 6px; border-bottom: 1px solid var(--border); vertical-align: top; } .sm-mini tr.miss td { color: var(--text-mute); }
-.mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; }
+.sm .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; }          /* scoped to the Smart Move pages: no other page's .mono is touched */
 .sm-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .sm-engine { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--panel); }
 .sm-engine-head { display: flex; justify-content: space-between; align-items: center; text-transform: capitalize; } .sm-engine-pts { font-size: 12px; color: var(--text-dim); margin: 5px 0; }
@@ -97,7 +97,7 @@
 .sm-feed-cell { display: flex; flex-direction: column; gap: 2px; min-width: 130px; } .sm-feed-cell span { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-mute); }
 .sm-feed-cell b { font-size: 13px; } .sm-feed-cell small { color: var(--text-mute); font-size: 11px; font-weight: 400; }
 .sm-feed-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .sm-action { font-size: 12px; color: var(--text-dim); }
-.ghost-btn.danger { color: var(--red); } .ghost-btn:disabled { opacity: .45; cursor: not-allowed; }
+.sm .ghost-btn.danger { color: var(--red); } .sm .ghost-btn:disabled { opacity: .45; cursor: not-allowed; }
 .sm-chip.ok { background: var(--green-bg); color: var(--green); }
 
 /* Earnings board: status colours. Green and red only for a valid engine BUY / SELL; yellow for missing data; grey for an explicit NO TRADE or not yet evaluated. */
