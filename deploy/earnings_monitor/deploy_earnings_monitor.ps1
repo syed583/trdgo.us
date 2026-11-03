@@ -25,7 +25,8 @@ param(
   [switch]$AcceptUnrecordedBackup,
   [switch]$NoRestart,
   [switch]$NoHealth,
-  [switch]$SimulateHealthFailure
+  [switch]$SimulateHealthFailure,
+  [switch]$SimulateBadBackup
 )
 $ErrorActionPreference = 'Stop'
 
@@ -155,6 +156,23 @@ function Get-StateDigest {
   $bytes = [Text.Encoding]::UTF8.GetBytes((($lines | Sort-Object) -join "`n"))
   return ([BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($bytes)) -replace '-', '').ToLower()
 }
+function Get-HashMap([string[]]$roots) {
+  # relative path -> SHA-256 for every file under the given roots (a root may be a file)
+  $map = @{}
+  foreach ($r in $roots) { if (Test-Path -LiteralPath $r -PathType Leaf) { $map[$r.Substring($App.Length)] = Sha $r } else { foreach ($f in Get-ChildItem -LiteralPath $r -Recurse -File) { $map[$f.FullName.Substring($App.Length)] = Sha $f.FullName } } }
+  return $map
+}
+function Test-CopyMatchesSource([hashtable]$source, [string]$bk, [string]$bkRootMain, [string]$bkRootMod, [string]$bkRootDist) {
+  # every file that was copied or moved into the backup must be byte-identical to the file it came from; returns the number of differences
+  $bad = 0
+  foreach ($k in $source.Keys) {
+    $dst = if ($k -eq $MainPy.Substring($App.Length)) { Join-Path $bk 'main.py' } elseif ($k.StartsWith($Backend.Substring($App.Length) + '\' + $PkgMod + '\')) { Join-Path $bk ($PkgMod + $k.Substring(($Backend.Substring($App.Length) + '\' + $PkgMod).Length)) } elseif ($k.StartsWith($Dist.Substring($App.Length) + '\')) { Join-Path $bk ('dist' + $k.Substring($Dist.Substring($App.Length).Length)) } else { $null }
+    if (-not $dst) { continue }
+    if ($bkRootDist -eq 'skip' -and $dst.StartsWith((Join-Path $bk 'dist'))) { continue }
+    if (-not (Test-Path -LiteralPath $dst) -or (Sha $dst) -ne $source[$k]) { $bad++; Log ("backup differs from its source: " + $k) }
+  }
+  return $bad
+}
 function Write-BackupManifest([string]$bk) {
   # every file in the backup with its SHA-256, written INTO the backup, so a rollback can prove the backup is intact before it restores anything
   $rows = foreach ($f in Get-ChildItem -LiteralPath $bk -Recurse -File | Where-Object { $_.Name -ne 'backup_manifest.json' }) { [pscustomobject]@{ path = $f.FullName.Substring($bk.Length); sha256 = (Sha $f.FullName) } }
@@ -262,14 +280,21 @@ function Invoke-Update {
   Log 'UPDATE PREFLIGHT OK'
   $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd_HHmmss_fff'); $bk = Join-Path $App "_backup_monitor_update_$stamp"
   New-Item -ItemType Directory $bk | Out-Null
+  $srcMap = Get-HashMap @($MainPy, (Join-Path $Backend $PkgMod), $Dist)
   Copy-Item $MainPy (Join-Path $bk 'main.py'); Copy-Item -Recurse (Join-Path $Backend $PkgMod) (Join-Path $bk $PkgMod); Set-Content (Join-Path $bk 'update.marker') 'update' -Encoding ascii
+  if ($SimulateBadBackup) { Add-Content (Join-Path $bk 'main.py') '# corrupted for the rehearsal' }
   Log "backup written: $bk"
+  $badCopies = Test-CopyMatchesSource $srcMap $bk $MainPy $PkgMod 'skip'
+  if ($badCopies) { throw "STOPPED BEFORE ANY CHANGE: the backup is not an exact copy of the installed files ($badCopies file(s) differ). The application was NOT modified; the incomplete backup folder $bk was left in place for inspection." }
+  Log ("backup verified: main.py and all {0} monitor files are byte-identical to the installed files" -f @($srcMap.Keys | Where-Object { $_ -like '*earnings_monitor*' }).Count)
   try {
     Remove-Item (Join-Path $Backend $PkgMod) -Recurse -Force
     Copy-Item -Recurse (Join-Path $Package "backend\$PkgMod") (Join-Path $Backend $PkgMod)
     Log 'monitor code replaced (main.py and .env untouched)'
     Move-Item $Dist (Join-Path $bk 'dist'); Copy-Item -Recurse (Join-Path $Package $PkgDist) $Dist
-    Log 'frontend\dist swapped (the old one is in the backup)'
+    $badDist = Test-CopyMatchesSource $srcMap $bk $MainPy $PkgMod 'check'
+    if ($badDist) { throw "the old frontend moved into the backup differs from the original ($badDist file(s))" }
+    Log 'frontend\dist swapped (the old one is in the backup and verified byte-identical)'
     Restart-Svc
     if (-not $NoHealth) {
       Test-Health $true
@@ -283,8 +308,9 @@ function Invoke-Update {
     Log "UPDATE OK. Backup kept at $bk (delete it only after you are satisfied). A manual rollback needs no path: it uses the recorded one."
   } catch {
     $why = $_.Exception.Message
+    if ($why.StartsWith('STOPPED BEFORE ANY CHANGE')) { throw $why }
     Log "FAILURE: $why  -> rolling back automatically"
-    Invoke-Rollback $bk
+    try { Invoke-Rollback $bk } catch { throw ("UPDATE FAILED ($why) AND THE AUTOMATIC ROLLBACK ALSO FAILED ($($_.Exception.Message)). The server may be in a PARTIAL state. The backup is intact at $bk. Do not run anything else; send this output.") }
     throw "UPDATE FAILED AND WAS ROLLED BACK: $why"
   }
 }
