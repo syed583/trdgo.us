@@ -65,6 +65,9 @@ class Adapters:
     def smart_move_coverage(self) -> Optional[dict]:  # what the Smart Money Move engine / snapshot covered on its latest read: source, generated_at, event_dates, rows
         return None
 
+    def collector_status(self) -> Optional[dict]:     # the scheduled Smart Money Move collector's own run log, read-only (None when no collector is configured)
+        return None
+
     def app_requests_today(self) -> Optional[int]:    # every Unusual Whales request the application itself has made today (warmers, Options Flow, monitor), or None when unknown
         return None
 
@@ -291,10 +294,12 @@ class Monitor:
         cov = self.ad.smart_move_coverage()
         if cov is not None and self.store.kv_get("smd:coverage") != cov:
             self.store.kv_set("smd:coverage", cov)
+        full_wrep = None
         wrep = self.ad.smart_move_windows()
         if wrep is not None:
             full_wrep = wrep
-            wrep = {k: v for k, v in wrep.items() if k != "open_missing_events"}                       # the per-event list is kept separately, not in the page payload
+            self.store.kv_set("smd:wstate", wrep.get("wstate") or {})
+            wrep = {k: v for k, v in wrep.items() if k not in ("open_missing_events", "wstate")}                       # the per-event list is kept separately, not in the page payload
             self.store.kv_set("smd:windows", wrep)
             try:
                 closes_in = (parse(wrep["first_cutoff_utc"]) - now).total_seconds() / 3600 if wrep.get("first_cutoff_utc") else None
@@ -302,6 +307,8 @@ class Monitor:
                 closes_in = None
             if closes_in is not None and 0 <= closes_in <= self.cfg.sm_window_alert_h:
                 stats["alerts"] += A.enqueue(self.store, now, [A.smart_move_window(now, wrep, self.cfg)], self.cfg)
+        if event_id is None:
+            stats["alerts"] += self._capacity_and_collector_alerts(now, full_wrep)
         sql, args = "SELECT * FROM events WHERE status='ACTIVE'", ()
         if event_id is not None:
             sql, args = "SELECT * FROM events WHERE id=?", (event_id,)
@@ -318,6 +325,22 @@ class Monitor:
         if event_id is None and wrep is not None:                       # after the states are updated: an event that gained a result in this read is not "missed"
             self._record_missed_windows(now, full_wrep, stats)
         return stats
+
+    def _capacity_and_collector_alerts(self, now: datetime, wrep: Optional[dict]) -> int:
+        """Stage E alerts from facts the monitor can read without any provider call: the application's request count against the monitor's own guard, and the collector's run log."""
+        n = 0
+        try:
+            used = self.ad.app_requests_today()
+            if used is not None:
+                n += A.enqueue(self.store, now, [A.api_capacity(now, "application requests (Unusual Whales)", int(used), int(self.cfg.hard_daily_cap), self.cfg)], self.cfg)
+            col = self.ad.collector_status()
+            if col:
+                n += A.enqueue(self.store, now, [A.collector_failed(now, col, int((wrep or {}).get("open_without_result") or 0), self.cfg)], self.cfg)
+                if col.get("attempts_today") is not None and col.get("daily_limit"):
+                    n += A.enqueue(self.store, now, [A.api_capacity(now, "Smart Money Move collector (daily governor)", int(col["attempts_today"]), int(col["daily_limit"]), self.cfg)], self.cfg)
+        except Exception as e:  # noqa: BLE001 - a broken status read must never stop a scan
+            self.store.kv_set("alerts:capacity_error", {"at": iso(now), "error": type(e).__name__})
+        return n
 
     MISSED_REASON = {"PENDING FINAL REFRESH": "EVIDENCE_NOT_REFRESHED_BEFORE_CUTOFF", "NO VALID PREDICTION": "EVIDENCE_MISSING_OR_INSUFFICIENT"}
 
@@ -372,6 +395,8 @@ class Monitor:
                                                  obs["as_of"], obs.get("evidence_as_of"), iso(now), h, src, obs.get("engine_version"), why)).lastrowid
                         lastp[(ev["id"], model)] = {"id": pred_id, "signal": obs["signal"], "score": obs.get("score"), "coverage": None if obs.get("coverage") is None else json.dumps(obs.get("coverage")), "input_hash": h}
                         stats["new_predictions"] += 1
+                        if model == "smart_move":
+                            stats["alerts"] += A.enqueue(self.store, now, [A.prediction_ready(now, ev, obs, pred_id, self.cfg)], self.cfg)
                         for ch in L.prediction_changes(old_state, obs, self.cfg):
                             if self._change(now, ev, ev["symbol"], ch["kind"], model=model, old=ch["old"], new=ch["new"], detail=dict(ch["detail"], source=src, previous_prediction_id=prev_pred_id, new_prediction_id=pred_id, reason=why), key_extra=pred_id):
                                 stats["changes"] += 1

@@ -73,6 +73,15 @@ class SimAdapters(Adapters):
     def smart_move_windows(self):
         return self.sm_win
 
+    collector = None                                 # scripted collector run-log summary (None = no collector configured)
+    app_used = None                                  # scripted application request count today
+
+    def collector_status(self):
+        return self.collector
+
+    def app_requests_today(self):
+        return self.app_used
+
     def smart_move_coverage(self):
         return self.sm_cov
 

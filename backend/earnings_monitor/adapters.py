@@ -7,11 +7,14 @@ earnings_equity_service.get_analysis and earnings_trade_service.get_summary from
 what needs separate provider permission is refreshing that DATA, never running a model."""
 from __future__ import annotations
 
+import json
+import os
 import time
 from datetime import date, datetime, timezone
 from typing import Callable, Optional
 
 from .service import Adapters, HORIZON_DAYS
+from .store import parse
 from .smart_move import SmartMoveSource
 
 UTC = timezone.utc
@@ -203,6 +206,39 @@ class ProdAdapters(Adapters):
 
     def smart_move_windows(self) -> Optional[dict]:
         return self.smart.window_report() if self.smart and hasattr(self.smart, "window_report") else None
+
+    def collector_status(self) -> Optional[dict]:
+        """Read-only summary of the collector wrapper's run log (env EM_COLLECTOR_LOG, one JSON object per line). None when not configured or unreadable: then no collector alert can fire."""
+        p = os.environ.get("EM_COLLECTOR_LOG")
+        if not p or not os.path.isfile(p):
+            return None
+        try:
+            lines = open(p, encoding="utf-8").read().splitlines()[-2000:]
+            from zoneinfo import ZoneInfo
+            now = self.clock()
+            today = now.astimezone(ZoneInfo("America/New_York")).date().isoformat()
+            last_fin = last_ok = last_exit = daily = None
+            att, blocked = 0, None
+            for ln in lines:
+                try:
+                    o = json.loads(ln)
+                except ValueError:
+                    continue
+                at = o.get("at")
+                if o.get("event") == "FINISHED":
+                    last_fin, last_exit = at, o.get("exit_code")
+                    if o.get("exit_code") == 0:
+                        last_ok = at
+                    if o.get("mode") == "LIVE" and str(o.get("et", ""))[:10] == today:
+                        att += int(o.get("attempts") or 0)
+                elif o.get("event") == "STARTED" and o.get("daily_limit"):
+                    daily = int(o["daily_limit"])
+                elif o.get("event") == "BLOCKED" and at and (now - parse(at)).total_seconds() < 7200:
+                    blocked = o.get("reason")
+            hrs = None if not last_fin else round((now - parse(last_fin)).total_seconds() / 3600, 2)
+            return {"last_finished_at": last_fin, "last_success_at": last_ok, "last_exit": last_exit, "hours_since_finished": hrs, "blocked_recent": blocked, "attempts_today": att if daily else None, "daily_limit": daily}
+        except Exception:  # noqa: BLE001
+            return None
 
     def app_requests_today(self) -> Optional[int]:
         try:

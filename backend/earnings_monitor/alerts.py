@@ -18,7 +18,7 @@ from typing import Callable, Optional
 from .store import Store, iso
 
 COOLDOWN_RULES = ("DIRECTION_CHANGE", "STRONG_AGREEMENT", "MODEL_DISAGREEMENT", "STALE_OR_MISSING_EVIDENCE", "NEWS_OR_GUIDANCE", "UNUSUAL_OPTIONS_FLOW")
-NEVER_CAPPED = ("SCANNER_FAILURE", "ALERT_SUMMARY")
+NEVER_CAPPED = ("SCANNER_FAILURE", "ALERT_SUMMARY", "COLLECTOR_FAILED")
 
 
 def _key(*parts) -> str:
@@ -100,6 +100,43 @@ def smart_move_missed(now: datetime, date_: str, n: int, reasons: dict, cfg) -> 
     why = ", ".join("%s %d" % (k, v) for k, v in sorted(reasons.items()))
     return {"rule": "SMART_MOVE_WINDOW", "event_id": None, "symbol": None, "model": "smart_move", "dedupe_key": _key("SM_MISSED", date_, n),
             "payload": {"rule": "SMART_MOVE_WINDOW", "model": "smart_move", "prediction_ts": None, "reason": "%d event(s) dated %s left their Smart Money Move prediction window with no result (%s). No prediction can be made for them any more." % (n, date_, why)}}
+
+
+def prediction_ready(now: datetime, event: dict, obs: dict, pred_id: int, cfg) -> Optional[dict]:
+    """A NEW live Smart Money Move call (the frozen engine, not a stored snapshot) is ready, with the time of the evidence behind it and the engine version."""
+    if not cfg.alert_rules.get("PREDICTION_READY", {}).get("enabled", True) or obs.get("source") != "smart_move_engine" or obs.get("signal") not in ("BUY", "SELL", "NO_TRADE"):
+        return None
+    return {"rule": "PREDICTION_READY", "event_id": event["id"], "symbol": event["symbol"], "model": "smart_move", "dedupe_key": _key("PREDICTION_READY", pred_id),
+            "payload": {"rule": "PREDICTION_READY", "symbol": event["symbol"], "earnings_date": event["earnings_date"], "session": event["session"], "model": "smart_move", "signal": obs["signal"], "coverage": obs.get("coverage"),
+                        "prediction_ts": obs.get("as_of"), "evidence_as_of": obs.get("evidence_as_of"), "engine_version": obs.get("engine_version"), "prediction_id": pred_id,
+                        "reason": "%s %s %s: Smart Money Move prediction ready: %s (coverage %s, evidence as of %s, %s)" % (event["symbol"], event["earnings_date"], event["session"], obs["signal"], obs.get("coverage"), obs.get("evidence_as_of"), obs.get("engine_version"))}}
+
+
+def collector_failed(now: datetime, col: dict, windows_open: int, cfg) -> Optional[dict]:
+    """The scheduled collector (separate from the monitor) failed, was blocked, or has not finished a run while prediction windows are open. `col` comes from the collector's own run log."""
+    if not cfg.alert_rules.get("COLLECTOR_FAILED", {}).get("enabled", True) or not col:
+        return None
+    why = None
+    if col.get("last_exit") not in (None, 0) and (col.get("last_success_at") or "") < (col.get("last_finished_at") or ""):
+        why = "the last collector run ended with exit code %s at %s" % (col["last_exit"], col.get("last_finished_at"))
+    elif col.get("blocked_recent"):
+        why = "the collector was blocked: %s" % col["blocked_recent"]
+    elif windows_open > 0 and col.get("hours_since_finished") is not None and col["hours_since_finished"] > cfg.collector_stale_h:
+        why = "no collector run has finished for %.1f h while %d event(s) are inside their prediction window" % (col["hours_since_finished"], windows_open)
+    if not why:
+        return None
+    return {"rule": "COLLECTOR_FAILED", "event_id": None, "symbol": None, "model": "smart_move", "dedupe_key": _key("COLLECTOR_FAILED", why[:60], now.strftime("%Y-%m-%d-%H")),
+            "payload": {"rule": "COLLECTOR_FAILED", "model": "smart_move", "prediction_ts": None, "detected_at": iso(now), "reason": why}}
+
+
+def api_capacity(now: datetime, what: str, used: int, limit: int, cfg) -> Optional[dict]:
+    """Warn at the configured share of an INTERNAL limit (the monitor guard, the collector daily governor); again at 100%. One alert per day and level. The provider has no daily limit."""
+    if not cfg.alert_rules.get("API_CAPACITY", {}).get("enabled", True) or not limit or used < cfg.capacity_warn_share * limit:
+        return None
+    level = 100 if used >= limit else int(cfg.capacity_warn_share * 100)
+    return {"rule": "API_CAPACITY", "event_id": None, "symbol": None, "model": None, "dedupe_key": _key("API_CAPACITY", what, level, now.strftime("%Y-%m-%d")),
+            "payload": {"rule": "API_CAPACITY", "model": None, "prediction_ts": None, "detected_at": iso(now), "what": what, "used": used, "limit": limit,
+                        "reason": "%s: %d of the internal limit %d used today (%d%%). This is the owner's configured limit, not the provider's." % (what, used, limit, round(100 * used / limit))}}
 
 
 def missing_evidence(now: datetime, event: dict, model: Optional[str], why: str, cfg) -> Optional[dict]:

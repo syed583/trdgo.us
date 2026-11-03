@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 ALERT_RULES = ("NEW_BUY_SELL", "DIRECTION_CHANGE", "STRONG_AGREEMENT", "MODEL_DISAGREEMENT", "NEW_EARNINGS", "DATE_CHANGE", "STALE_OR_MISSING_EVIDENCE", "NEWS_OR_GUIDANCE", "UNUSUAL_OPTIONS_FLOW",
-               "OUTCOME_VERIFIED", "APPROVAL_EXPIRING", "SMART_MOVE_WINDOW", "SCANNER_FAILURE")
+               "OUTCOME_VERIFIED", "APPROVAL_EXPIRING", "SMART_MOVE_WINDOW", "SCANNER_FAILURE", "PREDICTION_READY", "COLLECTOR_FAILED", "API_CAPACITY")
 
 # Provider requests the MONITOR itself may start (cache reads cost none). Measured/assumed per action; the budget check and the estimator use the same numbers.
 COST_CALENDAR_REFRESH = 46       # MEASURED (offline fan-out audit, cold cache): uw_earnings_calendar.calendar(days=30) = 23 weekdays x (premarket + afterhours); dates already cached cost 0
@@ -64,6 +64,8 @@ class Config:
     flap_changes_24h: int = 3                    # a model changing its call this often in 24 h is reported as unstable, not alerted every time
     accuracy_min_sample: int = 30                # no accuracy percentage is shown below this many scored calls
     comparison_min_shared: int = 20              # no model-vs-model comparison below this many shared scored events
+    collector_stale_h: float = 3.0               # a scheduled collector with no finished run for this long while prediction windows are open raises COLLECTOR_FAILED
+    capacity_warn_share: float = 0.8             # API_CAPACITY at this share of the monitor guard / the collector daily governor (internal limits, not provider limits)
     alert_rules: dict = field(default_factory=lambda: {r: {"enabled": True} for r in ALERT_RULES})
 
     @classmethod

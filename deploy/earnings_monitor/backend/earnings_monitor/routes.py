@@ -451,6 +451,11 @@ def _sm_reason(s: Store, ev: dict, cfg, t: datetime, had_engine_row: bool) -> di
     """Why there is no Smart Money Move prediction for this event, from facts the monitor holds: the event's market date, what the latest snapshot / engine read covered, and whether either exists."""
     cov = s.kv_get("smd:coverage")
     d = ev["earnings_date"]
+    ws = (s.kv_get("smd:wstate") or {}).get("%s|%s" % (ev["symbol"], d))
+    if ws and ws.get("state") == "NOT_YET_OPEN":
+        return {"code": "NOT_YET_IN_WINDOW", "text": "The frozen rules allow a prediction only 48 to 24 hours before the report. This event's window has not opened yet (it closes at %s)." % (ws.get("cutoff") or "an upcoming time")}
+    if ws:
+        return {"code": "WINDOW_CLOSED_BEFORE_RUN", "text": "The prediction window closed at %s and no evidence from inside the window exists for this event, so no prediction can be made: one is never made afterwards." % (ws.get("cutoff") or "its cutoff")}
     if not cov:
         return {"code": "NO_ENGINE_OR_SNAPSHOT", "text": "No Smart Money Move engine or snapshot is installed on this server, so nothing has been generated for any event."}
     gen = cov.get("generated_at")

@@ -94,9 +94,11 @@ class SmartMoveSource:
             try:
                 rows = self.engine.classify(now)
                 for r in rows:
-                    out[r["symbol"]] = to_obs(r, now, "smart_move_engine")
                     self._rows[r["symbol"]] = r
-                if out:
+                    if not self._predictable(r):                                    # no call before the window opens, none from evidence retrieved after it closed
+                        continue
+                    out[r["symbol"]] = to_obs(r, now, "smart_move_engine")
+                if rows:
                     self._meta = {"source": "LIVE_ENGINE", "generated_at": now.isoformat(), "model_version": VERSION, "rows": len(rows), "event_dates": sorted({str(r.get("event_date"))[:10] for r in rows if r.get("event_date")})}
                     return out
             except Exception:  # noqa: BLE001 - a broken engine must not turn into invented calls
@@ -119,6 +121,21 @@ class SmartMoveSource:
                                         "source": "smart_move_snapshot", "engine_version": snap.get("model_version"), "event_date": str(r.get("event_date") or "")[:10] or None}
         return out
 
+    @staticmethod
+    def _predictable(r: dict) -> bool:
+        """The frozen window decides whether an engine row may be shown as a prediction. NOT_YET_OPEN: the engine has not been allowed to predict yet. CLOSED: only if the evidence behind the call was retrieved
+        before the cutoff (the same call the engine would have made in the window); evidence gathered after the cutoff never becomes a backdated prediction."""
+        w = r.get("window")
+        if w == "NOT_YET_OPEN":
+            return False
+        if w == "CLOSED":
+            ev, cut = r.get("evidence_retrieved") or [], r.get("window_cutoff_utc")
+            try:
+                return bool(ev) and bool(cut) and datetime.fromisoformat(str(ev[-1]).replace("Z", "+00:00")) <= datetime.fromisoformat(str(cut).replace("Z", "+00:00"))
+            except ValueError:
+                return False
+        return True
+
     def window_report(self) -> Optional[dict]:
         """The engine's OWN window verdict per event from its latest read: how many events sit inside the prediction window now, how many of those still have no usable result, and when the first window closes.
         None unless the live engine produced rows (a stored snapshot carries only the funded events, which says nothing about windows). The frozen rule is never re-implemented here."""
@@ -133,7 +150,9 @@ class SmartMoveSource:
         pending = [{"symbol": r["symbol"] if "symbol" in r else sym, "date": str(r.get("event_date"))[:10], "cutoff": str(r.get("window_cutoff_utc") or ""), "result": r.get("result")} for sym, r in self._rows.items()
                    if r.get("window") == "OPEN" and r.get("result") not in ("BUY", "SELL", "NO TRADE (genuine)")]
         return {"as_of": self._meta.get("generated_at"), "open": len(open_rows), "open_without_result": len(missing), "first_cutoff_utc": cutoffs[0] if cutoffs else None, "missing_by_date": by_date,
-                "closed": sum(1 for r in self._rows.values() if r.get("window") == "CLOSED"), "open_missing_events": pending[:5000]}
+                "closed": sum(1 for r in self._rows.values() if r.get("window") == "CLOSED"), "open_missing_events": pending[:5000],
+                "wstate": {"%s|%s" % (sym, str(r.get("event_date"))[:10]): {"state": "NOT_YET_OPEN" if r.get("window") == "NOT_YET_OPEN" else "CLOSED_WITHOUT_IN_WINDOW_EVIDENCE", "cutoff": str(r.get("window_cutoff_utc") or "")}
+                           for sym, r in self._rows.items() if not self._predictable(r)}}
 
     def coverage(self) -> Optional[dict]:
         """What the latest read covered (None when neither the engine nor a snapshot produced anything)."""

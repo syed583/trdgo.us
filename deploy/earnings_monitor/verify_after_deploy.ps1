@@ -173,7 +173,7 @@ if ($u2.code -eq 200 -and -not $u2.notJson -and $u2.json) {
 } elseif ($u2.notJson) { Say 'WARN' 'upcoming: the server returned a web page, not data' } else { Say 'WARN' "upcoming HTTP $($u2.code)" }
 
 # 8b. why in-window events have no fresh call, and that paging and the date filter work (server answers compared with the full read)
-if ($S -and $S.no_call_reasons) { foreach ($k in $S.no_call_reasons.PSObject.Properties) { Say 'INFO' ("no fresh call, reason {0}: {1} event(s), e.g. {2}" -f $k.Name, $k.Value.events, (@($k.Value.examples) | Select-Object -First 6) -join ',') }
+if ($S -and $S.no_call_reasons) { foreach ($k in $S.no_call_reasons.PSObject.Properties) { Say 'INFO' ("no fresh call, reason {0}: {1} event(s), e.g. {2}" -f $k.Name, $k.Value.events, ((@($k.Value.examples) | Select-Object -First 6) -join ',')) }
   $sumR = 0; foreach ($k in $S.no_call_reasons.PSObject.Properties) { $sumR += [int]$k.Value.events }
   if ($sumR -eq [int]$S.in_window_without_call) { Say 'PASS' "every one of the $sumR in-window events without a fresh call has a stated reason" } else { Say 'WARN' ("reasons cover {0} of {1} in-window events without a call" -f $sumR, $S.in_window_without_call) } }
 $pg1 = Get-Json '/api/earnings-monitor/upcoming?limit=5&offset=0' $h; $pg2 = Get-Json '/api/earnings-monitor/upcoming?limit=5&offset=5' $h

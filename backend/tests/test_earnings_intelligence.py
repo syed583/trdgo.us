@@ -648,3 +648,86 @@ def test_a_window_that_closes_without_a_result_is_recorded_once_with_the_engines
     ad.sm_win = dict(ad.sm_win, open=0, open_without_result=0, open_missing_events=[])                                                  # CCC leaves too, still without a result
     mon.recompute(clock())
     assert sorted(c["symbol"] for c in store.q("SELECT symbol FROM changes WHERE kind='SMART_MOVE_WINDOW_MISSED'")) == ["AAA", "CCC"]
+
+
+def test_engine_rows_outside_their_window_are_never_shown_as_predictions():
+    from earnings_monitor.smart_move import SmartMoveSource
+    ok = SmartMoveSource._predictable
+    assert ok({"window": "OPEN"}) is True
+    assert ok({"window": "NOT_YET_OPEN", "evidence_retrieved": ["2026-11-02T10:00:00+00:00"]}) is False
+    assert ok({"window": "CLOSED", "window_cutoff_utc": "2026-11-03T11:00:00+00:00", "evidence_retrieved": ["2026-11-03T10:59:00+00:00"]}) is True
+    assert ok({"window": "CLOSED", "window_cutoff_utc": "2026-11-03T11:00:00+00:00", "evidence_retrieved": ["2026-11-03T11:01:00+00:00"]}) is False
+    assert ok({"window": "CLOSED", "window_cutoff_utc": "2026-11-03T11:00:00+00:00", "evidence_retrieved": None}) is False
+
+
+def _rules(store):
+    import json as _j
+    return [(r["rule"], _j.loads(r["payload"])) for r in store.q("SELECT rule, payload FROM alerts ORDER BY id")]
+
+
+def test_stage_e_prediction_ready_fires_only_for_a_new_live_engine_call_and_never_for_a_snapshot(tmp_path):
+    from datetime import timedelta
+    from earnings_monitor import calendar_us as CAL
+    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path)
+    day = [clock().date() + timedelta(days=i) for i in range(1, 10) if CAL.is_trading_day(clock().date() + timedelta(days=i))][1].isoformat()
+    ad.cal = [{"symbol": s, "date": day, "session": "BMO"} for s in ("AAA", "BBB")]
+    mon.observe_calendar(ad.cal, clock(), complete=True)
+    ad.set_model("smart_move", "AAA", "BUY", clock(), coverage="30/40", source="smart_move_engine", event_date=day, engine_version="score40-v1")
+    ad.set_model("smart_move", "BBB", "SELL", clock(), coverage="30/40", source="smart_move_snapshot", event_date=day)
+    mon.recompute(clock())
+    mon.recompute(clock())
+    ready = [p for r, p in _rules(store) if r == "PREDICTION_READY"]
+    assert [p["symbol"] for p in ready] == ["AAA"] and ready[0]["signal"] == "BUY" and ready[0]["engine_version"] == "score40-v1" and ready[0]["prediction_id"]
+
+
+def test_stage_e_collector_failure_and_capacity_alerts_are_internal_deduplicated_and_inert_without_a_collector(tmp_path):
+    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path)
+    mon.recompute(clock())
+    assert not [r for r, _ in _rules(store) if r in ("COLLECTOR_FAILED", "API_CAPACITY")]                    # nothing configured, nothing reported
+    ad.sm_win = {"as_of": clock().isoformat(), "open": 4, "open_without_result": 4, "first_cutoff_utc": None, "missing_by_date": {}, "closed": 0, "open_missing_events": []}
+    ad.collector = {"last_finished_at": "2026-11-03T10:00:00+00:00", "last_success_at": "2026-11-03T09:00:00+00:00", "last_exit": 6, "hours_since_finished": 1.0, "blocked_recent": None, "attempts_today": 81, "daily_limit": 100}
+    ad.app_used = 850
+    mon.recompute(clock())
+    mon.recompute(clock())
+    got = _rules(store)
+    cf = [p for r, p in got if r == "COLLECTOR_FAILED"]
+    cap = [p for r, p in got if r == "API_CAPACITY"]
+    assert len(cf) == 1 and "exit code 6" in cf[0]["reason"]
+    assert sorted(p["what"] for p in cap) == ["Smart Money Move collector (daily governor)", "application requests (Unusual Whales)"] and all("not the provider" in p["reason"] for p in cap)
+    ad.collector = dict(ad.collector, last_exit=0, last_success_at="2026-11-03T10:00:00+00:00", hours_since_finished=5.0)                        # no failure, but silent for 5 h while 4 windows are open
+    mon.recompute(clock())
+    assert any("no collector run has finished for 5.0 h" in p["reason"] for r, p in _rules(store) if r == "COLLECTOR_FAILED")
+
+
+def test_stage_e_alerts_are_delivered_only_to_a_local_outbox_file(tmp_path):
+    import json as _j
+    from earnings_monitor import alerts as AL
+    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path)
+    ad.sm_win = {"as_of": clock().isoformat(), "open": 1, "open_without_result": 1, "first_cutoff_utc": None, "missing_by_date": {}, "closed": 0, "open_missing_events": []}
+    ad.collector = {"last_finished_at": "2026-11-03T10:00:00+00:00", "last_success_at": None, "last_exit": 1, "hours_since_finished": 0.5, "blocked_recent": None, "attempts_today": None, "daily_limit": None}
+    mon.recompute(clock())
+    out = tmp_path / "outbox.jsonl"
+    res = AL.dispatch(store, clock(), [AL.FileSink(out)], cfg)
+    assert res["delivered"] >= 1 and res["failed"] == 0
+    assert any(_j.loads(x)["rule"] == "COLLECTOR_FAILED" for x in out.read_text(encoding="utf-8").splitlines())
+
+
+def test_stage_e_the_prod_adapter_summarises_the_collector_run_log_read_only(tmp_path, monkeypatch):
+    import json as _j
+    from datetime import datetime, timezone
+    from earnings_monitor.adapters import ProdAdapters
+    log = tmp_path / "collection_runs.jsonl"
+    rows = [{"event": "STARTED", "mode": "LIVE", "daily_limit": 100, "at": "2026-11-03T14:00:00+00:00", "et": "2026-11-03 09:00"},
+            {"event": "FINISHED", "mode": "LIVE", "exit_code": 0, "attempts": 37, "at": "2026-11-03T14:20:00+00:00", "et": "2026-11-03 09:20"},
+            {"event": "STARTED", "mode": "LIVE", "daily_limit": 100, "at": "2026-11-03T15:00:00+00:00", "et": "2026-11-03 10:00"},
+            {"event": "FINISHED", "mode": "LIVE", "exit_code": 6, "attempts": 12, "at": "2026-11-03T15:30:00+00:00", "et": "2026-11-03 10:30"},
+            {"event": "BLOCKED", "reason": "live run without an attestation file", "at": "2026-11-03T16:30:00+00:00"}]
+    log.write_text(chr(10).join(_j.dumps(r) for r in rows) + chr(10) + "not json" + chr(10), encoding="utf-8")
+    ad = object.__new__(ProdAdapters)
+    ad.clock = lambda: datetime(2026, 11, 3, 17, 0, tzinfo=timezone.utc)
+    monkeypatch.delenv("EM_COLLECTOR_LOG", raising=False)
+    assert ad.collector_status() is None                                                                           # not configured: inert
+    monkeypatch.setenv("EM_COLLECTOR_LOG", str(log))
+    c = ad.collector_status()
+    assert c["last_exit"] == 6 and c["last_success_at"].startswith("2026-11-03T14:20") and c["attempts_today"] == 49 and c["daily_limit"] == 100
+    assert c["blocked_recent"].startswith("live run without") and c["hours_since_finished"] == 1.5
