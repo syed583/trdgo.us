@@ -298,3 +298,13 @@ test('the summary says WHY in-window events have no fresh call, and each row sho
   assert.match(html, /title="outside the stock universe">outside model universe</);
   assert.match(html, /title="vendors disagree">calendar vendors disagree</);
 });
+
+test('quick filters: days ahead and Smart Money Move status are offered next to the date and scope pickers', () => {
+  const up = { status: 'OK', horizon_days: 30, model_window_days: 15, rows: [], count: 0, total: 0, limit: 200, offset: 0, by_date: [], summary: { events: 0, dates: 0, in_window: 0, outside_window: 0, with_fresh_call: 0, in_window_without_call: 0, max_days_ahead: 0 } };
+  const html = panel({ emstatus: { data: on }, emupcoming: { data: up } });
+  assert.match(html, /aria-label="Days ahead"/);
+  assert.match(html, /Today and tomorrow/);
+  assert.match(html, /Next 7 days/);
+  assert.match(html, /aria-label="Smart Money Move"/);
+  assert.match(html, />NOT SCORED</);
+});

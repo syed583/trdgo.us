@@ -65,6 +65,9 @@ class Adapters:
     def smart_move_coverage(self) -> Optional[dict]:  # what the Smart Money Move engine / snapshot covered on its latest read: source, generated_at, event_dates, rows
         return None
 
+    def infra_status(self) -> Optional[dict]:         # {"broker_ok": bool|None, "provider_down": bool|None}: the shared-lease broker and the provider breaker, when those exist (None = nothing to report)
+        return None
+
     def collector_status(self) -> Optional[dict]:     # the scheduled Smart Money Move collector's own run log, read-only (None when no collector is configured)
         return None
 
@@ -680,5 +683,22 @@ class Monitor:
         self.store.audit(now, "monitor", "SMART_MOVE_PLAN", {k: plan.get(k) for k in ("symbols", "requests_needed", "funded", "unfunded")})
         return dict(plan, available=True)
 
+    def _health_alerts(self, now: datetime) -> int:
+        """Raised from the light lane, so a stalled heavy lane can still be reported. Reads only the monitor's own tables and the adapter's status."""
+        out = []
+        try:
+            last = self.store.q("SELECT MAX(finished_at) f FROM jobs WHERE kind='ELIGIBILITY_CHECK' AND status='DONE'")[0]["f"]
+            if last and (now - parse(last)).total_seconds() / 3600 > self.cfg.scheduler_stall_h:
+                out.append(A.infra_alert(now, "SCHEDULER_STALLED", "no eligibility scan has succeeded since %s (more than %.1f h); the scheduler may be stalled or its jobs failing" % (last, self.cfg.scheduler_stall_h), self.cfg))
+            st = self.ad.infra_status() or {}
+            if st.get("provider_down"):
+                out.append(A.infra_alert(now, "PROVIDER_OUTAGE", "the provider circuit breaker is open: requests are paused until it recovers", self.cfg))
+            if st.get("broker_ok") is False:
+                out.append(A.infra_alert(now, "LEASE_BROKER_DOWN", "the shared request-lease broker is unreachable: provider calls are refused (fail closed) until it returns", self.cfg))
+        except Exception as e:  # noqa: BLE001
+            self.store.kv_set("alerts:health_error", {"at": iso(now), "error": type(e).__name__})
+        return A.enqueue(self.store, now, out, self.cfg)
+
     def alert_dispatch(self, now: datetime) -> dict:
+        self._health_alerts(now)
         return A.dispatch(self.store, now, self.sinks, self.cfg)

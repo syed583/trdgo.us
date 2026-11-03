@@ -18,7 +18,7 @@ from typing import Callable, Optional
 from .store import Store, iso
 
 COOLDOWN_RULES = ("DIRECTION_CHANGE", "STRONG_AGREEMENT", "MODEL_DISAGREEMENT", "STALE_OR_MISSING_EVIDENCE", "NEWS_OR_GUIDANCE", "UNUSUAL_OPTIONS_FLOW")
-NEVER_CAPPED = ("SCANNER_FAILURE", "ALERT_SUMMARY", "COLLECTOR_FAILED")
+NEVER_CAPPED = ("SCANNER_FAILURE", "ALERT_SUMMARY", "COLLECTOR_FAILED", "SCHEDULER_STALLED", "PROVIDER_OUTAGE", "LEASE_BROKER_DOWN")
 
 
 def _key(*parts) -> str:
@@ -137,6 +137,14 @@ def api_capacity(now: datetime, what: str, used: int, limit: int, cfg) -> Option
     return {"rule": "API_CAPACITY", "event_id": None, "symbol": None, "model": None, "dedupe_key": _key("API_CAPACITY", what, level, now.strftime("%Y-%m-%d")),
             "payload": {"rule": "API_CAPACITY", "model": None, "prediction_ts": None, "detected_at": iso(now), "what": what, "used": used, "limit": limit,
                         "reason": "%s: %d of the internal limit %d used today (%d%%). This is the owner's configured limit, not the provider's." % (what, used, limit, round(100 * used / limit))}}
+
+
+def infra_alert(now: datetime, rule: str, reason: str, cfg) -> Optional[dict]:
+    """SCHEDULER_STALLED, PROVIDER_OUTAGE and LEASE_BROKER_DOWN: one alert per rule and hour while the condition lasts."""
+    if not cfg.alert_rules.get(rule, {}).get("enabled", True):
+        return None
+    return {"rule": rule, "event_id": None, "symbol": None, "model": None, "dedupe_key": _key(rule, now.strftime("%Y-%m-%d-%H")),
+            "payload": {"rule": rule, "model": None, "prediction_ts": None, "detected_at": iso(now), "reason": reason}}
 
 
 def missing_evidence(now: datetime, event: dict, model: Optional[str], why: str, cfg) -> Optional[dict]:

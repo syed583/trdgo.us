@@ -73,6 +73,11 @@ class SimAdapters(Adapters):
     def smart_move_windows(self):
         return self.sm_win
 
+    infra = None                                     # scripted infra status ({"broker_ok": bool, "provider_down": bool})
+
+    def infra_status(self):
+        return self.infra
+
     collector = None                                 # scripted collector run-log summary (None = no collector configured)
     app_used = None                                  # scripted application request count today
 

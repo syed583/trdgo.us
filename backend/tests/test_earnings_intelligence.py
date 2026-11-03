@@ -731,3 +731,42 @@ def test_stage_e_the_prod_adapter_summarises_the_collector_run_log_read_only(tmp
     c = ad.collector_status()
     assert c["last_exit"] == 6 and c["last_success_at"].startswith("2026-11-03T14:20") and c["attempts_today"] == 49 and c["daily_limit"] == 100
     assert c["blocked_recent"].startswith("live run without") and c["hours_since_finished"] == 1.5
+
+
+def test_stage_e_health_alerts_scheduler_stall_provider_outage_and_broker_down(tmp_path):
+    from datetime import timedelta
+    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path)
+    sched.tick(clock())
+    sched.run_pending(clock())
+    mon.alert_dispatch(clock())
+    assert not [r for r, _ in _rules(store) if r in ("SCHEDULER_STALLED", "PROVIDER_OUTAGE", "LEASE_BROKER_DOWN")]          # healthy: silent
+    ad.infra = {"broker_ok": False, "provider_down": True}
+    clock.advance(hours=3)                                                                                                   # no scan has run for 3 h
+    mon.alert_dispatch(clock())
+    mon.alert_dispatch(clock())
+    got = [r for r, _ in _rules(store) if r in ("SCHEDULER_STALLED", "PROVIDER_OUTAGE", "LEASE_BROKER_DOWN")]
+    assert sorted(got) == ["LEASE_BROKER_DOWN", "PROVIDER_OUTAGE", "SCHEDULER_STALLED"]                                      # once each per hour
+
+
+def test_quick_filters_days_ahead_and_smart_move_status_apply_to_totals_and_pages_alike(tmp_path, monkeypatch):
+    from datetime import timedelta
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from earnings_monitor import calendar_us as CAL, routes
+    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path)
+    tds = [clock().date() + timedelta(days=i) for i in range(0, 12) if CAL.is_trading_day(clock().date() + timedelta(days=i))]
+    plan = [("AAA", tds[0], "BUY"), ("BBB", tds[0], "SELL"), ("CCC", tds[1], "NO_TRADE"), ("DDD", tds[1], None), ("EEE", tds[-1], "BUY")]
+    ad.cal = [{"symbol": s_, "date": dt.isoformat(), "session": "BMO"} for s_, dt, _ in plan]
+    for s_, dt, sig in plan:
+        if sig:
+            ad.set_model("smart_move", s_, sig, clock(), coverage="30/40", source="smart_move_engine", event_date=dt.isoformat())
+    mon.observe_calendar(ad.cal, clock(), complete=True)
+    mon.recompute(clock())
+    monkeypatch.setenv("EARNINGS_MONITOR_DIR", str(d))
+    monkeypatch.setattr(routes, "now", lambda: clock())
+    app = FastAPI(); app.include_router(routes.router); c = TestClient(app)
+    total = lambda q: c.get("/api/earnings-monitor/upcoming?" + q).json()["total"]
+    assert total("") == 5 and total("days=0") == 2 and total("days=1") == 4 and total("sm=BUY") == 2 and total("sm=BUY&days=0") == 1 and total("sm=NOT_SCORED") == 1
+    for ep in ("models", "smart-move"):
+        assert c.get("/api/earnings-monitor/%s?days=0&sm=SELL" % ep).json()["total"] == 1
+    assert c.get("/api/earnings-monitor/upcoming?sm=maybe").status_code == 422

@@ -1008,7 +1008,7 @@ export const api2 = {
 };
 
 /** Earnings monitor: read-only views of the automatic upcoming-earnings scan, every model's stored prediction, detected changes, comparable-model consensus and accuracy. */
-export type EmPage = { date?: string; scope?: string; limit?: number; offset?: number };
+export type EmPage = { date?: string; scope?: string; limit?: number; offset?: number; days?: number | ''; sm?: string };
 const emQs = (q: EmPage) => Object.entries(q).filter(([, v]) => v !== '' && v != null).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&');
 export const earningsMonitor = {
   status: (s?: AbortSignal) => request<any>('/api/earnings-monitor/status', s),

@@ -162,7 +162,7 @@ const PAGE = 200;
 const SCOPE_TEXT: Record<string, string> = { all: 'All events', window: 'Inside the eight-model window', outside: 'Outside the window (listed, never scored)', withcall: 'With at least one fresh model call', nocall: 'Inside the window, no fresh call' };
 
 /** One definition of scope for every list: market date, scope and page, plus the totals that always describe ALL tracked events. */
-function Pager({ d, date, setDate, scope, setScope, page, setPage }: { d: any; date: string; setDate: (v: string) => void; scope: string; setScope: (v: string) => void; page: number; setPage: (n: number) => void }) {
+function Pager({ d, date, setDate, scope, setScope, page, setPage, days, setDays, smv, setSmv }: { d: any; date: string; setDate: (v: string) => void; scope: string; setScope: (v: string) => void; page: number; setPage: (n: number) => void; days: string; setDays: (v: string) => void; smv: string; setSmv: (v: string) => void }) {
   const sm = d.summary || {};
   const total: number = d.total ?? 0;
   const from = total ? page * PAGE + 1 : 0, to = Math.min(total, page * PAGE + (d.count ?? 0));
@@ -175,6 +175,12 @@ function Pager({ d, date, setDate, scope, setScope, page, setPage }: { d: any; d
         <select aria-label="Market date" value={date} onChange={(e) => { setDate(e.target.value); setPage(0); }}>
           <option value="">All dates ({sm.events ?? 0})</option>
           {(d.by_date || []).map((x: any) => <option key={x.date} value={x.date}>{x.date} · {x.events} event(s), {x.in_window} in window, {x.with_fresh_call} with a call</option>)}
+        </select>
+        <select aria-label="Days ahead" value={days} onChange={(e) => { setDays(e.target.value); setPage(0); }}>
+          <option value="">Next 30 days</option><option value="0">Today</option><option value="1">Today and tomorrow</option><option value="7">Next 7 days</option><option value="15">Next 15 days</option>
+        </select>
+        <select aria-label="Smart Money Move" value={smv} onChange={(e) => { setSmv(e.target.value); setPage(0); }}>
+          <option value="">Any Smart Money Move status</option><option value="BUY">BUY</option><option value="SELL">SELL</option><option value="NO_TRADE">NO TRADE</option><option value="NOT_SCORED">NOT SCORED</option>
         </select>
         <select aria-label="Scope" value={scope} onChange={(e) => { setScope(e.target.value); setPage(0); }}>
           {Object.entries(SCOPE_TEXT).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -198,16 +204,18 @@ export default function EarningsMonitorPanel({ initialTab = 'upcoming' }: { init
   const [mDate, setMDate] = useState('');
   const [mScope, setMScope] = useState('all');
   const [mPage, setMPage] = useState(0);
-  const q = { date: mDate, scope: mScope === 'all' ? '' : mScope, limit: PAGE, offset: mPage * PAGE };
+  const [mDays, setMDays] = useState('');
+  const [mSm, setMSm] = useState('');
+  const q = { date: mDate, scope: mScope === 'all' ? '' : mScope, limit: PAGE, offset: mPage * PAGE, days: (mDays === '' ? '' : Number(mDays)) as number | '', sm: mSm };
   const status = useApi<any>((s) => earningsMonitor.status(s), [], { refreshMs: 60_000 });
-  const upcoming = useApi<any>((s) => earningsMonitor.upcoming(hist, q, s), [hist, mDate, mScope, mPage], { refreshMs: 60_000, enabled: tab === 'upcoming' });
-  const models = useApi<any>((s) => earningsMonitor.models(q, s), [mDate, mScope, mPage], { refreshMs: 60_000, enabled: tab === 'models' });
+  const upcoming = useApi<any>((s) => earningsMonitor.upcoming(hist, q, s), [hist, mDate, mScope, mPage, mDays, mSm], { refreshMs: 60_000, enabled: tab === 'upcoming' });
+  const models = useApi<any>((s) => earningsMonitor.models(q, s), [mDate, mScope, mPage, mDays, mSm], { refreshMs: 60_000, enabled: tab === 'models' });
   const changes = useApi<any>((s) => earningsMonitor.changes(kind, s), [kind], { refreshMs: 60_000, enabled: tab === 'changes' });
   const consensus = useApi<any>((s) => earningsMonitor.consensus(s), [], { refreshMs: 60_000, enabled: tab === 'consensus' });
   const accuracy = useApi<any>((s) => earningsMonitor.accuracy(s), [], { refreshMs: 300_000, enabled: tab === 'accuracy' });
   const outcomes = useApi<any>((s) => earningsMonitor.outcomes(s), [], { refreshMs: 300_000, enabled: tab === 'accuracy' });
   const comparison = useApi<any>((s) => earningsMonitor.comparison(s), [], { refreshMs: 300_000, enabled: tab === 'accuracy' });
-  const smart = useApi<any>((s) => earningsMonitor.smartMove(q, s), [mDate, mScope, mPage], { refreshMs: 60_000, enabled: tab === 'smart' });
+  const smart = useApi<any>((s) => earningsMonitor.smartMove(q, s), [mDate, mScope, mPage, mDays, mSm], { refreshMs: 60_000, enabled: tab === 'smart' });
   const evidence = useApi<any>((s) => earningsMonitor.evidence(evSymbol, s), [evSymbol], { refreshMs: 60_000, enabled: tab === 'evidence' });
   const health = useApi<any>((s) => earningsMonitor.health(s), [], { refreshMs: 30_000, enabled: tab === 'health' });
   const reload = () => { status.refresh(); upcoming.refresh(); models.refresh(); changes.refresh(); consensus.refresh(); accuracy.refresh(); comparison.refresh(); smart.refresh(); evidence.refresh(); health.refresh(); };
@@ -245,7 +253,7 @@ export default function EarningsMonitorPanel({ initialTab = 'upcoming' }: { init
 
       {tab === 'upcoming' && upcoming.data?.status === 'OK' && (
         <>
-          <Pager d={upcoming.data} date={mDate} setDate={setMDate} scope={mScope} setScope={setMScope} page={mPage} setPage={setMPage} />
+          <Pager d={upcoming.data} date={mDate} setDate={setMDate} scope={mScope} setScope={setMScope} page={mPage} setPage={setMPage} days={mDays} setDays={setMDays} smv={mSm} setSmv={setMSm} />
           <label className="sm-q-muted"><input type="checkbox" checked={hist} onChange={(e) => setHist(e.target.checked)} /> include reported and canceled events (history)</label>
           {!upcoming.data.rows.length && <div className="sm-none">No upcoming earnings are tracked yet.</div>}
           <div className="sm-table-wrap"><table className="sm-table sm-q-table"><thead><tr><th>Symbol</th><th>Earnings date</th><th>Session</th><th>Days</th><th>Calendar check</th><th>Last verified</th><th>Status</th><th>Eligible</th><th>Models with a fresh call</th><th>Evidence</th><th>Latest change</th></tr></thead>
@@ -270,7 +278,7 @@ export default function EarningsMonitorPanel({ initialTab = 'upcoming' }: { init
 
       {tab === 'models' && models.data?.status === 'OK' && (
         <>
-          <Pager d={models.data} date={mDate} setDate={setMDate} scope={mScope} setScope={setMScope} page={mPage} setPage={setMPage} />
+          <Pager d={models.data} date={mDate} setDate={setMDate} scope={mScope} setScope={setMScope} page={mPage} setPage={setMPage} days={mDays} setDays={setMDays} smv={mSm} setSmv={setMSm} />
           {!models.data.rows.length && <div className="sm-none">No eligible upcoming event has been scanned yet.</div>}
           <div className="sm-table-wrap"><table className="sm-table sm-q-table"><thead><tr><th>Event</th>{models.data.models.map((m: any) => <th key={m.id}>{m.label}</th>)}</tr></thead>
             <tbody>{models.data.rows.map((r: any) => (
@@ -295,7 +303,7 @@ export default function EarningsMonitorPanel({ initialTab = 'upcoming' }: { init
         </>
       )}
 
-      {tab === 'smart' && smart.data?.status === 'OK' && <><Pager d={smart.data} date={mDate} setDate={setMDate} scope={mScope} setScope={setMScope} page={mPage} setPage={setMPage} /><SmartMovePanel d={smart.data} /></>}
+      {tab === 'smart' && smart.data?.status === 'OK' && <><Pager d={smart.data} date={mDate} setDate={setMDate} scope={mScope} setScope={setMScope} page={mPage} setPage={setMPage} days={mDays} setDays={setMDays} smv={mSm} setSmv={setMSm} /><SmartMovePanel d={smart.data} /></>}
       {tab === 'evidence' && evidence.data?.status === 'OK' && <EvidencePanel d={evidence.data} symbol={evSymbol} setSymbol={setEvSymbol} />}
       {tab === 'health' && health.data?.status === 'OK' && <HealthPanel d={health.data} />}
 

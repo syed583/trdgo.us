@@ -31,7 +31,7 @@ The frozen engine (score40-v1) predicts 48 to 24 hours before the report. The mo
 ## Proposed higher-coverage policy (needs your approval, not applied; the first two rows need a runner change)
 | Setting | Current (runner constants) | Proposed | Why |
 |---|---|---|---|
-| Schedule | none | hourly 06:00 to 21:30 ET, trading days | windows open at any hour |
+| Schedule | none | hourly, every day including weekends (a Monday report's window falls on Saturday and Sunday), trading days | windows open at any hour |
 | Per run | 50 | 150 | one run per hour; sequential, 1 in flight |
 | Per New York day | 100 | 700 | the planner needed about 690 for a typical day; the provider has no daily cap |
 | Concurrency | 1 | 1 (unchanged) | leaves two of the three provider slots to the application |
