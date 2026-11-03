@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime, timezone
+from datetime import timedelta
 from itertools import combinations
 from typing import Optional
 
@@ -257,3 +258,30 @@ def alerts(limit: int = Query(100, ge=1, le=500), status: Optional[str] = Query(
     for r in rows:
         r["payload"] = json.loads(r["payload"])
     return {"status": "OK", "rows": rows}
+
+
+@router.get("/health")
+def health():
+    """Scanner health from the durable queue and the run log: real start and finish of the latest runs with execution time (ms), events processed and queue wait (ms), running/stuck/dead jobs, duplicate events or predictions and today's
+    provider requests. Read-only."""
+    s = _store()
+    if s is None:
+        return _empty()
+    t = now()
+    cfg = C.Config.load(str(data_dir() / "config.json"))
+    recent = []
+    for r in s.q("SELECT kind, started_at, finished_at, ok, summary FROM scan_runs ORDER BY id DESC LIMIT 30"):
+        meta = (json.loads(r["summary"] or "{}") or {}).get("_run") or {}
+        recent.append({"kind": r["kind"], "started_at": r["started_at"], "finished_at": r["finished_at"], "ok": None if r["finished_at"] is None else bool(r["ok"]),
+                       "interrupted": r["finished_at"] is None and parse(r["started_at"]) < t - timedelta(seconds=cfg.lease_s),
+                       "duration_ms": meta.get("duration_ms"), "queue_wait_ms": meta.get("queue_wait_ms"), "events_processed": meta.get("events_processed")})
+    stuck = s.q("SELECT id, kind, locked_by, lease_until FROM jobs WHERE status='RUNNING' AND lease_until < ?", (t.isoformat(),))
+    dead = s.q("SELECT id, kind, last_error FROM jobs WHERE status='DEAD' ORDER BY id DESC LIMIT 20")
+    dup_events = s.q("SELECT symbol, COUNT(*) n FROM events WHERE status='ACTIVE' GROUP BY symbol HAVING n > 1")
+    dup_preds = (s.one("SELECT COUNT(*) n FROM (SELECT input_hash h, LAG(input_hash) OVER (PARTITION BY event_id, model ORDER BY id) p FROM predictions) WHERE h = p") or {}).get("n", 0)      # consecutive repeats only: BUY, SELL, BUY is three genuine versions
+    hb = s.kv_get("heartbeat")
+    rep = status_report(s, cfg, t)
+    return {"status": "OK", "now": t.isoformat(), "scheduling": rep["scheduling"], "queue": rep["queue"], "recent_runs": recent, "stuck_jobs": stuck, "dead_jobs": dead,
+            "duplicate_active_events": dup_events, "duplicate_prediction_rows": dup_preds, "heartbeat": {"scans": hb, "scans_age_s": None if not hb else round((t - parse(hb)).total_seconds())},
+            "provider_requests_today": rep["provider_requests_today"], "pending_alerts": rep["pending_alerts"], "breakers": rep["breakers"],
+            "healthy": not stuck and not dup_events and not dup_preds and not dead}

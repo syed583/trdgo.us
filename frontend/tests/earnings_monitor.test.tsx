@@ -35,9 +35,9 @@ test('the scan indicator says OFF and why when nothing is approved, and ON with 
   assert.equal(scanBadge({ status: 'OK', scheduling: 'CACHE_ONLY' }).text.includes('no provider requests'), true);
 });
 
-test('the five views exist; Upcoming Earnings shows session, vendor check, eligibility and the latest change', () => {
+test('the six views exist; Upcoming Earnings shows session, vendor check, eligibility and the latest change', () => {
   const html = panel({ emstatus: { data: on }, emupcoming: { data: upcoming } });
-  for (const t of ['Upcoming Earnings', 'All Models', 'Prediction Changes', 'Model Consensus', 'Historical Accuracy']) assert.ok(html.includes('>' + t + '<'), t);
+  for (const t of ['Upcoming Earnings', 'All Models', 'Prediction Changes', 'Model Consensus', 'Historical Accuracy', 'Scanner Health']) assert.ok(html.includes('>' + t + '<'), t);
   for (const c of ['Symbol', 'Earnings date', 'Session', 'Days', 'Calendar check', 'Status', 'Eligible', 'Valid predictions', 'Latest change']) assert.ok(html.includes('<th>' + c + '</th>'), c);
   assert.ok(html.includes('Before Open') && html.includes('not confirmed') && html.includes('event rescheduled') && html.includes('confirmed') && html.includes('calendar vendors disagree'));
   assert.match(html, /Looks 15 days ahead/);
@@ -107,4 +107,19 @@ test('the panel contains no trade, order or scoring code', () => {
   const src = readFileSync('src/pages/EarningsMonitorPanel.tsx', 'utf-8');
   assert.ok(!/place.?order|submit.?order|\bbroker\b|trade.?now/i.test(src));
   assert.ok(!/Math\.random|\bscore\s*=|weights?\s*=/.test(src.replace(/score \$\{/g, '')));
+});
+
+test('Scanner Health shows real start, finish, milliseconds, events processed and queue wait per run, flags stuck jobs and marks an interrupted run', () => {
+  const h = { status: 'OK', healthy: true, queue: { DONE: 3 }, heartbeat: { scans_age_s: 5 }, provider_requests_today: 0, pending_alerts: 0, stuck_jobs: [], dead_jobs: [], duplicate_active_events: [], duplicate_prediction_rows: 0,
+    recent_runs: [{ kind: 'ELIGIBILITY_CHECK', started_at: '2026-11-09T17:30:00+00:00', finished_at: '2026-11-09T17:30:02+00:00', ok: true, duration_ms: 1840, events_processed: 302, queue_wait_ms: 120 },
+      { kind: 'EARNINGS_DAY_CHECK', started_at: '2026-11-09T12:45:00+00:00', finished_at: null, ok: null, interrupted: true, duration_ms: null, events_processed: null, queue_wait_ms: null }] };
+  const a = panel({ emstatus: { data: on }, emhealth: { data: h } }, 'health');
+  assert.match(a, />HEALTHY</);
+  assert.match(a, /<td>1840<\/td><td>302<\/td><td>120<\/td>/);
+  assert.match(a, /interrupted \(never finished\)/);
+  assert.match(a, /not recorded/);
+  const b = panel({ emstatus: { data: on }, emhealth: { data: { ...h, healthy: false, stuck_jobs: [{ kind: 'ELIGIBILITY_CHECK' }], duplicate_active_events: [{ symbol: 'AAA' }], duplicate_prediction_rows: 2 } } }, 'health');
+  assert.match(b, />NEEDS ATTENTION</);
+  assert.match(b, /past their lease \(stuck\): ELIGIBILITY_CHECK/);
+  assert.match(b, /Duplicate active events: AAA/);
 });

@@ -1018,6 +1018,7 @@ export const earningsMonitor = {
   comparison: (s?: AbortSignal) => request<any>('/api/earnings-monitor/comparison', s),
   sources: (s?: AbortSignal) => request<any>('/api/earnings-monitor/sources', s),
   history: (symbol: string, s?: AbortSignal) => request<any>(`/api/earnings-monitor/history?symbol=${encodeURIComponent(symbol)}`, s),
+  health: (s?: AbortSignal) => request<any>('/api/earnings-monitor/health', s),
 };
 
 /** Smart Move Engine20: the newest immutable prediction snapshot (a historical record, never a live feed) and its outcome comparison. Read-only. */

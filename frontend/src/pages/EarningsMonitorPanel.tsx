@@ -4,8 +4,8 @@ import { earningsMonitor } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import './smart-move.css';
 
-type Tab = 'upcoming' | 'models' | 'changes' | 'consensus' | 'accuracy';
-const TABS: [Tab, string][] = [['upcoming', 'Upcoming Earnings'], ['models', 'All Models'], ['changes', 'Prediction Changes'], ['consensus', 'Model Consensus'], ['accuracy', 'Historical Accuracy']];
+type Tab = 'upcoming' | 'models' | 'changes' | 'consensus' | 'accuracy' | 'health';
+const TABS: [Tab, string][] = [['upcoming', 'Upcoming Earnings'], ['models', 'All Models'], ['changes', 'Prediction Changes'], ['consensus', 'Model Consensus'], ['accuracy', 'Historical Accuracy'], ['health', 'Scanner Health']];
 
 export function fmtTime(iso?: string | null): string {
   if (!iso) return '—';
@@ -75,6 +75,29 @@ function Sources() {
   );
 }
 
+function HealthPanel({ d }: { d: any }) {
+  return (
+    <div data-testid="health-panel">
+      <div className="sm-summary">
+        <div className="sm-card"><div className="sm-card-k">Overall</div><div className="sm-card-v"><span className={`sm-q-badge ${d.healthy ? 'green' : 'red'}`} data-testid="health-badge">{d.healthy ? 'HEALTHY' : 'NEEDS ATTENTION'}</span></div></div>
+        <div className="sm-card"><div className="sm-card-k">Queue</div><div className="sm-card-v">{Object.entries(d.queue || {}).map(([k, v]) => `${k} ${v}`).join(' · ') || 'empty'}</div></div>
+        <div className="sm-card"><div className="sm-card-k">Scan heartbeat</div><div className="sm-card-v">{d.heartbeat?.scans_age_s != null ? `${d.heartbeat.scans_age_s} s ago` : 'none'}</div></div>
+        <div className="sm-card"><div className="sm-card-k">Provider requests today</div><div className="sm-card-v">{Object.values(d.provider_requests_today || {}).reduce((a: number, b: any) => a + Number(b || 0), 0) || d.provider_requests_today || 0}</div></div>
+        <div className="sm-card"><div className="sm-card-k">Pending alerts</div><div className="sm-card-v">{d.pending_alerts ?? 0}</div></div>
+      </div>
+      <table className="sm-mini" data-testid="recent-runs"><thead><tr><th>Job</th><th>Started</th><th>Finished</th><th>Execution (ms)</th><th>Events processed</th><th>Waited in queue (ms)</th><th>Result</th></tr></thead>
+        <tbody>{(d.recent_runs || []).map((r: any, i: number) => <tr key={i}><td>{nice(r.kind)}</td><td>{fmtTime(r.started_at)}</td><td>{r.finished_at ? fmtTime(r.finished_at) : '—'}</td>
+          <td>{r.duration_ms != null ? r.duration_ms : <span className="sm-q-muted">not recorded</span>}</td><td>{r.events_processed ?? '—'}</td><td>{r.queue_wait_ms != null ? r.queue_wait_ms : '—'}</td>
+          <td>{r.ok === null ? (r.interrupted ? 'interrupted (never finished)' : 'running') : r.ok ? 'ok' : 'failed or blocked'}</td></tr>)}</tbody></table>
+      {d.stuck_jobs?.length > 0 && <div className="sm-fresh stale" role="alert"><AlertTriangle size={14} /> {d.stuck_jobs.length} job(s) past their lease (stuck): {d.stuck_jobs.map((j: any) => j.kind).join(', ')}</div>}
+      {d.dead_jobs?.length > 0 && <div className="sm-fresh stale" role="alert"><AlertTriangle size={14} /> {d.dead_jobs.length} job(s) gave up after repeated failures.</div>}
+      {d.duplicate_active_events?.length > 0 && <div className="sm-fresh stale" role="alert"><AlertTriangle size={14} /> Duplicate active events: {d.duplicate_active_events.map((x: any) => x.symbol).join(', ')}</div>}
+      {d.duplicate_prediction_rows > 0 && <div className="sm-fresh stale" role="alert"><AlertTriangle size={14} /> {d.duplicate_prediction_rows} duplicated prediction version(s).</div>}
+      <div className="sm-q-muted">Runs recorded before this update have no execution time ("not recorded"). A run with no finish time and an old start was interrupted (for example by a restart).</div>
+    </div>
+  );
+}
+
 /** The Earnings monitor, embedded in the Earnings workspace. Everything shown is read from the monitor's own store through read-only endpoints: this panel computes no prediction, no score and no change. */
 export default function EarningsMonitorPanel({ initialTab = 'upcoming' }: { initialTab?: Tab }) {
   const [tab, setTab] = useState<Tab>(initialTab);
@@ -89,10 +112,11 @@ export default function EarningsMonitorPanel({ initialTab = 'upcoming' }: { init
   const consensus = useApi<any>((s) => earningsMonitor.consensus(s), [], { refreshMs: 60_000, enabled: tab === 'consensus' });
   const accuracy = useApi<any>((s) => earningsMonitor.accuracy(s), [], { refreshMs: 300_000, enabled: tab === 'accuracy' });
   const comparison = useApi<any>((s) => earningsMonitor.comparison(s), [], { refreshMs: 300_000, enabled: tab === 'accuracy' });
-  const reload = () => { status.refresh(); upcoming.refresh(); models.refresh(); changes.refresh(); consensus.refresh(); accuracy.refresh(); comparison.refresh(); };
+  const health = useApi<any>((s) => earningsMonitor.health(s), [], { refreshMs: 30_000, enabled: tab === 'health' });
+  const reload = () => { status.refresh(); upcoming.refresh(); models.refresh(); changes.refresh(); consensus.refresh(); accuracy.refresh(); comparison.refresh(); health.refresh(); };
   const s = status.data;
   const badge = scanBadge(s);
-  const cur: any = { upcoming, models, changes, consensus, accuracy }[tab];
+  const cur: any = { upcoming, models, changes, consensus, accuracy, health }[tab];
 
   return (
     <div className="sm" data-testid="earnings-monitor">
@@ -180,6 +204,8 @@ export default function EarningsMonitorPanel({ initialTab = 'upcoming' }: { init
           <div className="sm-q-muted">{consensus.data.note} STRONG needs at least {consensus.data.rule.min_comparable_models} comparable models and {Math.round(consensus.data.rule.strong_share * 100)}% pointing the same way.</div>
         </>
       )}
+
+      {tab === 'health' && health.data?.status === 'OK' && <HealthPanel d={health.data} />}
 
       {tab === 'accuracy' && accuracy.data?.status === 'OK' && (
         <>

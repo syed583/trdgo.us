@@ -22,6 +22,25 @@ KINDS = ("CALENDAR_REFRESH", "ELIGIBILITY_CHECK", "EARNINGS_DAY_CHECK", "OUTCOME
 MAX_OUTCOME_TRIES = 8
 
 
+def events_processed(res):
+    """How many events a job looked at, read from its own result (None when the job has no per-event work)."""
+    if not isinstance(res, dict):
+        return None
+    for path in (("recompute", "events"), ("events",), ("observed", "new")):
+        cur = res
+        for k in path:
+            cur = cur.get(k) if isinstance(cur, dict) else None
+        if isinstance(cur, int):
+            return cur
+    return None
+
+
+def run_meta(job: dict, t_start: datetime, t_end: datetime, res) -> dict:
+    """Timing facts stored with every run: execution time and the time the job waited in the queue (start minus the moment it was due)."""
+    return {"job_id": job["id"], "queue_wait_ms": max(0, int((t_start - parse(job["run_after"])).total_seconds() * 1000)),
+            "duration_ms": max(0, int((t_end - t_start).total_seconds() * 1000)), "events_processed": events_processed(res)}
+
+
 def _bucket(now: datetime, seconds: float) -> int:
     return int(now.timestamp() // seconds)
 
@@ -94,12 +113,13 @@ class Scheduler:
             job = self.store.claim(now, self.worker_id, self.cfg.lease_s)
             if job is None:
                 return {"ran": False, "reason": "NO_DUE_JOB", "recovered": recovered}
-            run_id = self.store.start_run(job["kind"], now)
+            t_start = self.mon.clock()                                           # the loop's `now` is one instant for a whole pass: real start / end times come from the clock itself
+            run_id = self.store.start_run(job["kind"], t_start)
             try:
                 res = self._handler(job, now)
             except ProviderBlocked as b:
                 self.store.finish_job(job["id"], now, True, {"blocked": b.reason})
-                self.store.finish_run(run_id, now, False, {"blocked": b.reason})
+                self.store.finish_run(run_id, self.mon.clock(), False, {"blocked": b.reason})
                 self.store.audit(now, self.worker_id, "JOB_BLOCKED", {"kind": job["kind"], "reason": b.reason})
                 if b.reason.startswith(("CIRCUIT_BREAKER_OPEN", "DAILY_BUDGET_EXHAUSTED")):
                     A.enqueue(self.store, now, [A.scanner_failure(now, job["kind"], b.reason, self.cfg)], self.cfg)
@@ -109,13 +129,14 @@ class Scheduler:
                 dead = job["attempts"] >= job["max_attempts"]
                 delay = min(self.cfg.backoff_max_s, self.cfg.backoff_base_s * (2 ** (job["attempts"] - 1)))
                 self.store.finish_job(job["id"], now, False, error=err, retry_at=now + timedelta(seconds=delay), dead=dead)
-                self.store.finish_run(run_id, now, False, {"error": err})
+                self.store.finish_run(run_id, self.mon.clock(), False, {"error": err})
                 self.store.audit(now, self.worker_id, "JOB_FAILED", {"kind": job["kind"], "attempt": job["attempts"], "error": err, "dead": dead, "retry_in_s": None if dead else delay})
                 if dead:
                     A.enqueue(self.store, now, [A.scanner_failure(now, job["kind"], err, self.cfg)], self.cfg)
                 return {"ran": True, "kind": job["kind"], "failed": err, "dead": dead, "retry_in_s": None if dead else delay}
-            self.store.finish_job(job["id"], now, True, res)
-            self.store.finish_run(run_id, now, True, res)
+            t_end = self.mon.clock()
+            self.store.finish_job(job["id"], t_end, True, res)
+            self.store.finish_run(run_id, t_end, True, dict(res if isinstance(res, dict) else {"result": res}, _run=run_meta(job, t_start, t_end, res)))
             return {"ran": True, "kind": job["kind"], "result": res}
         finally:
             self.lock.release()

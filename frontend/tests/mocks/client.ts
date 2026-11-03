@@ -12,4 +12,5 @@ export const earningsMonitor = {
   comparison: () => ({ __k: 'emcomparison' }),
   sources: () => ({ __k: 'emsources' }),
   history: () => ({ __k: 'emhistory' }),
+  health: () => ({ __k: 'emhealth' }),
 };
