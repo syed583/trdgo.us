@@ -1007,6 +1007,19 @@ export const api2 = {
       '/api/chat', 'POST', { message, symbol: symbol || '', history: history || [] }),
 };
 
+/** Earnings monitor: read-only views of the automatic upcoming-earnings scan, every model's stored prediction, detected changes, comparable-model consensus and accuracy. */
+export const earningsMonitor = {
+  status: (s?: AbortSignal) => request<any>('/api/earnings-monitor/status', s),
+  upcoming: (history: boolean, s?: AbortSignal) => request<any>(`/api/earnings-monitor/upcoming?include_history=${history ? 'true' : 'false'}`, s),
+  models: (s?: AbortSignal) => request<any>('/api/earnings-monitor/models', s),
+  changes: (kind: string, s?: AbortSignal) => request<any>(`/api/earnings-monitor/changes?limit=200${kind ? `&kind=${encodeURIComponent(kind)}` : ''}`, s),
+  consensus: (s?: AbortSignal) => request<any>('/api/earnings-monitor/consensus', s),
+  accuracy: (s?: AbortSignal) => request<any>('/api/earnings-monitor/accuracy', s),
+  comparison: (s?: AbortSignal) => request<any>('/api/earnings-monitor/comparison', s),
+  sources: (s?: AbortSignal) => request<any>('/api/earnings-monitor/sources', s),
+  history: (symbol: string, s?: AbortSignal) => request<any>(`/api/earnings-monitor/history?symbol=${encodeURIComponent(symbol)}`, s),
+};
+
 /** Smart Move Engine20: the newest immutable prediction snapshot (a historical record, never a live feed) and its outcome comparison. Read-only. */
 export const smartMoveEngine20 = {
   latest: (s?: AbortSignal) => request<any>('/api/smart-move/engine20/latest', s),

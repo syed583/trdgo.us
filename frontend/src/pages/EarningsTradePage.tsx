@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Suspense, lazy, useMemo, useState } from 'react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Area, AreaChart, Bar, BarChart, Cell, Line, LineChart, ReferenceLine,
@@ -15,6 +15,8 @@ import { num, signed } from '../lib/format';
 import { ScoreGauge } from '../components/common';
 import UpcomingEarnings from '../components/UpcomingEarnings';
 import './earnings-trade-screen.css';
+
+const EarningsMonitorPanel = lazy(() => import('./EarningsMonitorPanel'));
 
 // Label + colour follow the decision cuts: BUY (>=65) is green, SELL (<=35)
 // red, the no-trade middle amber -- so the gauge colour matches the call.
@@ -245,6 +247,13 @@ function EarningsTradeLanding({ demo, search, base, profile, embedded, mode, onM
     mode: EarnMode; onMode: (m: EarnMode) => void }) {
   // My Calls (embedded) keeps the original single combined list.
   const split = !embedded;
+  const [sp, setSp] = useSearchParams();
+  const landing: 'list' | 'monitor' = !embedded && sp.get('view') === 'monitor' ? 'monitor' : 'list';
+  const setLanding = (v: 'list' | 'monitor') => {
+    const next = new URLSearchParams(sp);
+    if (v === 'list') next.delete('view'); else next.set('view', v);
+    setSp(next, { replace: true });
+  };
   return (
     <div className="page ets">
       {!embedded && (
@@ -258,9 +267,19 @@ function EarningsTradeLanding({ demo, search, base, profile, embedded, mode, onM
             : 'Directional stock (equity) earnings trade. Pick a stock reporting soon.'}</p>
         </div>
       )}
-      <UpcomingEarnings base={base} title="Upcoming earnings"
-        demo={demo} search={search} hideChanges profile={profile}
-        mode={split ? mode : undefined} />
+      {!embedded && (
+        <div className="ets-subtabs" role="tablist" aria-label="Earnings views">
+          <button type="button" role="tab" aria-selected={landing === 'list'} className={`ets-subtab${landing === 'list' ? ' active' : ''}`} onClick={() => setLanding('list')}>Upcoming earnings</button>
+          <button type="button" role="tab" aria-selected={landing === 'monitor'} className={`ets-subtab${landing === 'monitor' ? ' active' : ''}`} onClick={() => setLanding('monitor')}>Earnings Monitor</button>
+        </div>
+      )}
+      {landing === 'monitor' ? (
+        <Suspense fallback={<div className="sm-none" role="status">Loading the Earnings Monitor…</div>}><EarningsMonitorPanel /></Suspense>
+      ) : (
+        <UpcomingEarnings base={base} title="Upcoming earnings"
+          demo={demo} search={search} hideChanges profile={profile}
+          mode={split ? mode : undefined} />
+      )}
     </div>
   );
 }

@@ -1,0 +1,395 @@
+"""The monitor itself: calendar observation (new / rescheduled / canceled events, never duplicated, vendor-verified), model-prediction recording (append-only, only real calls, with their source), change detection,
+alerts, results and verified outcomes.
+
+Everything reads through an Adapters object (cache reads) and reaches a provider only through ProviderAccess.call(), which the gate controls. Nothing here scores an event, grades with a rule of its own for
+Smart Move, trades, or substitutes one model's call for another's."""
+from __future__ import annotations
+
+import json
+from datetime import date, datetime, timedelta, timezone
+from typing import Callable, Optional
+from zoneinfo import ZoneInfo
+
+from . import alerts as A
+from . import calendar_us as CAL
+from . import config as C
+from . import logic as L
+from .gate import GateState, ProviderAccess, ProviderBlocked, day_key
+from .store import Store, iso, parse
+
+UTC = timezone.utc
+ET = ZoneInfo("America/New_York")
+HORIZON_DAYS = 15
+SESSIONS = ("BMO", "AMC")
+
+
+class Adapters:
+    """Interface. Cache-reading methods must never start a provider request; refresh_*/verify_* may, and are only ever called through ProviderAccess."""
+    model_labels: dict = {}
+
+    def calendar(self) -> list:                       # [{symbol, company, date, session, sources?:[{vendor,date,session}]}]  from caches
+        raise NotImplementedError
+
+    def models(self) -> dict:                         # {model: {SYMBOL: {signal, score, coverage, tier, as_of, evidence_as_of, source, engine_version}}}  from caches / stored snapshots
+        raise NotImplementedError
+
+    def result(self, symbol: str, d: str) -> Optional[dict]:      # {published_at} once the earnings result is public (cache / database read)
+        return None
+
+    def outcome(self, symbol: str, d: str) -> Optional[dict]:     # {move_pct, direction, available_at, verified, source} once the reaction is known (cache / database read)
+        return None
+
+    def smart_move_plan(self, events: list, now: datetime) -> Optional[dict]:      # offline: which Smart Move evidence is missing for these events (no provider call)
+        return None
+
+    def refresh_calendar(self) -> list:               # provider
+        raise ProviderBlocked("NO_CALENDAR_REFRESH_ADAPTER")
+
+    def refresh_event(self, symbol: str) -> None:     # provider
+        raise ProviderBlocked("NO_EVENT_REFRESH_ADAPTER")
+
+    def verify_outcome(self, symbol: str, d: str) -> None:   # provider
+        raise ProviderBlocked("NO_OUTCOME_VERIFY_ADAPTER")
+
+
+def today_et(now: datetime) -> date:
+    return now.astimezone(ET).date()
+
+
+def in_session_window(cfg: C.Config, now: datetime, ev: dict) -> bool:
+    d = date.fromisoformat(ev["earnings_date"])
+    if ev["session"] not in SESSIONS or d != today_et(now) or not CAL.is_trading_day(d):
+        return False
+    lo, hi = CAL.window_et(d, ev["session"], cfg.bmo_window_et if ev["session"] == "BMO" else cfg.amc_window_et)
+    t = now.astimezone(ET).strftime("%H:%M")
+    return lo <= t <= hi
+
+
+def reaction_session_date(ev: dict) -> date:
+    return CAL.reaction_session(date.fromisoformat(ev["earnings_date"]), ev["session"])
+
+
+def outcome_ready_at(cfg: C.Config, ev: dict) -> datetime:
+    return CAL.close_utc(reaction_session_date(ev)) + timedelta(minutes=cfg.outcome_delay_min)
+
+
+class Monitor:
+    def __init__(self, store: Store, cfg: C.Config, adapters: Adapters, access: ProviderAccess, clock: Callable[[], datetime], sinks: Optional[list] = None):
+        self.store, self.cfg, self.ad, self.access, self.clock = store, cfg, adapters, access, clock
+        self.sinks = sinks or []
+
+    # ------------------------------------------------------------ helpers
+    def _change(self, now, ev: Optional[dict], symbol: str, kind: str, model=None, old=None, new=None, detail=None, key_extra="") -> Optional[int]:
+        key = "|".join(str(x) for x in (ev["id"] if ev else symbol, kind, model, old, new, key_extra))
+        try:
+            with self.store.tx() as c:
+                return c.execute("INSERT INTO changes(event_id,symbol,kind,model,old_value,new_value,detail,detected_at,dedupe_key) VALUES(?,?,?,?,?,?,?,?,?)",
+                                 (ev["id"] if ev else None, symbol, kind, model, None if old is None else str(old), None if new is None else str(new), json.dumps(detail or {}, default=str), iso(now), key)).lastrowid
+        except Exception as e:  # noqa: BLE001
+            if "UNIQUE" in str(e):
+                return None                                   # the same change was already recorded: never duplicate
+            raise
+
+    def _alerts_for(self, now, change: dict, ev: dict, pred_ts=None, extra=None):
+        if (change.get("detail") or {}).get("confirmed"):
+            return 0
+        return A.enqueue(self.store, now, A.build(change, ev, pred_ts, self.cfg, extra), self.cfg)
+
+    def _touch_event(self, c, ev_id, now, **fields):
+        sets = ", ".join("%s=?" % k for k in fields)
+        c.execute("UPDATE events SET %s, last_changed=? WHERE id=?" % sets, tuple(fields.values()) + (iso(now), ev_id))
+
+    def event(self, ev_id: int) -> dict:
+        return self.store.one("SELECT * FROM events WHERE id=?", (ev_id,))
+
+    def _new_event(self, c, r, sym, d, sess, now, ver, sources):
+        eid = c.execute("INSERT INTO events(symbol,company,earnings_date,session,first_seen,last_seen,last_changed,source,verification,sources) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                        (sym, r.get("company"), d, sess, iso(now), iso(now), iso(now), r.get("source"), ver, json.dumps(sources) if sources else None)).lastrowid
+        c.execute("INSERT INTO event_versions(event_id,earnings_date,session,observed_at,reason) VALUES(?,?,?,?,?)", (eid, d, sess, iso(now), "NEW_EVENT"))
+        return eid
+
+    def _update_verification(self, ev: dict, ver: str, sources: list, now: datetime):
+        if sources:
+            with self.store.tx() as c:
+                c.execute("UPDATE events SET sources=? WHERE id=?", (json.dumps(sources), ev["id"]))
+        if ver != ev["verification"] and (sources or ver != "UNVERIFIED"):
+            with self.store.tx() as c:
+                self._touch_event(c, ev["id"], now, verification=ver)
+            cur = self.event(ev["id"])
+            cid = self._change(now, cur, ev["symbol"], "VERIFICATION_CHANGED", old=ev["verification"], new=ver, key_extra=iso(now))
+            if cid:
+                self._alerts_for(now, {"kind": "VERIFICATION_CHANGED", "old": ev["verification"], "new": ver}, cur)
+
+    # ------------------------------------------------------------ calendar
+    def observe_calendar(self, rows: list, now: datetime, complete: bool) -> dict:
+        """rows: [{symbol, company, date, session, sources?}]. complete=True only for a real, successful calendar fetch; only then does an absent event count towards cancellation."""
+        stats = {"new": 0, "rescheduled": 0, "session": 0, "canceled": 0, "unchanged": 0, "ignored": 0}
+        seen = set()
+        today = today_et(now).isoformat()
+        for r in rows:
+            sym = (r.get("symbol") or "").upper().strip()
+            d = str(r.get("date") or "")[:10]
+            sess = r.get("session") if r.get("session") in SESSIONS else "UNKNOWN"
+            sources = r.get("sources") or []
+            if not sym or len(d) != 10 or d < today:
+                stats["ignored"] += 1
+                continue
+            if sym in seen:
+                stats["ignored"] += 1                           # a duplicate row in the same scan
+                continue
+            seen.add(sym)
+            ver = L.verify_calendar(d, sources)
+            ev = self.store.one("SELECT * FROM events WHERE symbol=? AND status='ACTIVE'", (sym,))
+            if ev is None:
+                done = self.store.one("SELECT id, status FROM events WHERE symbol=? AND earnings_date=? ORDER BY id DESC", (sym, d))
+                if done and done["status"] == "CANCELED":
+                    with self.store.tx() as c:                  # the calendar lists it again: the same event comes back, history kept
+                        self._touch_event(c, done["id"], now, status="ACTIVE", canceled_at=None, last_seen=iso(now), missing_scans=0, session=sess)
+                        c.execute("INSERT INTO event_versions(event_id,earnings_date,session,observed_at,reason) VALUES(?,?,?,?,?)", (done["id"], d, sess, iso(now), "REACTIVATED"))
+                    self._change(now, self.event(done["id"]), sym, "NEW_EVENT", new="%s %s" % (d, sess), detail={"reactivated": True}, key_extra=iso(now))
+                    self._update_verification(self.event(done["id"]), ver, sources, now)
+                    stats["new"] += 1
+                    continue
+                if done:
+                    stats["ignored"] += 1                       # that exact event already happened (reported): not re-added
+                    continue
+                with self.store.tx() as c:
+                    eid = self._new_event(c, r, sym, d, sess, now, ver, sources)
+                self._change(now, self.event(eid), sym, "NEW_EVENT", new="%s %s" % (d, sess), detail={"verification": ver})
+                stats["new"] += 1
+                continue
+            changed = False
+            if ev["earnings_date"] != d:
+                gap = abs((date.fromisoformat(d) - date.fromisoformat(ev["earnings_date"])).days)
+                if ev["earnings_date"] >= today and gap <= 60:
+                    old = ev["earnings_date"]
+                    with self.store.tx() as c:
+                        self._touch_event(c, ev["id"], now, earnings_date=d, last_seen=iso(now), missing_scans=0)
+                        c.execute("INSERT INTO event_versions(event_id,earnings_date,session,observed_at,reason) VALUES(?,?,?,?,?)", (ev["id"], d, ev["session"], iso(now), "RESCHEDULED"))
+                    ev = self.event(ev["id"])
+                    cid = self._change(now, ev, sym, "EVENT_RESCHEDULED", old=old, new=d)
+                    if cid:
+                        self._alerts_for(now, {"kind": "EVENT_RESCHEDULED", "old": old, "new": d}, ev)
+                    stats["rescheduled"] += 1
+                    changed = True
+                else:
+                    with self.store.tx() as c:
+                        self._touch_event(c, ev["id"], now, status="REPORTED", reported_at=iso(now))     # the previous event's date has passed: it is history now
+                    prev = ev
+                    with self.store.tx() as c:
+                        eid = self._new_event(c, r, sym, d, sess, now, ver, sources)
+                    self._change(now, self.event(eid), sym, "NEW_EVENT", new="%s %s" % (d, sess), detail={"previous": prev["earnings_date"], "verification": ver})
+                    stats["new"] += 1
+                    continue
+            if sess != "UNKNOWN" and ev["session"] != sess:
+                old = ev["session"]
+                with self.store.tx() as c:
+                    self._touch_event(c, ev["id"], now, session=sess, last_seen=iso(now), missing_scans=0)
+                    c.execute("INSERT INTO event_versions(event_id,earnings_date,session,observed_at,reason) VALUES(?,?,?,?,?)", (ev["id"], ev["earnings_date"], sess, iso(now), "SESSION_CHANGED"))
+                ev = self.event(ev["id"])
+                confirmed = old == "UNKNOWN"
+                cid = self._change(now, ev, sym, "SESSION_CHANGED", old=old, new=sess, detail={"confirmed": confirmed})
+                if cid:
+                    self._alerts_for(now, {"kind": "SESSION_CHANGED", "old": old, "new": sess, "detail": {"confirmed": confirmed}}, ev)
+                stats["session"] += 1
+                changed = True
+            if not changed:
+                with self.store.tx() as c:
+                    c.execute("UPDATE events SET last_seen=?, missing_scans=0, company=COALESCE(?,company) WHERE id=?", (iso(now), r.get("company"), ev["id"]))
+                stats["unchanged"] += 1
+            self._update_verification(self.event(ev["id"]), ver, sources, now)
+        if complete:
+            for ev in self.store.q("SELECT * FROM events WHERE status='ACTIVE' AND earnings_date >= ?", (today,)):
+                if ev["symbol"] in seen:
+                    continue
+                miss = ev["missing_scans"] + 1
+                if miss >= self.cfg.cancel_after_missing_scans:
+                    with self.store.tx() as c:
+                        self._touch_event(c, ev["id"], now, status="CANCELED", canceled_at=iso(now), missing_scans=miss)
+                    ev = self.event(ev["id"])
+                    cid = self._change(now, ev, ev["symbol"], "EVENT_CANCELED", old="%s %s" % (ev["earnings_date"], ev["session"]), new="CANCELED")
+                    if cid:
+                        self._alerts_for(now, {"kind": "EVENT_CANCELED", "old": "%s %s" % (ev["earnings_date"], ev["session"]), "new": "CANCELED"}, ev)
+                    stats["canceled"] += 1
+                else:
+                    with self.store.tx() as c:
+                        c.execute("UPDATE events SET missing_scans=? WHERE id=?", (miss, ev["id"]))
+        return stats
+
+    # ------------------------------------------------------------ predictions
+    def eligible(self, ev: dict, now: datetime) -> dict:
+        reasons = []
+        if ev["status"] != "ACTIVE":
+            reasons.append("NOT_ACTIVE")
+        if ev["session"] not in SESSIONS:
+            reasons.append("SESSION_NOT_CONFIRMED")
+        d = date.fromisoformat(ev["earnings_date"])
+        if not CAL.is_trading_day(d):
+            reasons.append("NOT_A_TRADING_DAY")
+        if ev.get("verification") == "CONFLICT":
+            reasons.append("CALENDAR_VENDORS_DISAGREE")
+        days = (d - today_et(now)).days
+        if days < 0:
+            reasons.append("ALREADY_HAPPENED")
+        elif days > HORIZON_DAYS:
+            reasons.append("BEYOND_%d_DAY_HORIZON" % HORIZON_DAYS)
+        return {"eligible": not reasons, "reasons": reasons, "days_to": days}
+
+    def recompute(self, now: datetime, event_id: Optional[int] = None) -> dict:
+        """Record a new prediction row only when a model's real call actually changed; detect every change; refresh consensus. Reads caches only."""
+        models = self.ad.models()
+        stats = {"events": 0, "new_predictions": 0, "changes": 0, "stale": 0, "refreshed": 0, "alerts": 0}
+        sql, args = "SELECT * FROM events WHERE status='ACTIVE'", ()
+        if event_id is not None:
+            sql, args = "SELECT * FROM events WHERE id=?", (event_id,)
+        for ev in self.store.q(sql, args):
+            if not self.eligible(ev, now)["eligible"] and event_id is None:
+                continue
+            stats["events"] += 1
+            states, stale_models = [], []
+            for model in self.ad.model_labels:
+                obs = (models.get(model) or {}).get(ev["symbol"])
+                st = L.model_status(obs, now, self.cfg.stale_after_h)
+                prev = self.store.one("SELECT * FROM model_state WHERE event_id=? AND model=?", (ev["id"], model))
+                pred_id = prev["prediction_id"] if prev else None
+                src = (obs or {}).get("source") or "unknown"
+                if st["status"] == "VALID":
+                    h = L.input_hash(obs["signal"], obs.get("score"), obs.get("coverage"), obs.get("tier"))
+                    last = self.store.one("SELECT * FROM predictions WHERE event_id=? AND model=? ORDER BY id DESC LIMIT 1", (ev["id"], model))
+                    if last is None or last["input_hash"] != h:
+                        old_state = None if last is None else {"signal": last["signal"], "score": last["score"], "coverage": None if last["coverage"] is None else json.loads(last["coverage"])}
+                        with self.store.tx() as c:
+                            pred_id = c.execute("INSERT INTO predictions(event_id,model,signal,score,coverage,tier,as_of,evidence_as_of,recorded_at,input_hash,source,engine_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                                                (ev["id"], model, obs["signal"], obs.get("score"), None if obs.get("coverage") is None else json.dumps(obs.get("coverage")), obs.get("tier"),
+                                                 obs["as_of"], obs.get("evidence_as_of"), iso(now), h, src, obs.get("engine_version"))).lastrowid
+                        stats["new_predictions"] += 1
+                        for ch in L.prediction_changes(old_state, obs, self.cfg):
+                            if self._change(now, ev, ev["symbol"], ch["kind"], model=model, old=ch["old"], new=ch["new"], detail=dict(ch["detail"], source=src), key_extra=pred_id):
+                                stats["changes"] += 1
+                                stats["alerts"] += self._alerts_for(now, dict(ch, model=model), ev, pred_ts=obs["as_of"])
+                    else:
+                        pred_id = last["id"]
+                    was_stale = bool(prev and prev["stale"])
+                    if st["stale"] and not was_stale:
+                        if self._change(now, ev, ev["symbol"], "PREDICTION_STALE", model=model, old=obs["signal"], new="STALE", detail={"age_h": st.get("age_h")}, key_extra=obs["as_of"]):
+                            stats["stale"] += 1
+                            stats["changes"] += 1
+                            stale_models.append((model, obs["as_of"]))
+                    elif was_stale and not st["stale"]:
+                        if self._change(now, ev, ev["symbol"], "PREDICTION_REFRESHED", model=model, old="STALE", new=obs["signal"], detail={"age_h": st.get("age_h")}, key_extra=obs["as_of"]):
+                            stats["refreshed"] += 1
+                            stats["changes"] += 1
+                with self.store.tx() as c:
+                    c.execute("INSERT INTO model_state(event_id,model,status,signal,score,coverage,as_of,prediction_id,last_checked,stale,source) VALUES(?,?,?,?,?,?,?,?,?,?,?) "
+                              "ON CONFLICT(event_id,model) DO UPDATE SET status=excluded.status, signal=excluded.signal, score=excluded.score, coverage=excluded.coverage, as_of=excluded.as_of, "
+                              "prediction_id=excluded.prediction_id, last_checked=excluded.last_checked, stale=excluded.stale, source=excluded.source",
+                              (ev["id"], model, st["status"], obs.get("signal") if obs else None, obs.get("score") if obs else None,
+                               None if not obs or obs.get("coverage") is None else json.dumps(obs.get("coverage")), obs.get("as_of") if obs else None, pred_id, iso(now), 1 if st["stale"] else 0,
+                               (obs or {}).get("source")))
+                states.append({"model": model, "status": st["status"], "stale": st["stale"], "signal": obs.get("signal") if obs else None, "as_of": obs.get("as_of") if obs else None})
+            if stale_models:                                          # ONE digest per event instead of one alert per model
+                stats["alerts"] += A.enqueue(self.store, now, [A.stale_digest(now, ev, stale_models, self.cfg)], self.cfg)
+            cons = L.consensus(states, self.cfg)
+            key = "consensus:%d" % ev["id"]
+            prev_level = self.store.kv_get(key)
+            if (prev_level is not None and prev_level != cons["level"]) or (prev_level is None and cons["level"] == "STRONG"):
+                if self._change(now, ev, ev["symbol"], "AGREEMENT_CHANGED", old=prev_level or "NONE_YET", new=cons["level"], detail={"majority": cons["majority"], "comparable": cons["comparable"]}, key_extra=iso(now)):
+                    stats["changes"] += 1
+                    stats["alerts"] += self._alerts_for(now, {"kind": "AGREEMENT_CHANGED", "old": prev_level or "NONE_YET", "new": cons["level"], "detail": {"majority": cons["majority"], "comparable": cons["comparable"]}}, ev)
+            if prev_level != cons["level"]:
+                self.store.kv_set(key, cons["level"])
+            days = (date.fromisoformat(ev["earnings_date"]) - today_et(now)).days
+            if days <= 1 and not any(s["status"] == "VALID" for s in states):
+                stats["alerts"] += A.enqueue(self.store, now, [A.missing_evidence(now, ev, None, "no model has a valid prediction for an event %s" % ("today" if days == 0 else "tomorrow"), self.cfg)], self.cfg)
+        return stats
+
+    # ------------------------------------------------------------ results and outcomes
+    def check_results(self, now: datetime) -> dict:
+        n_res = n_out = n_unv = 0
+        for ev in self.store.q("SELECT * FROM events WHERE status IN ('ACTIVE','REPORTED') AND outcome_at IS NULL AND earnings_date <= ?", (today_et(now).isoformat(),)):
+            if ev["reported_at"] is None or ev["status"] == "ACTIVE":
+                res = self.ad.result(ev["symbol"], ev["earnings_date"])
+                if res and res.get("published_at"):
+                    with self.store.tx() as c:
+                        self._touch_event(c, ev["id"], now, status="REPORTED", reported_at=res["published_at"])
+                    self._change(now, ev, ev["symbol"], "RESULT_PUBLISHED", new=res["published_at"])
+                    n_res += 1
+                    ev = self.event(ev["id"])
+            if ev["status"] == "REPORTED" or now >= outcome_ready_at(self.cfg, ev):
+                out = self.ad.outcome(ev["symbol"], ev["earnings_date"])
+                if out and out.get("move_pct") is not None:
+                    if out.get("verified") is False:                  # seen, but not trustworthy (for example a suspected split): recorded, never used for accuracy
+                        if self._change(now, ev, ev["symbol"], "OUTCOME_UNVERIFIED", new="%s%%" % out["move_pct"], detail=out, key_extra=out.get("move_pct")):
+                            n_unv += 1
+                        continue
+                    out = dict(out, verified=True)
+                    with self.store.tx() as c:
+                        self._touch_event(c, ev["id"], now, outcome_json=json.dumps(out, default=str), outcome_at=iso(now), status="REPORTED")
+                    self._change(now, ev, ev["symbol"], "OUTCOME_AVAILABLE", new="%s%%" % out["move_pct"], detail=out)
+                    n_out += 1
+        return {"results_published": n_res, "outcomes_available": n_out, "outcomes_unverified": n_unv}
+
+    # ------------------------------------------------------------ job handlers
+    def calendar_refresh(self, now: datetime) -> dict:
+        if self.access.state.mode == "REFRESH" and "calendar" in self.access.state.purposes:
+            rows = self.access.call("calendar", C.COST_CALENDAR_REFRESH, self.ad.refresh_calendar, purpose="calendar")
+            complete = True
+            known = self.store.q("SELECT COUNT(*) n FROM events WHERE status='ACTIVE'")[0]["n"]
+            if known >= 5 and len(rows) < 0.7 * known:                      # a half-answered calendar (one date failed) must never cancel events
+                complete = False
+                self.store.audit(now, "monitor", "CALENDAR_REFRESH_LOOKS_PARTIAL", {"rows": len(rows), "known_active": known})
+        else:
+            rows, complete = self.ad.calendar(), False
+        out = self.observe_calendar(rows, now, complete)
+        out["source"] = "provider_refresh" if complete else "cache"
+        return out
+
+    def eligibility_check(self, now: datetime) -> dict:
+        rows = self.ad.calendar()
+        obs = self.observe_calendar(rows, now, complete=False)          # picks up events that the caches show before the next calendar refresh
+        rec = self.recompute(now)
+        res = self.check_results(now)
+        return {"observed": obs, "recompute": rec, "results": res}
+
+    def earnings_day_check(self, now: datetime) -> dict:
+        refreshed = skipped = 0
+        for ev in self.store.q("SELECT * FROM events WHERE status='ACTIVE' AND earnings_date=?", (today_et(now).isoformat(),)):
+            if not in_session_window(self.cfg, now, ev):
+                continue
+            last = self.store.kv_get("refreshed:%d" % ev["id"])
+            if last and now - parse(last) < timedelta(minutes=self.cfg.day_refresh_min_age_min):
+                skipped += 1
+                continue
+            if self.access.state.mode == "REFRESH":
+                try:
+                    self.access.call("event", C.COST_EVENT_REFRESH, lambda s=ev["symbol"]: self.ad.refresh_event(s), purpose="event")
+                    self.store.kv_set("refreshed:%d" % ev["id"], iso(now))
+                    refreshed += 1
+                except ProviderBlocked as b:
+                    skipped += 1
+                    self.store.audit(now, "monitor", "REFRESH_BLOCKED", {"symbol": ev["symbol"], "reason": b.reason})
+        return {"refreshed": refreshed, "skipped": skipped, "recompute": self.recompute(now), "results": self.check_results(now)}
+
+    def outcome_verify(self, now: datetime, event_id: Optional[int] = None) -> dict:
+        ev = self.event(event_id) if event_id else None
+        if ev and now >= outcome_ready_at(self.cfg, ev) and self.access.state.mode == "REFRESH":
+            try:
+                self.access.call("outcome", C.COST_OUTCOME_VERIFY, lambda: self.ad.verify_outcome(ev["symbol"], ev["earnings_date"]), purpose="outcome")
+            except ProviderBlocked as b:
+                if b.reason.startswith(("CIRCUIT_BREAKER_OPEN", "DAILY_BUDGET_EXHAUSTED", "KILL_SWITCH")):
+                    raise
+                self.store.audit(now, "monitor", "OUTCOME_VERIFY_BLOCKED", {"symbol": ev["symbol"], "reason": b.reason})      # not approved / adapter declined: still read what the caches already hold
+        return self.check_results(now)
+
+    def smart_move_plan(self, now: datetime) -> dict:
+        """Offline: which Smart Move evidence the eligible events still need. Records a REQUEST for the separately authorised collector; sends nothing."""
+        evs = [e for e in self.store.q("SELECT * FROM events WHERE status='ACTIVE' ORDER BY earnings_date, symbol") if self.eligible(e, now)["eligible"]]
+        plan = self.ad.smart_move_plan(evs, now)
+        if plan is None:
+            return {"available": False, "reason": "Smart Move engine / evidence store not installed on this server"}
+        self.store.kv_set("smart_move:plan", dict(plan, planned_at=iso(now)))
+        self.store.audit(now, "monitor", "SMART_MOVE_PLAN", {k: plan.get(k) for k in ("symbols", "requests_needed", "funded", "unfunded")})
+        return dict(plan, available=True)
+
+    def alert_dispatch(self, now: datetime) -> dict:
+        return A.dispatch(self.store, now, self.sinks, self.cfg)

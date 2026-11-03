@@ -117,6 +117,16 @@ app.include_router(api_router)
 from smart_move_engine20_routes import router as _sm_engine20_router  # noqa: E402
 app.include_router(_sm_engine20_router)
 
+# Automatic earnings monitor: read-only API (behind the same session gate) and a scheduler that starts ONLY when EARNINGS_MONITOR_ENABLED=1 and does nothing without a valid owner approval file.
+from earnings_monitor.routes import router as _earnings_monitor_router  # noqa: E402
+app.include_router(_earnings_monitor_router)
+
+
+@_bg
+def _earnings_monitor_boot():
+    from earnings_monitor import runtime as _em_runtime
+    _em_runtime.start_if_enabled()
+
 # The app bundle is a megabyte of JavaScript and the JSON payloads are
 # repetitive; over the tunnel that is most of a slow first load.
 from fastapi.middleware.gzip import GZipMiddleware  # noqa: E402
