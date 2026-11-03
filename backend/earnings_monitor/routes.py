@@ -60,6 +60,48 @@ def status():
 
 
 SCOPES = ("all", "window", "outside", "withcall", "nocall")
+FORMULA_MODELS = [m for m in LABELS if m != "smart_move"]
+REASON_HELP = {
+    "OUTSIDE_MODEL_UNIVERSE": "The eight formula models scored other stocks but not this one: it is outside their stock universe (the most liquid names). No existing cache holds a prediction for it. Coverage can grow only by widening that universe in the application and fetching the evidence for these stocks (about 61 provider requests per stock, Stage D); no scoring formula changes.",
+    "CALENDAR_VENDORS_DISAGREE": "The two calendar vendors disagree about this report's date or session, so no prediction is made until they agree. A calendar refresh (Stage D) re-checks both.",
+    "SESSION_NOT_CONFIRMED": "The report time (before open or after close) is not confirmed, so no model is run for it.",
+    "ALL_CALLS_STALE": "Calls exist but are older than the freshness limit. The application's own warmers refresh them; nothing to do here.",
+    "MODEL_PENDING": "A model that covers this stock has not produced a call yet (it needs data).",
+    "MODELS_REPORT_LOW_DATA": "The models that cover this stock returned too little data to call.",
+    "SOURCE_NOT_AVAILABLE": "The models' scan caches are empty (just restarted or still warming). They refill on the application's own schedule.",
+    "NOT_YET_EVALUATED": "The monitor has not evaluated this event yet (it is new; the next scan does).",
+}
+
+
+def _why_no_call(ev: dict, states: dict) -> Optional[str]:
+    """The verified reason an in-window event has no fresh formula-model call, from the stored per-model state (None when it has one). Only reasons the stored facts support are returned."""
+    if ev.get("verification") == "CONFLICT":
+        return "CALENDAR_VENDORS_DISAGREE"
+    if ev.get("session") not in SESSIONS:
+        return "SESSION_NOT_CONFIRMED"
+    st = [states.get(m) for m in FORMULA_MODELS]
+    if any(x and x[0] == "VALID" and not x[1] for x in st):
+        return None
+    if any(x and x[0] == "VALID" for x in st):
+        return "ALL_CALLS_STALE"
+    present = [x[0] for x in st if x]
+    if not present:
+        return "NOT_YET_EVALUATED"
+    scored = [x for x in present if x != "ABSENT"]                                  # models whose scan exists
+    if not scored:
+        return "SOURCE_NOT_AVAILABLE"
+    if all(x == "NOT_COVERED" for x in scored):                                      # every existing scan scored other stocks but not this one
+        return "OUTSIDE_MODEL_UNIVERSE"
+    if "PENDING" in scored:
+        return "MODEL_PENDING"
+    if "INSUFFICIENT_DATA" in scored:
+        return "MODELS_REPORT_LOW_DATA"
+    return "MODEL_PENDING"
+    if "INSUFFICIENT_DATA" in present:
+        return "MODELS_REPORT_LOW_DATA"
+    if all(x in ("ABSENT", "NOT_COVERED") for x in present) and "ABSENT" in present:
+        return "SOURCE_NOT_AVAILABLE"
+    return "MODEL_PENDING"
 
 
 def _overview(s: Store, cfg, t: datetime, include_history: bool = False) -> dict:
@@ -67,13 +109,18 @@ def _overview(s: Store, cfg, t: datetime, include_history: bool = False) -> dict
     Upcoming page, the model grid, the Smart Money Move view and the verification script all share."""
     today = today_et(t)
     counts = {r["event_id"]: r for r in s.q("SELECT event_id, SUM(CASE WHEN status='VALID' THEN 1 ELSE 0 END) valid, SUM(CASE WHEN status='VALID' AND stale=0 THEN 1 ELSE 0 END) fresh FROM model_state GROUP BY event_id")}
+    states: dict = {}
+    for r in s.q("SELECT event_id, model, status, stale FROM model_state"):
+        states.setdefault(r["event_id"], {})[r["model"]] = (r["status"], bool(r["stale"]))
     evs = []
-    for e in s.q("SELECT id, symbol, earnings_date, status FROM events" + ("" if include_history else " WHERE status='ACTIVE'") + " ORDER BY earnings_date, symbol"):
+    for e in s.q("SELECT id, symbol, earnings_date, status, session, verification FROM events" + ("" if include_history else " WHERE status='ACTIVE'") + " ORDER BY earnings_date, symbol"):
         days = (date.fromisoformat(e["earnings_date"]) - today).days
         if not include_history and days > cfg.horizon_days:
             continue
         c = counts.get(e["id"]) or {}
-        evs.append({"id": e["id"], "date": e["earnings_date"], "days": days, "window": days <= cfg.model_window_days, "fresh": int(c.get("fresh") or 0), "valid": int(c.get("valid") or 0)})
+        win = days <= cfg.model_window_days
+        evs.append({"id": e["id"], "symbol": e["symbol"], "date": e["earnings_date"], "days": days, "window": win, "fresh": int(c.get("fresh") or 0), "valid": int(c.get("valid") or 0),
+                    "why": (_why_no_call(e, states.get(e["id"], {})) if win and not int(c.get("fresh") or 0) else None)})
     by_date: dict = {}
     for e in evs:
         d = by_date.setdefault(e["date"], {"date": e["date"], "events": 0, "in_window": 0, "with_fresh_call": 0})
@@ -81,7 +128,14 @@ def _overview(s: Store, cfg, t: datetime, include_history: bool = False) -> dict
         d["in_window"] += 1 if e["window"] else 0
         d["with_fresh_call"] += 1 if e["fresh"] else 0
     per_model = {r["model"]: r["n"] for r in s.q("SELECT m.model model, COUNT(*) n FROM model_state m JOIN events e ON e.id=m.event_id WHERE e.status='ACTIVE' AND m.status='VALID' AND m.stale=0 GROUP BY m.model")}
-    summary = {"events": len(evs), "dates": len(by_date), "in_window": sum(1 for e in evs if e["window"]), "outside_window": sum(1 for e in evs if not e["window"]),
+    why: dict = {}
+    for e in evs:
+        if e["why"]:
+            w = why.setdefault(e["why"], {"events": 0, "examples": []})
+            w["events"] += 1
+            if len(w["examples"]) < 12:
+                w["examples"].append(e["symbol"])
+    summary = {"no_call_reasons": why, "reason_help": {k: REASON_HELP[k] for k in why}, "events": len(evs), "dates": len(by_date), "in_window": sum(1 for e in evs if e["window"]), "outside_window": sum(1 for e in evs if not e["window"]),
                "with_fresh_call": sum(1 for e in evs if e["fresh"]), "in_window_without_call": sum(1 for e in evs if e["window"] and not e["fresh"]), "max_days_ahead": max([e["days"] for e in evs] or [0]),
                "fresh_calls_per_model": {m: per_model.get(m, 0) for m in LABELS}}
     return {"events": evs, "by_date": sorted(by_date.values(), key=lambda x: x["date"]), "summary": summary}
@@ -111,6 +165,7 @@ def upcoming(include_history: bool = False, limit: int = Query(200, ge=1, le=100
     ids, total = _select(ov, on, scope, limit, offset)
     byid = {r["id"]: r for r in s.q("SELECT * FROM events WHERE id IN (%s)" % ",".join(str(i) for i in ids))} if ids else {}
     rows = [byid[i] for i in ids if i in byid]
+    whymap = {e["id"]: e["why"] for e in ov["events"] if e["why"]}
     out = []
     for e in rows:
         days = (date.fromisoformat(e["earnings_date"]) - today_et(t)).days
@@ -131,7 +186,7 @@ def upcoming(include_history: bool = False, limit: int = Query(200, ge=1, le=100
         out.append({"id": e["id"], "symbol": e["symbol"], "company": e["company"], "earnings_date": e["earnings_date"], "session": e["session"], "status": e["status"], "days_to": days,
                     "verification": e["verification"], "last_verified": e.get("last_verified"), "out_of_window": days > cfg.model_window_days,
                     "sources": json.loads(e["sources"]) if e["sources"] else [], "eligible": not reasons, "ineligible_reasons": reasons, "first_seen": e["first_seen"],
-                    "last_seen": e["last_seen"], "last_changed": e["last_changed"], "latest_change": last, "versions": versions, "valid_predictions": valid, "fresh_predictions": fresh_models, "models_total": len(LABELS),
+                    "last_seen": e["last_seen"], "last_changed": e["last_changed"], "latest_change": last, "versions": versions, "valid_predictions": valid, "fresh_predictions": fresh_models, "models_total": len(LABELS), "no_call_reason": whymap.get(e["id"]),
                     "evidence_items": ev_info.get("n", 0), "last_evidence_at": ev_info.get("t"), "outcome": json.loads(e["outcome_json"]) if e["outcome_json"] else None})
     return dict({"status": "OK", "now": t.isoformat(), "rows": out, "count": len(out), "horizon_days": cfg.horizon_days, "model_window_days": cfg.model_window_days}, **_page_meta(ov, total, limit, offset, on, scope))
 

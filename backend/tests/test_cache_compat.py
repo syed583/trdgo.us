@@ -214,3 +214,17 @@ def test_a_calendar_read_asks_for_the_finviz_map_once_not_once_per_event(monkeyp
     rows = _prod().calendar()
     assert len([r for r in rows if r["source"] == "uw_calendar_cache"]) >= 200
     assert swr.calls["peek"].count("fviz:earn") == 1                                        # in production each extra peek is a database round trip plus a JSON parse
+
+
+def test_the_probe_tells_compatible_incompatible_no_samples_and_stale_apart(monkeypatch):
+    swr, lms = _fake_world(monkeypatch)
+    old = time.time() - 80 * 3600
+    swr._values["earn:equity:AAA"] = (old, swr._values["earn:equity:AAA"][1])                  # compatible but 80 hours old
+    swr._values["fviz:earn"] = (time.time(), {"AAA": {"date": "2026-11-12"}})                  # Finviz rows without a time field: samples exist and a field is missing
+    lms.cache._data.pop("uw:flowrecent:AAA:100")                                               # no flow samples at all
+    p = _prod().cache_probe()
+    assert p["earn_equity"]["status"] == "STALE" and p["earn_equity"]["compatible"] is True and p["earn_equity"]["newest_age_h"] > 79 and p["earn_equity"]["stale_after_h"] == 36.0
+    assert p["finviz_cache"]["status"] == "INCOMPATIBLE" and p["finviz_cache"]["missing_fields"] == ["time"]
+    assert p["uw_flow"]["status"] == "NO_SAMPLES" and p["uw_flow"]["missing_fields"] == [] and p["uw_flow"]["compatible"] is None           # never "missing fields" when there is no sample
+    assert p["uw_news"]["status"] == "COMPATIBLE" and p["uw_calendar"]["status"] == "COMPATIBLE"
+    assert "earn_equity" in p["stale_now"] and "uw_flow" in p["unverifiable_now"] and p["all_readers_compatible"] is False                  # the incompatible Finviz sample is the only thing found WRONG

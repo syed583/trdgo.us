@@ -287,3 +287,14 @@ test('every list shows the same scope summary, a market-date picker with per-dat
   assert.match(html, /Inside the eight-model window/);
   assert.match(html, /disabled=""[^>]*>Previous</);
 });
+
+test('the summary says WHY in-window events have no fresh call, and each row shows its own verified reason', () => {
+  const up = { status: 'OK', horizon_days: 30, model_window_days: 15, count: 2, total: 2, limit: 200, offset: 0, by_date: [], summary: { events: 2, dates: 1, in_window: 2, outside_window: 0, with_fresh_call: 0, in_window_without_call: 2, max_days_ahead: 3,
+      no_call_reasons: { OUTSIDE_MODEL_UNIVERSE: { events: 1, examples: ['ZZZ'] }, CALENDAR_VENDORS_DISAGREE: { events: 1, examples: ['YYY'] } }, reason_help: { OUTSIDE_MODEL_UNIVERSE: 'outside the stock universe', CALENDAR_VENDORS_DISAGREE: 'vendors disagree' } },
+    rows: [{ id: 1, symbol: 'ZZZ', company: 'Z', earnings_date: '2026-11-12', session: 'BMO', status: 'ACTIVE', days_to: 3, verification: 'CONFIRMED', out_of_window: false, eligible: true, ineligible_reasons: [], valid_predictions: 0, fresh_predictions: 0, models_total: 9, no_call_reason: 'OUTSIDE_MODEL_UNIVERSE', evidence_items: 0, latest_change: null, versions: [], sources: [], outcome: null },
+      { id: 2, symbol: 'YYY', company: 'Y', earnings_date: '2026-11-12', session: 'AMC', status: 'ACTIVE', days_to: 3, verification: 'CONFLICT', out_of_window: false, eligible: false, ineligible_reasons: ['CALENDAR_VENDORS_DISAGREE'], valid_predictions: 0, fresh_predictions: 0, models_total: 9, no_call_reason: 'CALENDAR_VENDORS_DISAGREE', evidence_items: 0, latest_change: null, versions: [], sources: [], outcome: null }] };
+  const html = panel({ emstatus: { data: on }, emupcoming: { data: up } });
+  assert.match(html, /Why 2 in-window event\(s\) have no fresh call: outside model universe 1 · calendar vendors disagree 1\./);
+  assert.match(html, /title="outside the stock universe">outside model universe</);
+  assert.match(html, /title="vendors disagree">calendar vendors disagree</);
+});

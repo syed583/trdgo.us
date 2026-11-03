@@ -105,15 +105,18 @@ if ($so.code -eq 200) {
 $cp = Get-Json '/api/earnings-monitor/cache-probe' $h
 if ($cp.code -eq 200 -and -not $cp.notJson) {
   $j = $cp.json
-  $wrong = @('uw_news', 'uw_flow', 'uw_calendar', 'earn_equity', 'finviz_cache' | Where-Object { $j.$_ -and [int]$j.$_.rows_sampled -gt 0 -and $j.$_.compatible -eq $false })
-  $nos = @('uw_news', 'uw_flow', 'uw_calendar', 'earn_equity', 'finviz_cache' | Where-Object { $j.$_ -and [int]$j.$_.rows_sampled -eq 0 })
-  if ($wrong.Count) { Say 'WARN' ("cache probe: {0} reader(s) found samples with a field missing: {1}. The monitor skips what it cannot read and never invents data." -f $wrong.Count, ($wrong -join ', ')) }
+  $names = 'uw_news', 'uw_flow', 'uw_calendar', 'earn_equity', 'finviz_cache'
+  $st = @{}; foreach ($k in $names) { $x = $j.$k; if ($x) { $st[$k] = $(if ($x.status) { [string]$x.status } elseif ([int]$x.rows_sampled -eq 0) { 'NO_SAMPLES' } elseif ($x.compatible -eq $false) { 'INCOMPATIBLE' } else { 'COMPATIBLE' }) } }
+  $bad = @($st.Keys | Where-Object { $st[$_] -eq 'INCOMPATIBLE' }); $stale = @($st.Keys | Where-Object { $st[$_] -eq 'STALE' }); $nos = @($st.Keys | Where-Object { $st[$_] -eq 'NO_SAMPLES' })
+  if ($bad.Count) { Say 'WARN' ("cache probe: {0} reader(s) found samples with a field missing: {1}. The monitor skips what it cannot read and never invents data." -f $bad.Count, ($bad -join ', ')) }
+  elseif ($stale.Count) { Say 'WARN' ("cache probe: shapes match, but these caches only hold OLD entries: {0}. The application's own warmers refresh them; nothing is wrong with the monitor." -f ($stale -join ', ')) }
   elseif ($nos.Count) { Say 'INFO' ("cache probe: nothing found WRONG; {0} cache(s) had no samples to judge yet: {1}" -f $nos.Count, ($nos -join ', ')) }
   else { Say 'PASS' 'cache probe: every reader matches the shapes in the live caches' }
-  # A cache that holds NO samples right now (for example just after a restart: the in-process caches are empty until the warmers refill them) cannot be judged; it is not the same as a wrong field.
-  foreach ($k in 'uw_news', 'uw_flow', 'uw_calendar', 'earn_equity', 'finviz_cache') { $x = $j.$k; if ($x) {
-    if ([int]$x.rows_sampled -eq 0) { Say 'INFO' ("probe {0}: NO SAMPLES in the cache right now, so compatibility cannot be judged (run again in 10 minutes)" -f $k) }
-    else { Say $(if ($x.compatible -eq $false) { 'WARN' } else { 'INFO' }) ("probe {0}: compatible={1} samples={2} missing fields=[{3}]" -f $k, $x.compatible, $x.rows_sampled, ((@($x.missing_fields)) -join ',')) } } }
+  # COMPATIBLE / INCOMPATIBLE / NO_SAMPLES (nothing to judge: never reported as a missing field) / STALE (shape fine, entries too old)
+  foreach ($k in $names) { $x = $j.$k; if ($x) {
+    if ($st[$k] -eq 'NO_SAMPLES') { Say 'INFO' ("probe {0}: NO SAMPLES in the cache right now, so compatibility cannot be judged (run again in 10 minutes)" -f $k) }
+    elseif ($st[$k] -eq 'STALE') { Say 'WARN' ("probe {0}: STALE - shape OK, newest entry {1} h old (limit {2} h), samples={3}" -f $k, $x.newest_age_h, $x.stale_after_h, $x.rows_sampled) }
+    else { Say $(if ($st[$k] -eq 'INCOMPATIBLE') { 'WARN' } else { 'INFO' }) ("probe {0}: {1} samples={2} missing fields=[{3}]" -f $k, $st[$k], $x.rows_sampled, ((@($x.missing_fields)) -join ',')) } } }
   if ($j.earn_equity -and $null -ne $j.earn_equity.symbols_sampled) { Say 'INFO' ("equity inputs: {0} of {1} sampled symbols found ({2} in process memory, {3} from the shared database tier)" -f $j.earn_equity.symbols_cached, $j.earn_equity.symbols_sampled, $j.earn_equity.symbols_in_process_memory, $j.earn_equity.symbols_from_database_tier) }
   if ($j.model_scan_caches) { Say 'INFO' ("model scan caches present: {0}; absent: {1}" -f ((@($j.model_scan_caches.present)) -join ','), ((@($j.model_scan_caches.absent)) -join ',')) }
   if ($j.uw_calendar) { Say 'INFO' ("30-day calendar cache: {0} of {1} weekday dates cached" -f $j.uw_calendar.dates_cached, $j.uw_calendar.dates_wanted) }

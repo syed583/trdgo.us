@@ -296,6 +296,7 @@ class ProdAdapters(Adapters):
         return items
 
     # ------------------------------------------------------------ read-only compatibility probe
+    STALE_H = {"model_scan_rows": 36.0, "equity_params": 36.0, "uw_news_rows": 12.0, "uw_flow_rows": 12.0, "uw_calendar_rows": 12.0, "finviz_rows": 24.0}      # freshness limit of each reader, in hours
     NEEDS = {"model_scan_rows": ("symbol", "signal", "score", "coverage", "date"), "uw_news_rows": ("headline", "created_at", "sentiment"),
              "uw_flow_rows": ("premium", "tags", "option_type"), "uw_calendar_rows": ("symbol", "report_time", "full_name"), "finviz_rows": ("date", "time"), "equity_params": ("name", "bias")}
 
@@ -311,16 +312,27 @@ class ProdAdapters(Adapters):
                         seen.setdefault(k, type(v).__name__)
             return seen
 
-        def check(name, rows):
+        def check(name, rows, ages=None):
+            """Four distinct answers: COMPATIBLE, INCOMPATIBLE (samples exist and a field is missing), NO_SAMPLES (nothing to judge: never reported as missing fields) and STALE (samples are compatible but all older than the
+            reader's freshness limit). `ages` are the ages in hours of the cache entries the sample came from."""
             fs = fields(rows)
             if not rows:                                           # an empty cache cannot be judged: after a restart the in-process caches are empty until the warmers refill them
                 return {"rows_sampled": 0, "fields": [], "missing_fields": [], "compatible": None, "status": "NO_SAMPLES"}
             missing = [k for k in self.NEEDS[name] if k not in fs]
-            return {"rows_sampled": min(len(rows), 25), "fields": sorted(fs), "missing_fields": missing, "compatible": not missing, "status": "COMPATIBLE" if not missing else "INCOMPATIBLE"}
+            res = {"rows_sampled": min(len(rows), 25), "fields": sorted(fs), "missing_fields": missing, "compatible": not missing, "status": "COMPATIBLE" if not missing else "INCOMPATIBLE"}
+            ages = [a for a in (ages or []) if a is not None]
+            if ages:
+                res["newest_age_h"], res["oldest_age_h"] = round(min(ages), 2), round(max(ages), 2)
+                if not missing and min(ages) > self.STALE_H[name]:
+                    res["status"] = "STALE"
+                    res["stale_after_h"] = self.STALE_H[name]
+            return res
+        _now = time.time()
+        _age = lambda ts: None if ts is None else max(0.0, (_now - float(ts)) / 3600.0)
         scans = {}
         try:
             for m, (res, held) in self._scans().items():
-                scans[m] = dict(check("model_scan_rows", res.get("rows") or []), rows=len(res.get("rows") or []), built_at=_iso(held))
+                scans[m] = dict(check("model_scan_rows", res.get("rows") or [], [_age(held)]), rows=len(res.get("rows") or []), built_at=_iso(held))
         except Exception as e:  # noqa: BLE001
             scans["error"] = type(e).__name__
         out["model_scan_caches"] = {"present": sorted(k for k in scans if k != "error"), "absent": sorted(m for m in MODEL_KEYS if m not in scans), "detail": scans}
@@ -333,21 +345,26 @@ class ProdAdapters(Adapters):
             in_memory = sum(1 for k, _ in eq if k in getattr(swr, "_values", {}))
             from . import evidence as EV
             mapped = sorted({EV.kind_of_param(str(p.get("name") or p.get("key") or "")) or "UNMAPPED:" + str(p.get("name") or p.get("key")) for p in params})
-            out["earn_equity"] = dict(check("equity_params", [dict(p, name=p.get("name") or p.get("key")) for p in params]), symbols_sampled=len(syms), symbols_cached=len(eq), symbols_in_process_memory=in_memory,
+            eq_ages = [_age(swr.held_at(k)) for k, _ in eq[:25]]
+            out["earn_equity"] = dict(check("equity_params", [dict(p, name=p.get("name") or p.get("key")) for p in params], eq_ages), symbols_sampled=len(syms), symbols_cached=len(eq), symbols_in_process_memory=in_memory,
                                       symbols_from_database_tier=len(eq) - in_memory, evidence_kinds_mapped=mapped)
             fv = swr.peek("fviz:earn")
-            out["finviz_cache"] = dict(check("finviz_rows", list(fv.values()) if isinstance(fv, dict) else []), symbols=len(fv) if isinstance(fv, dict) else 0, present=isinstance(fv, dict))
+            out["finviz_cache"] = dict(check("finviz_rows", list(fv.values()) if isinstance(fv, dict) else [], [_age(swr.held_at("fviz:earn"))]), symbols=len(fv) if isinstance(fv, dict) else 0, present=isinstance(fv, dict))
         except Exception as e:  # noqa: BLE001
             out["earn_equity"] = {"error": type(e).__name__}
         try:
             import unusualwhales_service as uw
             data = self._cache_snapshot()
-            news = [uw._rows(v[1]) for k, v in data.items() if k.startswith("uw:news:") and isinstance(v, tuple) and isinstance(v[1], dict) and v[1].get("status") == "OK"]
-            flow = [uw._rows(v[1]) for k, v in data.items() if k.startswith("uw:flowrecent:") and isinstance(v, tuple) and isinstance(v[1], dict) and v[1].get("status") == "OK"]
+            okv = lambda v: isinstance(v, tuple) and isinstance(v[1], dict) and v[1].get("status") == "OK"
+            news = [uw._rows(v[1]) for k, v in data.items() if k.startswith("uw:news:") and okv(v)]
+            flow = [uw._rows(v[1]) for k, v in data.items() if k.startswith("uw:flowrecent:") and okv(v)]
+            news_ages = [_age(v[0]) for k, v in data.items() if k.startswith("uw:news:") and okv(v)]
+            flow_ages = [_age(v[0]) for k, v in data.items() if k.startswith("uw:flowrecent:") and okv(v)]
+            cal_ages = [_age(data[k][0]) for k in data if k.startswith("uwcal:") and isinstance(data[k], tuple)]
             cal_keys = sorted(k for k in data if k.startswith("uwcal:"))
             cal_rows = [r for k in cal_keys for r in (uw._rows(data[k][1]) if isinstance(data[k], tuple) and isinstance(data[k][1], dict) else [])]
-            out["uw_news"] = dict(check("uw_news_rows", [r for rows in news for r in rows]), symbols_cached=len(news))
-            out["uw_flow"] = dict(check("uw_flow_rows", [r for rows in flow for r in rows]), symbols_cached=len(flow))
+            out["uw_news"] = dict(check("uw_news_rows", [r for rows in news for r in rows], news_ages), symbols_cached=len(news))
+            out["uw_flow"] = dict(check("uw_flow_rows", [r for rows in flow for r in rows], flow_ages), symbols_cached=len(flow))
             wanted = []
             d0 = self.clock().date()
             for off in range(0, self.calendar_days + 1):
@@ -355,11 +372,12 @@ class ProdAdapters(Adapters):
                 if d.weekday() < 5:
                     wanted.append(d.isoformat())
             have = {k.rsplit(":", 1)[1] for k in cal_keys}
-            out["uw_calendar"] = dict(check("uw_calendar_rows", cal_rows), dates_cached=len(have & set(wanted)), dates_wanted=len(wanted), dates_missing=sorted(set(wanted) - have)[:40])
+            out["uw_calendar"] = dict(check("uw_calendar_rows", cal_rows, cal_ages), dates_cached=len(have & set(wanted)), dates_wanted=len(wanted), dates_missing=sorted(set(wanted) - have)[:40])
         except Exception as e:  # noqa: BLE001
             out["uw_cache"] = {"error": type(e).__name__}
         out["smart_move"] = self.smart.status() if self.smart else {"engine_installed": False}
         out["all_readers_compatible"] = not any(v.get("compatible") is False for v in out.values() if isinstance(v, dict) and "compatible" in v)
+        out["stale_now"] = sorted(k for k, v in out.items() if isinstance(v, dict) and v.get("status") == "STALE")
         out["unverifiable_now"] = sorted(k for k, v in out.items() if isinstance(v, dict) and v.get("compatible") is None)             # no samples in the cache at this moment
         return out
 

@@ -93,6 +93,15 @@ def smart_move_window(now: datetime, rep: dict, cfg) -> Optional[dict]:
             "payload": {"rule": "SMART_MOVE_WINDOW", "model": "smart_move", "prediction_ts": None, "reason": "%d event(s) are inside the Smart Money Move prediction window with no result yet (%s); the first window closes at %s. After that no prediction is allowed." % (rep["open_without_result"], dates, rep["first_cutoff_utc"])}}
 
 
+def smart_move_missed(now: datetime, date_: str, n: int, reasons: dict, cfg) -> Optional[dict]:
+    """One digest per market date: events whose Smart Money Move prediction window closed with no result, and why."""
+    if not cfg.alert_rules.get("SMART_MOVE_WINDOW", {}).get("enabled", True) or n <= 0:
+        return None
+    why = ", ".join("%s %d" % (k, v) for k, v in sorted(reasons.items()))
+    return {"rule": "SMART_MOVE_WINDOW", "event_id": None, "symbol": None, "model": "smart_move", "dedupe_key": _key("SM_MISSED", date_, n),
+            "payload": {"rule": "SMART_MOVE_WINDOW", "model": "smart_move", "prediction_ts": None, "reason": "%d event(s) dated %s left their Smart Money Move prediction window with no result (%s). No prediction can be made for them any more." % (n, date_, why)}}
+
+
 def missing_evidence(now: datetime, event: dict, model: Optional[str], why: str, cfg) -> Optional[dict]:
     """At most one alert per event/model/day for evidence that is missing near the event."""
     if not cfg.alert_rules.get("STALE_OR_MISSING_EVIDENCE", {}).get("enabled", True):

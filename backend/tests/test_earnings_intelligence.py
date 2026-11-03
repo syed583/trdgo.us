@@ -592,3 +592,59 @@ def test_the_calendar_is_paged_by_market_date_and_scope_with_one_shared_overview
     p2 = c.get("/api/earnings-monitor/upcoming?limit=50&offset=50").json()
     assert p2["count"] == 50 and {r["id"] for r in p2["rows"]}.isdisjoint({r["id"] for r in up["rows"]})
     assert c.get("/api/earnings-monitor/upcoming?scope=bogus").status_code == 422 and c.get("/api/earnings-monitor/upcoming?date=nope").status_code == 422
+
+
+def test_each_in_window_event_without_a_call_gets_only_the_reason_the_stored_facts_support(tmp_path, monkeypatch):
+    from datetime import timedelta
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from earnings_monitor import calendar_us as CAL, routes
+    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path)
+    day = [clock().date() + timedelta(days=i) for i in range(1, 10) if CAL.is_trading_day(clock().date() + timedelta(days=i))][1].isoformat()
+    ad.cal = [{"symbol": "HASCALL", "date": day, "session": "BMO"}, {"symbol": "OUTSIDE", "date": day, "session": "BMO"}, {"symbol": "NOSESS", "date": day, "session": "UNKNOWN"},
+              {"symbol": "STALEX", "date": day, "session": "BMO"}, {"symbol": "PEND", "date": day, "session": "BMO"}, {"symbol": "CONF", "date": day, "session": "BMO", "sources": [{"vendor": "UW", "date": day, "session": "BMO"}, {"vendor": "FINVIZ", "date": "2099-01-01", "session": "BMO"}]}]
+    mon.observe_calendar(ad.cal, clock(), complete=False)
+    for m in ("claude", "grok"):
+        ad.set_model(m, "HASCALL", "BUY", clock(), score=60, coverage=0.9, event_date=day)
+        ad.set_model(m, "STALEX", "BUY", clock() - timedelta(hours=100), score=60, coverage=0.9, event_date=day)         # a call, but 100 hours old
+        ad.set_model(m, "PEND", "PENDING", clock(), event_date=day)                                                    # the model covers it but has not produced a call
+    mon.recompute(clock())
+    monkeypatch.setenv("EARNINGS_MONITOR_DIR", str(d))
+    monkeypatch.setattr(routes, "now", lambda: clock())
+    app = FastAPI()
+    app.include_router(routes.router)
+    j = TestClient(app).get("/api/earnings-monitor/upcoming?limit=1000").json()
+    why = {r["symbol"]: r["no_call_reason"] for r in j["rows"]}
+    assert why["HASCALL"] is None and why["OUTSIDE"] == "OUTSIDE_MODEL_UNIVERSE" and why["STALEX"] == "ALL_CALLS_STALE" and why["PEND"] == "MODEL_PENDING"
+    assert why["NOSESS"] == "SESSION_NOT_CONFIRMED" and why["CONF"] == "CALENDAR_VENDORS_DISAGREE"
+    s = j["summary"]
+    assert sum(v["events"] for v in s["no_call_reasons"].values()) == s["in_window_without_call"] == 5 and set(s["reason_help"]) == set(s["no_call_reasons"])
+    assert s["no_call_reasons"]["OUTSIDE_MODEL_UNIVERSE"]["examples"] == ["OUTSIDE"]
+
+
+def test_a_window_that_closes_without_a_result_is_recorded_once_with_the_engines_last_verdict_and_a_result_in_time_is_not_a_miss(tmp_path):
+    import json as _j
+    from datetime import timedelta
+    from earnings_monitor import calendar_us as CAL
+    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path)
+    day = [clock().date() + timedelta(days=i) for i in range(1, 10) if CAL.is_trading_day(clock().date() + timedelta(days=i))][1].isoformat()
+    ad.cal = [{"symbol": s, "date": day, "session": "BMO"} for s in ("AAA", "BBB", "CCC")]
+    mon.observe_calendar(ad.cal, clock(), complete=True)
+    cut = (clock() + timedelta(hours=5)).isoformat()
+    item = lambda sym, res: {"symbol": sym, "date": day, "cutoff": cut, "result": res}
+    ad.sm_win = {"as_of": clock().isoformat(), "open": 3, "open_without_result": 3, "first_cutoff_utc": cut, "missing_by_date": {day: 3}, "closed": 0,
+                 "open_missing_events": [item("AAA", "PENDING FINAL REFRESH"), item("BBB", "NO VALID PREDICTION"), item("CCC", "NO VALID PREDICTION")]}
+    mon.recompute(clock())
+    assert not store.q("SELECT 1 FROM changes WHERE kind='SMART_MOVE_WINDOW_MISSED'")
+    clock.advance(hours=6)
+    ad.set_model("smart_move", "BBB", "BUY", clock(), coverage="30/40", source="smart_move_engine", event_date=day)                 # BBB gained a real result before its window closed
+    ad.sm_win = dict(ad.sm_win, open=1, open_without_result=1, open_missing_events=[item("CCC", "NO VALID PREDICTION")])               # AAA left the window with nothing; CCC is still listed
+    mon.recompute(clock())
+    mon.recompute(clock())
+    ch = store.q("SELECT symbol, old_value, detail FROM changes WHERE kind='SMART_MOVE_WINDOW_MISSED'")
+    assert [c["symbol"] for c in ch] == ["AAA"] and _j.loads(ch[0]["detail"])["reason_code"] == "EVIDENCE_NOT_REFRESHED_BEFORE_CUTOFF" and ch[0]["old_value"] == "PENDING FINAL REFRESH"
+    assert len([r for r in store.q("SELECT payload FROM alerts") if "left their Smart Money Move prediction window" in r["payload"]]) == 1
+    clock.advance(hours=24)
+    ad.sm_win = dict(ad.sm_win, open=0, open_without_result=0, open_missing_events=[])                                                  # CCC leaves too, still without a result
+    mon.recompute(clock())
+    assert sorted(c["symbol"] for c in store.q("SELECT symbol FROM changes WHERE kind='SMART_MOVE_WINDOW_MISSED'")) == ["AAA", "CCC"]

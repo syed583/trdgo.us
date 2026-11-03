@@ -169,6 +169,7 @@ function Pager({ d, date, setDate, scope, setScope, page, setPage }: { d: any; d
   return (
     <div data-testid="pager">
       <div className="sm-q-muted" data-testid="scope-summary">{sm.events ?? 0} event(s) on {sm.dates ?? 0} market date(s), up to {sm.max_days_ahead ?? 0} days ahead · {sm.in_window ?? 0} inside the eight-model window ({sm.with_fresh_call ?? 0} with a fresh call, {sm.in_window_without_call ?? 0} without) · {sm.outside_window ?? 0} outside it, listed and never scored.
+        {sm.no_call_reasons && Object.keys(sm.no_call_reasons).length ? <span data-testid="why-no-call"> Why {sm.in_window_without_call ?? 0} in-window event(s) have no fresh call: {Object.entries(sm.no_call_reasons).map(([k, v]: any) => `${nice(k)} ${v.events}`).join(' · ')}.</span> : null}
         {sm.fresh_calls_per_model ? ` Fresh calls per model: ${Object.entries(sm.fresh_calls_per_model).map(([m, n]) => `${m} ${n}`).join(' · ')}.` : ''}</div>
       <div className="sm-filters">
         <select aria-label="Market date" value={date} onChange={(e) => { setDate(e.target.value); setPage(0); }}>
@@ -255,7 +256,7 @@ export default function EarningsMonitorPanel({ initialTab = 'upcoming' }: { init
                   <td><span className={`sm-q-badge ${VER_TONE[r.verification] || 'gray'}`} data-testid="verification">{nice(r.verification)}</span></td><td className="sm-q-muted">{r.last_verified ? fmtTime(r.last_verified) : 'never'}</td>
                   <td><span className={`sm-q-badge ${r.status === 'ACTIVE' ? 'green' : r.status === 'CANCELED' ? 'red' : 'gray'}`}>{r.status}</span></td>
                   <td>{r.eligible ? 'yes' : r.out_of_window ? <span className="sm-q-badge gray" data-testid="oow">outside {upcoming.data.model_window_days}-day model window</span> : <span className="sm-q-muted">{r.ineligible_reasons.map(nice).join(', ')}</span>}</td>
-                  <td data-testid="coverage">{r.out_of_window ? <span className="sm-q-muted">not scored yet</span> : <span className={`sm-q-badge ${r.fresh_predictions >= 7 ? 'green' : r.fresh_predictions >= 4 ? 'amber' : 'gray'}`}>{r.fresh_predictions ?? r.valid_predictions} of {r.models_total ?? 9}</span>}{r.valid_predictions > (r.fresh_predictions ?? r.valid_predictions) ? <div className="sm-q-muted">{r.valid_predictions - r.fresh_predictions} stale</div> : null}</td>
+                  <td data-testid="coverage">{r.out_of_window ? <span className="sm-q-muted">outside the model window</span> : r.no_call_reason && !(r.fresh_predictions > 0) ? <span className="sm-q-badge gray" title={upcoming.data?.summary?.reason_help?.[r.no_call_reason]}>{nice(r.no_call_reason)}</span> : <span className={`sm-q-badge ${r.fresh_predictions >= 7 ? 'green' : r.fresh_predictions >= 4 ? 'amber' : 'gray'}`}>{r.fresh_predictions ?? r.valid_predictions} of {r.models_total ?? 9}</span>}{r.valid_predictions > (r.fresh_predictions ?? r.valid_predictions) ? <div className="sm-q-muted">{r.valid_predictions - r.fresh_predictions} stale</div> : null}</td>
                   <td className="sm-q-muted" data-testid="evidence-fresh">{r.evidence_items ? `${r.evidence_items} item(s), newest ${fmtTime(r.last_evidence_at)}` : 'none stored'}</td>
                   <td>{r.latest_change ? `${nice(r.latest_change.kind)} · ${fmtTime(r.latest_change.detected_at)}` : '—'}</td>
                 </tr>

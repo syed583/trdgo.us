@@ -130,8 +130,10 @@ class SmartMoveSource:
         by_date: dict = {}
         for r in missing:
             by_date[str(r.get("event_date"))[:10]] = by_date.get(str(r.get("event_date"))[:10], 0) + 1
+        pending = [{"symbol": r["symbol"] if "symbol" in r else sym, "date": str(r.get("event_date"))[:10], "cutoff": str(r.get("window_cutoff_utc") or ""), "result": r.get("result")} for sym, r in self._rows.items()
+                   if r.get("window") == "OPEN" and r.get("result") not in ("BUY", "SELL", "NO TRADE (genuine)")]
         return {"as_of": self._meta.get("generated_at"), "open": len(open_rows), "open_without_result": len(missing), "first_cutoff_utc": cutoffs[0] if cutoffs else None, "missing_by_date": by_date,
-                "closed": sum(1 for r in self._rows.values() if r.get("window") == "CLOSED")}
+                "closed": sum(1 for r in self._rows.values() if r.get("window") == "CLOSED"), "open_missing_events": pending[:5000]}
 
     def coverage(self) -> Optional[dict]:
         """What the latest read covered (None when neither the engine nor a snapshot produced anything)."""

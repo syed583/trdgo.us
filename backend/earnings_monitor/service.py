@@ -293,6 +293,8 @@ class Monitor:
             self.store.kv_set("smd:coverage", cov)
         wrep = self.ad.smart_move_windows()
         if wrep is not None:
+            full_wrep = wrep
+            wrep = {k: v for k, v in wrep.items() if k != "open_missing_events"}                       # the per-event list is kept separately, not in the page payload
             self.store.kv_set("smd:windows", wrep)
             try:
                 closes_in = (parse(wrep["first_cutoff_utc"]) - now).total_seconds() / 3600 if wrep.get("first_cutoff_utc") else None
@@ -313,7 +315,33 @@ class Monitor:
             stats["events"] += 1
             with self.store.tx():                                       # everything for one event is ONE commit
                 self._recompute_event(ev, now, models, mstate, lastp, stats)
+        if event_id is None and wrep is not None:                       # after the states are updated: an event that gained a result in this read is not "missed"
+            self._record_missed_windows(now, full_wrep, stats)
         return stats
+
+    MISSED_REASON = {"PENDING FINAL REFRESH": "EVIDENCE_NOT_REFRESHED_BEFORE_CUTOFF", "NO VALID PREDICTION": "EVIDENCE_MISSING_OR_INSUFFICIENT"}
+
+    def _record_missed_windows(self, now: datetime, wrep: dict, stats: dict) -> None:
+        """An event that was inside its prediction window WITHOUT a result at the previous read and is not any more, without having gained a result, missed its window for good. Recorded once, append-only, with the last
+        verdict the engine gave as the reason. The engine's own rows decide: nothing is inferred from dates."""
+        cur = {(x["symbol"], x["date"]): x for x in (wrep.get("open_missing_events") or [])}
+        prev = {tuple(k.split("|", 1)): v for k, v in (self.store.kv_get("smd:open_missing") or {}).items()}
+        missed: dict = {}
+        for key, old in prev.items():
+            if key in cur:
+                continue
+            ev = self.store.one("SELECT * FROM events WHERE symbol=? AND earnings_date=? ORDER BY id DESC", key)
+            ms = self.store.one("SELECT status, signal FROM model_state WHERE event_id=? AND model='smart_move'", (ev["id"],)) if ev else None
+            if ms and ms["status"] == "VALID":                                                          # it gained a result in time: not missed
+                continue
+            reason = self.MISSED_REASON.get(old.get("result"), "NO_RESULT_BEFORE_CLOSE")
+            if ev and self._change(now, ev, key[0], "SMART_MOVE_WINDOW_MISSED", model="smart_move", old=old.get("result"), new="WINDOW_CLOSED", detail={"reason_code": reason, "cutoff": old.get("cutoff"), "event_date": key[1]}, key_extra=old.get("cutoff")):
+                missed.setdefault(key[1], {}).setdefault(reason, 0)
+                missed[key[1]][reason] += 1
+        for dte, reasons in missed.items():
+            stats["alerts"] += A.enqueue(self.store, now, [A.smart_move_missed(now, dte, sum(reasons.values()), reasons, self.cfg)], self.cfg)
+            stats["changes"] += sum(reasons.values())
+        self.store.kv_set("smd:open_missing", {"%s|%s" % k: {"cutoff": v.get("cutoff"), "result": v.get("result")} for k, v in cur.items()})
 
     def _recompute_event(self, ev: dict, now: datetime, models: dict, mstate: dict, lastp: dict, stats: dict):
         if True:
