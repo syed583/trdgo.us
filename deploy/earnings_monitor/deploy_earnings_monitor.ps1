@@ -6,7 +6,8 @@
     .\deploy_earnings_monitor.ps1 -Action Deploy    -Package $PWD.Path -ManifestSha256 <sha256 of MANIFEST.sha256>      backup, install, restart, health checks; rolls back by itself on ANY failure
     .\deploy_earnings_monitor.ps1 -Action Update    -Package $PWD.Path -ManifestSha256 <sha256 of MANIFEST.sha256>      replaces the monitor's code and the frontend of an ALREADY installed monitor; main.py and .env are not touched,
                                                                                                                          the scheduler mode (OFF or CACHE_ONLY) must be the same afterwards; rolls back by itself on ANY failure
-    .\deploy_earnings_monitor.ps1 -Action Rollback  -Package $PWD.Path -BackupDir <dir>                                  manual rollback from the backup folder Deploy / Update printed
+    .\deploy_earnings_monitor.ps1 -Action Rollback  -Package $PWD.Path                                                   manual rollback of the LAST recorded install, using only the backup path recorded in monitor_install_record.json
+                                                                                                                         (-BackupDir may be given, but must be exactly the recorded path; a backup from before the record existed needs -AcceptUnrecordedBackup)
 
   Always pass -Package explicitly (PowerShell does not fill $PSScriptRoot in a param default when started with -File).
   Test switches (offline rehearsal only): -NoRestart -NoHealth -SimulateHealthFailure -SkipManifestAnchor
@@ -21,6 +22,7 @@ param(
   [string]$Service = 'USStockReader',
   [int]$Port = 8000,
   [string]$BackupDir = '',
+  [switch]$AcceptUnrecordedBackup,
   [switch]$NoRestart,
   [switch]$NoHealth,
   [switch]$SimulateHealthFailure
@@ -142,6 +144,58 @@ function Invoke-Preflight {
   Log 'PREFLIGHT OK'
 }
 
+$RecordPath = Join-Path $App 'monitor_install_record.json'
+function Get-StateDigest {
+  # one digest of what is installed: main.py, every monitor code file, every frontend file (so a rollback can tell whether the server is still exactly as the recorded install left it)
+  $lines = @()
+  foreach ($f in @($MainPy) + @(Get-ChildItem -LiteralPath (Join-Path $Backend $PkgMod) -Recurse -File -Filter '*.py') + @(Get-ChildItem -LiteralPath $Dist -Recurse -File)) {
+    $full = if ($f -is [string]) { $f } else { $f.FullName }
+    $lines += ("{0}:{1}" -f $full.Substring($App.Length), (ShaLf $full))
+  }
+  $bytes = [Text.Encoding]::UTF8.GetBytes((($lines | Sort-Object) -join "`n"))
+  return ([BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($bytes)) -replace '-', '').ToLower()
+}
+function Write-BackupManifest([string]$bk) {
+  # every file in the backup with its SHA-256, written INTO the backup, so a rollback can prove the backup is intact before it restores anything
+  $rows = foreach ($f in Get-ChildItem -LiteralPath $bk -Recurse -File | Where-Object { $_.Name -ne 'backup_manifest.json' }) { [pscustomobject]@{ path = $f.FullName.Substring($bk.Length); sha256 = (Sha $f.FullName) } }
+  @($rows) | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $bk 'backup_manifest.json') -Encoding ascii
+}
+function Test-BackupManifest([string]$bk) {
+  $m = Join-Path $bk 'backup_manifest.json'
+  if (-not (Test-Path -LiteralPath $m)) { return $false }
+  $entries = Get-Content -LiteralPath $m -Raw | ConvertFrom-Json
+  foreach ($r in @($entries)) {
+    $f = $bk + $r.path
+    if (-not (Test-Path -LiteralPath $f) -or (Sha $f) -ne $r.sha256) { Log ("backup file missing or changed: " + $r.path); return $false }
+  }
+  return $true
+}
+function Write-InstallRecord([string]$bk, [string]$kind) {
+  $hist = @(); if (Test-Path -LiteralPath $RecordPath) { $old = Get-Content -LiteralPath $RecordPath -Raw | ConvertFrom-Json; $hist = @($old.history) + @($old.last) }
+  $last = [pscustomobject]@{ action = $kind; at_utc = (Get-Date).ToUniversalTime().ToString('o'); release_manifest_sha256 = (Sha (Join-Path $Package 'MANIFEST.sha256')); backup_path = $bk
+                             backup_manifest_sha256 = (Sha (Join-Path $bk 'backup_manifest.json')); installed_state_digest = (Get-StateDigest) }
+  [pscustomobject]@{ last = $last; history = @($hist | Where-Object { $_ }) } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $RecordPath -Encoding ascii
+  Log "install recorded in $RecordPath (backup $bk)"
+}
+function Invoke-RecordedRollback([string]$given) {
+  # the manual rollback: only the backup of the last RECORDED install, only if it is intact and the server is still exactly as that install left it
+  if (-not (Test-Path -LiteralPath $RecordPath)) {
+    if ($given -and $AcceptUnrecordedBackup) { Log 'no install record: using the backup you named because -AcceptUnrecordedBackup was given'; Invoke-Rollback $given; return }
+    throw 'no monitor_install_record.json: nothing was installed with this script version. To use an older backup, name it with -BackupDir AND add -AcceptUnrecordedBackup.'
+  }
+  $rec = (Get-Content -LiteralPath $RecordPath -Raw | ConvertFrom-Json).last
+  if (-not $rec) { throw 'the last recorded install has already been rolled back: there is nothing to roll back' }
+  if ($given -and ($given.TrimEnd('\') -ne $rec.backup_path.TrimEnd('\'))) { throw ("-BackupDir is not the recorded backup. Recorded: {0}  Given: {1}" -f $rec.backup_path, $given) }
+  if (-not (Test-Path -LiteralPath $rec.backup_path)) { throw "recorded backup folder not found: $($rec.backup_path)" }
+  if (-not (Test-BackupManifest $rec.backup_path)) { throw 'the recorded backup is not intact: stopping, nothing was changed' }
+  if ((Sha (Join-Path $rec.backup_path 'backup_manifest.json')) -ne $rec.backup_manifest_sha256) { throw 'the backup manifest differs from the one recorded at install time: stopping' }
+  $now = Get-StateDigest
+  if ($now -ne $rec.installed_state_digest) { throw 'the installed files are not exactly what the recorded install left (something changed since): stopping, nothing was changed. Investigate before any rollback.' }
+  Log ("rolling back the install recorded at {0} (release manifest {1})" -f $rec.at_utc, $rec.release_manifest_sha256)
+  Invoke-Rollback $rec.backup_path
+  $hist = @((Get-Content -LiteralPath $RecordPath -Raw | ConvertFrom-Json).history)
+  [pscustomobject]@{ last = $null; history = @($hist + $rec | Where-Object { $_ }); rolled_back_at_utc = (Get-Date).ToUniversalTime().ToString('o'); rolled_back_backup = $rec.backup_path } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $RecordPath -Encoding ascii
+}
 function Invoke-Rollback([string]$bk) {
   Log "ROLLBACK from $bk"
   if (-not (Test-Path $bk)) { throw "backup folder not found: $bk" }
@@ -175,6 +229,8 @@ function Invoke-Deploy {
     Log 'frontend\dist swapped (the old one is in the backup)'
     Restart-Svc
     if (-not $NoHealth) { Test-Health $true }
+    Write-BackupManifest $bk
+    Write-InstallRecord $bk 'Deploy'
     Log "DEPLOY OK. Backup kept at $bk (delete it only after you are satisfied). The monitor is installed but OFF."
   } catch {
     $why = $_.Exception.Message
@@ -222,7 +278,9 @@ function Invoke-Update {
       if ($modeAfter -ne $modeBefore) { throw "the scheduler mode changed from $modeBefore to $modeAfter" }
       Log "monitor still reports scheduling $modeAfter"
     }
-    Log "UPDATE OK. Backup kept at $bk (delete it only after you are satisfied)."
+    Write-BackupManifest $bk
+    Write-InstallRecord $bk 'Update'
+    Log "UPDATE OK. Backup kept at $bk (delete it only after you are satisfied). A manual rollback needs no path: it uses the recorded one."
   } catch {
     $why = $_.Exception.Message
     Log "FAILURE: $why  -> rolling back automatically"
@@ -235,5 +293,5 @@ switch ($Action) {
   'Preflight' { Invoke-Preflight }
   'Update'    { Invoke-Update }
   'Deploy'    { Invoke-Deploy }
-  'Rollback'  { if (-not $BackupDir) { throw '-BackupDir is required' }; Invoke-Rollback $BackupDir }
+  'Rollback'  { Invoke-RecordedRollback $BackupDir }
 }

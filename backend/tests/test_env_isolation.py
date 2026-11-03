@@ -66,9 +66,10 @@ def test_every_protected_table_is_rewritten_in_every_statement_form():
             assert not re.search(rf"(?<![A-Za-z0-9_]){t}(?![A-Za-z0-9_])", out), (t, f, out)
 
 
-# (ORM tables the test schema already created with real columns -- score_snapshots, trade_calls --
-# are covered by the pure rewrite test above; these four are created from scratch here.)
-@pytest.mark.parametrize("table", ["demo_trades", "model_predictions", "earnings_signal_snapshots", "ped_scores"])
+# (ORM tables the test schema already created with real columns -- score_snapshots, trade_calls and, since
+# models_demo_trades.py, demo_trades -- are covered by the pure rewrite test above: an ORM table already exists in
+# its twin with its real columns, so a probe row with a made-up column cannot be inserted. These three are created from scratch here.)
+@pytest.mark.parametrize("table", ["model_predictions", "earnings_signal_snapshots", "ped_scores"])
 def test_a_local_write_lands_in_the_twin_never_in_the_real_table(table):
     """Executes real statements through the app's engine: the real table must never appear."""
     from sqlalchemy import text
