@@ -139,6 +139,8 @@ def display_status(state: dict) -> str:
         return "NO_TRADE" if sig == "NO_TRADE" else sig
     if st == "OUT_OF_WINDOW":
         return "OUT_OF_WINDOW"
+    if st == "NOT_COVERED":
+        return "NOT_COVERED"
     if st == "PENDING":
         return "PENDING"
     if st == "INSUFFICIENT_DATA":

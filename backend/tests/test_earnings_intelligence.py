@@ -503,3 +503,58 @@ def test_a_result_for_one_report_date_is_never_attached_to_an_event_of_another_d
     # and the correct pairing still works
     ccc = store.one("SELECT id FROM events WHERE symbol='CCC'")
     assert store.one("SELECT signal FROM predictions WHERE event_id=? AND model='smart_move'", (ccc["id"],))["signal"] == "BUY"
+
+
+def test_smart_money_move_window_watch_alerts_once_before_a_window_closes_and_never_guesses_without_the_engine(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from earnings_monitor import routes
+    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path)
+    ad.cal = [{"symbol": "AAA", "date": "2026-11-12", "session": "BMO"}]
+    mon.observe_calendar(ad.cal, clock(), complete=True)
+    mon.recompute(clock())
+    assert store.kv_get("smd:windows") is None and not [r for r in store.q("SELECT rule FROM alerts") if r["rule"] == "SMART_MOVE_WINDOW"]       # no live engine: nothing is guessed, nothing alerted
+    far = (clock() + timedelta(hours=20)).isoformat()
+    ad.sm_win = {"as_of": clock().isoformat(), "open": 40, "open_without_result": 25, "first_cutoff_utc": far, "missing_by_date": {"2026-11-12": 25}, "closed": 100}
+    mon.recompute(clock())
+    assert not [r for r in store.q("SELECT rule FROM alerts") if r["rule"] == "SMART_MOVE_WINDOW"]                                              # the window is 20 h from closing: too early to alert
+    soon = (clock() + timedelta(hours=3)).isoformat()
+    ad.sm_win = dict(ad.sm_win, first_cutoff_utc=soon)
+    mon.recompute(clock())
+    mon.recompute(clock())
+    alerts = [r for r in store.q("SELECT payload FROM alerts") if "SMART_MOVE_WINDOW" in r["payload"]]
+    assert len(alerts) == 1 and "25 event(s) are inside the Smart Money Move prediction window" in alerts[0]["payload"] and "After that no prediction is allowed" in alerts[0]["payload"]
+    monkeypatch.setenv("EARNINGS_MONITOR_DIR", str(d))
+    monkeypatch.setattr(routes, "now", lambda: clock())
+    app = FastAPI()
+    app.include_router(routes.router)
+    assert TestClient(app).get("/api/earnings-monitor/smart-move").json()["windows"]["open_without_result"] == 25
+
+
+def test_the_engine_window_report_comes_from_the_engines_own_rows():
+    from earnings_monitor.smart_move import SmartMoveSource
+    src = SmartMoveSource()
+    assert src.window_report() is None
+    src._meta = {"source": "HISTORICAL_SNAPSHOT"}
+    assert src.window_report() is None                                                             # a snapshot says nothing about windows
+    src._meta = {"source": "LIVE_ENGINE", "generated_at": "2026-11-03T08:00:00+00:00"}
+    src._rows = {"A": {"window": "OPEN", "result": "BUY", "event_date": "2026-11-04", "window_cutoff_utc": "2026-11-03T12:00:00+00:00"},
+                 "B": {"window": "OPEN", "result": "PENDING FINAL REFRESH", "event_date": "2026-11-04", "window_cutoff_utc": "2026-11-03T12:00:00+00:00"},
+                 "C": {"window": "OPEN", "result": "NO VALID PREDICTION", "event_date": "2026-11-05", "window_cutoff_utc": "2026-11-04T12:00:00+00:00"},
+                 "D": {"window": "CLOSED", "result": "NO VALID PREDICTION", "event_date": "2026-11-03"}}
+    r = src.window_report()
+    assert r["open"] == 3 and r["open_without_result"] == 2 and r["first_cutoff_utc"] == "2026-11-03T12:00:00+00:00" and r["missing_by_date"] == {"2026-11-04": 1, "2026-11-05": 1} and r["closed"] == 1
+
+
+def test_a_stock_outside_a_models_universe_is_not_scored_rather_than_pending(tmp_path):
+    from earnings_monitor import logic as L
+    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path)
+    ad.cal = [{"symbol": "AAA", "date": "2026-11-12", "session": "BMO"}, {"symbol": "BBB", "date": "2026-11-12", "session": "BMO"}]
+    mon.observe_calendar(ad.cal, clock(), complete=True)
+    ad.set_model("claude", "AAA", "BUY", clock(), score=70, coverage=0.9, event_date="2026-11-12")              # Claude scored AAA but has no row for BBB; Grok has no scan at all
+    mon.recompute(clock())
+    st = {(r["symbol"], r["model"]): r["status"] for r in store.q("SELECT e.symbol, m.model, m.status FROM model_state m JOIN events e ON e.id=m.event_id")}
+    assert st[("AAA", "claude")] == "VALID" and st[("BBB", "claude")] == "NOT_COVERED" and st[("BBB", "grok")] == "ABSENT"
+    assert L.display_status({"status": "NOT_COVERED"}) == "NOT_COVERED" and L.display_status({"status": "ABSENT"}) == "PENDING"
+    assert not store.q("SELECT 1 FROM predictions WHERE model='claude' AND event_id=(SELECT id FROM events WHERE symbol='BBB')")       # nothing manufactured

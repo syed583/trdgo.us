@@ -77,7 +77,10 @@ def test_the_flow_readers_rely_on_the_applications_own_proven_print_parser():
 def _fake_world(monkeypatch, *, news_fields=None, with_flow=True):
     swr = types.ModuleType("swr")
     swr._values = {}
-    swr.peek = lambda key: swr._values.get(key, (0, None))[1]
+    swr._db = {}                                                  # the shared database tier: survives a restart, the in-process dict does not
+    swr.calls = {"peek": [], "peek_many": []}
+    swr.peek = lambda key: swr.calls["peek"].append(key) or swr._values.get(key, (0, None))[1] or (swr._db.get(key) or (0, None))[1]
+    swr.peek_many = lambda keys: swr.calls["peek_many"].append(list(keys)) or {k: (swr._values.get(k) or swr._db.get(k) or (0, None))[1] for k in keys if (swr._values.get(k) or swr._db.get(k))}
     swr.held_at = lambda key: swr._values.get(key, (None, None))[0]
     lms = types.ModuleType("live_market_service")
     lms.cache = types.SimpleNamespace(_data={})
@@ -149,3 +152,55 @@ def test_end_to_end_with_the_production_adapter_a_changed_validated_input_recomp
     assert store.q("SELECT COUNT(*) n FROM predictions WHERE model <> 'claude'")[0]["n"] == 0             # nothing fabricated for models with no cached call
     news_changes = [json.loads(c["detail"]) for c in store.q("SELECT detail FROM changes WHERE kind IN ('EVIDENCE_NEW','EVIDENCE_CHANGED')")]
     assert any(c["kind"] == "NEWS" and c["changes_a_score"] is False for c in news_changes)               # the headline never moved a score
+
+
+def _prod(monkeypatch=None):
+    from earnings_monitor.adapters import ProdAdapters
+    return ProdAdapters(smart_move=SmartMoveSource(), session_factory=lambda: (_ for _ in ()).throw(RuntimeError("no db")), clock=lambda: datetime(2026, 11, 9, 13, 0, tzinfo=UTC))
+
+
+def test_after_a_restart_the_probe_and_the_evidence_reader_still_see_the_inputs_held_in_the_database_tier(monkeypatch):
+    swr, lms = _fake_world(monkeypatch)
+    entry = swr._values.pop("earn:equity:AAA")                    # the restart wiped the in-process cache ...
+    swr._db["earn:equity:AAA"] = entry                            # ... but the shared database tier still holds the answer
+    ad = _prod()
+    p = ad.cache_probe()["earn_equity"]
+    assert p["compatible"] is True and p["status"] == "COMPATIBLE" and p["symbols_cached"] == 1 and p["symbols_in_process_memory"] == 0 and p["symbols_from_database_tier"] == 1
+    assert [i["ext_id"] for i in ad.evidence("AAA", "2026-11-12") if i["kind"] == "ESTIMATES"] == ["eps_estimates"]
+
+
+def test_an_empty_cache_is_reported_as_no_samples_not_as_incompatible(monkeypatch):
+    swr, lms = _fake_world(monkeypatch)
+    swr._values.pop("earn:equity:AAA")
+    p = _prod().cache_probe()
+    assert p["earn_equity"]["compatible"] is None and p["earn_equity"]["status"] == "NO_SAMPLES" and p["earn_equity"]["missing_fields"] == []
+    assert "earn_equity" in p["unverifiable_now"] and p["all_readers_compatible"] is True              # nothing was found WRONG; one thing could not be judged yet
+
+
+def test_the_real_parameter_payload_of_the_equity_engine_matches_what_the_readers_expect(monkeypatch):
+    import earnings_engine as eng
+    swr, lms = _fake_world(monkeypatch)
+    real = [eng.Param("eps_estimates", "EPS", 16, 0.4).as_dict(), eng.Param("options_combined", "Options", 12, -0.2).as_dict(), eng.Param("calendar_timing", "Timing", 2, None).as_dict()]
+    swr._values["earn:equity:AAA"] = (time.time(), {"params": real})
+    ad = _prod()
+    p = ad.cache_probe()["earn_equity"]
+    assert p["compatible"] is True and {"name", "bias", "weight"} <= set(p["fields"]) and "ESTIMATES" in p["evidence_kinds_mapped"] and "OPTIONS_FLOW" in p["evidence_kinds_mapped"]
+    kinds = {i["kind"] for i in ad.evidence("AAA", "2026-11-12")}
+    assert {"ESTIMATES", "OPTIONS_FLOW"} <= kinds                                                       # an input with no data (bias None) produces no evidence item
+
+
+def test_an_evidence_scan_reads_the_equity_inputs_in_one_batch_not_one_database_trip_per_symbol(tmp_path, monkeypatch):
+    swr, lms = _fake_world(monkeypatch)
+    from earnings_monitor.sim import Clock, build_sim, write_approval
+    clock = Clock(datetime(2026, 11, 9, 13, 0, tzinfo=UTC))
+    d = tmp_path / "em"
+    d.mkdir()
+    write_approval(d, clock(), mode="cache_only", days=14)
+    ad = _prod()
+    ad.model_sources = lambda: {}
+    store, cfg, _, mon, sched, access = build_sim(d, clock, adapters=ad)
+    mon.eligibility_check(clock())
+    swr.calls["peek"].clear()
+    swr.calls["peek_many"].clear()
+    mon.evidence_scan(clock())
+    assert len(swr.calls["peek_many"]) == 1 and not [k for k in swr.calls["peek"] if k.startswith("earn:equity:")]

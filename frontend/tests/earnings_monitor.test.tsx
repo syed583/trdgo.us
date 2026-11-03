@@ -261,3 +261,15 @@ test('the nine-model grid shows NO PREDICTION AVAILABLE and its reason for Smart
   assert.match(html, /data-testid="cell-reason"[^>]*>Less than 24 hours/);
   assert.match(html, /data-call="no"/);
 });
+
+test('Smart Money Move shows the prediction-window watch from the live engine, and says plainly when it cannot be read', () => {
+  const base = { status: 'OK', engine: { model_version: 'score40-v1', how_predictions_arise: 'x' }, counts: {}, note: 'n', rows: [] };
+  const live = panel({ emstatus: { data: on }, emsmart: { data: { ...base, windows: { as_of: '2026-11-03T08:00:00+00:00', open: 40, open_without_result: 25, first_cutoff_utc: '2026-11-03T12:00:00+00:00', missing_by_date: { '2026-11-04': 25 } } } } }, 'smart');
+  assert.match(live, /data-testid="sm-windows"[^>]*role="alert"/);
+  assert.match(live, /40 event\(s\) inside the window now, 25 still without a result/);
+  assert.match(live, /after that no prediction is allowed/);
+  assert.match(live, /missing by date: 2026-11-04 25/);
+  const none = panel({ emstatus: { data: on }, emsmart: { data: base } }, 'smart');
+  assert.match(none, /data-testid="sm-windows-na"/);
+  assert.match(none, /so they are not guessed/);
+});

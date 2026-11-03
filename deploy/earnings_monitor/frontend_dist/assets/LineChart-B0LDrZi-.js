@@ -1,0 +1,1 @@
+import{f as e,l as t}from"./jsx-runtime-C1hmh-FA.js";import{Q as n,t as r}from"./CartesianChart-BoLUxKC6.js";var i=e(t()),a=[`axis`],o=(0,i.forwardRef)((e,t)=>i.createElement(r,{chartName:`LineChart`,defaultTooltipEventType:`axis`,validateTooltipEventTypes:a,tooltipPayloadSearcher:n,categoricalChartProps:e,ref:t}));export{o as t};

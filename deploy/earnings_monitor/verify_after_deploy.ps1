@@ -20,8 +20,13 @@ $m = Select-String -Path $EnvFile -Pattern '^\s*ACCESS_PASSWORD\s*=(.*)$' | Sele
 if (-not $m) { throw 'ACCESS_PASSWORD not found in .env' }
 $pw = $m.Matches[0].Groups[1].Value.Trim().Trim([char]34).Trim([char]39); $h = @{ Authorization = "Bearer $pw" }
 function Get-Json([string]$path, $headers) {
-  try { $r = Invoke-WebRequest -UseBasicParsing -Uri ("http://127.0.0.1:$Port" + $path) -Headers $headers -TimeoutSec 60; return @{ code = [int]$r.StatusCode; json = (ConvertFrom-Json $r.Content) } }
-  catch { if ($_.Exception.Response) { return @{ code = [int]$_.Exception.Response.StatusCode.value__; json = $null } } else { throw } }
+  # The application answers ANY unknown path with its web page (HTTP 200, text/html). A reply that is not JSON is therefore reported as "not data", never parsed.
+  try {
+    $r = Invoke-WebRequest -UseBasicParsing -Uri ("http://127.0.0.1:$Port" + $path) -Headers $headers -TimeoutSec 60
+    $ct = [string]$r.Headers['Content-Type']
+    if ($ct -notmatch 'json') { Write-Host ("DIAG  {0} -> HTTP {1}, content-type '{2}', not JSON (the route is not part of the installed version, or the server returned its web page)" -f $path, [int]$r.StatusCode, $ct); return @{ code = [int]$r.StatusCode; json = $null; notJson = $true; ctype = $ct } }
+    try { return @{ code = [int]$r.StatusCode; json = (ConvertFrom-Json $r.Content); notJson = $false; ctype = $ct } } catch { Write-Host ("DIAG  {0} -> HTTP {1}, content-type '{2}', JSON could not be parsed: {3}" -f $path, [int]$r.StatusCode, $ct, $_.Exception.Message); return @{ code = [int]$r.StatusCode; json = $null; notJson = $true; ctype = $ct } }
+  } catch { if ($_.Exception.Response) { return @{ code = [int]$_.Exception.Response.StatusCode.value__; json = $null; notJson = $false; ctype = '' } } else { throw } }
 }
 Write-Host ("Earnings Monitor verification  " + (Get-Date).ToUniversalTime().ToString('o'))
 
@@ -95,22 +100,65 @@ if ($so.code -eq 200) {
 
 # 6. live-cache compatibility (read-only; field names and counts only, never values)
 $cp = Get-Json '/api/earnings-monitor/cache-probe' $h
-if ($cp.code -eq 200) {
+if ($cp.code -eq 200 -and -not $cp.notJson) {
   $j = $cp.json
-  if ($j.all_readers_compatible) { Say 'PASS' 'cache probe: every reader matches the shapes in the live caches' } else { Say 'WARN' 'cache probe: not every reader found compatible data yet (caches may still be warming; run this again in 10 minutes). The monitor skips whatever it cannot read and never invents data.' }
-  foreach ($k in 'uw_news', 'uw_flow', 'uw_calendar', 'earn_equity', 'finviz_cache') { $x = $j.$k; if ($x) { Say 'INFO' ("probe {0}: compatible={1} missing fields=[{2}]" -f $k, $x.compatible, ((@($x.missing_fields)) -join ',')) } }
+  $wrong = @('uw_news', 'uw_flow', 'uw_calendar', 'earn_equity', 'finviz_cache' | Where-Object { $j.$_ -and [int]$j.$_.rows_sampled -gt 0 -and $j.$_.compatible -eq $false })
+  $nos = @('uw_news', 'uw_flow', 'uw_calendar', 'earn_equity', 'finviz_cache' | Where-Object { $j.$_ -and [int]$j.$_.rows_sampled -eq 0 })
+  if ($wrong.Count) { Say 'WARN' ("cache probe: {0} reader(s) found samples with a field missing: {1}. The monitor skips what it cannot read and never invents data." -f $wrong.Count, ($wrong -join ', ')) }
+  elseif ($nos.Count) { Say 'INFO' ("cache probe: nothing found WRONG; {0} cache(s) had no samples to judge yet: {1}" -f $nos.Count, ($nos -join ', ')) }
+  else { Say 'PASS' 'cache probe: every reader matches the shapes in the live caches' }
+  # A cache that holds NO samples right now (for example just after a restart: the in-process caches are empty until the warmers refill them) cannot be judged; it is not the same as a wrong field.
+  foreach ($k in 'uw_news', 'uw_flow', 'uw_calendar', 'earn_equity', 'finviz_cache') { $x = $j.$k; if ($x) {
+    if ([int]$x.rows_sampled -eq 0) { Say 'INFO' ("probe {0}: NO SAMPLES in the cache right now, so compatibility cannot be judged (run again in 10 minutes)" -f $k) }
+    else { Say $(if ($x.compatible -eq $false) { 'WARN' } else { 'INFO' }) ("probe {0}: compatible={1} samples={2} missing fields=[{3}]" -f $k, $x.compatible, $x.rows_sampled, ((@($x.missing_fields)) -join ',')) } } }
+  if ($j.earn_equity -and $null -ne $j.earn_equity.symbols_sampled) { Say 'INFO' ("equity inputs: {0} of {1} sampled symbols found ({2} in process memory, {3} from the shared database tier)" -f $j.earn_equity.symbols_cached, $j.earn_equity.symbols_sampled, $j.earn_equity.symbols_in_process_memory, $j.earn_equity.symbols_from_database_tier) }
   if ($j.model_scan_caches) { Say 'INFO' ("model scan caches present: {0}; absent: {1}" -f ((@($j.model_scan_caches.present)) -join ','), ((@($j.model_scan_caches.absent)) -join ',')) }
   if ($j.uw_calendar) { Say 'INFO' ("30-day calendar cache: {0} of {1} weekday dates cached" -f $j.uw_calendar.dates_cached, $j.uw_calendar.dates_wanted) }
-} elseif ($cp.code -eq 404) { Say 'INFO' 'cache-probe is not part of the installed version' } else { Say 'WARN' "cache-probe HTTP $($cp.code)" }
+} elseif ($cp.code -eq 404 -or $cp.notJson) { Say 'WARN' 'cache-probe is not part of the installed version (the update did not take effect, or the server was not restarted)' } else { Say 'WARN' "cache-probe HTTP $($cp.code)" }
 
 # 7. scanner health: timings, stuck and duplicate jobs
 $hl = Get-Json '/api/earnings-monitor/health' $h
-if ($hl.code -eq 200) {
+if ($hl.code -eq 200 -and -not $hl.notJson) {
   $e = @($hl.json.recent_runs | Where-Object { $_.kind -eq 'ELIGIBILITY_CHECK' -and $null -ne $_.duration_ms }) | Select-Object -First 1
   if ($e) { Say 'INFO' ("latest ELIGIBILITY_CHECK: {0} ms, {1} events, waited {2} ms" -f $e.duration_ms, $e.events_processed, $e.queue_wait_ms) } else { Say 'INFO' 'no timed ELIGIBILITY_CHECK yet (the next 30-minute slot records one)' }
   if ($hl.json.healthy) { Say 'PASS' 'scanner health: no stuck jobs, no duplicate events or predictions, nothing dead' } else { Say 'FAIL' ("scanner health reports a problem: stuck={0} duplicates={1} dead={2}" -f @($hl.json.stuck_jobs).Count, @($hl.json.duplicate_active_events).Count, @($hl.json.dead_jobs).Count) }
   if ($null -ne $hl.json.approval_days_left) { Say $(if ($hl.json.approval_days_left -le 3) { 'WARN' } else { 'INFO' }) ("owner approval ends in {0} day(s)" -f $hl.json.approval_days_left) }
-} elseif ($hl.code -eq 404) { Say 'INFO' 'health view is not part of the installed version' } else { Say 'WARN' "health HTTP $($hl.code)" }
+} elseif ($hl.code -eq 404 -or $hl.notJson) { Say 'WARN' 'health view is not part of the installed version' } else { Say 'WARN' "health HTTP $($hl.code)" }
+
+
+# 8. rolling 30-day calendar: how many events, which dates, which have predictions (read-only; counts and dates only)
+$u2 = Get-Json '/api/earnings-monitor/upcoming' $h
+if ($u2.code -eq 200 -and -not $u2.notJson -and $u2.json) {
+  $rows = @($u2.json.rows)
+  $hz = [int]$u2.json.horizon_days; $mw = [int]$u2.json.model_window_days
+  $maxd = if ($rows.Count) { ($rows | Measure-Object -Property days_to -Maximum).Maximum } else { 0 }
+  $inWin = @($rows | Where-Object { -not $_.out_of_window }); $outWin = @($rows | Where-Object { $_.out_of_window })
+  Say 'INFO' ("calendar: {0} events on {1} dates, 0 to {2} days ahead (horizon {3} d, eight-model window {4} d)" -f $rows.Count, @($rows | Group-Object earnings_date).Count, $maxd, $hz, $mw)
+  Say 'INFO' ("inside the {0}-day model window: {1} events, {2} with at least one fresh model call, {3} with none; outside the window: {4} events (listed, never scored)" -f $mw, $inWin.Count, @($inWin | Where-Object { $_.fresh_predictions -ge 1 }).Count, @($inWin | Where-Object { $_.fresh_predictions -lt 1 }).Count, $outWin.Count)
+  if ($maxd -lt ($hz - 5)) { Say 'WARN' ("the calendar reaches only {0} days ahead, not {1}: dates beyond that are not in any cache the application holds yet (a calendar refresh is Stage D, or the application must request 30 days)" -f $maxd, $hz) } else { Say 'PASS' ("the calendar reaches {0} days ahead" -f $maxd) }
+  $have = @{}; foreach ($g in ($rows | Group-Object earnings_date)) { $have[$g.Name] = $g.Count }
+  $today = (Get-Date).ToUniversalTime().Date; $gaps = @()
+  for ($i = 0; $i -le $hz; $i++) { $d = $today.AddDays($i); if ($d.DayOfWeek -ne 'Saturday' -and $d.DayOfWeek -ne 'Sunday' -and -not $have.ContainsKey($d.ToString('yyyy-MM-dd'))) { $gaps += $d.ToString('yyyy-MM-dd') } }
+  Say 'INFO' ("weekdays with no event listed (a market holiday, or not cached yet): {0}" -f $(if ($gaps.Count) { $gaps -join ', ' } else { 'none' }))
+  foreach ($g in ($rows | Group-Object earnings_date | Sort-Object Name | Select-Object -First 31)) { Write-Host ("      {0}  events={1,4}  with a fresh call={2,4}  out of window={3,4}" -f $g.Name, $g.Count, @($g.Group | Where-Object { $_.fresh_predictions -ge 1 }).Count, @($g.Group | Where-Object { $_.out_of_window }).Count) }
+} elseif ($u2.notJson) { Say 'WARN' 'upcoming: the server returned a web page, not data' } else { Say 'WARN' "upcoming HTTP $($u2.code)" }
+
+# 9. Smart Money Move: the market date of every result, its origin, and the real reason when there is none
+$sm = Get-Json '/api/earnings-monitor/smart-move' $h
+if ($sm.code -eq 200 -and -not $sm.notJson -and $sm.json) {
+  $srows = @($sm.json.rows)
+  if ($sm.json.coverage) { Say 'INFO' ("latest {0}: made {1}, scored {2} event(s) dated {3}" -f $sm.json.coverage.source, $sm.json.coverage.generated_at, $sm.json.coverage.rows, ($sm.json.coverage.event_dates -join ', ')) } else { Say 'INFO' 'no engine run or snapshot has been read yet' }
+  foreach ($g in ($srows | Group-Object earnings_date | Sort-Object Name | Select-Object -First 8)) {
+    $calls = @($g.Group | Where-Object { $_.label -in 'BUY', 'SELL', 'NO_TRADE', 'NEUTRAL' }).Count
+    $codes = ($g.Group | Where-Object { $_.reason } | Group-Object { $_.reason.code } | ForEach-Object { "{0} x{1}" -f $_.Name, $_.Count }) -join '; '
+    $orig = ($g.Group | Group-Object origin | ForEach-Object { "{0} x{1}" -f $_.Name, $_.Count }) -join '; '
+    Write-Host ("      {0}  events={1,4}  with a call={2,3}  origin: {3}  | reasons: {4}" -f $g.Name, $g.Count, $calls, $orig, $(if ($codes) { $codes } else { 'none needed' }))
+  }
+  $wrong = @($srows | Where-Object { $_.signal -and $_.details -and $_.details.event_date -and $_.details.event_date -ne $_.earnings_date })
+  if ($wrong.Count) { Say 'FAIL' ("{0} Smart Money Move call(s) are attached to an event of a DIFFERENT report date" -f $wrong.Count) } else { Say 'PASS' 'every Smart Money Move call belongs to the report date of its event (no cross-date matches)' }
+  $ng = @($srows | Where-Object { $_.origin -eq 'NOT_GENERATED' -and $_.signal -and $_.source -in 'smart_move_snapshot', 'smart_move_engine' }).Count
+  if ($ng) { Say 'FAIL' ("{0} event(s) are labelled NOT GENERATED although the snapshot / engine produced their call" -f $ng) }
+} elseif ($sm.notJson) { Say 'WARN' 'smart-move: the server returned a web page, not data' } else { Say 'WARN' "smart-move HTTP $($sm.code)" }
 
 Remove-Variable pw, h
 Write-Host ("RESULT: " + $(if ($script:fail) { 'FAIL' } elseif ($script:warn) { 'PASS with warnings' } else { 'PASS' }) + "  ($script:fail fail, $script:warn warn)")

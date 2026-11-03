@@ -28,8 +28,9 @@ export function scanBadge(s: any): { text: string; tone: string } {
 }
 const LEVEL_TONE: Record<string, string> = { STRONG: 'green', WEAK: 'gray', CONFLICT: 'red', INSUFFICIENT: 'amber', NONE: 'gray' };
 const VER_TONE: Record<string, string> = { CONFIRMED: 'green', SINGLE_VENDOR: 'amber', CONFLICT: 'red', UNVERIFIED: 'gray' };
-const LABEL_TEXT: Record<string, string> = { NO_PREDICTION_AVAILABLE: 'NO PREDICTION AVAILABLE', OUT_OF_WINDOW: 'OUTSIDE MODEL WINDOW', NO_TRADE: 'NO TRADE', NO_VALID_PREDICTION: 'NO VALID PREDICTION', LOW_DATA: 'LOW DATA', PENDING: 'PENDING', STALE: 'STALE', NEUTRAL: 'NEUTRAL' };
+const LABEL_TEXT: Record<string, string> = { NOT_COVERED: 'NOT SCORED', NO_PREDICTION_AVAILABLE: 'NO PREDICTION AVAILABLE', OUT_OF_WINDOW: 'OUTSIDE MODEL WINDOW', NO_TRADE: 'NO TRADE', NO_VALID_PREDICTION: 'NO VALID PREDICTION', LOW_DATA: 'LOW DATA', PENDING: 'PENDING', STALE: 'STALE', NEUTRAL: 'NEUTRAL' };
 const LABEL_HINT: Record<string, string> = {
+  NOT_COVERED: "This stock is outside this model's universe: the model scored other stocks but not this one. It is not a neutral view and not 'coming soon'.",
   NO_PREDICTION_AVAILABLE: 'No prediction exists for this event. The reason is shown with it; it is never a neutral view.',
   OUT_OF_WINDOW: 'On the calendar, but further out than the models score. No prediction exists yet; this is not a neutral view.',
   NO_TRADE: 'A real call: every gate passed and the model says do nothing.',
@@ -104,6 +105,7 @@ function SmartMovePanel({ d }: { d: any }) {
             <td>{r.coverage ?? '—'}</td><td>{r.as_of ? `${fmtTime(r.as_of)}${r.age_h != null ? ` (${r.age_h} h)` : ''}` : '—'}</td>
             <td className="sm-q-muted">{r.details ? Object.entries(r.details).filter(([k]) => k !== 'evidence_retrieved').map(([k, v]) => `${nice(k)}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`).join(' · ') : (r.reason ? r.reason.text : (['BUY', 'SELL', 'NO_TRADE', 'NEUTRAL'].includes(r.label) ? '—' : 'the engine has not scored this event'))}</td></tr>))];
         })}</tbody></table></div>
+      {d.windows ? <div className={d.windows.open_without_result ? 'sm-fresh stale' : 'sm-q-muted'} data-testid="sm-windows" role={d.windows.open_without_result ? 'alert' : undefined}>Prediction windows (from the live engine, {fmtTime(d.windows.as_of)}): {d.windows.open} event(s) inside the window now, {d.windows.open_without_result} still without a result{d.windows.first_cutoff_utc ? `; the first window closes ${fmtTime(d.windows.first_cutoff_utc)} and after that no prediction is allowed` : ''}{Object.keys(d.windows.missing_by_date || {}).length ? ` (missing by date: ${Object.entries(d.windows.missing_by_date).map(([k, v]) => `${k} ${v}`).join(', ')})` : ''}.</div> : <div className="sm-q-muted" data-testid="sm-windows-na">Prediction-window monitoring needs the live engine; with only a stored snapshot the windows cannot be read, so they are not guessed.</div>}
       {d.coverage && <div className="sm-q-muted" data-testid="sm-coverage">Latest {d.coverage.source === 'HISTORICAL_SNAPSHOT' ? 'historical snapshot' : 'engine run'}: made {fmtTime(d.coverage.generated_at)}, scored {d.coverage.rows} event(s) dated {(d.coverage.event_dates || []).join(', ') || 'n/a'}. Events outside those dates, or not among those scored, have no prediction and say why.</div>}
       <div className="sm-q-muted">{d.note}</div>
       {d.plan?.requests_needed != null && <div className="sm-q-muted">Evidence request on file: {d.plan.requests_needed} provider request(s) for {d.plan.symbols?.length ?? 0} stock(s), waiting for the separately authorised collector.</div>}

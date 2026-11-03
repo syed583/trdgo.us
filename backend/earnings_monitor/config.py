@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 ALERT_RULES = ("NEW_BUY_SELL", "DIRECTION_CHANGE", "STRONG_AGREEMENT", "MODEL_DISAGREEMENT", "NEW_EARNINGS", "DATE_CHANGE", "STALE_OR_MISSING_EVIDENCE", "NEWS_OR_GUIDANCE", "UNUSUAL_OPTIONS_FLOW",
-               "OUTCOME_VERIFIED", "APPROVAL_EXPIRING", "SCANNER_FAILURE")
+               "OUTCOME_VERIFIED", "APPROVAL_EXPIRING", "SMART_MOVE_WINDOW", "SCANNER_FAILURE")
 
 # Provider requests the MONITOR itself may start (cache reads cost none). Measured/assumed per action; the budget check and the estimator use the same numbers.
 COST_CALENDAR_REFRESH = 46       # MEASURED (offline fan-out audit, cold cache): uw_earnings_calendar.calendar(days=30) = 23 weekdays x (premarket + afterhours); dates already cached cost 0
@@ -49,6 +49,7 @@ class Config:
     comparable_max_spread_h: float = 24.0
     new_event_alert_burst: int = 25              # more new events than this in one scan is a widened window, not 'newly announced' news
     hard_daily_cap: int = HARD_DAILY_CAP         # configurable operational guard (see HARD_DAILY_CAP); 1..100000
+    sm_window_alert_h: float = 6.0               # alert when a Smart Money Move prediction window closes within this many hours and events inside it still have no result
     approval_warn_days: int = 3                  # an approval that ends within this many days raises one alert a day
     external_reserve: int = 250                  # LEAN planning baseline: requests/day kept free for the app's existing warmers, Options Flow and Smart Move collection (replace with the measured figure)
     plan_driven_refresh: bool = False            # OFF by default. True (set in em_data\config.json) lets a REFRESH approval that allows the 'event' purpose also refresh the funded events ahead of their day; False = only on the earnings day itself

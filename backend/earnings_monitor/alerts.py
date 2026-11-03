@@ -84,6 +84,15 @@ def approval_expiring(now: datetime, expires_at: str, cfg) -> Optional[dict]:
             "payload": {"rule": "APPROVAL_EXPIRING", "reason": "the monitor approval ends %s; the scheduler stops until a new approval is signed" % expires_at, "expires_at": expires_at, "detected_at": iso(now), "prediction_ts": None, "model": None}}
 
 
+def smart_move_window(now: datetime, rep: dict, cfg) -> Optional[dict]:
+    """One alert per closing time while events are inside their prediction window with no usable result: after the window closes the frozen rules allow no prediction, so this is the last chance to collect evidence."""
+    if not cfg.alert_rules.get("SMART_MOVE_WINDOW", {}).get("enabled", True) or not rep.get("open_without_result") or not rep.get("first_cutoff_utc"):
+        return None
+    dates = ", ".join("%s (%d)" % (d, n) for d, n in sorted((rep.get("missing_by_date") or {}).items()))
+    return {"rule": "SMART_MOVE_WINDOW", "event_id": None, "symbol": None, "model": "smart_move", "dedupe_key": _key("SM_WINDOW", rep["first_cutoff_utc"][:13]),
+            "payload": {"rule": "SMART_MOVE_WINDOW", "model": "smart_move", "prediction_ts": None, "reason": "%d event(s) are inside the Smart Money Move prediction window with no result yet (%s); the first window closes at %s. After that no prediction is allowed." % (rep["open_without_result"], dates, rep["first_cutoff_utc"])}}
+
+
 def missing_evidence(now: datetime, event: dict, model: Optional[str], why: str, cfg) -> Optional[dict]:
     """At most one alert per event/model/day for evidence that is missing near the event."""
     if not cfg.alert_rules.get("STALE_OR_MISSING_EVIDENCE", {}).get("enabled", True):

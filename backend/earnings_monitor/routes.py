@@ -405,7 +405,7 @@ def smart_move():
         out.append({"id": e["id"], "symbol": e["symbol"], "company": e["company"], "earnings_date": e["earnings_date"], "session": e["session"], "days_to": days, "label": label, "signal": (m or {}).get("signal"),
                     "coverage": json.loads(m["coverage"]) if m and m["coverage"] else None, "as_of": (m or {}).get("as_of"), "age_h": _age_h((m or {}).get("as_of"), t), "stale": st["stale"],
                     "source": (m or {}).get("source"), "origin": {"smart_move_snapshot": "HISTORICAL_SNAPSHOT", "smart_move_engine": "LIVE_ENGINE"}.get((m or {}).get("source")) or "NOT_GENERATED", "reason": reason, "details": det})
-    return {"status": "OK", "engine": info, "coverage": s.kv_get("smd:coverage"), "plan": s.kv_get("smart_move:plan"), "counts": counts, "rows": out,
+    return {"status": "OK", "engine": info, "coverage": s.kv_get("smd:coverage"), "windows": s.kv_get("smd:windows"), "plan": s.kv_get("smart_move:plan"), "counts": counts, "rows": out,
             "note": "The monitor never scores Smart Move: it reads the frozen engine's own result. Collecting the evidence is a separate, attested provider run; until it has run, the honest label is PENDING or NO VALID PREDICTION."}
 
 

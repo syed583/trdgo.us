@@ -195,6 +195,9 @@ class ProdAdapters(Adapters):
     def smart_move_coverage(self) -> Optional[dict]:
         return self.smart.coverage() if self.smart and hasattr(self.smart, "coverage") else None
 
+    def smart_move_windows(self) -> Optional[dict]:
+        return self.smart.window_report() if self.smart and hasattr(self.smart, "window_report") else None
+
     def app_requests_today(self) -> Optional[int]:
         try:
             import unusualwhales_service as uw
@@ -241,7 +244,8 @@ class ProdAdapters(Adapters):
         try:
             import swr
             from . import evidence as EV
-            eq = swr.peek("earn:equity:%s" % sym)
+            batch = getattr(self, "_eq_batch", None)
+            eq = batch.get("earn:equity:%s" % sym) if batch is not None else swr.peek("earn:equity:%s" % sym)
             for p in (eq or {}).get("params") or []:
                 name = str(p.get("name") or p.get("key") or "")
                 kind = EV.kind_of_param(name)
@@ -303,8 +307,10 @@ class ProdAdapters(Adapters):
 
         def check(name, rows):
             fs = fields(rows)
+            if not rows:                                           # an empty cache cannot be judged: after a restart the in-process caches are empty until the warmers refill them
+                return {"rows_sampled": 0, "fields": [], "missing_fields": [], "compatible": None, "status": "NO_SAMPLES"}
             missing = [k for k in self.NEEDS[name] if k not in fs]
-            return {"rows_sampled": min(len(rows), 25), "fields": sorted(fs), "missing_fields": missing, "compatible": bool(rows) and not missing}
+            return {"rows_sampled": min(len(rows), 25), "fields": sorted(fs), "missing_fields": missing, "compatible": not missing, "status": "COMPATIBLE" if not missing else "INCOMPATIBLE"}
         scans = {}
         try:
             for m, (res, held) in self._scans().items():
@@ -314,11 +320,15 @@ class ProdAdapters(Adapters):
         out["model_scan_caches"] = {"present": sorted(k for k in scans if k != "error"), "absent": sorted(m for m in MODEL_KEYS if m not in scans), "detail": scans}
         try:
             import swr
-            eq = [(k, v[1]) for k, v in list(swr._values.items()) if k.startswith("earn:equity:")]
+            syms = [r["symbol"] for r in self.calendar()][:40]                       # a sample of the symbols the monitor tracks
+            got = swr.peek_many(["earn:equity:%s" % s for s in syms]) or {}          # in-process first, then ONE read of the shared database tier (what the eight models see)
+            eq = [(k, v) for k, v in got.items() if isinstance(v, dict)]
             params = [p for _, v in eq[:25] for p in ((v or {}).get("params") or [])]
+            in_memory = sum(1 for k, _ in eq if k in getattr(swr, "_values", {}))
             from . import evidence as EV
             mapped = sorted({EV.kind_of_param(str(p.get("name") or p.get("key") or "")) or "UNMAPPED:" + str(p.get("name") or p.get("key")) for p in params})
-            out["earn_equity"] = dict(check("equity_params", [dict(p, name=p.get("name") or p.get("key")) for p in params]), symbols_cached=len(eq), evidence_kinds_mapped=mapped)
+            out["earn_equity"] = dict(check("equity_params", [dict(p, name=p.get("name") or p.get("key")) for p in params]), symbols_sampled=len(syms), symbols_cached=len(eq), symbols_in_process_memory=in_memory,
+                                      symbols_from_database_tier=len(eq) - in_memory, evidence_kinds_mapped=mapped)
             fv = swr.peek("fviz:earn")
             out["finviz_cache"] = dict(check("finviz_rows", list(fv.values()) if isinstance(fv, dict) else []), symbols=len(fv) if isinstance(fv, dict) else 0, present=isinstance(fv, dict))
         except Exception as e:  # noqa: BLE001
@@ -343,8 +353,18 @@ class ProdAdapters(Adapters):
         except Exception as e:  # noqa: BLE001
             out["uw_cache"] = {"error": type(e).__name__}
         out["smart_move"] = self.smart.status() if self.smart else {"engine_installed": False}
-        out["all_readers_compatible"] = all(v.get("compatible") for k, v in out.items() if isinstance(v, dict) and "compatible" in v)
+        out["all_readers_compatible"] = not any(v.get("compatible") is False for v in out.values() if isinstance(v, dict) and "compatible" in v)
+        out["unverifiable_now"] = sorted(k for k, v in out.items() if isinstance(v, dict) and v.get("compatible") is None)             # no samples in the cache at this moment
         return out
+
+    def prepare_evidence(self, symbols: list) -> None:
+        """Called once at the start of an evidence scan: reads every symbol's equity inputs in ONE batch (the in-process cache first, then a single read of the shared database tier, exactly as the eight models do), so a scan never pays one
+        database round trip per symbol and still sees what survived a restart."""
+        try:
+            import swr
+            self._eq_batch = swr.peek_many(["earn:equity:%s" % s for s in symbols]) or {}
+        except Exception:  # noqa: BLE001
+            self._eq_batch = None
 
     def model_sources(self) -> dict:
         if getattr(self, "_msrc", None) is None:

@@ -119,6 +119,20 @@ class SmartMoveSource:
                                         "source": "smart_move_snapshot", "engine_version": snap.get("model_version"), "event_date": str(r.get("event_date") or "")[:10] or None}
         return out
 
+    def window_report(self) -> Optional[dict]:
+        """The engine's OWN window verdict per event from its latest read: how many events sit inside the prediction window now, how many of those still have no usable result, and when the first window closes.
+        None unless the live engine produced rows (a stored snapshot carries only the funded events, which says nothing about windows). The frozen rule is never re-implemented here."""
+        if not self._meta or self._meta.get("source") != "LIVE_ENGINE":
+            return None
+        open_rows = [r for r in self._rows.values() if r.get("window") == "OPEN"]
+        missing = [r for r in open_rows if r.get("result") not in ("BUY", "SELL", "NO TRADE (genuine)")]
+        cutoffs = sorted(str(r["window_cutoff_utc"]) for r in missing if r.get("window_cutoff_utc"))
+        by_date: dict = {}
+        for r in missing:
+            by_date[str(r.get("event_date"))[:10]] = by_date.get(str(r.get("event_date"))[:10], 0) + 1
+        return {"as_of": self._meta.get("generated_at"), "open": len(open_rows), "open_without_result": len(missing), "first_cutoff_utc": cutoffs[0] if cutoffs else None, "missing_by_date": by_date,
+                "closed": sum(1 for r in self._rows.values() if r.get("window") == "CLOSED")}
+
     def coverage(self) -> Optional[dict]:
         """What the latest read covered (None when neither the engine nor a snapshot produced anything)."""
         return dict(self._meta) if self._meta else None

@@ -68,6 +68,10 @@ class SimAdapters(Adapters):
 
     # scripting helpers
     sm_cov = None                                    # scripted answer of smart_move_coverage
+    sm_win = None                                    # scripted answer of smart_move_windows
+
+    def smart_move_windows(self):
+        return self.sm_win
 
     def smart_move_coverage(self):
         return self.sm_cov

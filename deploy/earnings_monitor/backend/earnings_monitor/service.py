@@ -47,6 +47,9 @@ class Adapters:
     def evidence(self, symbol: str, d: str) -> list:  # cache reads only: [{kind, provider, ext_id, occurred_at, title, summary, data, provider_structured}]
         return []
 
+    def prepare_evidence(self, symbols: list) -> None:   # optional: read all symbols' cached inputs in one batch before a scan
+        return None
+
     def model_sources(self) -> dict:                  # {model: source text of the model's own code}, used only to see which KIND of evidence each model reads
         return {}
 
@@ -54,6 +57,9 @@ class Adapters:
         return {}
 
     def smart_move_details(self, symbol: str, d: str) -> Optional[dict]:      # stored Smart Move evidence / feature detail for one event (no provider call)
+        return None
+
+    def smart_move_windows(self) -> Optional[dict]:   # the live engine's own window verdicts (None without the live engine)
         return None
 
     def smart_move_coverage(self) -> Optional[dict]:  # what the Smart Money Move engine / snapshot covered on its latest read: source, generated_at, event_dates, rows
@@ -285,6 +291,15 @@ class Monitor:
         cov = self.ad.smart_move_coverage()
         if cov is not None and self.store.kv_get("smd:coverage") != cov:
             self.store.kv_set("smd:coverage", cov)
+        wrep = self.ad.smart_move_windows()
+        if wrep is not None:
+            self.store.kv_set("smd:windows", wrep)
+            try:
+                closes_in = (parse(wrep["first_cutoff_utc"]) - now).total_seconds() / 3600 if wrep.get("first_cutoff_utc") else None
+            except (TypeError, ValueError):
+                closes_in = None
+            if closes_in is not None and 0 <= closes_in <= self.cfg.sm_window_alert_h:
+                stats["alerts"] += A.enqueue(self.store, now, [A.smart_move_window(now, wrep, self.cfg)], self.cfg)
         sql, args = "SELECT * FROM events WHERE status='ACTIVE'", ()
         if event_id is not None:
             sql, args = "SELECT * FROM events WHERE id=?", (event_id,)
@@ -309,6 +324,8 @@ class Monitor:
                     obs = None
                     stats["date_mismatch"] += 1
                 st = L.model_status(obs, now, self.cfg.stale_after_h)
+                if obs is None and model != "smart_move" and (models.get(model) or {}):               # the model DID score other stocks but not this one: it is outside the model's universe, not "pending"
+                    st = {"status": "NOT_COVERED", "stale": False}
                 prev = mstate.get((ev["id"], model))
                 pred_id = prev["prediction_id"] if prev else None
                 src = (obs or {}).get("source") or "unknown"
@@ -440,7 +457,12 @@ class Monitor:
         relevant = EV.relevance_map(self.ad.model_sources())
         model_rows = self.ad.model_rows()
         stats = {"events": 0, "items": 0, "new": 0, "changed": 0, "recomputed": 0, "alerts": 0, "errors": 0}
-        for ev in self.store.q("SELECT * FROM events WHERE status='ACTIVE' ORDER BY earnings_date, symbol"):
+        evs = self.store.q("SELECT * FROM events WHERE status='ACTIVE' ORDER BY earnings_date, symbol")
+        try:
+            self.ad.prepare_evidence(sorted({e["symbol"] for e in evs}))
+        except Exception:  # noqa: BLE001 - a failed batch read only means the per-symbol path is used
+            pass
+        for ev in evs:
             days = (date.fromisoformat(ev["earnings_date"]) - today_et(now)).days
             if days < 0 or days > self.cfg.horizon_days:
                 continue
