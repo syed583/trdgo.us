@@ -217,7 +217,10 @@ function Invoke-RollbackCheck {
 function Invoke-RecordedRollback([string]$given) {
   # the manual rollback: only the backup of the last RECORDED install, only if it is intact and the server is still exactly as that install left it
   if (-not (Test-Path -LiteralPath $RecordPath)) {
-    if ($given -and $AcceptUnrecordedBackup) { Log 'no install record: using the backup you named because -AcceptUnrecordedBackup was given'; Invoke-Rollback $given; return }
+    if ($given -and $AcceptUnrecordedBackup) {
+      if (Test-Path -LiteralPath (Join-Path $given 'backup_manifest.json')) { if (-not (Test-BackupManifest $given)) { throw 'the backup you named has a manifest and it does NOT verify: stopping, nothing was changed' }; Log 'the named backup verifies against its own manifest' } else { Log 'WARNING: the named backup has no manifest, so its integrity cannot be checked' }
+      Log 'no install record: using the backup you named because -AcceptUnrecordedBackup was given'; Invoke-Rollback $given; return
+    }
     throw 'no monitor_install_record.json: nothing was installed with this script version. To use an older backup, name it with -BackupDir AND add -AcceptUnrecordedBackup.'
   }
   $rec = Assert-RecordedRollbackReady $given
@@ -303,6 +306,7 @@ function Invoke-Update {
   $badCopies = Test-CopyMatchesSource $srcMap $bk $MainPy $PkgMod 'check'
   if ($badCopies) { throw "STOPPED BEFORE ANY CHANGE: the backup is not an exact copy of the installed files ($badCopies file(s) differ). The application was NOT modified; the incomplete backup folder $bk was left in place for inspection." }
   Log ("backup verified BEFORE any change: main.py, all {0} monitor files and all {1} frontend files are byte-identical to the installed files" -f @($srcMap.Keys | Where-Object { $_ -like '*earnings_monitor*' }).Count, @($srcMap.Keys | Where-Object { $_ -like '*\dist\*' }).Count)
+  Write-BackupManifest $bk                    # SHA-256 of every backup file, written BEFORE the first change: it survives a crash and proves the backup was not altered afterwards
   try {
     Remove-Item (Join-Path $Backend $PkgMod) -Recurse -Force
     Copy-Item -Recurse (Join-Path $Package "backend\$PkgMod") (Join-Path $Backend $PkgMod)
@@ -317,7 +321,6 @@ function Invoke-Update {
       if ($modeAfter -ne $modeBefore) { throw "the scheduler mode changed from $modeBefore to $modeAfter" }
       Log "monitor still reports scheduling $modeAfter"
     }
-    Write-BackupManifest $bk
     Write-InstallRecord $bk 'Update'
     Log "UPDATE OK. Backup kept at $bk (delete it only after you are satisfied). A manual rollback needs no path: it uses the recorded one."
   } catch {

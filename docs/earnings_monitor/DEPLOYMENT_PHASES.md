@@ -12,16 +12,16 @@ $p0Dir = "C:\apps\_deploy_probe_$(Get-Date -Format yyyyMMdd_HHmmss)"; New-Item -
 Invoke-WebRequest "https://github.com/syed583/trdgo.us/archive/$p0Commit.zip" -OutFile "$p0Dir\a4.zip" -UseBasicParsing
 Expand-Archive "$p0Dir\a4.zip" "$p0Dir\x"
 $p0Pkg = (Get-ChildItem "$p0Dir\x")[0].FullName + '\deploy\earnings_monitor'
-if ((Get-FileHash "$p0Pkg\MANIFEST.sha256").Hash.ToLower() -ne '1c10e61ae14f1a3597a2d8a511917a83c00475583f4d6e46a198380f0201b0d4') { throw 'STOP: manifest mismatch' }
+if ((Get-FileHash "$p0Pkg\MANIFEST.sha256").Hash.ToLower() -ne '7d1e168e33973eab1b11a835ef7fad45c9a771755b7b5dee897a218b9e2dc193') { throw 'STOP: manifest mismatch' }
 & "$p0Pkg\identify_installed_version.ps1" -Packages "A4=$p0Pkg"
 ```
 It prints, per release, how many installed files are identical and "INSTALLED (every file identical)" for the one that is. To compare with Stage A or A.2 as well, download their archives the same way (commits `d48f4900a8a66d5b2572ac5c68536d72319d02d5` and `499d57326b5dd1e24328597b25aa3b814efea822`) and add them to `-Packages` as `StageA=<path>,A2=<path>`. Tested against Stage A, A.2 and A.4 installations: each was recognised and the others were not. Reads files only.
 
 ## Phase 1: Stage A.4 (monitor + dashboard, cache-only)
-Branch `release/stage-a4`, commit `a43522a21b3ef5c4ef88f600839173193daae927`, manifest SHA-256 `1c10e61ae14f1a3597a2d8a511917a83c00475583f4d6e46a198380f0201b0d4`, 134 files. The Update works from Stage A or from A.2 (it replaces monitor files and the frontend; `main.py` and `.env` are untouched).
+Branch `release/stage-a4`, commit `a43522a21b3ef5c4ef88f600839173193daae927`, manifest SHA-256 `7d1e168e33973eab1b11a835ef7fad45c9a771755b7b5dee897a218b9e2dc193`, 134 files. The Update works from Stage A or from A.2 (it replaces monitor files and the frontend; `main.py` and `.env` are untouched).
 ```powershell
 $a4Commit = 'a43522a21b3ef5c4ef88f600839173193daae927'
-$a4Anchor = '1c10e61ae14f1a3597a2d8a511917a83c00475583f4d6e46a198380f0201b0d4'
+$a4Anchor = '7d1e168e33973eab1b11a835ef7fad45c9a771755b7b5dee897a218b9e2dc193'
 $a4Dir = "C:\apps\_deploy_a4_$(Get-Date -Format yyyyMMdd_HHmmss)"; New-Item -ItemType Directory -Path $a4Dir | Out-Null
 Invoke-WebRequest "https://github.com/syed583/trdgo.us/archive/$a4Commit.zip" -OutFile "$a4Dir\a4.zip" -UseBasicParsing
 Expand-Archive "$a4Dir\a4.zip" "$a4Dir\x"
