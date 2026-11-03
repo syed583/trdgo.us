@@ -1007,4 +1007,10 @@ export const api2 = {
       '/api/chat', 'POST', { message, symbol: symbol || '', history: history || [] }),
 };
 
+/** Smart Move Engine20: the newest immutable prediction snapshot (a historical record, never a live feed) and its outcome comparison. Read-only. */
+export const smartMoveEngine20 = {
+  latest: (s?: AbortSignal) => request<any>('/api/smart-move/engine20/latest', s),
+  outcomes: (s?: AbortSignal) => request<any>('/api/smart-move/engine20/outcomes', s),
+};
+
 export { ApiError };

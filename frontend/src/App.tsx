@@ -72,6 +72,7 @@ const NewsDeskPage = lazy(() => import('./pages/NewsDeskPage'));
 const AiTradePage = lazy(() => import('./pages/AiTradePage'));
 const InsightsPage = lazy(() => import('./pages/InsightsPage'));
 const BacktestPage = lazy(() => import('./pages/BacktestPage'));
+const SmartMoveEngine20Page = lazy(() => import('./pages/SmartMoveEngine20Page'));
 const workspace = () => import('./pages/WorkspacePages');
 const AlertsPage = lazy(() => workspace().then((m) => ({ default: m.AlertsPage })));
 const CommunityPage = lazy(() => workspace().then((m) => ({ default: m.CommunityPage })));
@@ -351,6 +352,7 @@ function Shell() {
           {/* Signals now live inside the Trade Plan screen. */}
           <Route path="/signals" element={<Navigate to={`/trade-plan/${DEFAULT_SYMBOL}${location.search}`} replace />} />
           <Route path="/signal-history" element={<SignalHistoryPage ctx={ctx} />} />
+          <Route path="/smart-move/engine20" element={<SmartMoveEngine20Page ctx={ctx} />} />
           <Route path="/earnings-signals" element={<EarningsSignalHistoryPage ctx={ctx} />} />
           <Route path="/forward-scoreboard" element={<ForwardScoreboardPage />} />
           <Route path="/historical-backtest" element={<HistoricalBacktestPage />} />

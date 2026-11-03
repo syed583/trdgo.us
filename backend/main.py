@@ -113,6 +113,10 @@ app.add_middleware(
 
 app.include_router(api_router)
 
+# Smart Move Engine20 snapshot (read-only; the session gate below covers it like every /api route). Serves a file snapshot; no provider code.
+from smart_move_engine20_routes import router as _sm_engine20_router  # noqa: E402
+app.include_router(_sm_engine20_router)
+
 # The app bundle is a megabyte of JavaScript and the JSON payloads are
 # repetitive; over the tunnel that is most of a slow first load.
 from fastapi.middleware.gzip import GZipMiddleware  # noqa: E402
