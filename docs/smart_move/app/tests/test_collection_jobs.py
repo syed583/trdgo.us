@@ -362,3 +362,24 @@ def test_owner_daily_limit_100_keeps_the_logged_pilot_attempts_and_leaves_50_add
     assert pf["daily_left"] == 10                                               # a lower owner limit still caps the day
     assert len(svc2.store.read("requests")) == 50                               # the ledger is untouched
 
+
+def _seed_cal_and_uw_earnings(svc, sym, retrieved_at):
+    svc.store.append("cal_obs", {"source": "UW_CALENDAR", "symbol": sym, "date": "2026-11-04", "label": "premarket", "clock": None, "vendor_flag": None, "raw_sha256": "c" * 64, "observed_at": (retrieved_at - timedelta(minutes=2)).isoformat(), "company": sym})
+    sha = svc.store.put(json.dumps({"data": [{"report_date": "2026-11-04", "ending_fiscal_quarter": "2026-09-30", "report_time": "premarket"}]}).encode())
+    svc.store.append("v2_evidence", {"id": "uw_earnings-%s-20261103" % sym, "kind": "uw_earnings", "symbol": sym, "params": {"limit": 24}, "raw_sha256": sha, "retrieved_at": retrieved_at.isoformat(), "rows": 1, "status": "OK", "invalid_reason": None})
+    return sha
+
+
+def test_record_events_reads_uw_earnings_saved_in_v2_evidence_and_keeps_the_evidence_untouched(tmp_path):
+    """Found after Batch #2: the 12 saved earnings payloads were invisible to the event records (earnings_payloads_used=0, every quarter UNKNOWN)."""
+    at = datetime(2026, 11, 3, 3, 50, tzinfo=UTC)
+    svc = L.RefreshService(L.LiveConfig(mode="SIMULATION", store_dir=tmp_path / "store", refresh_enabled=False, authorized_daily=0, spacing_s=0.0), Stub(), gv.FakeClock(at))
+    sha = _seed_cal_and_uw_earnings(svc, "AAA", at)
+    before = (svc.store.root / "v2_evidence.jsonl").read_bytes()
+    out = RUNNER.record_events(svc, at + timedelta(hours=1), tmp_path / "state")
+    assert out["earnings_payloads_used"] == 1 and out["evidence_rows_read"] == {"evidence": 0, "v2_evidence": 1}
+    assert out["quarter_state"].get("KNOWN") == 1 and out["as_of_utc"].startswith("2026-11-03T04:50")
+    assert svc.store.get(sha) and (svc.store.root / "v2_evidence.jsonl").read_bytes() == before
+    again = RUNNER.record_events(svc, at + timedelta(hours=1), tmp_path / "state")                      # rebuilding is idempotent: no new versions, no duplicates
+    assert again["changes"]["NEW"] == 0 and again["versions"] == out["versions"]
+

@@ -198,3 +198,11 @@ def test_the_module_has_no_provider_client_and_no_scoring():
     import hashlib
     h = lambda p: hashlib.sha256((ROOT / p).read_bytes().replace(b"\r\n", b"\n")).hexdigest()  # noqa: E731
     assert h("docs/smart_move/shadow_impl/smvshadow/scorer.py").startswith("62e09aa0ed785e2a") and h("backend/smart_move_v2.py").startswith("de2d8f9612934338")
+
+
+def test_pinned_symbol_list_keeps_the_owner_order_and_never_substitutes_another_stock(tmp_path):
+    svc = make(tmp_path)
+    rows = L.LiveScorer(svc).score_all(NOW)
+    caps = {o["symbol"]: float(o["marketcap"]) for o in svc.store.read("cal_obs")}
+    got = E20.select_top(rows, caps, NOW, n=20, event_date="2026-11-04", session="BMO", only=["DDD", "AAA", "ZZZ"])
+    assert [g["symbol"] for g in got] == ["DDD", "AAA"]                      # owner order kept, the unknown ZZZ is absent and nothing else (BBB, CCC) takes its place

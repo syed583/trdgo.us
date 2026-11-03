@@ -106,7 +106,7 @@ def engine20_profile(a, svc, now, live: bool) -> int:
         except (KeyError, TypeError, ValueError):
             pass
     rows = L.LiveScorer(svc).score_all(now)
-    selected = E20.select_top(rows, caps, now, n=a.select_top, event_date=a.select_date, session=a.select_session)
+    selected = E20.select_top(rows, caps, now, n=a.select_top, event_date=a.select_date, session=a.select_session, only=[x.strip().upper() for x in a.select_symbols.split(",") if x.strip()] if a.select_symbols else None)
     cal_needed = G.needs_refresh(svc.store, now)
     cal_est = 4 if cal_needed else 0
     plan = E20.plan_tasks(svc, selected, now, budget=a.ceiling - cal_est, with_f7=a.with_f7)
@@ -148,7 +148,9 @@ def record_events(svc, now, state_dir) -> dict:
             return json.loads(svc.store.get(sha))
         except Exception:  # noqa: BLE001
             return None
-    payloads = ER.earnings_payloads(svc.store.read("evidence"), load, now)
+    # Found after Batch #2: the collector saves its earnings payloads as kind `uw_earnings` in v2_evidence, while the engine-kind `earnings` rows live in `evidence`. Both feed the quarter lookup; the files themselves are never touched.
+    ev_rows, v2_rows = svc.store.read("evidence"), svc.store.read("v2_evidence")
+    payloads = ER.earnings_payloads(list(ev_rows) + list(v2_rows), load, now)
     recs = ER.records_from_saved(svc.store.read("cal_obs"), now, payloads)
     store = ER.EventRecords(Path(state_dir) / "event_records.jsonl")
     res = store.observe_snapshot(recs, observed=now)
@@ -159,7 +161,7 @@ def record_events(svc, now, state_dir) -> dict:
         d = body.get("data") if isinstance(body, dict) else None
         return (d.get("estimates") if isinstance(d, dict) else d) if d is not None else None
     pairs = SPR.pair_all(store, [r for r in svc.store.read("v2_evidence") if r.get("kind") == "uw_estimates"], est_rows, now, SPR.PairStore(Path(state_dir) / "snapshot_pairs.jsonl"))
-    return dict(ER.summarize(store), changes={k: len(v) for k, v in res.items()}, earnings_payloads_used=len(payloads), snapshot_pairs=dict(pairs["counts"], reasons=pairs["reasons"]))
+    return dict(ER.summarize(store), changes={k: len(v) for k, v in res.items()}, earnings_payloads_used=len(payloads), as_of_utc=now.isoformat(), evidence_rows_read={"evidence": len(ev_rows), "v2_evidence": len(v2_rows)}, snapshot_pairs=dict(pairs["counts"], reasons=pairs["reasons"]))
 
 
 def status_report(svc, now, preds, track_dir) -> dict:
@@ -192,6 +194,7 @@ def main(argv=None) -> int:
     ap.add_argument("--calendar-days", type=int, default=None)
     ap.add_argument("--calendar-requests", type=int, default=None)
     ap.add_argument("--select-top", type=int, default=20, help="engine20 profile: how many stocks (vendor-confirmed, window open, ranked by market cap)")
+    ap.add_argument("--select-symbols", default=None, help="engine20 profile: pin the owner-approved list (comma separated); each symbol must still pass the eligibility checks, none is substituted")
     ap.add_argument("--select-date", default=None, help="engine20 profile: only events on this date, e.g. 2026-11-04")
     ap.add_argument("--select-session", default=None, choices=("BMO", "AMC"), help="engine20 profile: only this announcement session")
     ap.add_argument("--with-f7", action="store_true", help="engine20 profile: also request volatility context and IV rank (2 more requests per stock)")
@@ -254,9 +257,10 @@ def main(argv=None) -> int:
     if a.profile == "engine20":
         return engine20_profile(a, svc, now, live)
     job = execute(svc, now=now, state_dir=a.state_dir, live=live, authorized=a.daily_limit or a.authorize_requests, ceiling=a.ceiling, batch=a.batch, news_pages=news_pages, calendar_requests=a.calendar_requests, stage_caps=stage_caps, calendar_scope=scope, max_consecutive_failures=max_fail, outcome_events_fn=(lambda n: outcome_events(svc, n)) if a.profile == "batch2" else None, daily_limit=a.daily_limit)
-    ev_summary = record_events(svc, now, a.state_dir)
+    after = svc.clock.now() if live else now                                     # a live run reports AS OF ITS END: the start-of-run instant predates the refreshed calendar and everything the run saved (Batch #2 showed 0 events)
+    ev_summary = record_events(svc, after, a.state_dir)
     preds = T.load_predictions(a.preds_store) if a.preds_store else []
-    rep = status_report(svc, now, preds, a.tracking_dir)
+    rep = status_report(svc, after, preds, a.tracking_dir)
     ES.write(Path(a.state_dir) / ES.STATUS_FILE, rep)
     print(SC.redact(json.dumps({"job": job["id"], "mode": job["mode"], "status": job["status"], "provider_requests": job.get("requests", 0), "preflight": job["preflight"], "shared_key": {"status": sk["status"], "blocks_live": sk["blocks_live"], "reason": sk["reason"]}, "events": rep["summary"], "event_records": ev_summary}, indent=1, default=str), ENV))
     return 0

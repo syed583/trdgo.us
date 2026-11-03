@@ -27,8 +27,8 @@ def _dt(x) -> datetime:
 
 
 # ------------------------------------------------------------------ selection
-def select_top(rows: list, market_caps: dict, now, *, n: int = 20, event_date: Optional[str] = None, session: Optional[str] = None) -> list:
-    """Vendor-confirmed events (no calendar blocker) with a known BMO/AMC session whose prediction window is open at `now`, optionally limited to one date and session, ranked by market cap. Market cap is a SELECTION
+def select_top(rows: list, market_caps: dict, now, *, n: int = 20, event_date: Optional[str] = None, session: Optional[str] = None, only: Optional[list] = None) -> list:
+    """`only` pins the owner-approved symbol list (kept in that order, every symbol still has to pass the same eligibility checks; a listed symbol that fails them is simply absent, never swapped for another). Vendor-confirmed events (no calendar blocker) with a known BMO/AMC session whose prediction window is open at `now`, optionally limited to one date and session, ranked by market cap. Market cap is a SELECTION
     heuristic only; the engine's own liquidity gate decides from the price bars."""
     now = _dt(now)
     ok = []
@@ -38,8 +38,10 @@ def select_top(rows: list, market_caps: dict, now, *, n: int = 20, event_date: O
             continue
         if event_date and r["earnings_date"] != event_date or session and r["kind"] != session:
             continue
+        if only is not None and r["symbol"] not in only:
+            continue
         ok.append(r)
-    ok.sort(key=lambda r: (-(market_caps.get(r["symbol"]) or 0), r["symbol"]))
+    ok.sort(key=(lambda r: (only.index(r["symbol"]), r["symbol"])) if only is not None else (lambda r: (-(market_caps.get(r["symbol"]) or 0), r["symbol"])))
     return [{"rank": i + 1, "symbol": r["symbol"], "company": r.get("company"), "event_date": r["earnings_date"], "session": r["kind"], "sector": r.get("sector"), "etf": L.SECTOR_ETF.get(r.get("sector")),
              "market_cap": market_caps.get(r["symbol"])} for i, r in enumerate(ok[:n])]
 
