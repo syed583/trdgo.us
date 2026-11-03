@@ -558,3 +558,37 @@ def test_a_stock_outside_a_models_universe_is_not_scored_rather_than_pending(tmp
     assert st[("AAA", "claude")] == "VALID" and st[("BBB", "claude")] == "NOT_COVERED" and st[("BBB", "grok")] == "ABSENT"
     assert L.display_status({"status": "NOT_COVERED"}) == "NOT_COVERED" and L.display_status({"status": "ABSENT"}) == "PENDING"
     assert not store.q("SELECT 1 FROM predictions WHERE model='claude' AND event_id=(SELECT id FROM events WHERE symbol='BBB')")       # nothing manufactured
+
+
+def test_the_calendar_is_paged_by_market_date_and_scope_with_one_shared_overview(tmp_path, monkeypatch):
+    from datetime import timedelta
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from earnings_monitor import calendar_us as CAL, routes
+    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path)
+    days = [clock().date() + timedelta(days=i) for i in range(1, 40) if CAL.is_trading_day(clock().date() + timedelta(days=i))]
+    ad.cal = [{"symbol": "S%03d" % i, "date": days[i % 18].isoformat(), "session": "BMO"} for i in range(120)]
+    for r in ad.cal[:30]:
+        ad.set_model("claude", r["symbol"], "BUY", clock(), score=60, coverage=0.9, event_date=r["date"])
+    mon.observe_calendar(ad.cal, clock(), complete=True)
+    mon.recompute(clock())
+    monkeypatch.setenv("EARNINGS_MONITOR_DIR", str(d))
+    monkeypatch.setattr(routes, "now", lambda: clock())
+    app = FastAPI()
+    app.include_router(routes.router)
+    c = TestClient(app)
+    up = c.get("/api/earnings-monitor/upcoming?limit=50").json()
+    ov = up["summary"]
+    assert up["count"] == 50 and up["total"] == ov["events"] == 120 and sum(x["events"] for x in up["by_date"]) == 120 and ov["dates"] == len(up["by_date"])
+    assert ov["in_window"] + ov["outside_window"] == 120 and ov["in_window"] > 0 and ov["outside_window"] > 0 and ov["fresh_calls_per_model"]["claude"] == ov["with_fresh_call"] <= 30
+    # the SAME definitions in every view
+    pages = [c.get("/api/earnings-monitor/%s?limit=1000" % v).json() for v in ("upcoming", "models", "smart-move")]
+    assert {p["summary"]["events"] for p in pages} == {120} and {p["total"] for p in pages} == {120}
+    day = up["by_date"][3]["date"]
+    one = c.get("/api/earnings-monitor/upcoming?date=%s&limit=1000" % day).json()
+    assert one["total"] == up["by_date"][3]["events"] and {r["earnings_date"] for r in one["rows"]} == {day}
+    assert c.get("/api/earnings-monitor/upcoming?scope=outside&limit=1000").json()["total"] == ov["outside_window"]
+    assert all(r["out_of_window"] for r in c.get("/api/earnings-monitor/upcoming?scope=outside&limit=1000").json()["rows"])
+    p2 = c.get("/api/earnings-monitor/upcoming?limit=50&offset=50").json()
+    assert p2["count"] == 50 and {r["id"] for r in p2["rows"]}.isdisjoint({r["id"] for r in up["rows"]})
+    assert c.get("/api/earnings-monitor/upcoming?scope=bogus").status_code == 422 and c.get("/api/earnings-monitor/upcoming?date=nope").status_code == 422

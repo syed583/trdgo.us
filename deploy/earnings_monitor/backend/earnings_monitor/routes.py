@@ -59,19 +59,61 @@ def status():
     return dict(base, status="OK", **rep)
 
 
+SCOPES = ("all", "window", "outside", "withcall", "nocall")
+
+
+def _overview(s: Store, cfg, t: datetime, include_history: bool = False) -> dict:
+    """Cheap facts about EVERY tracked event inside the horizon, from a few grouped queries (never one query per event): per market date, per scope and per model. This is the one definition of 'scope' that the
+    Upcoming page, the model grid, the Smart Money Move view and the verification script all share."""
+    today = today_et(t)
+    counts = {r["event_id"]: r for r in s.q("SELECT event_id, SUM(CASE WHEN status='VALID' THEN 1 ELSE 0 END) valid, SUM(CASE WHEN status='VALID' AND stale=0 THEN 1 ELSE 0 END) fresh FROM model_state GROUP BY event_id")}
+    evs = []
+    for e in s.q("SELECT id, symbol, earnings_date, status FROM events" + ("" if include_history else " WHERE status='ACTIVE'") + " ORDER BY earnings_date, symbol"):
+        days = (date.fromisoformat(e["earnings_date"]) - today).days
+        if not include_history and days > cfg.horizon_days:
+            continue
+        c = counts.get(e["id"]) or {}
+        evs.append({"id": e["id"], "date": e["earnings_date"], "days": days, "window": days <= cfg.model_window_days, "fresh": int(c.get("fresh") or 0), "valid": int(c.get("valid") or 0)})
+    by_date: dict = {}
+    for e in evs:
+        d = by_date.setdefault(e["date"], {"date": e["date"], "events": 0, "in_window": 0, "with_fresh_call": 0})
+        d["events"] += 1
+        d["in_window"] += 1 if e["window"] else 0
+        d["with_fresh_call"] += 1 if e["fresh"] else 0
+    per_model = {r["model"]: r["n"] for r in s.q("SELECT m.model model, COUNT(*) n FROM model_state m JOIN events e ON e.id=m.event_id WHERE e.status='ACTIVE' AND m.status='VALID' AND m.stale=0 GROUP BY m.model")}
+    summary = {"events": len(evs), "dates": len(by_date), "in_window": sum(1 for e in evs if e["window"]), "outside_window": sum(1 for e in evs if not e["window"]),
+               "with_fresh_call": sum(1 for e in evs if e["fresh"]), "in_window_without_call": sum(1 for e in evs if e["window"] and not e["fresh"]), "max_days_ahead": max([e["days"] for e in evs] or [0]),
+               "fresh_calls_per_model": {m: per_model.get(m, 0) for m in LABELS}}
+    return {"events": evs, "by_date": sorted(by_date.values(), key=lambda x: x["date"]), "summary": summary}
+
+
+def _select(ov: dict, on: Optional[str], scope: str, limit: int, offset: int) -> tuple:
+    """(ids of the requested page, total after the filters). Order is market date then symbol."""
+    sel = [e for e in ov["events"] if (not on or e["date"] == on) and (scope == "all" or (scope == "window" and e["window"]) or (scope == "outside" and not e["window"]) or
+                                                                       (scope == "withcall" and e["fresh"]) or (scope == "nocall" and e["window"] and not e["fresh"]))]
+    return [e["id"] for e in sel[offset:offset + limit]], len(sel)
+
+
+def _page_meta(ov: dict, total: int, limit: int, offset: int, on: Optional[str], scope: str) -> dict:
+    return {"total": total, "limit": limit, "offset": offset, "date": on, "scope": scope, "by_date": ov["by_date"], "summary": ov["summary"]}
+
+
 @router.get("/upcoming")
-def upcoming(include_history: bool = False):
+def upcoming(include_history: bool = False, limit: int = Query(200, ge=1, le=1000), offset: int = Query(0, ge=0), on: Optional[str] = Query(None, alias="date", pattern=r"^\d{4}-\d{2}-\d{2}$"),
+             scope: str = Query("all", pattern="^(all|window|outside|withcall|nocall)$")):
+    """The rolling calendar, a page at a time (default 200). `by_date` and `summary` always describe ALL tracked events, whatever page is asked for."""
     s = _store()
     if s is None:
         return _empty()
     t = now()
     cfg = C.Config.load(str(data_dir() / "config.json"))
-    rows = s.q("SELECT * FROM events" + ("" if include_history else " WHERE status='ACTIVE'") + " ORDER BY earnings_date, symbol")
+    ov = _overview(s, cfg, t, include_history)
+    ids, total = _select(ov, on, scope, limit, offset)
+    byid = {r["id"]: r for r in s.q("SELECT * FROM events WHERE id IN (%s)" % ",".join(str(i) for i in ids))} if ids else {}
+    rows = [byid[i] for i in ids if i in byid]
     out = []
     for e in rows:
         days = (date.fromisoformat(e["earnings_date"]) - today_et(t)).days
-        if not include_history and days > cfg.horizon_days:
-            continue
         reasons = []
         if e["status"] != "ACTIVE":
             reasons.append(e["status"])
@@ -91,22 +133,24 @@ def upcoming(include_history: bool = False):
                     "sources": json.loads(e["sources"]) if e["sources"] else [], "eligible": not reasons, "ineligible_reasons": reasons, "first_seen": e["first_seen"],
                     "last_seen": e["last_seen"], "last_changed": e["last_changed"], "latest_change": last, "versions": versions, "valid_predictions": valid, "fresh_predictions": fresh_models, "models_total": len(LABELS),
                     "evidence_items": ev_info.get("n", 0), "last_evidence_at": ev_info.get("t"), "outcome": json.loads(e["outcome_json"]) if e["outcome_json"] else None})
-    return {"status": "OK", "now": t.isoformat(), "rows": out, "count": len(out), "horizon_days": cfg.horizon_days, "model_window_days": cfg.model_window_days}
+    return dict({"status": "OK", "now": t.isoformat(), "rows": out, "count": len(out), "horizon_days": cfg.horizon_days, "model_window_days": cfg.model_window_days}, **_page_meta(ov, total, limit, offset, on, scope))
 
 
 @router.get("/models")
-def models():
+def models(limit: int = Query(200, ge=1, le=1000), offset: int = Query(0, ge=0), on: Optional[str] = Query(None, alias="date", pattern=r"^\d{4}-\d{2}-\d{2}$"),
+           scope: str = Query("all", pattern="^(all|window|outside|withcall|nocall)$")):
     """Every model's real stored call per upcoming event with its timestamp, source, freshness, coverage and validation status. PENDING / NO VALID PREDICTION / LOW DATA are shown as such, never as a call."""
     s = _store()
     if s is None:
         return _empty()
     t = now()
     cfg = C.Config.load(str(data_dir() / "config.json"))
+    ov = _overview(s, cfg, t)
+    ids, total = _select(ov, on, scope, limit, offset)
+    byid = {r["id"]: r for r in s.q("SELECT * FROM events WHERE id IN (%s)" % ",".join(str(i) for i in ids))} if ids else {}
     out = []
-    for e in s.q("SELECT * FROM events WHERE status='ACTIVE' ORDER BY earnings_date, symbol"):
+    for e in [byid[i] for i in ids if i in byid]:
         days = (date.fromisoformat(e["earnings_date"]) - today_et(t)).days
-        if days > cfg.horizon_days:
-            continue
         cells = {}
         for m in s.q("SELECT * FROM model_state WHERE event_id=?", (e["id"],)):
             pred = s.one("SELECT recorded_at, as_of, source, engine_version, reason FROM predictions WHERE id=?", (m["prediction_id"],)) if m["prediction_id"] else None
@@ -129,7 +173,7 @@ def models():
             sm_c["origin"] = {"smart_move_snapshot": "HISTORICAL_SNAPSHOT", "smart_move_engine": "LIVE_ENGINE"}.get(sm_c.get("source"))
         out.append({"id": e["id"], "symbol": e["symbol"], "company": e["company"], "earnings_date": e["earnings_date"], "session": e["session"], "verification": e["verification"], "days_to": days,
                     "out_of_window": days > cfg.model_window_days, "cells": cells})
-    return {"status": "OK", "models": [{"id": k, "label": v} for k, v in LABELS.items()], "stale_after_h": cfg.stale_after_h, "rows": out,
+    return {"status": "OK", "models": [{"id": k, "label": v} for k, v in LABELS.items()], "stale_after_h": cfg.stale_after_h, "rows": out, "count": len(out), **_page_meta(ov, total, limit, offset, on, scope),
             "note": "A cell is a model's own call. PENDING, LOW DATA and NO VALID PREDICTION mean it made no call; they are never a neutral view. NO TRADE is a real call that says do nothing."}
 
 
@@ -371,7 +415,8 @@ def _sm_reason(s: Store, ev: dict, cfg, t: datetime, had_engine_row: bool) -> di
 
 
 @router.get("/smart-move")
-def smart_move():
+def smart_move(limit: int = Query(200, ge=1, le=1000), offset: int = Query(0, ge=0), on: Optional[str] = Query(None, alias="date", pattern=r"^\d{4}-\d{2}-\d{2}$"),
+               scope: str = Query("all", pattern="^(all|window|outside|withcall|nocall)$")):
     """Smart Move score40-v1 per upcoming event: the engine's own category and coverage, its freshness, and what evidence is missing. Genuine NO TRADE, PENDING and NO VALID PREDICTION stay separate, and nothing is a call unless the engine made it."""
     s = _store()
     if s is None:
@@ -385,10 +430,11 @@ def smart_move():
             "how_predictions_arise": "frozen engine on a private evidence store" if eng else ("verified snapshot only" if snap else "none: not installed")}
     out = []
     counts: dict = {}
-    for e in s.q("SELECT * FROM events WHERE status='ACTIVE' ORDER BY earnings_date, symbol"):
+    ov = _overview(s, cfg, t)
+    ids, total = _select(ov, on, scope, limit, offset)
+    byid = {r["id"]: r for r in s.q("SELECT * FROM events WHERE id IN (%s)" % ",".join(str(i) for i in ids))} if ids else {}
+    for e in [byid[i] for i in ids if i in byid]:
         days = (date.fromisoformat(e["earnings_date"]) - today_et(t)).days
-        if days > cfg.horizon_days:
-            continue
         m = s.one("SELECT * FROM model_state WHERE event_id=? AND model='smart_move'", (e["id"],))
         st = {"status": (m or {}).get("status", "PENDING"), "signal": (m or {}).get("signal"), "stale": bool((m or {}).get("stale"))}
         label = L.display_status(st)
@@ -405,7 +451,7 @@ def smart_move():
         out.append({"id": e["id"], "symbol": e["symbol"], "company": e["company"], "earnings_date": e["earnings_date"], "session": e["session"], "days_to": days, "label": label, "signal": (m or {}).get("signal"),
                     "coverage": json.loads(m["coverage"]) if m and m["coverage"] else None, "as_of": (m or {}).get("as_of"), "age_h": _age_h((m or {}).get("as_of"), t), "stale": st["stale"],
                     "source": (m or {}).get("source"), "origin": {"smart_move_snapshot": "HISTORICAL_SNAPSHOT", "smart_move_engine": "LIVE_ENGINE"}.get((m or {}).get("source")) or "NOT_GENERATED", "reason": reason, "details": det})
-    return {"status": "OK", "engine": info, "coverage": s.kv_get("smd:coverage"), "windows": s.kv_get("smd:windows"), "plan": s.kv_get("smart_move:plan"), "counts": counts, "rows": out,
+    return {"status": "OK", "engine": info, "coverage": s.kv_get("smd:coverage"), "windows": s.kv_get("smd:windows"), "plan": s.kv_get("smart_move:plan"), "counts": counts, "counts_scope": "this page", "rows": out, "count": len(out), **_page_meta(ov, total, limit, offset, on, scope),
             "note": "The monitor never scores Smart Move: it reads the frozen engine's own result. Collecting the evidence is a separate, attested provider run; until it has run, the honest label is PENDING or NO VALID PREDICTION."}
 
 

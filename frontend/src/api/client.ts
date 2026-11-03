@@ -1008,10 +1008,12 @@ export const api2 = {
 };
 
 /** Earnings monitor: read-only views of the automatic upcoming-earnings scan, every model's stored prediction, detected changes, comparable-model consensus and accuracy. */
+export type EmPage = { date?: string; scope?: string; limit?: number; offset?: number };
+const emQs = (q: EmPage) => Object.entries(q).filter(([, v]) => v !== '' && v != null).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&');
 export const earningsMonitor = {
   status: (s?: AbortSignal) => request<any>('/api/earnings-monitor/status', s),
-  upcoming: (history: boolean, s?: AbortSignal) => request<any>(`/api/earnings-monitor/upcoming?include_history=${history ? 'true' : 'false'}`, s),
-  models: (s?: AbortSignal) => request<any>('/api/earnings-monitor/models', s),
+  upcoming: (history: boolean, q: EmPage, s?: AbortSignal) => request<any>(`/api/earnings-monitor/upcoming?include_history=${history ? 'true' : 'false'}&${emQs(q)}`, s),
+  models: (q: EmPage, s?: AbortSignal) => request<any>(`/api/earnings-monitor/models?${emQs(q)}`, s),
   changes: (kind: string, s?: AbortSignal) => request<any>(`/api/earnings-monitor/changes?limit=200${kind ? `&kind=${encodeURIComponent(kind)}` : ''}`, s),
   consensus: (s?: AbortSignal) => request<any>('/api/earnings-monitor/consensus', s),
   accuracy: (s?: AbortSignal) => request<any>('/api/earnings-monitor/accuracy', s),
@@ -1019,7 +1021,7 @@ export const earningsMonitor = {
   sources: (s?: AbortSignal) => request<any>('/api/earnings-monitor/sources', s),
   history: (symbol: string, s?: AbortSignal) => request<any>(`/api/earnings-monitor/history?symbol=${encodeURIComponent(symbol)}`, s),
   evidence: (symbol: string, s?: AbortSignal) => request<any>(`/api/earnings-monitor/evidence${symbol ? `?symbol=${encodeURIComponent(symbol)}` : ''}`, s),
-  smartMove: (s?: AbortSignal) => request<any>('/api/earnings-monitor/smart-move', s),
+  smartMove: (q: EmPage, s?: AbortSignal) => request<any>(`/api/earnings-monitor/smart-move?${emQs(q)}`, s),
   health: (s?: AbortSignal) => request<any>('/api/earnings-monitor/health', s),
   outcomes: (s?: AbortSignal) => request<any>('/api/earnings-monitor/outcomes', s),
 };

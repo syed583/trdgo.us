@@ -273,3 +273,17 @@ test('Smart Money Move shows the prediction-window watch from the live engine, a
   assert.match(none, /data-testid="sm-windows-na"/);
   assert.match(none, /so they are not guessed/);
 });
+
+test('every list shows the same scope summary, a market-date picker with per-date counts, a scope filter and a pager', () => {
+  const up = { status: 'OK', horizon_days: 30, model_window_days: 15, rows: [], count: 200, total: 1594, limit: 200, offset: 0, date: null, scope: 'all',
+    by_date: [{ date: '2026-11-04', events: 412, in_window: 412, with_fresh_call: 90 }, { date: '2026-11-30', events: 77, in_window: 0, with_fresh_call: 0 }],
+    summary: { events: 3012, dates: 21, in_window: 1594, outside_window: 1418, with_fresh_call: 302, in_window_without_call: 1292, max_days_ahead: 27, fresh_calls_per_model: { claude: 302, grok: 300 } } };
+  const html = panel({ emstatus: { data: on }, emupcoming: { data: up } });
+  assert.match(html, /3012 event\(s\) on 21 market date\(s\), up to 27 days ahead/);
+  assert.match(html, /1594 inside the eight-model window \(302 with a fresh call, 1292 without\) · 1418 outside it, listed and never scored/);
+  assert.match(html, /Fresh calls per model: claude 302 · grok 300/);
+  assert.match(html, /2026-11-30 · 77 event\(s\), 0 in window, 0 with a call/);
+  assert.match(html, /data-testid="page-range"[^>]*>1–200 of 1594</);
+  assert.match(html, /Inside the eight-model window/);
+  assert.match(html, /disabled=""[^>]*>Previous</);
+});

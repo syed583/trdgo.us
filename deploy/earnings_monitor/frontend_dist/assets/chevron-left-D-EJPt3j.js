@@ -1,1 +1,0 @@
-import{n as e}from"./jsx-runtime-C1hmh-FA.js";var t={name:`arrow-left`,size:24,node:[[`path`,{d:`m12 19-7-7 7-7`,key:`1l729n`}],[`path`,{d:`M19 12H5`,key:`x3x0zl`}]]};t.node;var n=e(t),r={name:`chevron-left`,size:24,node:[[`path`,{d:`m15 18-6-6 6-6`,key:`1wnfg3`}]]};r.node;var i=e(r);export{n,i as t};

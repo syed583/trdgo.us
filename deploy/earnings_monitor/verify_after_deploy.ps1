@@ -52,7 +52,7 @@ if ($s.scheduling -eq 'CACHE_ONLY' -and [int]$s.provider_requests_today -ne 0) {
 if ($s.scheduling -eq 'CACHE_ONLY' -and [int]$s.provider_requests_today -eq 0) { Say 'PASS' 'cache-only: zero provider requests counted' }
 if ($s.scheduling -eq 'REFRESH') { Say 'WARN' 'provider refresh is approved: stage 1 should be cache-only' }
 
-# 3. the 14-day calendar
+# 3. the rolling calendar (the same list the Upcoming page shows)
 $up = Get-Json '/api/earnings-monitor/upcoming' $h
 if ($up.code -eq 200 -and $up.json.status -eq 'NO_DATA') { Say 'INFO' 'upcoming: no monitor data yet (the monitor has not run on this server)' }
 elseif ($up.code -eq 200 -and $up.json.status -eq 'OK') {
@@ -62,8 +62,11 @@ elseif ($up.code -eq 200 -and $up.json.status -eq 'OK') {
     $days = @($rows | ForEach-Object { [int]$_.days_to })
     $ver = $rows | Group-Object verification | ForEach-Object { "$($_.Name)=$($_.Count)" }
     $elig = @($rows | Where-Object { $_.eligible }).Count
-    Say 'PASS' "tracking $($rows.Count) upcoming events, $(($days | Measure-Object -Minimum).Minimum) to $(($days | Measure-Object -Maximum).Maximum) days ahead; $elig eligible; calendar check: $($ver -join ', ')"
-    if (($days | Measure-Object -Maximum).Maximum -gt $HorizonDays) { Say 'WARN' "some events are beyond the $HorizonDays-day horizon (shown as not eligible)" }
+    $nAll = if ($up.json.summary) { [int]$up.json.summary.events } else { $rows.Count }
+    $maxAll = if ($up.json.summary) { [int]$up.json.summary.max_days_ahead } else { ($days | Measure-Object -Maximum).Maximum }
+    Say 'PASS' "tracking $nAll upcoming events, 0 to $maxAll days ahead (of the $($rows.Count) listed on this page: $elig eligible; calendar check: $($ver -join ', '))"
+    $beyond = @($rows | Where-Object { [int]$_.days_to -gt $HorizonDays }).Count
+    if ($beyond) { Say 'INFO' "$beyond event(s) are beyond the $HorizonDays-day eight-model window: they are on the 30-day calendar and are listed, never scored" }
     $conf = @($rows | Where-Object { $_.verification -eq 'CONFLICT' }).Count
     if ($conf) { Say 'WARN' "$conf event(s) where the calendar vendors disagree" }
     if ($s.scheduling -ne 'REFRESH') { Say 'INFO' 'vendor verification happens only on a provider calendar refresh; in cache-only mode events show UNVERIFIED by design' }
@@ -126,24 +129,30 @@ if ($hl.code -eq 200 -and -not $hl.notJson) {
 } elseif ($hl.code -eq 404 -or $hl.notJson) { Say 'WARN' 'health view is not part of the installed version' } else { Say 'WARN' "health HTTP $($hl.code)" }
 
 
-# 8. rolling 30-day calendar: how many events, which dates, which have predictions (read-only; counts and dates only)
-$u2 = Get-Json '/api/earnings-monitor/upcoming' $h
+# 8. rolling 30-day calendar. The server pages its lists, so the totals come from the server's own summary of ALL tracked events (the same numbers the Upcoming page shows); older servers send every row and the totals are counted here.
+$u2 = Get-Json '/api/earnings-monitor/upcoming?limit=1000' $h
 if ($u2.code -eq 200 -and -not $u2.notJson -and $u2.json) {
-  $rows = @($u2.json.rows)
+  $rows = @($u2.json.rows); $S = $u2.json.summary
   $hz = [int]$u2.json.horizon_days; $mw = [int]$u2.json.model_window_days
-  $maxd = if ($rows.Count) { ($rows | Measure-Object -Property days_to -Maximum).Maximum } else { 0 }
-  $inWin = @($rows | Where-Object { -not $_.out_of_window }); $outWin = @($rows | Where-Object { $_.out_of_window })
-  Say 'INFO' ("calendar: {0} events on {1} dates, 0 to {2} days ahead (horizon {3} d, eight-model window {4} d)" -f $rows.Count, @($rows | Group-Object earnings_date).Count, $maxd, $hz, $mw)
-  Say 'INFO' ("inside the {0}-day model window: {1} events, {2} with at least one fresh model call, {3} with none; outside the window: {4} events (listed, never scored)" -f $mw, $inWin.Count, @($inWin | Where-Object { $_.fresh_predictions -ge 1 }).Count, @($inWin | Where-Object { $_.fresh_predictions -lt 1 }).Count, $outWin.Count)
-  if ($maxd -lt ($hz - 5)) { Say 'WARN' ("the calendar reaches only {0} days ahead, not {1}: dates beyond that are not in any cache the application holds yet (a calendar refresh is Stage D, or the application must request 30 days)" -f $maxd, $hz) } else { Say 'PASS' ("the calendar reaches {0} days ahead" -f $maxd) }
-  $have = @{}; foreach ($g in ($rows | Group-Object earnings_date)) { $have[$g.Name] = $g.Count }
+  if ($S) { $n = [int]$S.events; $ndates = [int]$S.dates; $maxd = [int]$S.max_days_ahead; $inWin = [int]$S.in_window; $outWin = [int]$S.outside_window; $withCall = [int]$S.with_fresh_call; $noCall = [int]$S.in_window_without_call; $dateRows = @($u2.json.by_date) }
+  else {
+    $n = $rows.Count; $ndates = @($rows | Group-Object earnings_date).Count; $maxd = if ($rows.Count) { ($rows | Measure-Object -Property days_to -Maximum).Maximum } else { 0 }
+    $inWin = @($rows | Where-Object { -not $_.out_of_window }).Count; $outWin = $n - $inWin; $withCall = @($rows | Where-Object { $_.fresh_predictions -ge 1 }).Count; $noCall = @($rows | Where-Object { -not $_.out_of_window -and $_.fresh_predictions -lt 1 }).Count
+    $dateRows = @($rows | Group-Object earnings_date | ForEach-Object { [pscustomobject]@{ date = $_.Name; events = $_.Count; in_window = @($_.Group | Where-Object { -not $_.out_of_window }).Count; with_fresh_call = @($_.Group | Where-Object { $_.fresh_predictions -ge 1 }).Count } })
+  }
+  Say 'INFO' ("calendar: {0} distinct events on {1} market dates, 0 to {2} days ahead (horizon {3} d, eight-model window {4} d)" -f $n, $ndates, $maxd, $hz, $mw)
+  Say 'INFO' ("inside the {0}-day model window: {1} events ({2} with at least one fresh model call, {3} with none); outside the window: {4} events (listed, never scored)" -f $mw, $inWin, $withCall, $noCall, $outWin)
+  if ($S -and $S.fresh_calls_per_model) { Say 'INFO' ("fresh calls per model: " + ((($S.fresh_calls_per_model.PSObject.Properties) | ForEach-Object { "{0}={1}" -f $_.Name, $_.Value }) -join ', ')) }
+  if ($maxd -lt ($hz - 5)) { Say 'WARN' ("the calendar reaches only {0} days ahead, not {1}: dates beyond that are not in any cache the application holds yet (the first scan after an update picks up what is cached; a calendar refresh is Stage D)" -f $maxd, $hz) } else { Say 'PASS' ("the calendar reaches {0} days ahead" -f $maxd) }
+  Say 'INFO' 'cached dates are not proof of complete coverage: the counts below are events actually present for each market date'
+  $have = @{}; foreach ($g in $dateRows) { $have[[string]$g.date] = [int]$g.events }
   $today = (Get-Date).ToUniversalTime().Date; $gaps = @()
   for ($i = 0; $i -le $hz; $i++) { $d = $today.AddDays($i); if ($d.DayOfWeek -ne 'Saturday' -and $d.DayOfWeek -ne 'Sunday' -and -not $have.ContainsKey($d.ToString('yyyy-MM-dd'))) { $gaps += $d.ToString('yyyy-MM-dd') } }
   Say 'INFO' ("weekdays with no event listed (a market holiday, or not cached yet): {0}" -f $(if ($gaps.Count) { $gaps -join ', ' } else { 'none' }))
-  foreach ($g in ($rows | Group-Object earnings_date | Sort-Object Name | Select-Object -First 31)) { Write-Host ("      {0}  events={1,4}  with a fresh call={2,4}  out of window={3,4}" -f $g.Name, $g.Count, @($g.Group | Where-Object { $_.fresh_predictions -ge 1 }).Count, @($g.Group | Where-Object { $_.out_of_window }).Count) }
+  foreach ($g in ($dateRows | Sort-Object date | Select-Object -First 31)) { Write-Host ("      {0}  events={1,5}  in window={2,5}  with a fresh call={3,5}" -f $g.date, $g.events, $g.in_window, $g.with_fresh_call) }
 } elseif ($u2.notJson) { Say 'WARN' 'upcoming: the server returned a web page, not data' } else { Say 'WARN' "upcoming HTTP $($u2.code)" }
 
-# 9. Smart Money Move: the market date of every result, its origin, and the real reason when there is none
+# 9. Smart Money Move (first page of up to 200 events; the server's own totals are above): the market date of every result, its origin, and the real reason when there is none
 $sm = Get-Json '/api/earnings-monitor/smart-move' $h
 if ($sm.code -eq 200 -and -not $sm.notJson -and $sm.json) {
   $srows = @($sm.json.rows)

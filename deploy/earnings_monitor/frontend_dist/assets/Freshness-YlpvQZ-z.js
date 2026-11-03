@@ -1,2 +1,0 @@
-import{l as e,t}from"./jsx-runtime-C1hmh-FA.js";e();var n=t();function r({stamp:e,compact:t=!1}){if(!e||!e.label)return null;let r=(e.kind||``).toLowerCase(),i=[e.detail,e.source?`Source: ${e.source}`:``].filter(Boolean).join(`
-`);return(0,n.jsxs)(`span`,{className:`fresh fresh-${r} ${t?`fresh-sm`:``}`,title:i,children:[r===`live`&&(0,n.jsx)(`i`,{className:`fresh-dot`}),e.label]})}export{r as t};
