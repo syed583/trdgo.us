@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import os
 import random
 import threading
@@ -50,7 +51,10 @@ from typing import Any, Optional
 
 from dotenv import load_dotenv
 
+import uw_slots
 from live_market_service import cache
+
+_log = logging.getLogger("uw")
 
 load_dotenv()
 
@@ -151,6 +155,8 @@ def _max_inflight() -> int:
 
 
 MAX_INFLIGHT = _max_inflight()
+SLOT_WAIT = float(os.environ.get("UW_SLOT_WAIT", "30") or 30)          # how long a request waits for a machine / broker slot before it is refused
+RETRY_AFTER_CAP = float(os.environ.get("UW_RETRY_AFTER_CAP", "30") or 30)   # the provider's Retry-After is honoured up to this many seconds
 _inflight = threading.BoundedSemaphore(MAX_INFLIGHT)
 
 # Live priority without rewriting every caller: background work (the cache warmer marks its own threads)
@@ -225,7 +231,8 @@ def _slot(background: bool):
             with _fg_lock:
                 _fg_waiting -= 1
     try:
-        yield
+        with uw_slots.global_slot(SLOT_WAIT):                   # machine-wide slots / lease broker, when configured (no-ops otherwise)
+            yield
     finally:
         _inflight.release()
         if background:
@@ -559,59 +566,65 @@ def get(path: str, params: Optional[dict] = None) -> dict:
                 "retry_in": round(background_cooldown_remaining()), "source": SOURCE}
     max_attempts = (BG_MAX_RETRIES if background else 2) + 1
     raw429 = b""
-    for _attempt in range(max_attempts):
-        gate_start = time.time()
-        with _slot(background):
-            _space_out()
-            _metrics["wait"].append((time.time() - gate_start) * 1000.0)
-            net_start = time.time()
-            try:
-                with _OPENER.open(request, timeout=TIMEOUT) as response:
-                    _note_limits(response.headers)
-                    body = json.loads(response.read().decode("utf-8", "ignore") or "{}")
-                lat = (time.time() - net_start) * 1000.0
-                _metrics["lat"].append(lat)
-                _metrics["net_calls"] += 1
-                _metrics["last_path"] = path
-                _metrics["last_latency_ms"] = round(lat)
-                _metrics["last_at"] = time.time()
-                break
-            except urllib.error.HTTPError as exc:
-                key = str(exc.code)
-                _metrics["errors_by"][key] = _metrics["errors_by"].get(key, 0) + 1
-                if exc.code == 429:
-                    try:
-                        raw429 = exc.read() or b""
-                    except Exception:  # noqa: BLE001
-                        raw429 = b""
-                    _count_path_error(path, 429)
-                    if _attempt < max_attempts - 1:       # bounded: never an endless retry
-                        retry_after = _seconds(getattr(exc, "headers", {}).get("Retry-After")) or 0
-                        time.sleep(_backoff(_attempt, min(float(retry_after), 5.0)))
-                        continue
-                    if background:
-                        _bg_note_429()
-                    return _http_error(exc, raw429, background)
-                # A 404 means the provider has no data for this symbol/endpoint
-                # (a thin ticker with no dividends, insiders, etc.) -- an
-                # expected empty answer, not a pipeline failure.
-                if exc.code == 404:
-                    _metrics["no_data"] += 1
-                    _count_path_error(path, 404)
-                else:
+    try:
+        for _attempt in range(max_attempts):
+            gate_start = time.time()
+            with _slot(background):
+                _space_out()
+                _metrics["wait"].append((time.time() - gate_start) * 1000.0)
+                net_start = time.time()
+                try:
+                    with _OPENER.open(request, timeout=TIMEOUT) as response:
+                        _note_limits(response.headers)
+                        body = json.loads(response.read().decode("utf-8", "ignore") or "{}")
+                    lat = (time.time() - net_start) * 1000.0
+                    _metrics["lat"].append(lat)
+                    _metrics["net_calls"] += 1
+                    _metrics["last_path"] = path
+                    _metrics["last_latency_ms"] = round(lat)
+                    _metrics["last_at"] = time.time()
+                    break
+                except urllib.error.HTTPError as exc:
+                    key = str(exc.code)
+                    _metrics["errors_by"][key] = _metrics["errors_by"].get(key, 0) + 1
+                    if exc.code == 429:
+                        try:
+                            raw429 = exc.read() or b""
+                        except Exception:  # noqa: BLE001
+                            raw429 = b""
+                        _count_path_error(path, 429)
+                        if _attempt < max_attempts - 1:       # bounded: never an endless retry
+                            retry_after = _seconds(getattr(exc, "headers", {}).get("Retry-After")) or 0
+                            _log_refusal(429, path, _attempt + 1, retry_after)
+                            time.sleep(_backoff(_attempt, min(float(retry_after), RETRY_AFTER_CAP)))
+                            continue
+                        if background:
+                            _bg_note_429()
+                        return _http_error(exc, raw429, background)
+                    # A 404 means the provider has no data for this symbol/endpoint
+                    # (a thin ticker with no dividends, insiders, etc.) -- an
+                    # expected empty answer, not a pipeline failure.
+                    if exc.code == 404:
+                        _metrics["no_data"] += 1
+                        _count_path_error(path, 404)
+                    else:
+                        _metrics["net_errors"] += 1
+                        _metrics["err_times"].append(time.time())
+                        _metrics["last_error"] = f"{path} → HTTP {exc.code}"
+                    return _http_error(exc)
+                except Exception as exc:  # noqa: BLE001
+                    _metrics["errors_by"]["net"] = _metrics["errors_by"].get("net", 0) + 1
                     _metrics["net_errors"] += 1
                     _metrics["err_times"].append(time.time())
-                    _metrics["last_error"] = f"{path} → HTTP {exc.code}"
-                return _http_error(exc)
-            except Exception as exc:  # noqa: BLE001
-                _metrics["errors_by"]["net"] = _metrics["errors_by"].get("net", 0) + 1
-                _metrics["net_errors"] += 1
-                _metrics["err_times"].append(time.time())
-                _metrics["last_error"] = f"{path} → {type(exc).__name__}"
-                _last_status = "PROVIDER_OFFLINE"
-                return {"status": "PROVIDER_OFFLINE", "data": None,
-                        "detail": type(exc).__name__, "source": SOURCE}
+                    _metrics["last_error"] = f"{path} → {type(exc).__name__}"
+                    _last_status = "PROVIDER_OFFLINE"
+                    return {"status": "PROVIDER_OFFLINE", "data": None,
+                            "detail": type(exc).__name__, "source": SOURCE}
 
+    except uw_slots.SlotTimeout as exc:
+        _log_refusal("slot", path, 1, None, str(exc))
+        _last_status = "RATE_LIMITED"
+        return {"status": "RATE_LIMITED", "data": None, "detail": str(exc), "retry_in": 1, "source": SOURCE}
     _last_status = "OK"
     if background:
         _bg_note_ok()
@@ -619,6 +632,19 @@ def get(path: str, params: Optional[dict] = None) -> dict:
     # itself. Both are handed back the same way so callers never branch.
     data = body.get("data") if isinstance(body, dict) and "data" in body else body
     return {"status": "OK", "data": data, "source": SOURCE}
+
+
+_log_last: dict = {}
+
+
+def _log_refusal(code, path: str, attempt: int, retry_after, note: str = "") -> None:
+    """One structured line per (code, endpoint) at most every 30 s, so a storm of 429s is visible without flooding the log: code, endpoint, attempt, Retry-After, in-flight count."""
+    key = (str(code), path.split("?")[0][:80])
+    now = time.time()
+    if now - _log_last.get(key, 0.0) < 30.0:
+        return
+    _log_last[key] = now
+    _log.warning("uw refusal code=%s endpoint=%s attempt=%s retry_after=%s max_inflight=%s %s", code, key[1], attempt, retry_after, MAX_INFLIGHT, note)
 
 
 def _count_path_error(path: str, code: int) -> None:

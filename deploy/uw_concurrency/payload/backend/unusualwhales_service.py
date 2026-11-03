@@ -1,0 +1,1529 @@
+"""
+Unusual Whales: one paid feed in place of eight free ones.
+
+What this is for
+----------------
+The app grew by adding whatever free provider could answer the next question:
+Twelve Data and Alpha Vantage for bars when TWS was busy, Nasdaq for
+dividends, Benzinga for earnings, Marketaux and Yahoo for headlines, Finviz
+for fundamentals and screens, OptionData and OptionsBell for the options
+tape. Each came with its own key, its own quota, its own outage, and its own
+spelling of the same company -- and the model went dark parameter by
+parameter whenever one of them ran out.
+
+Unusual Whales answers nearly all of it from one subscription: the options
+tape and its unusual filter, open-interest change, IV rank and the whole
+volatility surface, OHLC candles, quotes, earnings history, dividends,
+analyst actions, insider transactions, institutional ownership, headlines,
+fundamentals and a screener. So this becomes the primary source for those,
+and the free providers stay as fallbacks rather than as the floor.
+
+What it does not replace
+------------------------
+* **Interactive Brokers** -- the live quote and the intraday bars the session
+  parameters are measured from. That stays, by the user's decision.
+* **SEC EDGAR** -- 8-K item codes are the company's own classification of
+  what happened. Nothing else is the record of a filing.
+* **Claude** -- words, never numbers.
+
+House rules
+-----------
+One subscription, one person: the token is read from backend/.env, never
+logged, and never returned by any status endpoint. Their limits are read
+from the response headers and honoured -- a 429 is a signal to stop, not to
+retry.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import json
+import logging
+import os
+import random
+import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from collections import deque
+from typing import Any, Optional
+
+from dotenv import load_dotenv
+
+import uw_slots
+from live_market_service import cache
+
+_log = logging.getLogger("uw")
+
+load_dotenv()
+
+SOURCE = "UNUSUAL_WHALES"
+BASE = "https://api.unusualwhales.com"
+
+# Cash-settled index roots the provider does not serve stock OHLC for; callers
+# resolve their level through an ETF proxy instead.
+_INDEX_NO_OHLC = {"SPX", "SPXW", "NDX", "NDXP", "RUT", "RUTW", "INDU", "DJX",
+                  "VIX", "VIXW"}
+
+# urllib follows 3xx by default and re-sends every header -- including the
+# Authorization bearer -- to the redirect target, cross-origin included. A
+# provider-side open redirect would then leak the API token. This opener
+# refuses to follow: a redirect is surfaced as an HTTPError and handled like
+# any other non-200 rather than chased.
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):  # noqa: D401, ANN001
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+ENV_KEY = "UNUSUAL_WHALES_API_KEY"
+TIMEOUT = 30.0
+
+# The real daily limit is read from the provider's x-uw-token-req-limit header
+# and is authoritative (see _spend / budget). This constant is only the
+# pre-header fallback and a runaway guard. On the Pro / unlimited plan there is
+# no meaningful daily cap, so this is set very high; the per-minute backoff
+# (from x-uw-req-per-minute-*) still prevents 429 bursts.
+APP_DAILY_BUDGET = 10_000_000
+
+# How long an answer stays good. Split by how fast the underlying thing
+# actually moves rather than by how fast we could ask again.
+TTL_TAPE = 60.0            # the options tape, while the market is open
+# The live flow tape is meant to read like Unusual Whales' -- new prints
+# appearing as they cross, not a minute behind. While the market trades it is
+# cached for only a few seconds so each poll returns fresh prints; out of hours
+# it holds the last session's tape for much longer, since nothing new prints.
+# Raised 4 -> 12s: a 4s cache refetched the whole flow tape ~15x/min per viewer,
+# which under the per-minute UW rate limit starved heavier calls (the options
+# overview) and slowed every screen. 12s still reads as live without the storm.
+TTL_FLOW_LIVE_OPEN = 12.0
+TTL_FLOW_LIVE_CLOSED = 300.0
+
+
+def _flow_live_ttl() -> float:
+    """A few seconds while the market trades, long when it is shut."""
+    try:
+        session = (_market_clock() or {}).get("session")
+    except Exception:  # noqa: BLE001
+        session = None
+    return (TTL_FLOW_LIVE_OPEN
+            if session in ("OPEN", "PRE_MARKET", "AFTER_HOURS")
+            else TTL_FLOW_LIVE_CLOSED)
+TTL_QUOTE = 30.0
+TTL_INTRADAY = 300.0
+TTL_DAILY = 6 * 3600.0     # earnings, dividends, fundamentals, ownership
+TTL_SETTLED = 30 * 24 * 3600.0   # a finished day cannot change
+
+# The app fans out: a board scan touches thirty-eight symbols across several
+# endpoints at once, and firing those together is what trips their burst
+# limit -- after which every screen would be blocked for the length of the
+# pause. Requests are spaced instead of refused.
+#
+# 0.06s = ~1000 requests/minute. The plan's own per-minute headroom is far
+# above what any single screen needs (a cold dashboard is a few dozen calls),
+# and this is the dispatch spacing every multi-call screen waits on, so it is
+# kept as low as stays comfortably clear of the burst limit. It was 0.12s,
+# which doubled the wait on every screen that fans out.
+MIN_INTERVAL = 0.022
+
+# The ceiling on proactive spacing. When the per-minute allowance runs low the
+# dispatcher glides toward the window reset (see _space_out), but it never waits
+# more than this between calls -- a genuine stall is the hard _pause's job, not
+# this one's, so screens never freeze waiting on the pacer.
+MAX_PACE = 1.5
+
+# The per-minute allowance is huge, but a 429 still fires on a *burst* -- too
+# many requests in flight at once. Several screens fan out in parallel (the
+# news desk alone opens a dozen), and if they all reach the API together they
+# trip that burst limit and the whole app pauses. This semaphore caps how many
+# requests are on the wire simultaneously, however many callers ask, so a
+# parallel screen is smoothed into a steady trickle instead of a spike.
+# Raised from 6: on an uncapped plan more requests can be on the wire at once,
+# which is what cuts the pacing wait a fanned-out screen sees. The adaptive
+# dispatcher (and the 429 backoff) still widen the gap the moment a real
+# per-minute cap starts to bite, so this stays safe on a tighter token.
+# The provider's ONLY limit is 3 simultaneous in-flight REST requests per token, across every process
+# that uses the token (UW support, 2026-10-23); more returns 429 concurrent_limit_exceeded. 8 here
+# guaranteed those 429s. Override with UW_MAX_INFLIGHT (1..3).
+PROVIDER_CONCURRENCY = 3
+
+
+def _max_inflight() -> int:
+    raw = os.environ.get("UW_MAX_INFLIGHT", "").strip()
+    return max(1, min(PROVIDER_CONCURRENCY, int(raw))) if raw.isdigit() else PROVIDER_CONCURRENCY
+
+
+MAX_INFLIGHT = _max_inflight()
+SLOT_WAIT = float(os.environ.get("UW_SLOT_WAIT", "30") or 30)          # how long a request waits for a machine / broker slot before it is refused
+RETRY_AFTER_CAP = float(os.environ.get("UW_RETRY_AFTER_CAP", "30") or 30)   # the provider's Retry-After is honoured up to this many seconds
+_inflight = threading.BoundedSemaphore(MAX_INFLIGHT)
+
+# Live priority without rewriting every caller: background work (the cache warmer marks its own threads)
+# may hold at most ONE connection and only while no foreground request is waiting for one, so the other
+# connections always belong to live trading and pages.
+_bg = threading.local()
+_bg_slot = threading.BoundedSemaphore(1)
+_fg_waiting = 0
+_fg_lock = threading.Lock()
+BG_MAX_RETRIES = 3            # a background request retries a 429 this many times, then gives up
+_bg_cooldown = {"until": 0.0, "level": 0}   # background-only back-off after repeated 429s (never blocks the app)
+
+
+def set_background(on: bool = True) -> None:
+    """Mark the calling thread as background work (cache warming): lowest priority."""
+    _bg.on = bool(on)
+
+
+def is_background() -> bool:
+    return bool(getattr(_bg, "on", False))
+
+
+def foreground_waiting() -> int:
+    return _fg_waiting
+
+
+def background_cooldown_remaining() -> float:
+    return max(0.0, _bg_cooldown["until"] - time.time())
+
+
+def _bg_note_429() -> None:
+    """Exponential, jittered, capped: 30s, 60s, ... 15 min of background-only silence."""
+    _bg_cooldown["level"] = min(_bg_cooldown["level"] + 1, 6)
+    wait = min(900.0, 30.0 * (2 ** (_bg_cooldown["level"] - 1)))
+    _bg_cooldown["until"] = time.time() + wait * random.uniform(0.75, 1.25)
+
+
+def _bg_note_ok() -> None:
+    _bg_cooldown["level"] = 0
+
+
+def _is_concurrency_429(raw: bytes) -> bool:
+    """A 429 that means "too many in flight at once" (concurrent_limit_exceeded), not a rate."""
+    return b"concurrent" in (raw or b"").lower()
+
+
+def _backoff(attempt: int, floor: float = 0.0) -> float:
+    """Full-jitter exponential backoff (base 0.35s, cap 4s) with Retry-After as a floor."""
+    return max(floor, random.uniform(0.0, min(4.0, 0.35 * (2 ** attempt))))
+
+
+@contextlib.contextmanager
+def _slot(background: bool):
+    """Hold one of the provider's connections. Foreground requests count themselves while they wait;
+    a background request takes the single background slot and stands aside while any foreground waits."""
+    global _fg_waiting
+    if background:
+        _bg_slot.acquire()
+        try:
+            while _fg_waiting > 0:
+                time.sleep(0.05)
+            _inflight.acquire()
+        except BaseException:
+            _bg_slot.release()
+            raise
+    else:
+        with _fg_lock:
+            _fg_waiting += 1
+        try:
+            _inflight.acquire()
+        finally:
+            with _fg_lock:
+                _fg_waiting -= 1
+    try:
+        with uw_slots.global_slot(SLOT_WAIT):                   # machine-wide slots / lease broker, when configured (no-ops otherwise)
+            yield
+    finally:
+        _inflight.release()
+        if background:
+            _bg_slot.release()
+
+# Single-flight: when many users open the same symbol at once and the cache is
+# cold, without this every one of them fires the same request -- a burst that
+# trips the provider's 429 and burns budget N times for one answer. A per-key
+# lock collapses those into one call the rest read from cache.
+_flight_guard = threading.Lock()
+_flights: dict[str, threading.Lock] = {}
+
+
+_FLIGHTS_MAX = 4096
+
+
+def _flight_lock(key: str) -> threading.Lock:
+    with _flight_guard:
+        lock = _flights.get(key)
+        if lock is None:
+            # Bound the map so a long-running server that sees thousands of
+            # distinct symbols does not accumulate locks forever. A thread that
+            # already holds a lock keeps its own reference, so clearing here is
+            # safe -- at worst two callers briefly race one key right after a
+            # clear, which costs one extra call, never correctness.
+            if len(_flights) >= _FLIGHTS_MAX:
+                _flights.clear()
+            lock = _flights[key] = threading.Lock()
+        return lock
+
+_gate = threading.Lock()
+_last_call = 0.0
+
+_limits: dict = {"remaining": None, "reset": None,
+                 "daily_count": None, "daily_limit": None}
+_spent: dict = {"day": None, "count": 0}
+_blocked_until = 0.0
+_last_status: Optional[str] = None
+
+# Live flow metrics for the admin Workflow page: how many calls were served
+# from cache vs the network, how long the network and the pacing gate took, and
+# what the last call did. Rolling windows so the figures reflect "right now".
+_metrics: dict = {
+    "net_calls": 0, "net_errors": 0, "no_data": 0, "cache_hits": 0, "cache_misses": 0,
+    "lat": deque(maxlen=60), "wait": deque(maxlen=60),
+    "errors_by": {}, "errors_by_path": {}, "last_error": None, "err_times": deque(maxlen=200),
+    "last_path": None, "last_latency_ms": None, "last_at": None,
+}
+
+
+# A runtime override for the key, so the admin can swap in a different
+# provider key from the UI when one hits its limit -- no redeploy, no .env edit.
+# Persisted in the settings table and cached in memory (api_key runs on the hot
+# path, and the database can be remote, so it must not be a query every call).
+_SETTING_KEY = "provider.unusualwhales.api_key"
+_key_override: Optional[str] = None
+_key_loaded = False
+_key_lock = threading.Lock()
+
+
+def load_key_override() -> None:
+    """
+    Load the persisted key override from the settings table into memory.
+
+    Called once at startup (see main.py). Deliberately NOT called from api_key(),
+    which is on the hot path -- importing the database there would both add a
+    round trip and, because the database module re-runs load_dotenv on import,
+    quietly repopulate an env var a caller had cleared.
+    """
+    global _key_loaded, _key_override
+    with _key_lock:
+        try:
+            from database import SessionLocal
+            from models_user import StrategySetting
+            db = SessionLocal()
+            try:
+                row = (db.query(StrategySetting)
+                       .filter(StrategySetting.key == _SETTING_KEY).first())
+                _key_override = (row.value.strip()
+                                 if row and (row.value or "").strip() else None)
+            finally:
+                db.close()
+        except Exception:  # noqa: BLE001 - DB down: fall back to env
+            pass
+        _key_loaded = True
+
+
+def api_key() -> str:
+    return (_key_override or os.environ.get(ENV_KEY) or "").strip()
+
+
+def key_fingerprint() -> str:
+    """A safe, non-reversible hint of the active key -- never the key itself."""
+    k = api_key()
+    if not k:
+        return ""
+    return f"•••• {k[-4:]}" if len(k) >= 4 else "set"
+
+
+def set_api_key(new_key: str) -> dict:
+    """
+    Replace the active provider key at runtime, but only if it actually works.
+
+    The candidate is verified with one live call BEFORE anything is persisted,
+    so a typo can never clobber a working key. On success it is saved and takes
+    over immediately; the rate-limit block and spent counter are reset so the
+    new key starts clean. Write-only: the key is stored and used, never read out.
+    """
+    global _key_override, _key_loaded, _blocked_until
+    new_key = (new_key or "").strip()
+    if len(new_key) < 20:
+        return {"status": "INVALID", "detail": "That does not look like a valid API key."}
+
+    with _key_lock:
+        previous = _key_override
+        _key_override = new_key
+        _key_loaded = True
+    prev_block, prev_spent = _blocked_until, dict(_spent)
+    _blocked_until = 0.0
+    _spent["day"], _spent["count"] = _today(), 0
+
+    # Verify live before persisting.
+    probe = get("/api/stock/SPY/quote")
+    if probe.get("status") != "OK":
+        # Roll back: the candidate did not work, keep the old key untouched.
+        with _key_lock:
+            _key_override = previous
+        _blocked_until = prev_block
+        _spent.update(prev_spent)
+        return {"status": "REJECTED", "probe_status": probe.get("status"),
+                "detail": ("The provider did not accept that key "
+                           f"({probe.get('status')}). The previous key is unchanged.")}
+
+    try:
+        from database import SessionLocal
+        from models_user import StrategySetting
+        db = SessionLocal()
+        try:
+            row = (db.query(StrategySetting)
+                   .filter(StrategySetting.key == _SETTING_KEY).first())
+            if row:
+                row.value = new_key
+            else:
+                db.add(StrategySetting(key=_SETTING_KEY, value=new_key))
+            db.commit()
+        finally:
+            db.close()
+    except Exception as exc:  # noqa: BLE001 - it works in memory; warn about persistence
+        return {"status": "OK", "works": True, "persisted": False,
+                "fingerprint": key_fingerprint(),
+                "detail": f"Key is active now, but could not be saved for restart: {type(exc).__name__}"}
+    return {"status": "OK", "works": True, "persisted": True,
+            "fingerprint": key_fingerprint()}
+
+
+def configured() -> bool:
+    return bool(api_key())
+
+
+def _today() -> str:
+    # US-Eastern date: the provider's daily quota resets on the ET calendar, so
+    # the app's own counter must roll over on the same day boundary rather than
+    # the server's local one (which can be hours off).
+    try:
+        from datetime import datetime, timedelta
+        from zoneinfo import ZoneInfo
+        # The provider's daily quota resets at 8 PM ET, not midnight. Shift the
+        # clock forward 4 hours so our fallback counter's "day" flips at 8 PM ET
+        # too -- matching when the real count resets.
+        et = datetime.now(ZoneInfo("America/New_York")) + timedelta(hours=4)
+        return et.strftime("%Y-%m-%d")
+    except Exception:  # noqa: BLE001 - fall back to local time if tz data missing
+        return time.strftime("%Y-%m-%d")
+
+
+def _seconds(value) -> Optional[int]:
+    try:
+        return max(0, int(str(value).strip()))
+    except (TypeError, ValueError):
+        return None
+
+
+def _note_limits(headers) -> None:
+    """Record what their headers say is left, whatever they call it."""
+    if not headers:
+        return
+    # Theirs are x-uw-req-per-minute-*; the generic spellings are kept so a
+    # change of theirs to a standard header still registers.
+    for name in ("x-uw-req-per-minute-remaining", "X-RateLimit-Remaining",
+                 "Ratelimit-Remaining", "x-ratelimit-remaining"):
+        value = _seconds(headers.get(name))
+        if value is not None:
+            _limits["remaining"] = value
+            break
+    for name in ("x-uw-req-per-minute-reset", "X-RateLimit-Reset",
+                 "Ratelimit-Reset", "x-ratelimit-reset"):
+        value = _seconds(headers.get(name))
+        if value is not None:
+            _limits["reset"] = value
+            break
+    # The real daily usage and limit, straight from the provider -- authoritative
+    # over our own counter and the APP_DAILY_BUDGET guess.
+    for name in ("x-uw-daily-req-count", "X-RateLimit-Daily-Used"):
+        value = _seconds(headers.get(name))
+        if value is not None:
+            _limits["daily_count"] = value
+            break
+    for name in ("x-uw-token-req-limit", "X-RateLimit-Daily-Limit"):
+        value = _seconds(headers.get(name))
+        if value is not None:
+            _limits["daily_limit"] = value
+            break
+    # Proactive per-minute backoff: when almost nothing is left this minute,
+    # wait out the window the header reports (it is in milliseconds) rather than
+    # firing into a 429.
+    rem = _limits.get("remaining")
+    reset_ms = _limits.get("reset")
+    if rem is not None and rem <= 1 and reset_ms:
+        _pause(min(reset_ms / 1000.0 + 0.25, 65.0))
+
+
+def _pause(seconds: float) -> None:
+    global _blocked_until
+    _blocked_until = max(_blocked_until, time.time() + max(1.0, seconds))
+
+
+def _pace_interval() -> float:
+    """
+    How far apart to dispatch right now, from the provider's own allowance.
+
+    When plenty of the per-minute window is left this is MIN_INTERVAL -- full
+    speed. As the remaining count falls, the gap widens to spread what is left
+    across the time until the window resets, so a fan-out of screens glides
+    toward the reset instead of firing into a 429 and pausing the whole app.
+    It is plan-agnostic: an uncapped plan reports a huge ``remaining`` and never
+    slows; a tighter real cap paces itself without any hard-coded number.
+    """
+    rem = _limits.get("remaining")
+    reset_ms = _limits.get("reset")
+    if rem is None or not reset_ms or rem <= 1:
+        return MIN_INTERVAL
+    # Keep ~15% headroom so a little parallel overshoot still lands inside the
+    # window rather than on its edge.
+    pace = (reset_ms / 1000.0) / (rem * 0.85)
+    return max(MIN_INTERVAL, min(pace, MAX_PACE))
+
+
+def _space_out() -> None:
+    """Keep a provider-aware gap between calls, however many threads ask."""
+    global _last_call
+
+    with _gate:
+        wait = _pace_interval() - (time.time() - _last_call)
+        if wait > 0:
+            time.sleep(wait)
+        _last_call = time.time()
+
+
+def _spend() -> bool:
+    """Count one request against the provider's real daily ceiling."""
+    if _spent["day"] != _today():
+        _spent["day"], _spent["count"] = _today(), 0
+    # The provider's own headers are authoritative once seen: stop at the real
+    # daily limit rather than our guessed APP_DAILY_BUDGET.
+    dl = _limits.get("daily_limit")
+    dc = _limits.get("daily_count")
+    if dl and dc is not None and dc >= dl:
+        return False
+    # Pre-flight ceiling before/without headers: the real limit if we know it,
+    # otherwise the conservative fallback.
+    cap = dl or APP_DAILY_BUDGET
+    if _spent["count"] >= cap:
+        return False
+    _spent["count"] += 1
+    return True
+
+
+def get(path: str, params: Optional[dict] = None) -> dict:
+    """
+    One call to their API, with the limits they publish respected.
+
+    Returns the decoded body under ``data`` with a status this app
+    understands, never raises, and never puts the token anywhere but the
+    Authorization header.
+    """
+    global _last_status
+
+    if not configured():
+        return {"status": "PROVIDER_NOT_CONFIGURED", "data": None,
+                "detail": f"Add {ENV_KEY} to backend/.env to use Unusual Whales.",
+                "source": SOURCE}
+
+    if time.time() < _blocked_until:
+        return {"status": "RATE_LIMITED", "data": None,
+                "detail": "Waiting out Unusual Whales' rate limit.",
+                "retry_in": round(_blocked_until - time.time()),
+                "source": SOURCE}
+
+    if not _spend():
+        return {"status": "BUDGET_EXHAUSTED", "data": None,
+                "detail": (f"This app's own daily ceiling of {APP_DAILY_BUDGET} "
+                           "Unusual Whales requests is spent."),
+                "source": SOURCE}
+
+    if any(bad in path for bad in ("?", "#", "..", "//")) or not path.startswith("/"):
+        # A well-formed path is built from validated segments. Anything with a
+        # query, a fragment, a parent-directory hop or a doubled slash was not
+        # built the way this function's callers build paths -- it is an
+        # injected symbol, and it does not get sent with the token.
+        _last_status = "BAD_REQUEST"
+        return {"status": "BAD_REQUEST", "data": None,
+                "detail": "Malformed request path.", "source": SOURCE}
+
+    query = urllib.parse.urlencode(
+        {k: v for k, v in (params or {}).items() if v not in (None, "")},
+        doseq=True)
+    request = urllib.request.Request(
+        f"{BASE}{path}" + (f"?{query}" if query else ""),
+        headers={"Authorization": f"Bearer {api_key()}",
+                 "Accept": "application/json",
+                 "User-Agent": "US-Stock-Reader/1.0"})
+
+    # Only MAX_INFLIGHT requests hold the wire at once; the rest wait here.
+    # Spacing is applied inside the gate so starts stay staggered too.
+    # One automatic retry on a 429: a short burst can brush the per-minute cap,
+    # and by the time a brief bounded wait passes the window has usually
+    # advanced, so the re-send succeeds and no error ever reaches the caller.
+    background = is_background()
+    if background and time.time() < _bg_cooldown["until"]:
+        return {"status": "RATE_LIMITED", "data": None, "detail": "Background work is backing off after a 429.",
+                "retry_in": round(background_cooldown_remaining()), "source": SOURCE}
+    max_attempts = (BG_MAX_RETRIES if background else 2) + 1
+    raw429 = b""
+    try:
+        for _attempt in range(max_attempts):
+            gate_start = time.time()
+            with _slot(background):
+                _space_out()
+                _metrics["wait"].append((time.time() - gate_start) * 1000.0)
+                net_start = time.time()
+                try:
+                    with _OPENER.open(request, timeout=TIMEOUT) as response:
+                        _note_limits(response.headers)
+                        body = json.loads(response.read().decode("utf-8", "ignore") or "{}")
+                    lat = (time.time() - net_start) * 1000.0
+                    _metrics["lat"].append(lat)
+                    _metrics["net_calls"] += 1
+                    _metrics["last_path"] = path
+                    _metrics["last_latency_ms"] = round(lat)
+                    _metrics["last_at"] = time.time()
+                    break
+                except urllib.error.HTTPError as exc:
+                    key = str(exc.code)
+                    _metrics["errors_by"][key] = _metrics["errors_by"].get(key, 0) + 1
+                    if exc.code == 429:
+                        try:
+                            raw429 = exc.read() or b""
+                        except Exception:  # noqa: BLE001
+                            raw429 = b""
+                        _count_path_error(path, 429)
+                        if _attempt < max_attempts - 1:       # bounded: never an endless retry
+                            retry_after = _seconds(getattr(exc, "headers", {}).get("Retry-After")) or 0
+                            _log_refusal(429, path, _attempt + 1, retry_after)
+                            time.sleep(_backoff(_attempt, min(float(retry_after), RETRY_AFTER_CAP)))
+                            continue
+                        if background:
+                            _bg_note_429()
+                        return _http_error(exc, raw429, background)
+                    # A 404 means the provider has no data for this symbol/endpoint
+                    # (a thin ticker with no dividends, insiders, etc.) -- an
+                    # expected empty answer, not a pipeline failure.
+                    if exc.code == 404:
+                        _metrics["no_data"] += 1
+                        _count_path_error(path, 404)
+                    else:
+                        _metrics["net_errors"] += 1
+                        _metrics["err_times"].append(time.time())
+                        _metrics["last_error"] = f"{path} → HTTP {exc.code}"
+                    return _http_error(exc)
+                except Exception as exc:  # noqa: BLE001
+                    _metrics["errors_by"]["net"] = _metrics["errors_by"].get("net", 0) + 1
+                    _metrics["net_errors"] += 1
+                    _metrics["err_times"].append(time.time())
+                    _metrics["last_error"] = f"{path} → {type(exc).__name__}"
+                    _last_status = "PROVIDER_OFFLINE"
+                    return {"status": "PROVIDER_OFFLINE", "data": None,
+                            "detail": type(exc).__name__, "source": SOURCE}
+
+    except uw_slots.SlotTimeout as exc:
+        _log_refusal("slot", path, 1, None, str(exc))
+        _last_status = "RATE_LIMITED"
+        return {"status": "RATE_LIMITED", "data": None, "detail": str(exc), "retry_in": 1, "source": SOURCE}
+    _last_status = "OK"
+    if background:
+        _bg_note_ok()
+    # Their payloads put the answer under "data"; a few return the object
+    # itself. Both are handed back the same way so callers never branch.
+    data = body.get("data") if isinstance(body, dict) and "data" in body else body
+    return {"status": "OK", "data": data, "source": SOURCE}
+
+
+_log_last: dict = {}
+
+
+def _log_refusal(code, path: str, attempt: int, retry_after, note: str = "") -> None:
+    """One structured line per (code, endpoint) at most every 30 s, so a storm of 429s is visible without flooding the log: code, endpoint, attempt, Retry-After, in-flight count."""
+    key = (str(code), path.split("?")[0][:80])
+    now = time.time()
+    if now - _log_last.get(key, 0.0) < 30.0:
+        return
+    _log_last[key] = now
+    _log.warning("uw refusal code=%s endpoint=%s attempt=%s retry_after=%s max_inflight=%s %s", code, key[1], attempt, retry_after, MAX_INFLIGHT, note)
+
+
+def _count_path_error(path: str, code: int) -> None:
+    """Which endpoint produced which refusal (bounded), so 429s and 404s can be traced to a caller."""
+    book = _metrics["errors_by_path"]
+    key = f"{code} {path.split('?')[0][:80]}"
+    if key in book or len(book) < 300:
+        book[key] = book.get(key, 0) + 1
+
+
+def _http_error(exc, raw: Optional[bytes] = None, background: bool = False) -> dict:
+    global _last_status
+
+    try:
+        body = json.loads((raw if raw is not None else exc.read()).decode("utf-8", "ignore") or "{}")
+    except Exception:  # noqa: BLE001
+        body = {}
+    detail = str(body.get("message") or body.get("error") or f"HTTP {exc.code}")
+
+    if exc.code == 429:
+        # Their Retry-After is authoritative. A refused request still counts
+        # against the window, so retrying early spends the allowance on being
+        # refused again.
+        # Their per-minute allowance is in the millions, so a 429 here is a
+        # short burst limit rather than a spent quota: waiting a full minute
+        # would take the app off the air for far longer than the refusal
+        # actually means. Their Retry-After wins when they send one.
+        wait = _seconds(getattr(exc, "headers", {}).get("Retry-After")) or 5
+        # "Too many at once" was already backed off with jitter, and background work has its own
+        # back-off: neither may take the whole app (live trading) off the air. A real rate 429 does pause.
+        if not background and not _is_concurrency_429(raw or b""):
+            _pause(wait)
+        _last_status = "RATE_LIMITED"
+        return {"status": "RATE_LIMITED", "data": None, "detail": detail,
+                "retry_in": wait, "source": SOURCE}
+    if exc.code in (401, 403):
+        _last_status = "ENTITLEMENT_REQUIRED"
+        return {"status": "ENTITLEMENT_REQUIRED", "data": None,
+                "detail": ("Unusual Whales rejected the token. Check "
+                           f"{ENV_KEY} and that the subscription is active."),
+                "source": SOURCE}
+    if exc.code == 404:
+        return {"status": "NO_DATA", "data": None, "detail": detail,
+                "source": SOURCE}
+    _last_status = "PROVIDER_OFFLINE"
+    return {"status": "PROVIDER_OFFLINE", "data": None, "detail": detail,
+            "source": SOURCE}
+
+
+def _cached(key: str, path: str, params: Optional[dict] = None,
+            ttl: float = TTL_DAILY) -> dict:
+    hit = cache.get(key, ttl)
+    if hit:
+        _metrics["cache_hits"] += 1
+        return hit
+    # Collapse a stampede: the first caller fetches, the rest wait here and then
+    # read the cache it just filled -- one provider call for many users.
+    lock = _flight_lock(key)
+    with lock:
+        hit = cache.get(key, ttl)
+        if hit:
+            _metrics["cache_hits"] += 1
+            return hit
+        _metrics["cache_misses"] += 1
+        out = get(path, params)
+        if out["status"] == "OK":
+            cache.put(key, out)
+        return out
+
+
+def _rows(payload: dict) -> list:
+    data = payload.get("data")
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        for value in data.values():
+            if isinstance(value, list):
+                return value
+    return []
+
+
+def _f(value) -> Optional[float]:
+    try:
+        return None if value in (None, "") else float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+# ---------------------------------------------------------------------------
+# price and session
+# ---------------------------------------------------------------------------
+
+
+def quote(symbol: str) -> dict:
+    """The current bid, ask and last for one symbol."""
+    symbol = (symbol or "").upper().strip()
+    return _cached(f"uw:quote:{symbol}", f"/api/stock/{symbol}/quote",
+                   ttl=TTL_QUOTE)
+
+
+def _market_clock() -> dict:
+    """The session clock every quote in this app carries."""
+    try:
+        import live_market_service as market
+
+        return market.market_clock() or {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def get_quote(symbol: str) -> Optional[dict]:
+    """
+    One symbol's quote, in the shape the fallback chain already reads.
+
+    Same contract the OptionData client implemented, with one improvement:
+    this carries bid and ask. The old provider published neither, so a quote
+    served from it showed no spread at all and the app had to say so.
+    """
+    symbol = (symbol or "").upper().strip()
+    out = quote(symbol)
+    if out["status"] != "OK":
+        return None
+
+    data = out.get("data") or {}
+    trade = data.get("last_trade") or {}
+    book = data.get("quote") or {}
+    price = _f(trade.get("price"))
+    if price is None:
+        return None
+
+    bars = get_daily_bars(symbol, "5 D")
+    day = bars[-1] if bars else {}
+    # Previous close is the close of the last COMPLETED session. Whether that is
+    # bars[-2] or bars[-1] depends on whether today's (still-forming) bar is
+    # present: during and after the session it is, so the previous close is
+    # bars[-2]; before it forms (pre-market) the latest bar is already the last
+    # completed session, so it is bars[-1]. Always using bars[-2] made the
+    # pre-market change compare against two sessions ago.
+    prev_close = None
+    if bars:
+        try:
+            from zoneinfo import ZoneInfo
+            from datetime import datetime as _dt
+            today = _dt.now(ZoneInfo("America/New_York")).date().isoformat()
+        except Exception:  # noqa: BLE001 - tz db missing; degrade gracefully
+            today = ""
+        latest_is_today = str(day.get("date"))[:10] == today
+        if latest_is_today:
+            prev_close = _f(bars[-2].get("close")) if len(bars) > 1 else None
+        else:
+            prev_close = _f(day.get("close"))
+    change = change_pct = None
+    if prev_close:
+        change = round(price - prev_close, 2)
+        change_pct = round((price - prev_close) / prev_close * 100, 2)
+
+    return {
+        "symbol": symbol,
+        "name": symbol,
+        "exchange": None,
+        "con_id": None,
+        "tags": [],
+        "price": round(price, 2),
+        "change": change,
+        "change_percent": change_pct,
+        "previous_close": round(prev_close, 2) if prev_close else None,
+        "bid": _f((book.get("bid") or {}).get("price")),
+        "ask": _f((book.get("ask") or {}).get("price")),
+        "open": _f(day.get("open")),
+        "high": _f(day.get("high")),
+        "low": _f(day.get("low")),
+        "close": _f(day.get("close")),
+        "volume": _f(trade.get("vol")) or _f(day.get("volume")),
+        "average_volume": None,
+        "market_cap": None,
+        "session": data.get("market_time"),
+        # Part of the quote contract, not decoration: screens render
+        # "<session> - <time>" straight from it, and a quote without it took
+        # the whole Earnings page down with "cannot read properties of
+        # undefined" the moment TWS was not the one answering.
+        "market": _market_clock(),
+        "status": "OK",
+        "source": SOURCE,
+        "delayed": False,
+    }
+
+
+def candles(symbol: str, size: str = "1d", limit: int = 300,
+            date: str = "") -> dict:
+    """
+    OHLC candles. ``size`` is their candle string: 1m, 5m, 15m, 1h, 1d.
+
+    This is the piece that matters most for reliability: the app's intraday
+    parameters went blank whenever TWS refused a request, because no other
+    source served intraday bars. Now one does.
+    """
+    symbol = (symbol or "").upper().strip()
+    # Cash-settled index roots have no stock OHLC: /stock/{ticker}/ohlc answers
+    # 422 for SPX, NDX, INDU, VIX ... Callers resolve these through an ETF proxy
+    # anyway, so short-circuit here rather than firing a request that can only
+    # fail -- that 422 was the bulk of the "errors" on the Workflow page.
+    if symbol in _INDEX_NO_OHLC:
+        return {"status": "NO_DATA", "data": None,
+                "detail": f"{symbol} is an index; no stock OHLC.", "source": SOURCE}
+    ttl = TTL_SETTLED if date else (
+        TTL_DAILY if size.endswith("d") else TTL_INTRADAY)
+    return _cached(f"uw:ohlc:{symbol}:{size}:{limit}:{date}",
+                   f"/api/stock/{symbol}/ohlc/{size}",
+                   {"limit": limit, "date": date}, ttl=ttl)
+
+
+# How long a duration string asks for, in trading days. Shared with the bar
+# providers this stands in front of.
+_DURATION_ROWS = {"1 D": 1, "2 D": 2, "5 D": 5, "10 D": 10, "1 M": 22,
+                  "3 M": 64, "6 M": 126, "9 M": 190, "1 Y": 252, "2 Y": 504,
+                  "5 Y": 1260, "6 Y": 1512, "20 Y": 5040}
+
+
+def _duration_rows(duration: str) -> int:
+    return _DURATION_ROWS.get((duration or "").strip().upper(), 252)
+
+
+def get_daily_bars(symbol: str, duration: str = "1 Y") -> list[dict]:
+    """
+    Daily OHLCV, oldest first, in the shape the technical services expect.
+
+    The same contract Twelve Data and Alpha Vantage implement, so this slots
+    in ahead of them without any caller changing: [] means "no market data",
+    never zero.
+    """
+    wanted = _duration_rows(duration)
+    # Asked for generously: their limit counts *rows*, and one date can send
+    # three (pre-market, regular, post) which collapse to one trading day
+    # below. Asking for exactly as many rows as days wanted returned a third
+    # of the history and quietly shortened every moving average.
+    out = candles(symbol, "1d", limit=min(max(wanted * 3, 90), 5000))
+    if out["status"] != "OK":
+        return []
+
+    rows = []
+    for bar in _rows(out):
+        day = str(bar.get("date") or bar.get("start_time") or "")[:10]
+        close = _f(bar.get("close"))
+        if not day or close is None:
+            continue
+        rows.append({
+            "date": day,
+            "open": _f(bar.get("open")) or close,
+            "high": _f(bar.get("high")) or close,
+            "low": _f(bar.get("low")) or close,
+            "close": close,
+            "volume": _f(bar.get("total_volume") or bar.get("volume")) or 0.0,
+        })
+
+    # One date can arrive twice: the regular session and the extended-hours
+    # continuation are separate rows with the same date, and a duplicated day
+    # would double-count in every moving average. The later row wins, since
+    # it carries the fuller volume.
+    merged: dict = {}
+    for row in rows:
+        merged[row["date"]] = row
+    rows = [merged[d] for d in sorted(merged)]
+    return rows[-wanted:] if len(rows) > wanted else rows
+
+
+def get_intraday_bars(symbol: str, size: str = "5m",
+                      days: int = 5) -> list[dict]:
+    """
+    Intraday bars, oldest first, stamped in UTC.
+
+    This is the one the app had no substitute for. Every session parameter --
+    VWAP, the opening range, relative volume -- is measured from intraday
+    bars, and TWS was the only source of them: when it refused a request the
+    parameters went blank and the outlook lost eight points of coverage with
+    nothing to show for it.
+    """
+    per_day = {"1m": 960, "5m": 192, "15m": 64, "1h": 16}.get(size, 192)
+    out = candles(symbol, size, limit=min(per_day * max(days, 1), 5000))
+    if out["status"] != "OK":
+        return []
+
+    rows = []
+    for bar in _rows(out):
+        stamp = str(bar.get("start_time") or bar.get("date") or "")
+        close = _f(bar.get("close"))
+        if not stamp or close is None:
+            continue
+        rows.append({
+            "t": stamp,
+            "open": _f(bar.get("open")) or close,
+            "high": _f(bar.get("high")) or close,
+            "low": _f(bar.get("low")) or close,
+            "close": close,
+            "volume": _f(bar.get("volume")) or 0.0,
+        })
+    rows.sort(key=lambda r: r["t"])
+    return rows
+
+
+def stock_info(symbol: str) -> dict:
+    """Sector, description, market cap and the rest of the company card."""
+    symbol = (symbol or "").upper().strip()
+    return _cached(f"uw:info:{symbol}", f"/api/stock/{symbol}/info")
+
+
+# ---------------------------------------------------------------------------
+# the options tape
+# ---------------------------------------------------------------------------
+
+
+def flow_alerts(symbol: str, limit: int = 50) -> dict:
+    """Their own flow alerts for one ticker: the trades worth looking at."""
+    symbol = (symbol or "").upper().strip()
+    return _cached(f"uw:flowalerts:{symbol}:{limit}",
+                   f"/api/stock/{symbol}/flow-alerts", {"limit": limit},
+                   ttl=TTL_TAPE)
+
+
+def market_flow_alerts(limit: int = 200, ticker: str = "") -> dict:
+    """
+    The flow-alert tape: the trades worth looking at, in one request. Without a
+    ticker it is the market-wide feed Unusual Whales' Live Flow shows by default
+    (a row per alert, each a different name); with ``ticker`` it is that one
+    name's alerts, which returns far more than the 50-row ``flow-recent`` cap.
+    Each row carries the full column set (NBBO, greeks, sweep/floor/leg flags,
+    earnings). The provider serves up to 500 rows per request.
+    """
+    ticker = (ticker or "").upper().strip()
+    limit = max(1, min(int(limit or 200), 500))
+    params = {"limit": limit}
+    if ticker:
+        params["ticker_symbol"] = ticker
+    return _cached(f"uw:mktflowalerts:{ticker}:{limit}",
+                   "/api/option-trades/flow-alerts", params,
+                   ttl=_flow_live_ttl())
+
+
+def unusual_activity(symbol: str = "", min_premium: int = 50000,
+                     limit: int = 200, date: str = "") -> dict:
+    """
+    Contracts trading far above their own normal volume.
+
+    Called without a symbol this is the market-wide scan, which is how the
+    board should read it: one request covering every name rather than one
+    per symbol.
+    """
+    symbol = (symbol or "").upper().strip()
+    ttl = TTL_SETTLED if date else TTL_TAPE
+    return _cached(f"uw:unusual:{symbol}:{min_premium}:{limit}:{date}",
+                   "/api/option-activity/unusual",
+                   {"ticker_symbol": symbol, "min_premium": min_premium,
+                    "limit": limit, "date": date, "unusual": "true"}, ttl=ttl)
+
+
+def oi_change(symbol: str, limit: int = 100, date: str = "") -> dict:
+    """Overnight change in open interest: positions opened, not traded."""
+    symbol = (symbol or "").upper().strip()
+    return _cached(f"uw:oi:{symbol}:{limit}:{date}",
+                   f"/api/stock/{symbol}/oi-change",
+                   {"limit": limit, "date": date},
+                   ttl=TTL_SETTLED if date else TTL_DAILY)
+
+
+def oi_change_market(limit: int = 100, date: str = "",
+                     order: str = "desc") -> dict:
+    """
+    Market-wide overnight OI build-up: the contracts across every name with the
+    largest change in open interest. Updates once per trading day (~6:45am ET),
+    so a long cache is right -- this is not an intraday figure.
+    """
+    limit = max(1, min(int(limit or 100), 200))
+    return _cached(f"uw:oimkt:{limit}:{date}:{order}",
+                   "/api/market/oi-change",
+                   {"limit": limit, "date": date, "order": order},
+                   ttl=TTL_SETTLED if date else TTL_DAILY)
+
+
+def iv_rank(symbol: str) -> dict:
+    """Where implied volatility sits against its own year."""
+    symbol = (symbol or "").upper().strip()
+    return _cached(f"uw:ivrank:{symbol}", f"/api/stock/{symbol}/iv-rank",
+                   ttl=TTL_INTRADAY)
+
+
+def max_pain(symbol: str) -> dict:
+    """The strike where the most open interest expires worthless."""
+    symbol = (symbol or "").upper().strip()
+    return _cached(f"uw:maxpain:{symbol}", f"/api/stock/{symbol}/max-pain")
+
+
+def options_volume(symbol: str) -> dict:
+    """Call and put volume, premium and open interest for the day."""
+    symbol = (symbol or "").upper().strip()
+    return _cached(f"uw:optvol:{symbol}", f"/api/stock/{symbol}/options-volume",
+                   ttl=TTL_TAPE)
+
+
+def net_premium_ticks(symbol: str) -> dict:
+    """Net call and put premium through the session, minute by minute."""
+    symbol = (symbol or "").upper().strip()
+    return _cached(f"uw:ticks:{symbol}", f"/api/stock/{symbol}/net-prem-ticks",
+                   ttl=TTL_TAPE)
+
+
+def tape_rows(symbol: str = "", min_premium: int = 50000,
+              limit: int = 200, date: str = "") -> dict:
+    """
+    The unusual tape in the shape this app has always read it.
+
+    Same field names the OptionData and OptionsBell clients produced, so the
+    Disparity readings and the flow parameters did not have to be rewritten
+    around a new vocabulary. Two things here are better than what came
+    before: the side split is theirs -- bid-side against ask-side volume,
+    counted per contract -- rather than this app inferring it from a fill
+    price, and the ratio is the day's volume against the open interest it
+    traded against.
+    """
+    out = unusual_activity(symbol, min_premium, limit, date)
+    if out["status"] != "OK":
+        return {"symbol": symbol, "status": out["status"], "rows": [],
+                "detail": out.get("detail"), "source": SOURCE}
+
+    rows = []
+    for r in _rows(out):
+        volume = _f(r.get("volume")) or 0.0
+        oi = _f(r.get("open_interest")) or 0.0
+        ask, bid = _f(r.get("ask_side_volume")) or 0.0, _f(r.get("bid_side_volume")) or 0.0
+        right = (str(r.get("option_type") or "")[:1]
+                 or _right_from_symbol(str(r.get("option_symbol") or ""))).upper()
+        rows.append({
+            "symbol": (r.get("ticker_symbol") or symbol or "").upper(),
+            "option_symbol": r.get("option_symbol"),
+            "right": "P" if right == "P" else "C",
+            "strike": _f(r.get("strike")),
+            "expiry": r.get("expiry"),
+            "volume": volume,
+            "open_interest": oi,
+            "premium": _f(r.get("premium")) or 0.0,
+            "ratio": round(volume / oi, 2) if oi else None,
+            # Their implied volatility is a fraction; every screen in this
+            # app talks in percent, and 0.42 rendered as "0%".
+            "iv": _pct(_f(r.get("prev_iv"))),
+            "delta": _f(r.get("delta")),
+            "gamma": _f(r.get("gamma")),
+            # A sweep is one order filled across several exchanges at once:
+            # urgency, in a way a single block is not.
+            "sweep_like": bool(_f(r.get("sweep_volume"))),
+            "ask_volume": ask,
+            "bid_volume": bid,
+            "side": ("ask" if ask > bid else "bid" if bid > ask else "mid"),
+            "stock_price": _f(r.get("stock_price")),
+            "last_fill": r.get("last_fill"),
+        })
+
+    rows.sort(key=lambda r: -(r["premium"] or 0))
+    # Buying calls and selling puts is pressure one way; the reverse is the
+    # other. Counted on premium, because size is what moves a market.
+    bullish = sum(r["premium"] for r in rows
+                  if (r["right"] == "C") == (r["side"] == "ask"))
+    total = sum(r["premium"] for r in rows) or 0.0
+    return {
+        "symbol": symbol, "status": "OK", "rows": rows, "count": len(rows),
+        "bullish_share": round(bullish / total * 100, 1) if total else None,
+        "detail": ("Contracts trading far above their own normal volume, "
+                   "with the side each one crossed on."),
+        "source": SOURCE,
+    }
+
+
+def _pct(value: Optional[float]) -> Optional[float]:
+    """A 0-1 fraction as 0-100, leaving an already-percentage figure alone."""
+    if value is None:
+        return None
+    return round(value * 100, 2) if abs(value) <= 5 else round(value, 2)
+
+
+def _right_from_symbol(option_symbol: str) -> str:
+    """NVDA260923C00227500 -> C. Their OCC symbol carries it 9 from the end."""
+    return option_symbol[-9:-8] if len(option_symbol) >= 9 else ""
+
+
+# ---------------------------------------------------------------------------
+# the three flows: the market, one stock, one chain
+# ---------------------------------------------------------------------------
+
+
+def market_tide(date: str = "") -> dict:
+    """
+    Where the whole market's option premium is going, through the session.
+
+    Net call and put premium minute by minute. The Market Flow screen was
+    assembling an approximation of this out of per-symbol calls; this is the
+    measurement itself.
+    """
+    return _cached("uw:tide:" + date, "/api/market/market-tide",
+                   {"date": date}, ttl=TTL_SETTLED if date else TTL_TAPE)
+
+
+def sector_tide(sector: str, date: str = "") -> dict:
+    """The same reading, for one sector."""
+    return _cached("uw:sectortide:" + sector + ":" + date,
+                   "/api/market/" + urllib.parse.quote(sector) + "/sector-tide",
+                   {"date": date}, ttl=TTL_SETTLED if date else TTL_TAPE)
+
+
+def total_options_volume(sessions: int = 1) -> dict:
+    """
+    Market-wide call and put volume and premium, newest session first.
+
+    History comes from ``limit``, not from a date: their endpoint has no date
+    parameter, and passing one is accepted and ignored -- which silently
+    returned today's row for yesterday and made "today against the last
+    session" compare today with itself.
+    """
+    return _cached("uw:totalvol:%d" % sessions,
+                   "/api/market/total-options-volume",
+                   {"limit": max(1, sessions)}, ttl=TTL_TAPE)
+
+
+def options_pulse_top(limit: int = 50) -> dict:
+    """The names the option market is actually busy in right now."""
+    return _cached("uw:pulse:%d" % limit, "/api/options-pulse/top",
+                   {"limit": limit}, ttl=TTL_TAPE)
+
+
+def stock_flow(symbol: str, limit: int = 100) -> dict:
+    """Recent option flow for one stock: its tape as it prints."""
+    symbol = (symbol or "").upper().strip()
+    return _cached("uw:flowrecent:%s:%d" % (symbol, limit),
+                   "/api/stock/%s/flow-recent" % symbol, {"limit": limit},
+                   ttl=_flow_live_ttl())
+
+
+def flow_per_expiry(symbol: str) -> dict:
+    """One stock's flow split by expiry: near-dated, or further out."""
+    symbol = (symbol or "").upper().strip()
+    return _cached("uw:flowexp:" + symbol,
+                   "/api/stock/%s/flow-per-expiry" % symbol, ttl=TTL_TAPE)
+
+
+def flow_per_strike(symbol: str) -> dict:
+    """The same by strike: where along the ladder the premium is going."""
+    symbol = (symbol or "").upper().strip()
+    return _cached("uw:flowstrike:" + symbol,
+                   "/api/stock/%s/flow-per-strike" % symbol, ttl=TTL_TAPE)
+
+
+def option_chain(symbol: str, expiry: str = "") -> dict:
+    """
+    The option chain: every contract, with volume, open interest and IV.
+
+    Their chain carries the day's volume and the greeks per contract, which
+    is what the key-level and open-interest readings are built from.
+    """
+    symbol = (symbol or "").upper().strip()
+    return _cached("uw:chain:%s:%s" % (symbol, expiry),
+                   "/api/stock/%s/option-chains" % symbol,
+                   {"expiry": expiry} if expiry else None, ttl=TTL_INTRADAY)
+
+
+def option_contracts(symbol: str, expiry: str = "", limit: int = 1500) -> dict:
+    """Every contract with its quote, volume, open interest and greeks."""
+    symbol = (symbol or "").upper().strip()
+    params = {"limit": limit}
+    if expiry:
+        params["expiry"] = expiry
+    return _cached("uw:contracts:%s:%s:%d" % (symbol, expiry, limit),
+                   "/api/stock/%s/option-contracts" % symbol, params,
+                   ttl=TTL_INTRADAY)
+
+
+def load_chain(symbol: str, expiry: str = "") -> Optional[dict]:
+    """
+    One expiry's chain, in the shape the options screens already render.
+
+    The same contract the OptionData client implemented, so the Options page,
+    the key-level readings and the earnings screens did not change. Their
+    greeks are published rather than solved locally, and each contract also
+    carries the day's bid-side and ask-side volume, which is what the flow
+    readings are built from.
+    """
+    symbol = (symbol or "").upper().strip()
+    if not symbol:
+        return None
+
+    dates = [str(r.get("expires") or "")[:10]
+             for r in _rows(expirations(symbol)) if r.get("expires")]
+    dates = sorted({d for d in dates if d})
+    front = expiry or (dates[0] if dates else "")
+    if not front:
+        return None
+
+    out = option_contracts(symbol, front)
+    if out["status"] != "OK":
+        return None
+
+    spot = None
+    quote_out = quote(symbol)
+    if quote_out["status"] == "OK":
+        spot = _f(((quote_out.get("data") or {}).get("last_trade") or {}).get("price"))
+
+    try:
+        from datetime import date as _date, datetime as _datetime
+        dte = max((_datetime.strptime(front, "%Y-%m-%d").date()
+                   - _date.today()).days, 0)
+    except (TypeError, ValueError):
+        dte = 0
+
+    rows = []
+    as_of = ""  # newest per-contract tape time = how fresh the chain really is
+    for r in _rows(out):
+        tape = str(r.get("last_tape_time") or "")
+        if tape > as_of:
+            as_of = tape
+        option_symbol = str(r.get("option_symbol") or "")
+        if not option_symbol.endswith(tuple("0123456789")):
+            continue
+        strike = _strike_from_symbol(option_symbol)
+        if strike is None:
+            continue
+        bid, ask = _f(r.get("nbbo_bid")), _f(r.get("nbbo_ask"))
+        last = _f(r.get("last_price"))
+        mid = round((bid + ask) / 2, 4) if bid is not None and ask is not None else last
+        volume = _f(r.get("volume")) or 0.0
+        oi = _f(r.get("open_interest")) or 0.0
+        iv = _f(r.get("implied_volatility"))
+        rows.append({
+            "con_id": option_symbol,
+            "symbol": symbol,
+            "expiry": front,
+            "expiry_label": front,
+            "dte": dte,
+            "strike": strike,
+            "right": _right_from_symbol(option_symbol) or "C",
+            "bid": bid, "ask": ask, "last": last, "close": last, "mid": mid,
+            "volume": volume,
+            "open_interest": oi,
+            "oi_change": (oi - (_f(r.get("prev_oi")) or 0.0)),
+            "iv": round(iv, 4) if iv else None,
+            "notional": round(volume * (mid or 0.0) * 100, 2),
+            "oi_notional": round(oi * (mid or 0.0) * 100, 2),
+            # Published, not solved here.
+            "delta": _f(r.get("delta")),
+            "gamma": _f(r.get("gamma")),
+            "theta": _f(r.get("theta")),
+            "vega": _f(r.get("vega")),
+            "rho": _f(r.get("rho")),
+            "bid_volume": _f(r.get("bid_volume")),
+            "ask_volume": _f(r.get("ask_volume")),
+            "premium": _f(r.get("total_premium")),
+        })
+
+    if not rows:
+        return None
+    rows.sort(key=lambda r: (r["strike"], r["right"]))
+
+    return {
+        "symbol": symbol,
+        "spot": round(spot, 2) if spot else None,
+        "expiry": front,
+        "expiry_label": front,
+        "dte": dte,
+        "expirations": dates[:24],
+        "expiration_labels": dates[:24],
+        "rows": rows,
+        # Only the front expiry is quoted here. The key must still exist:
+        # callers concatenate it unconditionally.
+        "other_expiry_rows": [],
+        "multiplier": 100,
+        # When the newest contract last printed. The freshness badge reads
+        # this to say whether the chain is live or how far behind it is,
+        # instead of assuming a fixed delay.
+        "as_of": as_of or None,
+        "status": "OK",
+        "source": SOURCE,
+    }
+
+
+def _strike_from_symbol(option_symbol: str) -> Optional[float]:
+    """NVDA260923C00227500 -> 227.5. The last eight digits are thousandths."""
+    tail = option_symbol[-8:]
+    if not tail.isdigit():
+        return None
+    return int(tail) / 1000.0
+
+
+def expirations(symbol: str) -> dict:
+    """Which expiries this stock has, with volume and open interest on each."""
+    symbol = (symbol or "").upper().strip()
+    return _cached("uw:expiries:" + symbol,
+                   "/api/stock/%s/option/volume-oi-expiry" % symbol,
+                   ttl=TTL_INTRADAY)
+
+
+def darkpool(symbol: str, limit: int = 100) -> dict:
+    """Off-exchange prints for one symbol."""
+    symbol = (symbol or "").upper().strip()
+    return _cached(f"uw:dark:{symbol}:{limit}", f"/api/darkpool/{symbol}",
+                   {"limit": limit}, ttl=TTL_TAPE)
+
+
+# ---------------------------------------------------------------------------
+# the company
+# ---------------------------------------------------------------------------
+
+
+def earnings_history(symbol: str) -> dict:
+    """Reported quarters: estimate, actual, and the market's answer."""
+    symbol = (symbol or "").upper().strip()
+    return _cached(f"uw:earnings:{symbol}", f"/api/stock/{symbol}/earnings")
+
+
+def earnings_estimates(symbol: str) -> dict:
+    """What analysts expect next quarter."""
+    symbol = (symbol or "").upper().strip()
+    return _cached(f"uw:estimates:{symbol}",
+                   f"/api/companies/{symbol}/earnings-estimates")
+
+
+def dividends(symbol: str) -> dict:
+    """Declared dividends, newest first."""
+    symbol = (symbol or "").upper().strip()
+    return _cached(f"uw:dividends:{symbol}",
+                   f"/api/companies/{symbol}/dividends")
+
+
+def analyst_actions(symbol: str, limit: int = 50) -> dict:
+    """Upgrades, downgrades and target changes."""
+    symbol = (symbol or "").upper().strip()
+    return _cached(f"uw:analysts:{symbol}:{limit}", "/api/screener/analysts",
+                   {"ticker": symbol, "limit": limit})
+
+
+def insider_trades(symbol: str) -> dict:
+    """Officers' and directors' own trades, as filed."""
+    symbol = (symbol or "").upper().strip()
+    return _cached(f"uw:insider:{symbol}", f"/api/insider/{symbol}")
+
+
+def institutional_ownership(symbol: str, limit: int = 100) -> dict:
+    """Who holds it, and how that changed."""
+    symbol = (symbol or "").upper().strip()
+    return _cached(f"uw:owners:{symbol}:{limit}",
+                   f"/api/institution/{symbol}/ownership", {"limit": limit})
+
+
+def headlines(symbol: str = "", limit: int = 50) -> dict:
+    """Market headlines, optionally for one ticker."""
+    symbol = (symbol or "").upper().strip()
+    return _cached(f"uw:news:{symbol}:{limit}", "/api/news/headlines",
+                   {"ticker": symbol, "limit": limit}, ttl=300.0)
+
+
+def fundamentals(symbol: str) -> dict:
+    """Valuation, margins and growth for one company."""
+    symbol = (symbol or "").upper().strip()
+    return _cached(f"uw:fundamentals:{symbol}",
+                   f"/api/stock/{symbol}/fundamental-breakdown")
+
+
+# ---------------------------------------------------------------------------
+# status
+# ---------------------------------------------------------------------------
+
+
+def metrics() -> dict:
+    """
+    Live flow metrics for the admin Workflow page. Shows where time goes right
+    now: the cache hit rate (most reads should never reach the provider), the
+    network latency to Unusual Whales, how long the pacing gate is holding
+    requests (the first sign of brushing the per-minute limit), and whether the
+    client is currently in a rate-limit pause.
+    """
+    lat = list(_metrics["lat"])
+    wait = list(_metrics["wait"])
+    hits = _metrics["cache_hits"]
+    misses = _metrics["cache_misses"]
+    reads = hits + misses
+
+    def avg(xs):
+        return round(sum(xs) / len(xs)) if xs else None
+
+    def p95(xs):
+        if not xs:
+            return None
+        s = sorted(xs)
+        return round(s[min(len(s) - 1, int(len(s) * 0.95))])
+
+    blocked = time.time() < _blocked_until
+    avg_wait = avg(wait)
+    # The provider node is "slow" when its typical response runs long, and the
+    # gate is "stuck" when it is holding calls for more than a moment -- those
+    # are the two places the pipeline actually waits.
+    provider_state = ("paused" if blocked
+                      else "slow" if (avg(lat) or 0) > 1200
+                      else "ok")
+    gate_state = ("stuck" if (avg_wait or 0) > 400
+                  else "pacing" if (avg_wait or 0) > 60
+                  else "ok")
+
+    return {
+        "cache_hits": hits,
+        "cache_misses": misses,
+        "cache_hit_rate": round(hits / reads * 100) if reads else None,
+        "net_calls": _metrics["net_calls"],
+        # Errors in the last 5 minutes -- a one-off cold-start burst clears
+        # itself instead of sitting on the board forever. The lifetime total is
+        # kept alongside for context.
+        "net_errors": sum(1 for t in _metrics["err_times"]
+                          if time.time() - t <= 300),
+        "net_errors_total": _metrics["net_errors"],
+        "no_data": _metrics["no_data"],
+        "errors_by": dict(_metrics["errors_by"]),
+        "errors_by_path": dict(_metrics["errors_by_path"]),
+        "max_inflight": MAX_INFLIGHT,
+        "background_cooldown_s": round(background_cooldown_remaining()),
+        "last_error": _metrics["last_error"],
+        "avg_latency_ms": avg(lat),
+        "p95_latency_ms": p95(lat),
+        "last_latency_ms": _metrics["last_latency_ms"],
+        "last_path": _metrics["last_path"],
+        "last_age_seconds": (round(time.time() - _metrics["last_at"])
+                             if _metrics["last_at"] else None),
+        "avg_wait_ms": avg_wait,
+        "blocked": blocked,
+        "blocked_for_seconds": max(0, round(_blocked_until - time.time())),
+        "per_minute_remaining": _limits.get("remaining"),
+        "last_status": _last_status,
+        "provider_state": provider_state,
+        "gate_state": gate_state,
+    }
+
+
+def budget() -> dict:
+    """What is left, for the settings screen. Never the token."""
+    # Prefer the provider's own figures (from response headers); fall back to our
+    # counter and the configured ceiling before any header has been seen.
+    dl = _limits.get("daily_limit")
+    dc = _limits.get("daily_count")
+    limit = dl or APP_DAILY_BUDGET
+    used = dc if dc is not None else _spent["count"]
+    return {
+        "day": _spent["day"],
+        "used_by_this_app": used,
+        "app_budget": limit,
+        "app_left": max(0, limit - used),
+        "daily_limit_source": "provider" if dl else "app_default",
+        # Whether a real daily ceiling is known. The provider sends no daily
+        # headers for an uncapped plan, so ``app_budget`` is only an internal
+        # safety backstop then, not a limit to show the user as "X / 10,000,000".
+        "daily_limit_known": bool(dl),
+        "plan_minute_remaining": _limits["remaining"],
+        "minute_reset_ms": _limits.get("reset"),
+        "blocked": time.time() < _blocked_until,
+        "blocked_for_seconds": max(0, round(_blocked_until - time.time())),
+    }
+
+
+def provider_status() -> dict:
+    # Report real availability, not just the last call's outcome. A single
+    # transient failure (a timeout, or a one-off probe) must NOT make the whole
+    # provider read as offline -- that is misleading and, cached, sticks. The
+    # provider is available when it is configured, has budget, and is not in a
+    # rate-limit pause. Only a persistent, meaningful problem (no key, spent
+    # budget, an active block, or an entitlement gap) is reported as such.
+    b = budget()
+    blocked = time.time() < _blocked_until
+    if not configured():
+        status = "PROVIDER_NOT_CONFIGURED"
+    elif b.get("app_left") == 0:
+        status = "RATE_LIMITED"
+    elif blocked:
+        status = "RATE_LIMITED"
+    elif _last_status == "ENTITLEMENT_REQUIRED":
+        status = "ENTITLEMENT_REQUIRED"
+    else:
+        # Configured, has budget, not blocked -- available. Transient last-call
+        # errors (PROVIDER_OFFLINE/BAD_REQUEST/UNKNOWN) do not override this.
+        status = "OK"
+    return {"provider": "Unusual Whales", "configured": configured(),
+            "status": status, "blocked": blocked, "env_var": ENV_KEY,
+            "signup": "https://unusualwhales.com/api", **budget()}
