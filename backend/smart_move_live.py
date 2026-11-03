@@ -103,7 +103,17 @@ class LiveStore:
         if not p.exists():
             return []
         with self._lock:
-            return [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines() if x.strip()]
+            text = p.read_text(encoding="utf-8")
+        lines = [x for x in text.splitlines() if x.strip()]
+        out = []
+        for i, x in enumerate(lines):
+            try:
+                out.append(json.loads(x))
+            except json.JSONDecodeError:
+                if i == len(lines) - 1 and not text.endswith(chr(10)):          # a record another process is writing right now: it is complete (and counted) on the next read
+                    break
+                raise                                                         # damage anywhere else is real corruption and must stop the scorer, never be skipped
+        return out
 
     def put(self, raw: bytes) -> str:
         return self.payloads.put(raw)[0]
