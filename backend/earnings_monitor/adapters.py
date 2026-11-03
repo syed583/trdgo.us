@@ -142,12 +142,17 @@ class ProdAdapters(Adapters):
                             out.append(row)
         return out
 
-    def _finviz_source(self, sym: str) -> list:
+    def _finviz_map(self) -> dict:
+        """Finviz's {SYMBOL: {date, time}} read ONCE per calendar read. Its cache lives in the shared database tier as well as in memory: reading it per symbol cost one database round trip and one JSON parse per event."""
         try:
             import swr
-            fv = (swr.peek("fviz:earn") or {}).get(sym)
+            m = swr.peek("fviz:earn")
+            return m if isinstance(m, dict) else {}
         except Exception:  # noqa: BLE001
-            fv = None
+            return {}
+
+    def _finviz_source(self, sym: str, fmap: Optional[dict] = None) -> list:
+        fv = (fmap if fmap is not None else self._finviz_map()).get(sym)
         if not (fv and fv.get("date")):
             return []
         t = str(fv.get("time") or "").lower()
@@ -155,12 +160,13 @@ class ProdAdapters(Adapters):
 
     def calendar(self) -> list:
         seen = {}
+        fmap = self._finviz_map()
         for r in self._uw_calendar_cache():
             s = (r.get("symbol") or "").upper()
             if s and s not in seen:                                # the earliest date of a symbol wins
                 sess = r.get("reporting_time") or "UNKNOWN"
                 seen[s] = {"symbol": s, "company": r.get("company"), "date": r["date"], "session": sess, "source": "uw_calendar_cache",
-                           "sources": [{"vendor": "UW", "date": r["date"], "session": sess}] + self._finviz_source(s)}
+                           "sources": [{"vendor": "UW", "date": r["date"], "session": sess}] + self._finviz_source(s, fmap)}
         for m, (res, _) in self._scans().items():
             for r in res.get("rows") or []:
                 s = (r.get("symbol") or "").upper()

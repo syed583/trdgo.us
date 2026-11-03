@@ -204,3 +204,13 @@ def test_an_evidence_scan_reads_the_equity_inputs_in_one_batch_not_one_database_
     swr.calls["peek_many"].clear()
     mon.evidence_scan(clock())
     assert len(swr.calls["peek_many"]) == 1 and not [k for k in swr.calls["peek"] if k.startswith("earn:equity:")]
+
+
+def test_a_calendar_read_asks_for_the_finviz_map_once_not_once_per_event(monkeypatch):
+    swr, lms = _fake_world(monkeypatch)
+    for i in range(200):                                                                    # 200 cached UW rows
+        lms.cache._data["uwcal:/api/earnings/premarket:2026-11-1%d" % (i % 3)] = (time.time(), {"status": "OK", "data": [{"symbol": "S%03d" % j, "full_name": "n", "report_time": "premarket"} for j in range(200)]})
+    swr.calls["peek"].clear()
+    rows = _prod().calendar()
+    assert len([r for r in rows if r["source"] == "uw_calendar_cache"]) >= 200
+    assert swr.calls["peek"].count("fviz:earn") == 1                                        # in production each extra peek is a database round trip plus a JSON parse

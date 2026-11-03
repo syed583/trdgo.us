@@ -150,6 +150,8 @@ if ($u2.code -eq 200 -and -not $u2.notJson -and $u2.json) {
   for ($i = 0; $i -le $hz; $i++) { $d = $today.AddDays($i); if ($d.DayOfWeek -ne 'Saturday' -and $d.DayOfWeek -ne 'Sunday' -and -not $have.ContainsKey($d.ToString('yyyy-MM-dd'))) { $gaps += $d.ToString('yyyy-MM-dd') } }
   Say 'INFO' ("weekdays with no event listed (a market holiday, or not cached yet): {0}" -f $(if ($gaps.Count) { $gaps -join ', ' } else { 'none' }))
   foreach ($g in ($dateRows | Sort-Object date | Select-Object -First 31)) { Write-Host ("      {0}  events={1,5}  in window={2,5}  with a fresh call={3,5}" -f $g.date, $g.events, $g.in_window, $g.with_fresh_call) }
+  $conf = @($rows | Where-Object { $_.verification -eq 'CONFLICT' })
+  if ($conf.Count) { Say 'INFO' ("{0} event(s) where the two calendar vendors disagree on the date or session (no prediction is made for them until they agree); first {1}:" -f $conf.Count, [Math]::Min(25, $conf.Count)); foreach ($c in ($conf | Select-Object -First 25)) { Write-Host ("      CONFLICT {0}  {1}  {2}" -f $c.symbol, $c.earnings_date, (($c.sources | ForEach-Object { "{0} {1} {2}" -f $_.vendor, $_.date, $_.session }) -join ' | ')) } }
 } elseif ($u2.notJson) { Say 'WARN' 'upcoming: the server returned a web page, not data' } else { Say 'WARN' "upcoming HTTP $($u2.code)" }
 
 # 9. Smart Money Move (first page of up to 200 events; the server's own totals are above): the market date of every result, its origin, and the real reason when there is none
