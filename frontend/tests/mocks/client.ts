@@ -10,6 +10,10 @@ export const smartMoveSignals = {
   summary: () => ({ __k: 'sigsummary' }),
   rows: () => ({ __k: 'sigrows' }),
 };
+export const smartMoveEngine20 = {
+  latest: () => ({ __k: 'e20latest' }),
+  outcomes: () => ({ __k: 'e20outcomes' }),
+};
 export const smartMoveNewsReview = {
   queue: () => ({ __k: 'queue' }),
   label: async () => ({ status: 'RECORDED' }),

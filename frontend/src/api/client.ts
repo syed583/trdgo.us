@@ -1060,6 +1060,12 @@ export const smartMoveSignals = {
   rows: (query: string, s?: AbortSignal) => request<any>(`/api/smart-move/live-signals/rows?${query}`, s),
 };
 
+/** Smart Move Engine20: the newest immutable prediction snapshot (a historical record, never a live feed) and its outcome comparison. Read-only. */
+export const smartMoveEngine20 = {
+  latest: (s?: AbortSignal) => request<any>('/api/smart-move/engine20/latest', s),
+  outcomes: (s?: AbortSignal) => request<any>('/api/smart-move/engine20/outcomes', s),
+};
+
 /** Smart Move news review: saved headlines, human labels (append-only) and the validation gate. The only write is appending a reviewer label; no provider request. */
 export const smartMoveNewsReview = {
   queue: (query: string, s?: AbortSignal) => request<any>(`/api/smart-move/news-review/queue?${query}`, s),
