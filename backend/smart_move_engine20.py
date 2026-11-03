@@ -27,21 +27,39 @@ def _dt(x) -> datetime:
 
 
 # ------------------------------------------------------------------ selection
-def select_top(rows: list, market_caps: dict, now, *, n: int = 20, event_date: Optional[str] = None, session: Optional[str] = None, only: Optional[list] = None) -> list:
+def select_top(rows: list, market_caps: dict, now, *, n: int = 20, event_date: Optional[str] = None, session: Optional[str] = None, only: Optional[list] = None,
+               policy: str = "cap", pending: Optional[set] = None, audit: Optional[list] = None) -> list:
     """`only` pins the owner-approved symbol list (kept in that order, every symbol still has to pass the same eligibility checks; a listed symbol that fails them is simply absent, never swapped for another). Vendor-confirmed events (no calendar blocker) with a known BMO/AMC session whose prediction window is open at `now`, optionally limited to one date and session, ranked by market cap. Market cap is a SELECTION
     heuristic only; the engine's own liquidity gate decides from the price bars."""
     now = _dt(now)
     ok = []
+
+    def note(r, status, why):
+        if audit is not None:
+            audit.append({"symbol": r["symbol"], "event_date": r.get("earnings_date"), "session": r.get("kind"), "status": status, "reason": why})
     for r in rows:
         p = r["plan"]
         if r["blocked_by"] or r["kind"] not in ("BMO", "AMC") or not (_dt(p["window_start_utc"]) <= now <= _dt(p["cutoff_utc"])):
+            if audit is not None and r.get("kind") in ("BMO", "AMC"):
+                note(r, "SKIPPED", "calendar not vendor-confirmed: %s" % ",".join(map(str, r["blocked_by"])) if r["blocked_by"] else "prediction window not open now")
             continue
         if event_date and r["earnings_date"] != event_date or session and r["kind"] != session:
+            note(r, "SKIPPED", "outside the --select-date/--select-session filter")
             continue
         if only is not None and r["symbol"] not in only:
             continue
+        if policy == "deadline" and pending is not None and r["symbol"] not in pending:
+            note(r, "SKIPPED", "its evidence is already fresh: no request needed")        # an already-collected stock never occupies a selection slot
+            continue
         ok.append(r)
-    ok.sort(key=(lambda r: (only.index(r["symbol"]), r["symbol"])) if only is not None else (lambda r: (-(market_caps.get(r["symbol"]) or 0), r["symbol"])))
+    if only is not None:
+        ok.sort(key=lambda r: (only.index(r["symbol"]), r["symbol"]))
+    elif policy == "deadline":
+        ok.sort(key=lambda r: (_dt(r["plan"]["cutoff_utc"]), -(market_caps.get(r["symbol"]) or 0), r["symbol"]))      # deterministic: closest cutoff first, then larger cap, then symbol
+    else:
+        ok.sort(key=lambda r: (-(market_caps.get(r["symbol"]) or 0), r["symbol"]))
+    for i, r in enumerate(ok):
+        note(r, "SELECTED" if i < n else "NOT_SELECTED", ("rank %d of %d by %s" % (i + 1, len(ok), "closest prediction cutoff" if policy == "deadline" else "market capitalisation")) if i < n else "ranked %d, beyond the %d slots" % (i + 1, n))
     return [{"rank": i + 1, "symbol": r["symbol"], "company": r.get("company"), "event_date": r["earnings_date"], "session": r["kind"], "sector": r.get("sector"), "etf": L.SECTOR_ETF.get(r.get("sector")),
              "market_cap": market_caps.get(r["symbol"])} for i, r in enumerate(ok[:n])]
 

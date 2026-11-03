@@ -44,8 +44,8 @@ class NoNetworkFetcher(L.Fetcher):
         raise AssertionError("dry run must never call the provider (%s)" % kind)
 
 
-PILOT_MAX = 50
-DAILY_LIMIT_MAX = 100
+PILOT_MAX = int(os.environ.get("SMART_MOVE_RUN_MAX") or 50)             # internal governor ceilings: the defaults are the approved production limits; raising them is an explicit owner decision (environment variable)
+DAILY_LIMIT_MAX = int(os.environ.get("SMART_MOVE_DAILY_MAX") or 100)
 
 
 def build_service(store_dir, *, live: bool, authorized: int, now=None, retries: int = 1, tracking_days: int = 14, attempts_path=None):
@@ -106,7 +106,10 @@ def engine20_profile(a, svc, now, live: bool) -> int:
         except (KeyError, TypeError, ValueError):
             pass
     rows = L.LiveScorer(svc).score_all(now)
-    selected = E20.select_top(rows, caps, now, n=a.select_top, event_date=a.select_date, session=a.select_session, only=[x.strip().upper() for x in a.select_symbols.split(",") if x.strip()] if a.select_symbols else None)
+    audit = []
+    kinds = ("ohlc", "earnings") + (("vol_context", "iv_rank") if a.with_f7 else ())             # only the kinds this run would actually fund decide whether a stock still needs work
+    pending = {t["symbol"] for t in svc.plan_evidence(now) if t.get("symbol") and t["kind"] in kinds} if a.select_policy == "deadline" else None
+    selected = E20.select_top(rows, caps, now, policy=a.select_policy, pending=pending, audit=audit, n=a.select_top, event_date=a.select_date, session=a.select_session, only=[x.strip().upper() for x in a.select_symbols.split(",") if x.strip()] if a.select_symbols else None)
     cal_needed = G.needs_refresh(svc.store, now)
     cal_est = 4 if cal_needed else 0
     plan = E20.plan_tasks(svc, selected, now, budget=a.ceiling - cal_est, with_f7=a.with_f7)
@@ -115,6 +118,7 @@ def engine20_profile(a, svc, now, live: bool) -> int:
                "stocks_fully_funded": plan["stocks_fully_funded"], "stocks_already_fresh": plan["already_fresh_stocks"], "unfunded": [(t["kind"], t["symbol"]) for t in plan["unfunded"]],
                "tasks": [(t["kind"], t["symbol"], t["why"]) for t in plan["funded"]], "provider_requests": 0}
     (d / "engine20_plan.json").write_text(json.dumps(summary, indent=1, default=str), encoding="utf-8")
+    (d / "engine20_selection.json").write_text(json.dumps({"policy": a.select_policy, "slots": a.select_top, "as_of": now.isoformat(), "decisions": audit}, indent=1, default=str), encoding="utf-8")
     if not live:
         print(json.dumps({k: v for k, v in summary.items() if k != "tasks"}, indent=1, default=str))
         return 0
@@ -197,6 +201,7 @@ def main(argv=None) -> int:
     ap.add_argument("--select-symbols", default=None, help="engine20 profile: pin the owner-approved list (comma separated); each symbol must still pass the eligibility checks, none is substituted")
     ap.add_argument("--select-date", default=None, help="engine20 profile: only events on this date, e.g. 2026-11-04")
     ap.add_argument("--select-session", default=None, choices=("BMO", "AMC"), help="engine20 profile: only this announcement session")
+    ap.add_argument("--select-policy", choices=("cap", "deadline"), default="cap", help="engine20 profile: cap = the n largest market caps (default, unchanged); deadline = stocks that still NEED evidence, closest prediction cutoff first (already-collected stocks never take a slot)")
     ap.add_argument("--with-f7", action="store_true", help="engine20 profile: also request volatility context and IV rank (2 more requests per stock)")
     ap.add_argument("--require-rotated-from", default=None, help="8-hex fingerprint of the OLD token; a live run is BLOCKED while the active token still has this fingerprint")
     ap.add_argument("--shared-key-attestation", default=None, help="owner acknowledgement file (see smart_move_shared_key_gate); without a valid one a live run stays BLOCKED")

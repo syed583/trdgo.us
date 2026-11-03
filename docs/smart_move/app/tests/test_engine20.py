@@ -206,3 +206,28 @@ def test_pinned_symbol_list_keeps_the_owner_order_and_never_substitutes_another_
     caps = {o["symbol"]: float(o["marketcap"]) for o in svc.store.read("cal_obs")}
     got = E20.select_top(rows, caps, NOW, n=20, event_date="2026-11-04", session="BMO", only=["DDD", "AAA", "ZZZ"])
     assert [g["symbol"] for g in got] == ["DDD", "AAA"]                      # owner order kept, the unknown ZZZ is absent and nothing else (BBB, CCC) takes its place
+
+
+def test_deadline_policy_never_lets_collected_stocks_take_a_slot_and_records_why(tmp_path):
+    svc = make(tmp_path)
+    rows = L.LiveScorer(svc).score_all(NOW)
+    caps = {o["symbol"]: float(o["marketcap"]) for o in svc.store.read("cal_obs")}
+    args = dict(n=2, event_date="2026-11-04", session="BMO")
+    cap1 = [x["symbol"] for x in E20.select_top(rows, caps, NOW, **args)]
+    dl1 = [x["symbol"] for x in E20.select_top(rows, caps, NOW, policy="deadline", pending={"AAA", "BBB", "CCC", "DDD", "EEE"}, **args)]
+    assert cap1 == dl1 == ["AAA", "BBB"]                                                    # nothing collected yet: same stocks
+    audit = []
+    cap2 = [x["symbol"] for x in E20.select_top(rows, caps, NOW, **args)]
+    dl2 = [x["symbol"] for x in E20.select_top(rows, caps, NOW, policy="deadline", pending={"CCC", "DDD", "EEE"}, audit=audit, **args)]
+    assert cap2 == ["AAA", "BBB"]                                                           # the old policy is stuck on the same two forever
+    assert dl2 == ["CCC", "DDD"]                                                            # the new one moves on (deterministic: same cutoff, then larger cap)
+    st = {a["symbol"]: (a["status"], a["reason"]) for a in audit}
+    assert st["AAA"][0] == "SKIPPED" and "already fresh" in st["AAA"][1] and st["CCC"][0] == "SELECTED" and st["EEE"][0] == "NOT_SELECTED" and "beyond the 2 slots" in st["EEE"][1]
+    assert dl2 == [x["symbol"] for x in E20.select_top(rows, caps, NOW, policy="deadline", pending={"CCC", "DDD", "EEE"}, **args)]       # repeatable
+
+
+def test_default_policy_is_unchanged_market_cap_first(tmp_path):
+    svc = make(tmp_path)
+    rows = L.LiveScorer(svc).score_all(NOW)
+    caps = {o["symbol"]: float(o["marketcap"]) for o in svc.store.read("cal_obs")}
+    assert [x["symbol"] for x in E20.select_top(rows, caps, NOW, n=5, event_date="2026-11-04", session="BMO")] == ["AAA", "BBB", "CCC", "DDD", "EEE"]
