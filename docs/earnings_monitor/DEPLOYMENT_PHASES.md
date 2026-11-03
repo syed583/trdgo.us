@@ -7,7 +7,6 @@ Run in an elevated PowerShell on the VPS. Use the variable names below (they are
 The owner reported that the A.2 update was rolled back to `_backup_monitor_update_20261103_161524_937` after it was verified. That backup holds the code from BEFORE the A.2 update (Stage A, `d48f4900`).
 ```powershell
 $p0Dir = "C:\apps\_deploy_probe_$(Get-Date -Format yyyyMMdd_HHmmss)"; New-Item -ItemType Directory -Path $p0Dir | Out-Null
-foreach ($p0 in @(@('a2','499d57326b5dd1e24328597b25aa3b814efea822'), @('a4','<COMMIT OF THE APPROVED A.4 PUSH>'))) { }   # see Phase 1 for A.4; A.2 archive:
 Invoke-WebRequest "https://github.com/syed583/trdgo.us/archive/499d57326b5dd1e24328597b25aa3b814efea822.zip" -OutFile "$p0Dir\a2.zip" -UseBasicParsing
 Expand-Archive "$p0Dir\a2.zip" "$p0Dir\a2"
 $p0A2 = (Get-ChildItem "$p0Dir\a2")[0].FullName + '\deploy\earnings_monitor'
@@ -18,7 +17,8 @@ $p0A2 = (Get-ChildItem "$p0Dir\a2")[0].FullName + '\deploy\earnings_monitor'
 ## Phase 1: Stage A.4 (monitor + dashboard, cache-only), after approval of the push
 Release `release/stage-a4`, manifest SHA-256 `d32212fe521d768a6d5688f5ba89606ae2326fe667abfb60a57e746c15675a7f`, 134 files. The Update action works from Stage A or from A.2 (it replaces monitor files and the frontend; `main.py` and `.env` are untouched).
 ```powershell
-$a4Commit = '<the commit hash I give you after the push>'
+$a4Commit = $null     # SET THIS to the A.4 commit hash printed in the release report after the push; the next line stops the script if you forget
+if (-not $a4Commit) { throw 'STOP: set $a4Commit first' }
 $a4Anchor = 'd32212fe521d768a6d5688f5ba89606ae2326fe667abfb60a57e746c15675a7f'
 $a4Dir = "C:\apps\_deploy_a4_$(Get-Date -Format yyyyMMdd_HHmmss)"; New-Item -ItemType Directory -Path $a4Dir | Out-Null
 Invoke-WebRequest "https://github.com/syed583/trdgo.us/archive/$a4Commit.zip" -OutFile "$a4Dir\a4.zip" -UseBasicParsing
@@ -49,9 +49,11 @@ $rbDir = (Get-ChildItem C:\apps\us-stock-reader -Directory -Filter '_backup_moni
 Older backups are never deleted by any script here.
 
 ## Phase 2: Stage B1 (shared Unusual Whales slots, installed INERT)
+(`$bDir` is a new download folder created for this phase the same way `$a4Dir` is created in Phase 1.)
 Branch `release/uw-concurrency` commit `194ad28e2a58390a9ed9f39e32da6e3090d04288`, manifest SHA-256 `1c12a93b6d338c42e9ac39134483133b245c355f867928e19d8bdef17f334a4e`. It replaces `backend\unusualwhales_service.py` and adds three modules; nothing changes until environment switches are set.
 ```powershell
-cd <package folder>\deploy\uw_concurrency
+# Download and extract the Stage B package exactly as in Phase 1 (commit and anchor from the release report), then:
+cd "$((Get-ChildItem "$bDir\x")[0].FullName)\deploy\uw_concurrency"
 .\install_uw_concurrency.ps1 -Action Preflight -Package $PWD.Path -ManifestSha256 1c12a93b6d338c42e9ac39134483133b245c355f867928e19d8bdef17f334a4e
 .\install_uw_concurrency.ps1 -Action Install   -Package $PWD.Path -ManifestSha256 1c12a93b6d338c42e9ac39134483133b245c355f867928e19d8bdef17f334a4e -Restart
 ```
@@ -67,6 +69,6 @@ Private kit (never on GitHub), manifest SHA-256 `db40e2aa37ce7a822280335f6312c7e
 ## Phase 4: Stage D (collection), separate approvals, in this order
 1. Dry run of the scheduled wrapper (zero requests): `run_engine20_collection.ps1 -Runner ... -StoreDir ... -StateRoot ... -SelectPolicy deadline -SelectTop 400` (no `-Live`).
 2. Register the hourly task with `register_collection_task.ps1 -Create` (dry-run arguments).
-3. Go live: a signed attestation file, `SMART_MOVE_COLLECTION_LIVE=1` set by you, the wrapper started with `-Live -Attestation <file>`; budget per the table in `SMART_MOVE_COLLECTION_POLICY.md` and written provider confirmation first.
+3. Go live: a signed attestation file, `SMART_MOVE_COLLECTION_LIVE=1` set by you, the wrapper started with `-Live -Attestation` plus the path of the file you signed`; budget per the table in `SMART_MOVE_COLLECTION_POLICY.md` and written provider confirmation first.
 
 ## Phase 5: Stage E external alerts / WebSocket: not enabled; alerts go to the local outbox only.
