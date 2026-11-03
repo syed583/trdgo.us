@@ -28,6 +28,21 @@ function Get-Json([string]$path, $headers) {
     try { return @{ code = [int]$r.StatusCode; json = (ConvertFrom-Json $r.Content); notJson = $false; ctype = $ct } } catch { Write-Host ("DIAG  {0} -> HTTP {1}, content-type '{2}', JSON could not be parsed: {3}" -f $path, [int]$r.StatusCode, $ct, $_.Exception.Message); return @{ code = [int]$r.StatusCode; json = $null; notJson = $true; ctype = $ct } }
   } catch { if ($_.Exception.Response) { return @{ code = [int]$_.Exception.Response.StatusCode.value__; json = $null; notJson = $false; ctype = '' } } else { throw } }
 }
+# Every list the server pages (default 200 rows) is read in full: pages of 1000 until the server's own total is reached.
+function Get-AllRows([string]$path, $headers) {
+  $sep = if ($path.Contains('?')) { '&' } else { '?' }
+  $first = Get-Json ($path + $sep + 'limit=1000&offset=0') $headers
+  if ($first.code -ne 200 -or $first.notJson -or -not $first.json -or $first.json.status -ne 'OK' -or $null -eq $first.json.total) { return $first }
+  $all = New-Object System.Collections.ArrayList; [void]$all.AddRange(@($first.json.rows)); $off = $all.Count; $guard = 0
+  while ($all.Count -lt [int]$first.json.total -and $guard -lt 20) {
+    $pg = Get-Json ($path + $sep + 'limit=1000&offset=' + $off) $headers
+    if ($pg.code -ne 200 -or $pg.notJson -or -not @($pg.json.rows).Count) { break }
+    [void]$all.AddRange(@($pg.json.rows)); $off = $all.Count; $guard++
+  }
+  $first.json.rows = $all.ToArray(); $first.pages_read = $guard + 1
+  if ($all.Count -lt [int]$first.json.total) { Say 'WARN' ("{0}: read {1} of {2} rows" -f $path, $all.Count, $first.json.total) }
+  return $first
+}
 Write-Host ("Earnings Monitor verification  " + (Get-Date).ToUniversalTime().ToString('o'))
 
 # 1. existing production services
@@ -53,7 +68,7 @@ if ($s.scheduling -eq 'CACHE_ONLY' -and [int]$s.provider_requests_today -eq 0) {
 if ($s.scheduling -eq 'REFRESH') { Say 'WARN' 'provider refresh is approved: stage 1 should be cache-only' }
 
 # 3. the rolling calendar (the same list the Upcoming page shows)
-$up = Get-Json '/api/earnings-monitor/upcoming' $h
+$up = Get-AllRows '/api/earnings-monitor/upcoming' $h
 if ($up.code -eq 200 -and $up.json.status -eq 'NO_DATA') { Say 'INFO' 'upcoming: no monitor data yet (the monitor has not run on this server)' }
 elseif ($up.code -eq 200 -and $up.json.status -eq 'OK') {
   $rows = @($up.json.rows)
@@ -64,7 +79,7 @@ elseif ($up.code -eq 200 -and $up.json.status -eq 'OK') {
     $elig = @($rows | Where-Object { $_.eligible }).Count
     $nAll = if ($up.json.summary) { [int]$up.json.summary.events } else { $rows.Count }
     $maxAll = if ($up.json.summary) { [int]$up.json.summary.max_days_ahead } else { ($days | Measure-Object -Maximum).Maximum }
-    Say 'PASS' "tracking $nAll upcoming events, 0 to $maxAll days ahead (of the $($rows.Count) listed on this page: $elig eligible; calendar check: $($ver -join ', '))"
+    Say 'PASS' "tracking $nAll upcoming events, 0 to $maxAll days ahead (read $($rows.Count) rows over $($up.pages_read) page(s): $elig eligible; calendar check: $($ver -join ', '))"
     $beyond = @($rows | Where-Object { [int]$_.days_to -gt $HorizonDays }).Count
     if ($beyond) { Say 'INFO' "$beyond event(s) are beyond the $HorizonDays-day eight-model window: they are on the 30-day calendar and are listed, never scored" }
     $conf = @($rows | Where-Object { $_.verification -eq 'CONFLICT' }).Count
@@ -74,7 +89,7 @@ elseif ($up.code -eq 200 -and $up.json.status -eq 'OK') {
 } else { Say 'FAIL' "upcoming HTTP $($up.code)" }
 
 # 4. every model on every event: label / freshness
-$md = Get-Json '/api/earnings-monitor/models' $h
+$md = Get-AllRows '/api/earnings-monitor/models' $h
 if ($md.code -eq 200 -and $md.json.status -eq 'NO_DATA') { Say 'INFO' 'models: no monitor data yet' }
 elseif ($md.code -eq 200 -and $md.json.status -eq 'OK') {
   $cells = @(); foreach ($r in @($md.json.rows)) { foreach ($p in $r.cells.PSObject.Properties) { $cells += [pscustomobject]@{ model = $p.Name; label = $p.Value.label; source = $p.Value.source; age = $p.Value.age_h } } }
@@ -133,7 +148,7 @@ if ($hl.code -eq 200 -and -not $hl.notJson) {
 
 
 # 8. rolling 30-day calendar. The server pages its lists, so the totals come from the server's own summary of ALL tracked events (the same numbers the Upcoming page shows); older servers send every row and the totals are counted here.
-$u2 = Get-Json '/api/earnings-monitor/upcoming?limit=1000' $h
+$u2 = $up
 if ($u2.code -eq 200 -and -not $u2.notJson -and $u2.json) {
   $rows = @($u2.json.rows); $S = $u2.json.summary
   $hz = [int]$u2.json.horizon_days; $mw = [int]$u2.json.model_window_days
@@ -157,12 +172,21 @@ if ($u2.code -eq 200 -and -not $u2.notJson -and $u2.json) {
   if ($conf.Count) { Say 'INFO' ("{0} event(s) where the two calendar vendors disagree on the date or session (no prediction is made for them until they agree); first {1}:" -f $conf.Count, [Math]::Min(25, $conf.Count)); foreach ($c in ($conf | Select-Object -First 25)) { Write-Host ("      CONFLICT {0}  {1}  {2}" -f $c.symbol, $c.earnings_date, (($c.sources | ForEach-Object { "{0} {1} {2}" -f $_.vendor, $_.date, $_.session }) -join ' | ')) } }
 } elseif ($u2.notJson) { Say 'WARN' 'upcoming: the server returned a web page, not data' } else { Say 'WARN' "upcoming HTTP $($u2.code)" }
 
-# 9. Smart Money Move (first page of up to 200 events; the server's own totals are above): the market date of every result, its origin, and the real reason when there is none
-$sm = Get-Json '/api/earnings-monitor/smart-move' $h
+# 8b. why in-window events have no fresh call, and that paging and the date filter work (server answers compared with the full read)
+if ($S -and $S.no_call_reasons) { foreach ($k in $S.no_call_reasons.PSObject.Properties) { Say 'INFO' ("no fresh call, reason {0}: {1} event(s), e.g. {2}" -f $k.Name, $k.Value.events, (@($k.Value.examples) | Select-Object -First 6) -join ',') }
+  $sumR = 0; foreach ($k in $S.no_call_reasons.PSObject.Properties) { $sumR += [int]$k.Value.events }
+  if ($sumR -eq [int]$S.in_window_without_call) { Say 'PASS' "every one of the $sumR in-window events without a fresh call has a stated reason" } else { Say 'WARN' ("reasons cover {0} of {1} in-window events without a call" -f $sumR, $S.in_window_without_call) } }
+$pg1 = Get-Json '/api/earnings-monitor/upcoming?limit=5&offset=0' $h; $pg2 = Get-Json '/api/earnings-monitor/upcoming?limit=5&offset=5' $h
+if ($pg1.code -eq 200 -and $pg2.code -eq 200 -and $pg1.json.rows -and $pg2.json.rows) { $ids = @($pg1.json.rows.id) + @($pg2.json.rows.id); if (@($ids | Select-Object -Unique).Count -eq $ids.Count -and [int]$pg1.json.total -eq [int]$S.events) { Say 'PASS' 'paging: consecutive pages are disjoint and the page total equals the server total' } else { Say 'FAIL' 'paging: pages overlap or the total differs' } }
+$dd = ($dateRows | Sort-Object date | Select-Object -First 1)
+if ($dd) { $df = Get-Json ('/api/earnings-monitor/upcoming?limit=1000&date=' + $dd.date) $h; if ($df.code -eq 200 -and [int]$df.json.total -eq [int]$dd.events -and -not @($df.json.rows | Where-Object { $_.earnings_date -ne $dd.date }).Count) { Say 'PASS' ("date filter {0}: {1} event(s), all on that date" -f $dd.date, $df.json.total) } else { Say 'FAIL' ("date filter {0}: expected {1} event(s), got {2}" -f $dd.date, $dd.events, $df.json.total) } }
+
+# 9. Smart Money Move (every event, all pages): the market date of every result, its origin, and the real reason when there is none
+$sm = Get-AllRows '/api/earnings-monitor/smart-move' $h
 if ($sm.code -eq 200 -and -not $sm.notJson -and $sm.json) {
   $srows = @($sm.json.rows)
   if ($sm.json.coverage) { Say 'INFO' ("latest {0}: made {1}, scored {2} event(s) dated {3}" -f $sm.json.coverage.source, $sm.json.coverage.generated_at, $sm.json.coverage.rows, ($sm.json.coverage.event_dates -join ', ')) } else { Say 'INFO' 'no engine run or snapshot has been read yet' }
-  foreach ($g in ($srows | Group-Object earnings_date | Sort-Object Name | Select-Object -First 8)) {
+  foreach ($g in ($srows | Group-Object earnings_date | Sort-Object Name | Select-Object -First 31)) {
     $calls = @($g.Group | Where-Object { $_.label -in 'BUY', 'SELL', 'NO_TRADE', 'NEUTRAL' }).Count
     $codes = ($g.Group | Where-Object { $_.reason } | Group-Object { $_.reason.code } | ForEach-Object { "{0} x{1}" -f $_.Name, $_.Count }) -join '; '
     $orig = ($g.Group | Group-Object origin | ForEach-Object { "{0} x{1}" -f $_.Name, $_.Count }) -join '; '
