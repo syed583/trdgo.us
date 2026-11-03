@@ -2,9 +2,12 @@
   Smart Move Engine20 snapshot: deploys the release overlay (commit of branch release/smart-move-engine20, built on production commit 38ca61d) onto USStockReader.
   Run it YOURSELF on the VPS, in an elevated PowerShell. It never sends a provider request.
 
-    .\deploy_engine20.ps1 -Action Preflight                  read-only checks (default)
-    .\deploy_engine20.ps1 -Action Deploy                     preflight, backup, deploy, restart, health checks; rolls back by itself on ANY failure
-    .\deploy_engine20.ps1 -Action Rollback -BackupDir <dir>  manual rollback from a backup folder printed by Deploy
+    .\deploy_engine20.ps1 -Action Preflight -ManifestSha256 <sha256 of MANIFEST.sha256>      read-only checks
+    .\deploy_engine20.ps1 -Action Deploy    -ManifestSha256 <sha256 of MANIFEST.sha256>      preflight, backup, deploy, restart, health checks; rolls back by itself on ANY failure
+    .\deploy_engine20.ps1 -Action Rollback  -BackupDir <dir>                                  manual rollback from a backup folder printed by Deploy
+
+  The prediction snapshot is NOT part of this package (it is private). Put the two snapshot files in -SnapshotDir (default C:\deploy\private\engine20_snapshots);
+  they are accepted only if their SHA-256 values equal the ones pinned below.
 
   Test switches (used only for the offline rehearsal): -NoRestart -NoHealth -SimulateHealthFailure
 #>
@@ -13,6 +16,9 @@ param(
   [ValidateSet('Preflight', 'Deploy', 'Rollback')][string]$Action = 'Preflight',
   [string]$App = 'C:\apps\us-stock-reader',
   [string]$Package = $PSScriptRoot,
+  [string]$SnapshotDir = 'C:\deploy\private\engine20_snapshots',
+  [string]$ManifestSha256 = '',
+  [switch]$SkipManifestAnchor,
   [string]$Service = 'USStockReader',
   [int]$Port = 8000,
   [string]$BackupDir = '',
@@ -25,7 +31,11 @@ $ErrorActionPreference = 'Stop'
 # backend\main.py of the production commit 38ca61d (line endings normalised to LF) and the same file after the 3-line patch
 $ExpectedMainLf = 'cabb4aac9b9d554ebed14de99a378d0314e9d44468cc3057b809e393db3cd865'
 $PatchedMainLf  = 'b65fbd0e916d258108dd506921a3c267039ba558da0faf152ab27f2c58e36d35'
-$ExpectedCounts = @{ BUY = 4; SELL = 1; NO_TRADE = 13; NO_VALID_PREDICTION = 2 }
+# SHA-256 of the two private snapshot files (a hash reveals nothing about the content); the expected prediction counts are read from the verified private index, never stored here
+$SnapshotName = 'engine20_snapshot_20261103T082908Z_c96df752.json'
+$SnapshotSha  = 'c96df752f5d3f944b211b4cc625b51b5ca58bb91905c5799fb5051e5012352de'
+$IndexSha     = '5a84b12ef41ddea3c70bbd949b59b10af02fb53000a66747561aa688f1a551d6'
+$script:ExpectedCounts = @{}
 $Anchor = 'app.include_router(api_router)'
 $PatchLf = "`n# Smart Move Engine20 snapshot (read-only; the session gate below covers it like every /api route). Serves a file snapshot; no provider code.`nfrom smart_move_engine20_routes import router as _sm_engine20_router  # noqa: E402`napp.include_router(_sm_engine20_router)`n"
 
@@ -33,6 +43,7 @@ $Backend = Join-Path $App 'backend'
 $MainPy = Join-Path $Backend 'main.py'
 $EnvFile = Join-Path $Backend '.env'
 $Dist = Join-Path $App 'frontend\dist'
+$PkgDist = 'frontend_dist'
 $DataDir = Join-Path $App 'smart_move_data\engine20'
 $NewPy = @('smart_move_engine20_routes.py', 'smart_move_engine20_snapshot.py')
 
@@ -46,6 +57,11 @@ function ShaLf([string]$p) {
 function Test-Manifest {
   $mf = Join-Path $Package 'MANIFEST.sha256'
   if (-not (Test-Path $mf)) { throw 'MANIFEST.sha256 missing in the package' }
+  if (-not $SkipManifestAnchor) {
+    if (-not $ManifestSha256) { throw '-ManifestSha256 is required: the SHA-256 of MANIFEST.sha256 that the owner was given (it anchors the whole package)' }
+    if ((Sha $mf) -ne $ManifestSha256.ToLower()) { throw 'MANIFEST.sha256 does not match the SHA-256 you were given: this is not the approved package' }
+    Log 'manifest anchor OK'
+  }
   $listed = @{}
   foreach ($line in (Get-Content $mf)) {
     if (-not $line.Trim()) { continue }
@@ -65,6 +81,18 @@ function Test-Manifest {
   }
   if ($bad.Count) { throw ('package check failed: ' + ($bad[0..([Math]::Min(4, $bad.Count - 1))] -join '; ') + " ($($bad.Count) problems)") }
   Log "package OK: $($listed.Count) files match MANIFEST.sha256"
+}
+
+function Test-PrivateSnapshot {
+  $sf = Join-Path $SnapshotDir $SnapshotName; $ix = Join-Path $SnapshotDir 'snapshots.jsonl'
+  foreach ($p in @($sf, $ix)) { if (-not (Test-Path $p)) { throw "private snapshot file missing: $p (copy it to the VPS first; it is not in GitHub)" } }
+  if ((Sha $sf) -ne $SnapshotSha) { throw 'the snapshot file does not match the approved SHA-256' }
+  if ((Sha $ix) -ne $IndexSha) { throw 'snapshots.jsonl does not match the approved SHA-256' }
+  $idx = Get-Content $ix | ForEach-Object { ConvertFrom-Json $_ } | Select-Object -Last 1
+  if ($idx.file -ne $SnapshotName -or $idx.sha256 -ne $SnapshotSha) { throw 'snapshots.jsonl does not describe the approved snapshot' }
+  $script:ExpectedCounts = @{}
+  foreach ($p in $idx.counts.PSObject.Properties) { if ($p.Name -ne 'PENDING_REFRESH') { $script:ExpectedCounts[$p.Name] = [int]$p.Value } }
+  Log 'private snapshot files verified (approved SHA-256); expected counts loaded from the private index'
 }
 
 function Get-Pw {
@@ -94,8 +122,8 @@ function Test-Health([bool]$full) {
     if ($a.code -ne 200) { throw "authenticated engine20 route returned $($a.code)" }
     $j = ConvertFrom-Json $a.body
     if ($j.status -ne 'OK' -or $j.is_live_signal -ne $false) { throw 'engine20 route: status not OK or is_live_signal not false' }
-    foreach ($k in $ExpectedCounts.Keys) { if ([int]$j.counts.$k -ne $ExpectedCounts[$k]) { throw "engine20 count $k = $($j.counts.$k), expected $($ExpectedCounts[$k])" } }
-    Log 'health: engine20 route 401 unauthenticated; authenticated OK, historical snapshot, counts 4/1/13/2'
+    foreach ($k in $script:ExpectedCounts.Keys) { if ([int]$j.counts.$k -ne $script:ExpectedCounts[$k]) { throw "engine20 count $k = $($j.counts.$k), expected $($script:ExpectedCounts[$k])" } }
+    Log 'health: engine20 route 401 unauthenticated; authenticated OK, historical snapshot, counts equal the private index'
   } elseif ($u.code -eq 200) { throw 'engine20 route still answers 200 after rollback' }
   Remove-Variable pw, h
 }
@@ -115,6 +143,7 @@ function Restart-Svc {
 function Invoke-Preflight {
   Log "PREFLIGHT  app=$App  package=$Package"
   Test-Manifest
+  Test-PrivateSnapshot
   foreach ($p in @($MainPy, $EnvFile, $Dist, (Join-Path $Dist 'index.html'))) { if (-not (Test-Path $p)) { throw "not found: $p" } }
   $cur = ShaLf $MainPy
   if ($cur -eq $PatchedMainLf) { throw 'main.py already contains the Engine20 patch (nothing to do)' }
@@ -149,7 +178,7 @@ function Invoke-Deploy {
   try {
     foreach ($f in $NewPy) { Copy-Item (Join-Path $Package "backend\$f") (Join-Path $Backend $f) }
     New-Item -ItemType Directory -Force $DataDir | Out-Null
-    Copy-Item (Join-Path $Package 'engine20_snapshots\*') $DataDir -Force
+    Copy-Item (Join-Path $SnapshotDir $SnapshotName) $DataDir -Force; Copy-Item (Join-Path $SnapshotDir 'snapshots.jsonl') $DataDir -Force
     $idx = Get-Content (Join-Path $DataDir 'snapshots.jsonl') | ForEach-Object { ConvertFrom-Json $_ } | Select-Object -Last 1
     if ((Sha (Join-Path $DataDir $idx.file)) -ne $idx.sha256) { throw 'snapshot file does not match its recorded hash' }
     Log 'snapshot copied and hash verified'
@@ -166,7 +195,7 @@ function Invoke-Deploy {
       [IO.File]::WriteAllText($EnvFile, $envText + "SMART_MOVE_ENGINE20_DIR=$DataDir`r`n", (New-Object Text.UTF8Encoding($false)))
     }
     Log '.env: SMART_MOVE_ENGINE20_DIR set'
-    Move-Item $Dist (Join-Path $bk 'dist'); Copy-Item -Recurse (Join-Path $Package 'dist') $Dist
+    Move-Item $Dist (Join-Path $bk 'dist'); Copy-Item -Recurse (Join-Path $Package $PkgDist) $Dist
     Log 'frontend\dist swapped (the old one is in the backup)'
     Restart-Svc
     if (-not $NoHealth) { Test-Health $true }
