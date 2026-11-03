@@ -99,3 +99,38 @@ def test_routes_serve_the_snapshot_read_only(tmp_path, monkeypatch):
     assert j["status"] == "OK" and j["is_live_signal"] is False and j["read_only"] is True and len(j["rows"]) == 4
     assert c.get("/api/smart-move/engine20/outcomes").json()["available"] is False
     assert c.post("/api/smart-move/engine20/latest").status_code == 405
+
+
+def test_pending_missing_or_quarantined_outcomes_are_never_graded_or_compared(tmp_path):
+    S.build_snapshot(report(tmp_path), PASS, tmp_path / "s", source="t")
+    snap = S.load_latest(tmp_path / "s")
+    track = tmp_path / "track"
+    for st in ("PENDING_SESSION_NOT_CLOSED", "MISSING_BARS", "IMPLAUSIBLE"):
+        assert O.record(track, {"symbol": "AAA", "earnings_date": "2026-11-04", "mode": "LIVE", "status": st, "move_pct": None})["result"] == "not_graded"
+    O.record(track, {"symbol": "BBB", "earnings_date": "2026-11-04", "mode": "LIVE", "status": "UNVERIFIED_CORPORATE_ACTION", "move_pct": None, "raw_move_pct": -50.0})
+    r = {x["symbol"]: x for x in S.outcomes(snap, track, datetime(2026, 11, 6, 22, 0, tzinfo=UTC))["rows"]}
+    assert r["AAA"]["comparison"] == "NOT_AVAILABLE" and r["AAA"]["outcome_state"] == "DUE" and r["AAA"]["move_pct"] is None
+    assert r["BBB"]["comparison"] == "NOT_AVAILABLE" and r["BBB"]["outcome_state"] == "UNVERIFIED_CORPORATE_ACTION"
+
+
+def test_outcomes_degrade_to_unavailable_when_the_outcome_module_is_missing(tmp_path, monkeypatch):
+    S.build_snapshot(report(tmp_path), PASS, tmp_path / "s", source="t")
+    monkeypatch.setitem(sys.modules, "smart_move_outcomes", None)
+    res = S.outcomes(S.load_latest(tmp_path / "s"), tmp_path, datetime(2026, 11, 6, tzinfo=UTC))
+    assert res["available"] is False and res["rows"] == []
+
+
+def test_every_read_revalidates_the_hash_and_the_responses_carry_no_paths_or_secrets(tmp_path, monkeypatch):
+    import re
+    from fastapi.testclient import TestClient
+    import smart_move_local_server as srv
+    f = S.build_snapshot(report(tmp_path), PASS, tmp_path / "s", source="engine20_run / engine20_store (48 attempts)")
+    monkeypatch.setenv("SMART_MOVE_ENGINE20_DIR", str(tmp_path / "s"))
+    c = TestClient(srv.app)
+    for u in ("/api/smart-move/engine20/latest", "/api/smart-move/engine20/outcomes"):
+        t = c.get(u).text
+        assert not re.search(r"[A-Za-z]:[\\/]|/Users/|api[_-]?key|secret|password|bearer|token", t, re.I), u
+    assert c.get("/api/smart-move/engine20/latest").json()["status"] == "OK"
+    f.write_text(f.read_text(encoding="utf-8").replace("BUY", "SELL", 1), encoding="utf-8")                  # altered after the first read
+    j = c.get("/api/smart-move/engine20/latest").json()
+    assert j["status"] == "SNAPSHOT_UNVERIFIED" and "rows" not in j                                      # nothing from the altered file is served

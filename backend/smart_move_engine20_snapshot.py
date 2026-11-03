@@ -184,7 +184,10 @@ def read_status(snap: dict, now) -> dict:
 
 def outcomes(snap: dict, track_dir, now) -> dict:
     """Per row: the outcome state and, only when an independently verified outcome is GRADED, the comparison. BUY/SELL are compared with the sign of the move; NO TRADE and NO VALID PREDICTION are never scored as right or wrong."""
-    import smart_move_outcomes as O
+    try:
+        import smart_move_outcomes as O
+    except ImportError:                                                  # a deployment without the outcome module compares nothing rather than failing
+        return {"available": False, "detail": "The outcome module is not installed here: nothing can be compared.", "rows": []}
     now = _dt(now)
     events = [{"symbol": r["symbol"], "earnings_date": r["event_date"], "kind": r["session"]} for r in snap["rows"]]
     if not track_dir:
