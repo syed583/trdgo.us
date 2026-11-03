@@ -121,6 +121,12 @@ def models():
                                  "previous": {"signal": prior["signal"], "score": prior["score"], "recorded_at": prior["recorded_at"]} if prior else None,
                                  "changed_since_previous": bool(prior and prior["signal"] != (two[0]["signal"])),
                                  "validation": "VALID" if m["status"] == "VALID" and not m["stale"] else ("STALE" if m["status"] == "VALID" else m["status"])}
+        sm_c = cells.get("smart_move")
+        if sm_c and sm_c["status"] != "VALID" and not sm_c.get("source"):                              # no call exists: the truthful label and the real reason
+            why = _sm_reason(s, e, cfg, t, False)
+            sm_c["label"], sm_c["reason"], sm_c["reason_code"], sm_c["origin"] = "NO_PREDICTION_AVAILABLE", why["text"], why["code"], "NOT_GENERATED"
+        elif sm_c:
+            sm_c["origin"] = {"smart_move_snapshot": "HISTORICAL_SNAPSHOT", "smart_move_engine": "LIVE_ENGINE"}.get(sm_c.get("source"))
         out.append({"id": e["id"], "symbol": e["symbol"], "company": e["company"], "earnings_date": e["earnings_date"], "session": e["session"], "verification": e["verification"], "days_to": days,
                     "out_of_window": days > cfg.model_window_days, "cells": cells})
     return {"status": "OK", "models": [{"id": k, "label": v} for k, v in LABELS.items()], "stale_after_h": cfg.stale_after_h, "rows": out,
@@ -342,6 +348,28 @@ def evidence(symbol: Optional[str] = Query(None, max_length=12), limit: int = Qu
             "note": "discovered = present in a cache the application already holds; collected = stored here; verified = a provider-structured field, not interpreted text; relevant = a model's code reads this kind; used = the model's latest row carries it."}
 
 
+def _sm_reason(s: Store, ev: dict, cfg, t: datetime, had_engine_row: bool) -> dict:
+    """Why there is no Smart Money Move prediction for this event, from facts the monitor holds: the event's market date, what the latest snapshot / engine read covered, and whether either exists."""
+    cov = s.kv_get("smd:coverage")
+    d = ev["earnings_date"]
+    if not cov:
+        return {"code": "NO_ENGINE_OR_SNAPSHOT", "text": "No Smart Money Move engine or snapshot is installed on this server, so nothing has been generated for any event."}
+    gen = cov.get("generated_at")
+    gen_d = None
+    try:
+        from zoneinfo import ZoneInfo
+        gen_d = parse(gen).astimezone(ZoneInfo("America/New_York")).date().isoformat() if gen else None
+    except Exception:  # noqa: BLE001
+        gen_d = None
+    src = "snapshot" if cov.get("source") == "HISTORICAL_SNAPSHOT" else "engine run"
+    if gen_d and d <= gen_d:
+        return {"code": "WINDOW_CLOSED_BEFORE_RUN", "text": "This report was dated %s, so it was less than 24 hours away when the %s of %s (New York date) was made. The frozen rules allow a prediction only 48 to 24 hours before the report, so none was allowed, and none has been generated since." % (d, src, gen_d)}
+    dates = cov.get("event_dates") or []
+    if dates and d > max(dates):
+        return {"code": "NOT_YET_IN_WINDOW", "text": "Dated %s, later than the dates the latest %s covered (up to %s). Predictions are made 48 to 24 hours before the report." % (d, src, max(dates))}
+    return {"code": "NOT_SELECTED_OR_NOT_COLLECTED", "text": "The latest %s scored %d event(s) dated %s; this one was not among them (its evidence was not collected under the authorised run)." % (src, cov.get("rows") or 0, ", ".join(dates) or "n/a")}
+
+
 @router.get("/smart-move")
 def smart_move():
     """Smart Move score40-v1 per upcoming event: the engine's own category and coverage, its freshness, and what evidence is missing. Genuine NO TRADE, PENDING and NO VALID PREDICTION stay separate, and nothing is a call unless the engine made it."""
@@ -363,13 +391,21 @@ def smart_move():
             continue
         m = s.one("SELECT * FROM model_state WHERE event_id=? AND model='smart_move'", (e["id"],))
         st = {"status": (m or {}).get("status", "PENDING"), "signal": (m or {}).get("signal"), "stale": bool((m or {}).get("stale"))}
-        label = "OUT_OF_WINDOW" if days > cfg.model_window_days else L.display_status(st)
-        counts[label] = counts.get(label, 0) + 1
+        label = L.display_status(st)
+        reason = None
         det = s.kv_get("smd:%d" % e["id"])
+        has_row = bool(m and m.get("source"))                                                       # the engine / snapshot produced a row for exactly this event
+        if label not in ("BUY", "SELL", "NEUTRAL", "NO_TRADE"):                                    # no call exists for this event: say so, with the real reason
+            if has_row:                                                                             # the frozen engine's own "no valid prediction": keep its result and its reason
+                reason = {"code": "ENGINE_RESULT", "text": str((det or {}).get("reason") or "The frozen engine returned no valid prediction for this event.")}
+            else:
+                reason = _sm_reason(s, e, cfg, t, False) if days <= cfg.model_window_days else {"code": "NOT_YET_IN_WINDOW", "text": "Dated %s, %d days ahead. Predictions are made 48 to 24 hours before the report." % (e["earnings_date"], days)}
+                label = "NO_PREDICTION_AVAILABLE"
+        counts[label] = counts.get(label, 0) + 1
         out.append({"id": e["id"], "symbol": e["symbol"], "company": e["company"], "earnings_date": e["earnings_date"], "session": e["session"], "days_to": days, "label": label, "signal": (m or {}).get("signal"),
                     "coverage": json.loads(m["coverage"]) if m and m["coverage"] else None, "as_of": (m or {}).get("as_of"), "age_h": _age_h((m or {}).get("as_of"), t), "stale": st["stale"],
-                    "source": (m or {}).get("source"), "origin": {"smart_move_snapshot": "HISTORICAL_SNAPSHOT", "smart_move_engine": "LIVE_ENGINE"}.get((m or {}).get("source")), "details": det})
-    return {"status": "OK", "engine": info, "plan": s.kv_get("smart_move:plan"), "counts": counts, "rows": out,
+                    "source": (m or {}).get("source"), "origin": {"smart_move_snapshot": "HISTORICAL_SNAPSHOT", "smart_move_engine": "LIVE_ENGINE"}.get((m or {}).get("source")) or "NOT_GENERATED", "reason": reason, "details": det})
+    return {"status": "OK", "engine": info, "coverage": s.kv_get("smd:coverage"), "plan": s.kv_get("smart_move:plan"), "counts": counts, "rows": out,
             "note": "The monitor never scores Smart Move: it reads the frozen engine's own result. Collecting the evidence is a separate, attested provider run; until it has run, the honest label is PENDING or NO VALID PREDICTION."}
 
 

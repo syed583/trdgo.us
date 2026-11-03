@@ -215,3 +215,49 @@ test('Historical accuracy lists verified reactions with the cutoff and waiting e
   assert.match(html, /claude correct/);
   assert.match(html, /Waiting for a verified reaction: BBB 2026-11-09/);
 });
+
+test('Smart Money Move groups events by market date and says NO PREDICTION AVAILABLE with the real reason instead of leaving Nov 3 blank', () => {
+  const sm = { status: 'OK', engine: { model_version: 'score40-v1', how_predictions_arise: 'verified snapshot only' }, counts: {}, note: 'n',
+    coverage: { source: 'HISTORICAL_SNAPSHOT', generated_at: '2026-11-03T08:29:08+00:00', rows: 20, event_dates: ['2026-11-04'] },
+    rows: [
+      { id: 1, symbol: 'AAA', company: 'A', earnings_date: '2026-11-03', session: 'BMO', days_to: 0, label: 'NO_PREDICTION_AVAILABLE', signal: null, coverage: null, as_of: null, age_h: null, stale: false, source: null, origin: 'NOT_GENERATED',
+        reason: { code: 'WINDOW_CLOSED_BEFORE_RUN', text: 'This report was less than 24 hours away when the snapshot was made.' }, details: null },
+      { id: 2, symbol: 'CCC', company: 'C', earnings_date: '2026-11-04', session: 'BMO', days_to: 1, label: 'BUY', signal: 'BUY', coverage: '30/40', as_of: '2026-11-03T07:00:00+00:00', age_h: 6, stale: false, source: 'smart_move_snapshot', origin: 'HISTORICAL_SNAPSHOT', reason: null, details: null },
+      { id: 3, symbol: 'DDD', company: 'D', earnings_date: '2026-11-04', session: 'AMC', days_to: 1, label: 'NO_PREDICTION_AVAILABLE', signal: null, coverage: null, as_of: null, age_h: null, stale: false, source: null, origin: 'NOT_GENERATED',
+        reason: { code: 'NOT_SELECTED_OR_NOT_COLLECTED', text: 'The latest snapshot scored 20 event(s); this one was not among them.' }, details: null }] };
+  const html = panel({ emstatus: { data: on }, emsmart: { data: sm } }, 'smart');
+  const h3 = html.indexOf('2026-11-03'), h4 = html.indexOf('2026-11-04');
+  assert.ok(h3 > -1 && h4 > h3, 'Nov 3 group comes first');
+  assert.equal((html.match(/data-testid="sm-date-header"/g) || []).length, 2);
+  assert.match(html, /market date · 1 event\(s\) · 0 with a prediction · 1 without/);
+  assert.match(html, /market date · 2 event\(s\) · 1 with a prediction · 1 without/);
+  assert.match(html, />NO PREDICTION AVAILABLE</);
+  assert.match(html, /less than 24 hours away when the snapshot was made/);
+  assert.match(html, />historical snapshot</);
+  assert.match(html, />not generated</);
+  assert.match(html, /Latest historical snapshot: made .* scored 20 event\(s\) dated 2026-11-04/);
+  assert.doesNotMatch(html, /data-call="yes"[^>]*>NO PREDICTION/);                      // never drawn as a call
+});
+
+test('dates are printed as the exchange dates they are, and times are always UTC, whatever the viewer timezone', () => {
+  const sm = { status: 'OK', engine: { model_version: 'score40-v1', how_predictions_arise: 'x' }, counts: {}, note: 'n', rows: [
+    { id: 1, symbol: 'AAA', company: 'A', earnings_date: '2026-11-03', session: 'AMC', days_to: 0, label: 'BUY', signal: 'BUY', coverage: '30/40', as_of: '2026-11-03T22:30:00+00:00', age_h: 1, stale: false, source: 'smart_move_engine', origin: 'LIVE_ENGINE', reason: null, details: null }] };
+  const prev = process.env.TZ;
+  const seen: string[] = [];
+  for (const tz of ['Asia/Dubai', 'America/New_York', 'Pacific/Auckland']) {
+    process.env.TZ = tz;
+    const html = panel({ emstatus: { data: on }, emsmart: { data: sm } }, 'smart');
+    assert.match(html, /<b>2026-11-03<\/b>/);                                            // the market date never shifts
+    assert.match(html, /03 Nov, 10:30 PM UTC/);                        // 22:30 UTC stays Nov 03 and says UTC
+    seen.push(tz);
+  }
+  if (prev === undefined) delete process.env.TZ; else process.env.TZ = prev;
+  assert.equal(seen.length, 3);
+});
+
+test('the nine-model grid shows NO PREDICTION AVAILABLE and its reason for Smart Money Move', () => {
+  const html = renderToStaticMarkup(<SignalCell c={{ status: 'PENDING', label: 'NO_PREDICTION_AVAILABLE', reason: 'Less than 24 hours away when the snapshot was made.', origin: 'NOT_GENERATED' }} />);
+  assert.match(html, />NO PREDICTION AVAILABLE</);
+  assert.match(html, /data-testid="cell-reason"[^>]*>Less than 24 hours/);
+  assert.match(html, /data-call="no"/);
+});

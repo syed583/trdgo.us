@@ -89,7 +89,7 @@ class ProdAdapters(Adapters):
                 at_iso = at.isoformat() if hasattr(at, "isoformat") else str(at)
                 if at_iso and "+" not in at_iso[10:] and not at_iso.endswith("Z"):
                     at_iso += "+00:00"
-                out.setdefault(m, {})[str(sym).upper()] = {"signal": sig, "score": score, "coverage": None, "tier": None, "as_of": at_iso, "evidence_as_of": None, "source": "model_predictions_snapshot"}
+                out.setdefault(m, {})[str(sym).upper()] = {"event_date": str(ed)[:10], "signal": sig, "score": score, "coverage": None, "tier": None, "as_of": at_iso, "evidence_as_of": None, "source": "model_predictions_snapshot"}
         return out
 
     def models(self) -> dict:
@@ -102,7 +102,7 @@ class ProdAdapters(Adapters):
                 s = (r.get("symbol") or "").upper()
                 if s:
                     cov = r.get("coverage")                       # the eight services report coverage as a PERCENT (0-100); store it as a fraction so 0.5 can never be misread
-                    rows[s] = {"signal": r.get("signal"), "score": r.get("score") if isinstance(r.get("score"), (int, float)) else None,
+                    rows[s] = {"event_date": str(r.get("date") or "")[:10] or None, "signal": r.get("signal"), "score": r.get("score") if isinstance(r.get("score"), (int, float)) else None,
                                "coverage": round(cov / 100.0, 4) if isinstance(cov, (int, float)) and not isinstance(cov, bool) else None, "tier": r.get("tier"),
                                "as_of": _iso(held), "evidence_as_of": None, "source": "swr_cache"}
             out[m] = rows
@@ -191,6 +191,9 @@ class ProdAdapters(Adapters):
 
     def smart_move_plan(self, events: list, now: datetime) -> Optional[dict]:
         return self.smart.plan(events, now) if self.smart else None
+
+    def smart_move_coverage(self) -> Optional[dict]:
+        return self.smart.coverage() if self.smart and hasattr(self.smart, "coverage") else None
 
     def app_requests_today(self) -> Optional[int]:
         try:

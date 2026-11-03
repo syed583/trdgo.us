@@ -174,7 +174,7 @@ def test_new_endpoints_report_evidence_smart_move_health_and_accuracy_without_wr
     row = [r for r in sm["rows"] if r["symbol"] == "AAA"][0]
     assert row["label"] == "NO_TRADE" and row["details"]["coverage_points"] == 30 and sm["engine"]["model_version"] == "score40-v1"
     far = [r for r in sm["rows"] if r["symbol"] == "FAR"][0]
-    assert far["label"] == "OUT_OF_WINDOW"
+    assert far["label"] == "NO_PREDICTION_AVAILABLE" and far["reason"]["code"] == "NOT_YET_IN_WINDOW" and far["origin"] == "NOT_GENERATED"
     h = c.get("/api/earnings-monitor/health").json()
     assert h["status"] == "OK" and h["last_runs"]["EVIDENCE_SCAN"]["ok"] is True and h["stuck_jobs"] == [] and h["duplicate_active_events"] == [] and h["evidence_scan"]["new"] == 2
     up = c.get("/api/earnings-monitor/upcoming").json()
@@ -445,3 +445,61 @@ def test_plan_driven_refresh_is_off_by_default_even_with_a_refresh_approval(tmp_
     d2, clock2, store2, cfg2, ad2, mon2, sched2, access2 = mk(tmp_path / "on", budget=700, events=8, cfg=C.Config(plan_driven_refresh=True))
     sched2.tick(clock2())
     assert store2.q("SELECT 1 FROM jobs WHERE kind='EVENT_REFRESH'")                                       # only the owner's explicit setting adds it
+
+
+def _nov3_world(tmp_path):
+    """The real situation: events dated Nov 3 and Nov 4; a historical snapshot made on the morning of Nov 3 that scored only Nov 4 events."""
+    from datetime import datetime, timezone
+    from earnings_monitor.sim import Clock, build_sim, write_approval
+    t = datetime(2026, 11, 3, 13, 0, tzinfo=timezone.utc)
+    clock = Clock(t)
+    d = tmp_path / "em"
+    d.mkdir()
+    write_approval(d, t, mode="cache_only", days=14)
+    store, cfg, ad, mon, sched, access = build_sim(d, clock)
+    ad.cal = [{"symbol": "AAA", "date": "2026-11-03", "session": "BMO"}, {"symbol": "BBB", "date": "2026-11-03", "session": "AMC"},
+              {"symbol": "CCC", "date": "2026-11-04", "session": "BMO"}, {"symbol": "DDD", "date": "2026-11-04", "session": "AMC"}, {"symbol": "EEE", "date": "2026-11-04", "session": "BMO"}]
+    snap_at = datetime(2026, 11, 3, 8, 29, 8, tzinfo=timezone.utc)
+    ad.set_model("smart_move", "CCC", "BUY", snap_at, coverage="30/40", source="smart_move_snapshot", event_date="2026-11-04")
+    ad.set_model("smart_move", "DDD", "NO_VALID_PREDICTION", snap_at, coverage="15/40", source="smart_move_snapshot", event_date="2026-11-04")
+    ad.sm_cov = {"source": "HISTORICAL_SNAPSHOT", "generated_at": snap_at.isoformat(), "rows": 2, "event_dates": ["2026-11-04"], "model_version": "score40-v1"}
+    mon.eligibility_check(clock())
+    return d, clock, store, ad, mon
+
+
+def test_smart_money_move_shows_each_market_date_with_the_truthful_label_origin_and_reason(tmp_path, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from earnings_monitor import routes
+    d, clock, store, ad, mon = _nov3_world(tmp_path)
+    monkeypatch.setenv("EARNINGS_MONITOR_DIR", str(d))
+    monkeypatch.setattr(routes, "now", lambda: clock())
+    app = FastAPI()
+    app.include_router(routes.router)
+    c = TestClient(app)
+    rows = {r["symbol"]: r for r in c.get("/api/earnings-monitor/smart-move").json()["rows"]}
+    for s in ("AAA", "BBB"):                                                                  # Nov 3: inside the last 24 hours when the snapshot was made: nothing was allowed or generated
+        assert rows[s]["earnings_date"] == "2026-11-03" and rows[s]["label"] == "NO_PREDICTION_AVAILABLE" and rows[s]["origin"] == "NOT_GENERATED" and rows[s]["reason"]["code"] == "WINDOW_CLOSED_BEFORE_RUN"
+        assert "less than 24 hours" in rows[s]["reason"]["text"] and rows[s]["signal"] is None
+    assert rows["CCC"]["earnings_date"] == "2026-11-04" and rows["CCC"]["label"] == "BUY" and rows["CCC"]["origin"] == "HISTORICAL_SNAPSHOT"
+    assert rows["DDD"]["label"] == "NO_VALID_PREDICTION" and rows["DDD"]["origin"] == "HISTORICAL_SNAPSHOT" and rows["DDD"]["reason"]["code"] == "ENGINE_RESULT"   # the engine's own "no valid prediction" is kept, with its own reason
+    assert rows["EEE"]["label"] == "NO_PREDICTION_AVAILABLE" and rows["EEE"]["reason"]["code"] == "NOT_SELECTED_OR_NOT_COLLECTED" and rows["EEE"]["origin"] == "NOT_GENERATED"
+    cell = {r["symbol"]: r for r in c.get("/api/earnings-monitor/models").json()["rows"]}["AAA"]["cells"]["smart_move"]
+    assert cell["label"] == "NO_PREDICTION_AVAILABLE" and cell["origin"] == "NOT_GENERATED" and "less than 24 hours" in cell["reason"]
+    assert c.get("/api/earnings-monitor/smart-move").json()["coverage"]["event_dates"] == ["2026-11-04"]
+
+
+def test_a_result_for_one_report_date_is_never_attached_to_an_event_of_another_date(tmp_path):
+    from datetime import datetime, timezone
+    d, clock, store, ad, mon = _nov3_world(tmp_path)
+    # the Nov 4 result for CCC exists; if the same symbol ALSO had a Nov 3 event it must not inherit it
+    ad.cal.append({"symbol": "ZZZ", "date": "2026-11-03", "session": "BMO"})
+    ad.set_model("smart_move", "ZZZ", "SELL", datetime(2026, 11, 3, 8, 29, tzinfo=timezone.utc), coverage="30/40", source="smart_move_snapshot", event_date="2026-11-04")   # a Nov 4 call about a symbol whose event is Nov 3
+    mon.observe_calendar(ad.cal, clock(), complete=False)
+    out = mon.recompute(clock())
+    zzz = store.one("SELECT id FROM events WHERE symbol='ZZZ'")
+    assert out["date_mismatch"] >= 1 and not store.q("SELECT 1 FROM predictions WHERE event_id=? AND model='smart_move'", (zzz["id"],))
+    assert store.one("SELECT status FROM model_state WHERE event_id=? AND model='smart_move'", (zzz["id"],))["status"] != "VALID"
+    # and the correct pairing still works
+    ccc = store.one("SELECT id FROM events WHERE symbol='CCC'")
+    assert store.one("SELECT signal FROM predictions WHERE event_id=? AND model='smart_move'", (ccc["id"],))["signal"] == "BUY"

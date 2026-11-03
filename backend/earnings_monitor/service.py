@@ -56,6 +56,9 @@ class Adapters:
     def smart_move_details(self, symbol: str, d: str) -> Optional[dict]:      # stored Smart Move evidence / feature detail for one event (no provider call)
         return None
 
+    def smart_move_coverage(self) -> Optional[dict]:  # what the Smart Money Move engine / snapshot covered on its latest read: source, generated_at, event_dates, rows
+        return None
+
     def app_requests_today(self) -> Optional[int]:    # every Unusual Whales request the application itself has made today (warmers, Options Flow, monitor), or None when unknown
         return None
 
@@ -278,7 +281,10 @@ class Monitor:
         """Record a new prediction row only when a model's real call actually changed; detect every change; refresh consensus. Reads caches only."""
         self._reason = reason
         models = self.ad.models()
-        stats = {"events": 0, "new_predictions": 0, "changes": 0, "stale": 0, "refreshed": 0, "alerts": 0}
+        stats = {"events": 0, "new_predictions": 0, "changes": 0, "stale": 0, "refreshed": 0, "alerts": 0, "date_mismatch": 0}
+        cov = self.ad.smart_move_coverage()
+        if cov is not None and self.store.kv_get("smd:coverage") != cov:
+            self.store.kv_set("smd:coverage", cov)
         sql, args = "SELECT * FROM events WHERE status='ACTIVE'", ()
         if event_id is not None:
             sql, args = "SELECT * FROM events WHERE id=?", (event_id,)
@@ -299,6 +305,9 @@ class Monitor:
             states, stale_models = [], []
             for model in self.ad.model_labels:
                 obs = (models.get(model) or {}).get(ev["symbol"])
+                if obs and obs.get("event_date") and str(obs["event_date"])[:10] != ev["earnings_date"]:         # the model scored a DIFFERENT report date of this symbol: it is not a call for this event
+                    obs = None
+                    stats["date_mismatch"] += 1
                 st = L.model_status(obs, now, self.cfg.stale_after_h)
                 prev = mstate.get((ev["id"], model))
                 pred_id = prev["prediction_id"] if prev else None

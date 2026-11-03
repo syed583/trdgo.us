@@ -28,8 +28,9 @@ export function scanBadge(s: any): { text: string; tone: string } {
 }
 const LEVEL_TONE: Record<string, string> = { STRONG: 'green', WEAK: 'gray', CONFLICT: 'red', INSUFFICIENT: 'amber', NONE: 'gray' };
 const VER_TONE: Record<string, string> = { CONFIRMED: 'green', SINGLE_VENDOR: 'amber', CONFLICT: 'red', UNVERIFIED: 'gray' };
-const LABEL_TEXT: Record<string, string> = { OUT_OF_WINDOW: 'OUTSIDE MODEL WINDOW', NO_TRADE: 'NO TRADE', NO_VALID_PREDICTION: 'NO VALID PREDICTION', LOW_DATA: 'LOW DATA', PENDING: 'PENDING', STALE: 'STALE', NEUTRAL: 'NEUTRAL' };
+const LABEL_TEXT: Record<string, string> = { NO_PREDICTION_AVAILABLE: 'NO PREDICTION AVAILABLE', OUT_OF_WINDOW: 'OUTSIDE MODEL WINDOW', NO_TRADE: 'NO TRADE', NO_VALID_PREDICTION: 'NO VALID PREDICTION', LOW_DATA: 'LOW DATA', PENDING: 'PENDING', STALE: 'STALE', NEUTRAL: 'NEUTRAL' };
 const LABEL_HINT: Record<string, string> = {
+  NO_PREDICTION_AVAILABLE: 'No prediction exists for this event. The reason is shown with it; it is never a neutral view.',
   OUT_OF_WINDOW: 'On the calendar, but further out than the models score. No prediction exists yet; this is not a neutral view.',
   NO_TRADE: 'A real call: every gate passed and the model says do nothing.',
   NO_VALID_PREDICTION: 'No usable call: data was missing or insufficient. Not a neutral view.',
@@ -43,10 +44,12 @@ export function SignalCell({ c }: { c: any }) {
   const isCall = ['BUY', 'SELL', 'NEUTRAL', 'NO_TRADE'].includes(label);
   const cls = label === 'BUY' || label === 'SELL' ? `sm-sig ${label.toLowerCase()}` : label === 'NO_TRADE' || label === 'NEUTRAL' ? 'sm-q-badge gray' : label === 'PENDING' ? 'sm-q-badge gray' : 'sm-q-badge amber';
   return (
-    <div data-testid="model-cell" title={LABEL_HINT[label] || (c.prediction_recorded_at ? `recorded ${fmtTime(c.prediction_recorded_at)}` : undefined)}>
+    <div data-testid="model-cell" title={(label === 'NO_PREDICTION_AVAILABLE' && c.reason) || LABEL_HINT[label] || (c.prediction_recorded_at ? `recorded ${fmtTime(c.prediction_recorded_at)}` : undefined)}>
       <span className={cls} data-testid="cell-label" data-call={isCall ? 'yes' : 'no'}>{LABEL_TEXT[label] || label}</span>
       {c.status === 'VALID' && <div className="sm-q-muted">{c.score != null ? `score ${c.score} · ` : ''}{c.coverage_fraction != null ? `cov ${Math.round(c.coverage_fraction * 100)}%` : 'cov —'} · {c.age_h != null ? `${c.age_h} h old` : ''}</div>}
       {c.status === 'VALID' && c.source && <div className="sm-q-muted">{nice(c.source)}</div>}
+      {label === 'NO_PREDICTION_AVAILABLE' && c.reason && <div className="sm-q-muted" data-testid="cell-reason">{c.reason}</div>}
+      {c.origin && c.status === 'VALID' && <div className="sm-q-muted" data-testid="cell-origin">{c.origin === 'HISTORICAL_SNAPSHOT' ? 'historical snapshot' : c.origin === 'LIVE_ENGINE' ? 'live engine' : nice(c.origin)}</div>}
       {c.previous && <div className="sm-q-muted" data-testid="cell-previous">was {nice(c.previous.signal)}{c.previous.score != null ? ` (${c.previous.score})` : ''} · {fmtTime(c.previous.recorded_at)}{c.reason ? ` — ${c.reason}` : ''}</div>}
     </div>
   );
@@ -79,19 +82,29 @@ function Sources() {
 
 const STAGE_TONE: Record<string, string> = { VERIFIED: 'green', COLLECTED: 'gray', DISCOVERED: 'gray' };
 
+const ORIGIN: Record<string, [string, string, string]> = { HISTORICAL_SNAPSHOT: ['historical snapshot', 'amber', 'A stored result of an earlier run, not a new live prediction'], LIVE_ENGINE: ['live engine', 'green', 'Scored now by the installed frozen engine'], NOT_GENERATED: ['not generated', 'gray', 'No prediction was generated for this event'] };
+
+/** Rows are grouped by the MARKET date of the report (the plain calendar date the exchange uses): no timezone conversion is applied to a date. */
 function SmartMovePanel({ d }: { d: any }) {
   const rows: any[] = d.rows || [];
+  const dates: string[] = Array.from(new Set(rows.map((r) => r.earnings_date))).sort();
   return (
     <div data-testid="smart-move-panel">
       <div className="sm-q-muted" data-testid="sm-engine">{d.engine?.model_version}: {d.engine?.how_predictions_arise}. Counts: {Object.entries(d.counts || {}).map(([k, v]) => `${nice(k)} ${v}`).join(' · ') || 'none yet'}.</div>
       {!rows.length && <div className="sm-none">No upcoming event is tracked yet.</div>}
       <div className="sm-table-wrap"><table className="sm-table sm-q-table"><thead><tr><th>Event</th><th>Smart Money Move</th><th>Origin</th><th>Coverage</th><th>Evidence as of</th><th>Engine detail</th></tr></thead>
-        <tbody>{rows.map((r) => (
+        <tbody>{dates.flatMap((dt) => {
+          const day = rows.filter((r) => r.earnings_date === dt);
+          const withCall = day.filter((r) => ['BUY', 'SELL', 'NO_TRADE', 'NEUTRAL'].includes(r.label)).length;
+          return [<tr key={'h' + dt} data-testid="sm-date-header"><td colSpan={6}><b>{dt}</b> <span className="sm-q-muted">market date · {day.length} event(s) · {withCall} with a prediction · {day.length - withCall} without</span></td></tr>,
+            ...day.map((r) => (
           <tr key={r.id}><td><b>{r.symbol}</b><div className="sm-q-muted">{r.earnings_date} {r.session} · {r.days_to} d</div></td>
-            <td><SignalCell c={{ label: r.label, status: ['BUY', 'SELL', 'NO_TRADE', 'NEUTRAL'].includes(r.label) ? 'VALID' : r.label, signal: r.signal, coverage_fraction: null, age_h: r.age_h, source: r.source }} /></td>
-            <td data-testid="sm-origin">{r.origin === 'HISTORICAL_SNAPSHOT' ? <span className="sm-q-badge amber" title="A stored result of an earlier run, not a new live prediction">historical snapshot</span> : r.origin === 'LIVE_ENGINE' ? <span className="sm-q-badge green">live engine</span> : <span className="sm-q-muted">—</span>}</td>
+            <td><SignalCell c={{ label: r.label, status: ['BUY', 'SELL', 'NO_TRADE', 'NEUTRAL'].includes(r.label) ? 'VALID' : r.label, signal: r.signal, coverage_fraction: null, age_h: r.age_h, source: r.source, reason: r.reason?.text }} /></td>
+            <td data-testid="sm-origin">{ORIGIN[r.origin] ? <span className={`sm-q-badge ${ORIGIN[r.origin][1]}`} title={ORIGIN[r.origin][2]}>{ORIGIN[r.origin][0]}</span> : <span className="sm-q-muted">—</span>}</td>
             <td>{r.coverage ?? '—'}</td><td>{r.as_of ? `${fmtTime(r.as_of)}${r.age_h != null ? ` (${r.age_h} h)` : ''}` : '—'}</td>
-            <td className="sm-q-muted">{r.details ? Object.entries(r.details).filter(([k]) => k !== 'evidence_retrieved').map(([k, v]) => `${nice(k)}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`).join(' · ') : 'the engine has not scored this event'}</td></tr>))}</tbody></table></div>
+            <td className="sm-q-muted">{r.details ? Object.entries(r.details).filter(([k]) => k !== 'evidence_retrieved').map(([k, v]) => `${nice(k)}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`).join(' · ') : (r.reason ? r.reason.text : (['BUY', 'SELL', 'NO_TRADE', 'NEUTRAL'].includes(r.label) ? '—' : 'the engine has not scored this event'))}</td></tr>))];
+        })}</tbody></table></div>
+      {d.coverage && <div className="sm-q-muted" data-testid="sm-coverage">Latest {d.coverage.source === 'HISTORICAL_SNAPSHOT' ? 'historical snapshot' : 'engine run'}: made {fmtTime(d.coverage.generated_at)}, scored {d.coverage.rows} event(s) dated {(d.coverage.event_dates || []).join(', ') || 'n/a'}. Events outside those dates, or not among those scored, have no prediction and say why.</div>}
       <div className="sm-q-muted">{d.note}</div>
       {d.plan?.requests_needed != null && <div className="sm-q-muted">Evidence request on file: {d.plan.requests_needed} provider request(s) for {d.plan.symbols?.length ?? 0} stock(s), waiting for the separately authorised collector.</div>}
     </div>

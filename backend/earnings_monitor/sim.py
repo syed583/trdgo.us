@@ -67,8 +67,13 @@ class SimAdapters(Adapters):
         self.calls["verify_outcome"] += 1
 
     # scripting helpers
-    def set_model(self, model, symbol, signal, as_of, score=None, coverage=None, tier=None, source="sim_cache", engine_version=None):
-        self.mods.setdefault(model, {})[symbol] = {"signal": signal, "score": score, "coverage": coverage, "tier": tier, "as_of": as_of.isoformat() if hasattr(as_of, "isoformat") else as_of, "evidence_as_of": None,
+    sm_cov = None                                    # scripted answer of smart_move_coverage
+
+    def smart_move_coverage(self):
+        return self.sm_cov
+
+    def set_model(self, model, symbol, signal, as_of, score=None, coverage=None, tier=None, source="sim_cache", engine_version=None, event_date=None):
+        self.mods.setdefault(model, {})[symbol] = {"event_date": event_date, "signal": signal, "score": score, "coverage": coverage, "tier": tier, "as_of": as_of.isoformat() if hasattr(as_of, "isoformat") else as_of, "evidence_as_of": None,
                                                    "source": source, "engine_version": engine_version}
 
     plan = None                                      # scripted answer of smart_move_plan (None = engine not installed)

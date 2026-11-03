@@ -37,7 +37,7 @@ Shared with the existing warmers: the same Unusual Whales token, the same global
 
 Predictions come only from the frozen engine's own result: `SMART_MOVE_ENGINE_ROOT` + `SMART_MOVE_EVIDENCE_STORE` (engine on a private evidence store, read-only) or a verified Engine20 snapshot. The monitor never scores it and never starts its collection. Without either, the honest label is PENDING or NO VALID PREDICTION.
 
-The frozen-engine installer and its private kit are **not part of this release**: installing the Smart Money Move engine, and collecting its live evidence, are separate approvals. Until then the honest label is PENDING or NO VALID PREDICTION, and results from the Engine20 snapshot are labelled HISTORICAL SNAPSHOT.
+The frozen-engine installer and its private kit are **not part of this release**: installing the Smart Money Move engine, and collecting its live evidence, are separate approvals. Until then the honest label is NO PREDICTION AVAILABLE (with the reason) or NO VALID PREDICTION, and results from the Engine20 snapshot are labelled HISTORICAL SNAPSHOT.
 
 
 ## Rollback

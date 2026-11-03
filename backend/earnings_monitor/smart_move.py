@@ -24,7 +24,7 @@ def to_obs(row: dict, now: datetime, source: str) -> dict:
     ev = row.get("evidence_retrieved") or []
     as_of = (ev[-1] if ev else None) or now.isoformat()
     return {"signal": SIGNAL_OF.get(row["result"], "NO_VALID_PREDICTION"), "score": None, "coverage": cov, "tier": row.get("liquidity"), "as_of": as_of, "evidence_as_of": ev[-1] if ev else None,
-            "source": source, "engine_version": row.get("model_version") or VERSION}
+            "source": source, "engine_version": row.get("model_version") or VERSION, "event_date": str(row.get("event_date") or "")[:10] or None}
 
 
 class LocalEngine:
@@ -70,6 +70,7 @@ class SmartMoveSource:
     def __init__(self, engine=None, snapshot_dir: Optional[str] = None, clock: Callable[[], datetime] = lambda: datetime.now(UTC)):
         self.engine, self.snapshot_dir, self.clock = engine, snapshot_dir, clock
         self._rows: dict = {}                                    # symbol -> the engine's / snapshot's own classified row from the latest read
+        self._meta: Optional[dict] = None                        # what the latest read covered: source, when it was made, which event dates and how many events
 
     @classmethod
     def from_env(cls):
@@ -91,10 +92,12 @@ class SmartMoveSource:
         out = {}
         if self.engine is not None:
             try:
-                for r in self.engine.classify(now):
+                rows = self.engine.classify(now)
+                for r in rows:
                     out[r["symbol"]] = to_obs(r, now, "smart_move_engine")
                     self._rows[r["symbol"]] = r
                 if out:
+                    self._meta = {"source": "LIVE_ENGINE", "generated_at": now.isoformat(), "model_version": VERSION, "rows": len(rows), "event_dates": sorted({str(r.get("event_date"))[:10] for r in rows if r.get("event_date")})}
                     return out
             except Exception:  # noqa: BLE001 - a broken engine must not turn into invented calls
                 out = {}
@@ -105,16 +108,22 @@ class SmartMoveSource:
             except Exception:  # noqa: BLE001
                 snap = None
             if snap and "error" not in snap:
+                self._meta = {"source": "HISTORICAL_SNAPSHOT", "generated_at": snap.get("generated_at"), "model_version": snap.get("model_version") or VERSION, "rows": len(snap["rows"]),
+                              "event_dates": sorted({str(r.get("event_date"))[:10] for r in snap["rows"] if r.get("event_date")})}
                 for r in snap["rows"]:
                     sig = r["category"] if r["category"] in ("BUY", "SELL", "NO_TRADE") else "NO_VALID_PREDICTION"
                     cov = "%s/%s" % (r["coverage_points"], r["coverage_max"]) if r.get("coverage_points") is not None else None
                     ev = r.get("evidence_retrieved") or []
                     self._rows[r["symbol"]] = r
                     out[r["symbol"]] = {"signal": sig, "score": None, "coverage": cov, "tier": r.get("liquidity"), "as_of": ev[-1] if ev else snap["generated_at"], "evidence_as_of": ev[-1] if ev else None,
-                                        "source": "smart_move_snapshot", "engine_version": snap.get("model_version")}
+                                        "source": "smart_move_snapshot", "engine_version": snap.get("model_version"), "event_date": str(r.get("event_date") or "")[:10] or None}
         return out
 
-    DETAIL_KEYS = ("result", "category", "coverage_points", "coverage_max", "bull_points", "bear_points", "margin", "liquidity", "evidence_retrieved", "model_version", "reasons", "missing_evidence",
+    def coverage(self) -> Optional[dict]:
+        """What the latest read covered (None when neither the engine nor a snapshot produced anything)."""
+        return dict(self._meta) if self._meta else None
+
+    DETAIL_KEYS = ("result", "category", "reason", "reason_codes", "missing_factors", "event_date", "window", "coverage_points", "coverage_max", "bull_points", "bear_points", "margin", "liquidity", "evidence_retrieved", "model_version", "reasons", "missing_evidence",
                    "blocked_by", "why", "components")
 
     def details(self, symbol: str, d: Optional[str] = None) -> Optional[dict]:
