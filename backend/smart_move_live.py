@@ -48,6 +48,7 @@ class LiveConfig:
     store_dir: Path = field(default_factory=lambda: Path(os.getenv("SMART_MOVE_LIVE_DIR") or Path(__file__).resolve().parent / ".smart_move_live"))
     refresh_enabled: bool = field(default_factory=lambda: os.getenv("SMART_MOVE_REFRESH_ENABLED") == "1")
     authorized_daily: int = field(default_factory=lambda: int(os.getenv("SMART_MOVE_AUTHORIZED_DAILY") or 0))
+    rate_limit_policy: str = field(default_factory=lambda: os.getenv("SMART_MOVE_429_POLICY") or "stop_day")      # stop_day (default) | backoff
     planning_ceiling: int = 1700
     spacing_s: float = 2.0
     max_retries: int = 1
@@ -195,7 +196,7 @@ class InfraFetcher(Fetcher):
         if st == "OK" and out.get("data") is not None:
             return json.dumps({"data": out["data"]}, default=str).encode("utf-8")
         if st in ("RATE_LIMITED", "BUDGET_EXHAUSTED"):
-            raise gv.ProviderError("rate_limited", 429)
+            raise gv.ProviderError("rate_limited", 429, retry_after=out.get("retry_in"))
         if st in ("AUTH_ERROR", "PROVIDER_NOT_CONFIGURED", "UNAUTHORIZED"):
             raise gv.ProviderError("auth", 401)
         raise gv.ProviderError("transient", st)
@@ -288,7 +289,7 @@ class RefreshService:
     # ---- governor, counts, kill switch
     def _new_governor(self):
         g = gv.Governor(self.clock, authorized_daily=self.cfg.authorized_daily, planning_ceiling=self.cfg.planning_ceiling, reserve_existing_hourly=self.cfg.reserve_existing_hourly,
-                        reserve_existing_offhours=self.cfg.reserve_existing_offhours, existing_usage_fn=self.existing_usage_fn, spacing_s=self.cfg.spacing_s, max_retries=self.cfg.max_retries,
+                        reserve_existing_offhours=self.cfg.reserve_existing_offhours, existing_usage_fn=self.existing_usage_fn, spacing_s=self.cfg.spacing_s, max_retries=self.cfg.max_retries, rate_limit_policy=self.cfg.rate_limit_policy,
                         enabled=self.enabled)
         return g
 

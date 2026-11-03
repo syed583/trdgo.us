@@ -220,3 +220,64 @@ def test_auth_failure_stops_and_is_logged():
     def bad():
         raise gv.ProviderError("auth", 401)
     assert g.execute(bad, purpose="p")["reason"] == "AUTH" and g.request("x") == (False, "STOPPED")
+
+
+# ------------------------------------------------------------------ opt-in 429 policy: Retry-After, bounded jittered backoff, circuit breaker (the default above is unchanged)
+def _limited(retry_after=None):
+    def f():
+        raise gv.ProviderError("rate_limited", 429, retry_after=retry_after)
+    return f
+
+
+def test_backoff_policy_pauses_for_retry_after_then_recovers_and_counts_the_refused_request():
+    c = clock_at(22)
+    g = gv.Governor(c, authorized_daily=20, spacing_s=0, max_retries=0, rate_limit_policy="backoff", backoff_base_s=30, backoff_max_s=900, rng=lambda: 1.0)
+    r = g.execute(_limited(retry_after=120), purpose="p", symbol="AAA")
+    assert r["reason"] == "RATE_LIMITED" and g.used_day["2026-11-03"] == 1                                    # the refused request still counts against the budget
+    assert g.request("x") == (False, "STOPPED") and (g.stopped_until - c.now()).total_seconds() == 120      # Retry-After 120 s beats the 30 s backoff
+    c.sleep(121)
+    assert g.request("x")[0] is True                                                                          # recovered by itself the same day
+    assert g.execute(lambda: "ok", purpose="p")["status"] == "OK" and g.consecutive_429 == 0
+
+
+def test_backoff_policy_is_bounded_and_a_hostile_retry_after_cannot_park_collection_for_a_day():
+    c = clock_at(22)
+    g = gv.Governor(c, authorized_daily=50, spacing_s=0, max_retries=0, rate_limit_policy="backoff", backoff_base_s=30, backoff_max_s=900, breaker_threshold=99, rng=lambda: 1.0)
+    waits = []
+    for _ in range(8):
+        g.execute(_limited(retry_after=86400), purpose="p")
+        waits.append(round((g.stopped_until - c.now()).total_seconds()))
+        c.sleep(waits[-1] + 1)
+    assert max(waits) <= 900 and waits[0] == 900                                                               # Retry-After is capped at the maximum, never a day
+    g2 = gv.Governor(clock_at(22), authorized_daily=50, spacing_s=0, max_retries=0, rate_limit_policy="backoff", backoff_base_s=30, backoff_max_s=900, breaker_threshold=99, rng=lambda: 1.0)
+    seq = []
+    for _ in range(7):
+        g2.execute(_limited(), purpose="p")
+        seq.append(round((g2.stopped_until - g2.clock.now()).total_seconds()))
+        g2.clock.sleep(seq[-1] + 1)
+    assert seq == [30, 60, 120, 240, 480, 900, 900]                                                           # exponential, then flat at the bound
+
+
+def test_backoff_policy_opens_a_circuit_breaker_after_repeated_429s_and_stops_for_the_day_after_repeated_trips():
+    c = clock_at(22)
+    g = gv.Governor(c, authorized_daily=100, spacing_s=0, max_retries=0, rate_limit_policy="backoff", backoff_base_s=10, backoff_max_s=60, breaker_threshold=3, breaker_cooldown_s=1800, breaker_trips_per_day=2, rng=lambda: 1.0)
+    for _ in range(3):
+        g.execute(_limited(), purpose="p")
+        c.sleep(61) if g.stopped_until and (g.stopped_until - c.now()).total_seconds() <= 61 else None
+    assert any(x["type"] == "BREAKER_OPEN_429" for x in g.ledger) and (g.stopped_until - c.now()).total_seconds() >= 1700
+    c.sleep(1801)
+    assert g.request("x")[0] is True                                                                          # the breaker closes after its cool-down
+    for _ in range(3):
+        g.execute(_limited(), purpose="p")
+        c.sleep(61) if g.stopped_until and (g.stopped_until - c.now()).total_seconds() <= 61 else None
+    assert any(x["type"] == "STOP_429_BREAKER_DAY" for x in g.ledger) and g.request("x") == (False, "STOPPED")      # a second trip the same day: stop until midnight (New York), like the default
+
+
+def test_backoff_policy_keeps_the_hard_daily_limit_and_the_kill_switch():
+    c = clock_at(22)
+    g = gv.Governor(c, authorized_daily=3, spacing_s=0, max_retries=0, rate_limit_policy="backoff", rng=lambda: 1.0)
+    for i in range(3):
+        assert g.execute(lambda: "ok", purpose="p")["status"] == "OK"
+    assert g.request("x") == (False, "DAILY_CAP")
+    g.enabled = False
+    assert g.request("x") == (False, "KILL_SWITCH")
