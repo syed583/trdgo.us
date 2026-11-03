@@ -85,7 +85,7 @@ if ($Action -eq 'Activate') {
   if (-not $NoHealth) { $s0 = Get-Status; if ($s0.scheduling -ne 'OFF') { throw "the monitor already reports scheduling $($s0.scheduling)" } }
   if (-not $ApprovedBy) { $ApprovedBy = Read-Host 'Type your name to approve CACHE-ONLY scanning (no provider requests)' }
   if ([string]::IsNullOrWhiteSpace($ApprovedBy)) { throw 'no name typed - nothing changed' }
-  if (-not $SkipConfirm) { if ((Read-Host 'Type exactly  I APPROVE CACHE-ONLY  to continue') -ne 'I APPROVE CACHE-ONLY') { throw 'not confirmed - nothing changed' } }
+  if (-not $SkipConfirm) { if ((Read-Host 'Type exactly  I APPROVE CACHE-ONLY  to continue') -cne 'I APPROVE CACHE-ONLY') { throw 'not confirmed - nothing changed (it must be typed exactly, in capitals)' } }
   Log 'PREFLIGHT OK'
 
   $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd_HHmmss_fff'); $bk = Join-Path $App "_backup_cache_only_$stamp"

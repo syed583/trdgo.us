@@ -41,13 +41,16 @@ if ($st.code -ne 200) { Say 'FAIL' "monitor status HTTP $($st.code)"; Write-Host
 $s = $st.json
 Say 'INFO' "scheduler: $($s.scheduling); gate: $(@($s.gate_reasons) -join ', '); last successful scan: $($s.last_any_success); provider requests today: $($s.provider_requests_today)"
 if ($s.scheduling -eq 'OFF') { Say 'INFO' 'the scheduler is OFF (expected until you give the cache-only order)' }
+if ($s.queue) { Say 'INFO' ("jobs: " + (($s.queue.PSObject.Properties | ForEach-Object { $_.Name + '=' + $_.Value }) -join ', ') + "; last success: " + (($s.last_success.PSObject.Properties | Where-Object { $_.Value } | ForEach-Object { $_.Name + ' ' + $_.Value }) -join ' | ')) }
+if ($s.queue -and $s.queue.RUNNING -and -not $s.last_success.ELIGIBILITY_CHECK) { Say 'WARN' 'the first eligibility scan is still running; the grid below may be partial. Run this check again in a few minutes.' }
 if ($s.scheduling -eq 'CACHE_ONLY' -and [int]$s.provider_requests_today -ne 0) { Say 'FAIL' "cache-only but $($s.provider_requests_today) provider request(s) counted today" }
 if ($s.scheduling -eq 'CACHE_ONLY' -and [int]$s.provider_requests_today -eq 0) { Say 'PASS' 'cache-only: zero provider requests counted' }
 if ($s.scheduling -eq 'REFRESH') { Say 'WARN' 'provider refresh is approved: stage 1 should be cache-only' }
 
 # 3. the 14-day calendar
 $up = Get-Json '/api/earnings-monitor/upcoming' $h
-if ($up.code -eq 200 -and $up.json.status -eq 'OK') {
+if ($up.code -eq 200 -and $up.json.status -eq 'NO_DATA') { Say 'INFO' 'upcoming: no monitor data yet (the monitor has not run on this server)' }
+elseif ($up.code -eq 200 -and $up.json.status -eq 'OK') {
   $rows = @($up.json.rows)
   if ($rows.Count -eq 0) { Say 'WARN' 'no upcoming events tracked yet (the model caches may be cold, or the first scan has not run)' }
   else {
@@ -64,7 +67,8 @@ if ($up.code -eq 200 -and $up.json.status -eq 'OK') {
 
 # 4. every model on every event: label / freshness
 $md = Get-Json '/api/earnings-monitor/models' $h
-if ($md.code -eq 200 -and $md.json.status -eq 'OK') {
+if ($md.code -eq 200 -and $md.json.status -eq 'NO_DATA') { Say 'INFO' 'models: no monitor data yet' }
+elseif ($md.code -eq 200 -and $md.json.status -eq 'OK') {
   $cells = @(); foreach ($r in @($md.json.rows)) { foreach ($p in $r.cells.PSObject.Properties) { $cells += [pscustomobject]@{ model = $p.Name; label = $p.Value.label; source = $p.Value.source; age = $p.Value.age_h } } }
   if (-not $cells.Count) { Say 'WARN' 'no model cells yet' }
   else {

@@ -122,7 +122,11 @@ class Monitor:
 
     # ------------------------------------------------------------ calendar
     def observe_calendar(self, rows: list, now: datetime, complete: bool) -> dict:
-        """rows: [{symbol, company, date, session, sources?}]. complete=True only for a real, successful calendar fetch; only then does an absent event count towards cancellation."""
+        """rows: [{symbol, company, date, session, sources?}]. complete=True only for a real, successful calendar fetch; only then does an absent event count towards cancellation. One commit for the whole scan."""
+        with self.store.tx():
+            return self._observe_calendar(rows, now, complete)
+
+    def _observe_calendar(self, rows: list, now: datetime, complete: bool) -> dict:
         stats = {"new": 0, "rescheduled": 0, "session": 0, "canceled": 0, "unchanged": 0, "ignored": 0}
         seen = set()
         today = today_et(now).isoformat()
@@ -242,26 +246,37 @@ class Monitor:
         sql, args = "SELECT * FROM events WHERE status='ACTIVE'", ()
         if event_id is not None:
             sql, args = "SELECT * FROM events WHERE id=?", (event_id,)
-        for ev in self.store.q(sql, args):
+        evs = self.store.q(sql, args)
+        # state that is read for every event x model is loaded once, not queried 2,700 times
+        mstate = {(r["event_id"], r["model"]): r for r in self.store.q("SELECT * FROM model_state")}
+        lastp = {(r["event_id"], r["model"]): r for r in self.store.q("SELECT p.* FROM predictions p JOIN (SELECT event_id, model, MAX(id) mid FROM predictions GROUP BY event_id, model) m ON p.id = m.mid")}
+        for ev in evs:
             if not self.eligible(ev, now)["eligible"] and event_id is None:
                 continue
             stats["events"] += 1
+            with self.store.tx():                                       # everything for one event is ONE commit
+                self._recompute_event(ev, now, models, mstate, lastp, stats)
+        return stats
+
+    def _recompute_event(self, ev: dict, now: datetime, models: dict, mstate: dict, lastp: dict, stats: dict):
+        if True:
             states, stale_models = [], []
             for model in self.ad.model_labels:
                 obs = (models.get(model) or {}).get(ev["symbol"])
                 st = L.model_status(obs, now, self.cfg.stale_after_h)
-                prev = self.store.one("SELECT * FROM model_state WHERE event_id=? AND model=?", (ev["id"], model))
+                prev = mstate.get((ev["id"], model))
                 pred_id = prev["prediction_id"] if prev else None
                 src = (obs or {}).get("source") or "unknown"
                 if st["status"] == "VALID":
                     h = L.input_hash(obs["signal"], obs.get("score"), obs.get("coverage"), obs.get("tier"))
-                    last = self.store.one("SELECT * FROM predictions WHERE event_id=? AND model=? ORDER BY id DESC LIMIT 1", (ev["id"], model))
+                    last = lastp.get((ev["id"], model))
                     if last is None or last["input_hash"] != h:
                         old_state = None if last is None else {"signal": last["signal"], "score": last["score"], "coverage": None if last["coverage"] is None else json.loads(last["coverage"])}
                         with self.store.tx() as c:
                             pred_id = c.execute("INSERT INTO predictions(event_id,model,signal,score,coverage,tier,as_of,evidence_as_of,recorded_at,input_hash,source,engine_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                                                 (ev["id"], model, obs["signal"], obs.get("score"), None if obs.get("coverage") is None else json.dumps(obs.get("coverage")), obs.get("tier"),
                                                  obs["as_of"], obs.get("evidence_as_of"), iso(now), h, src, obs.get("engine_version"))).lastrowid
+                        lastp[(ev["id"], model)] = {"id": pred_id, "signal": obs["signal"], "score": obs.get("score"), "coverage": None if obs.get("coverage") is None else json.dumps(obs.get("coverage")), "input_hash": h}
                         stats["new_predictions"] += 1
                         for ch in L.prediction_changes(old_state, obs, self.cfg):
                             if self._change(now, ev, ev["symbol"], ch["kind"], model=model, old=ch["old"], new=ch["new"], detail=dict(ch["detail"], source=src), key_extra=pred_id):
@@ -279,13 +294,17 @@ class Monitor:
                         if self._change(now, ev, ev["symbol"], "PREDICTION_REFRESHED", model=model, old="STALE", new=obs["signal"], detail={"age_h": st.get("age_h")}, key_extra=obs["as_of"]):
                             stats["refreshed"] += 1
                             stats["changes"] += 1
-                with self.store.tx() as c:
-                    c.execute("INSERT INTO model_state(event_id,model,status,signal,score,coverage,as_of,prediction_id,last_checked,stale,source) VALUES(?,?,?,?,?,?,?,?,?,?,?) "
-                              "ON CONFLICT(event_id,model) DO UPDATE SET status=excluded.status, signal=excluded.signal, score=excluded.score, coverage=excluded.coverage, as_of=excluded.as_of, "
-                              "prediction_id=excluded.prediction_id, last_checked=excluded.last_checked, stale=excluded.stale, source=excluded.source",
-                              (ev["id"], model, st["status"], obs.get("signal") if obs else None, obs.get("score") if obs else None,
-                               None if not obs or obs.get("coverage") is None else json.dumps(obs.get("coverage")), obs.get("as_of") if obs else None, pred_id, iso(now), 1 if st["stale"] else 0,
-                               (obs or {}).get("source")))
+                new_row = {"event_id": ev["id"], "model": model, "status": st["status"], "signal": obs.get("signal") if obs else None, "score": obs.get("score") if obs else None,
+                           "coverage": None if not obs or obs.get("coverage") is None else json.dumps(obs.get("coverage")), "as_of": obs.get("as_of") if obs else None, "prediction_id": pred_id,
+                           "stale": 1 if st["stale"] else 0, "source": (obs or {}).get("source")}
+                keys = ("status", "signal", "score", "coverage", "as_of", "prediction_id", "stale", "source")
+                if prev is None or any(prev.get(k) != new_row[k] for k in keys):         # an unchanged row is not rewritten (the check time lives in kv below)
+                    with self.store.tx() as c:
+                        c.execute("INSERT INTO model_state(event_id,model,status,signal,score,coverage,as_of,prediction_id,last_checked,stale,source) VALUES(?,?,?,?,?,?,?,?,?,?,?) "
+                                  "ON CONFLICT(event_id,model) DO UPDATE SET status=excluded.status, signal=excluded.signal, score=excluded.score, coverage=excluded.coverage, as_of=excluded.as_of, "
+                                  "prediction_id=excluded.prediction_id, last_checked=excluded.last_checked, stale=excluded.stale, source=excluded.source",
+                                  (ev["id"], model, st["status"], new_row["signal"], new_row["score"], new_row["coverage"], new_row["as_of"], pred_id, iso(now), new_row["stale"], new_row["source"]))
+                    mstate[(ev["id"], model)] = dict(new_row, last_checked=iso(now))
                 states.append({"model": model, "status": st["status"], "stale": st["stale"], "signal": obs.get("signal") if obs else None, "as_of": obs.get("as_of") if obs else None})
             if stale_models:                                          # ONE digest per event instead of one alert per model
                 stats["alerts"] += A.enqueue(self.store, now, [A.stale_digest(now, ev, stale_models, self.cfg)], self.cfg)
@@ -301,7 +320,6 @@ class Monitor:
             days = (date.fromisoformat(ev["earnings_date"]) - today_et(now)).days
             if days <= 1 and not any(s["status"] == "VALID" for s in states):
                 stats["alerts"] += A.enqueue(self.store, now, [A.missing_evidence(now, ev, None, "no model has a valid prediction for an event %s" % ("today" if days == 0 else "tomorrow"), self.cfg)], self.cfg)
-        return stats
 
     # ------------------------------------------------------------ results and outcomes
     def check_results(self, now: datetime) -> dict:

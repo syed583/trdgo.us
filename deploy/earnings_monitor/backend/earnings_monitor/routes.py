@@ -21,9 +21,17 @@ router = APIRouter(prefix="/api/earnings-monitor", tags=["earnings-monitor"])
 FLAT_PCT = 0.5            # same flat band the existing scoreboard uses for the real post-earnings move
 
 
+_STORES: dict = {}
+
+
 def _store() -> Optional[Store]:
-    d = data_dir()
-    return Store(d / "monitor.sqlite") if (d / "monitor.sqlite").exists() else None
+    f = data_dir() / "monitor.sqlite"
+    if not f.exists():
+        return None
+    key = str(f)
+    if key not in _STORES:                                    # one Store per file: its per-thread connections are reused by every request
+        _STORES[key] = Store(f)
+    return _STORES[key]
 
 
 def _empty(msg="The monitor has not run yet: no data store exists."):

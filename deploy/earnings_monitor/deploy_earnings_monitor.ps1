@@ -4,14 +4,16 @@
 
     .\deploy_earnings_monitor.ps1 -Action Preflight -Package $PWD.Path -ManifestSha256 <sha256 of MANIFEST.sha256>
     .\deploy_earnings_monitor.ps1 -Action Deploy    -Package $PWD.Path -ManifestSha256 <sha256 of MANIFEST.sha256>      backup, install, restart, health checks; rolls back by itself on ANY failure
-    .\deploy_earnings_monitor.ps1 -Action Rollback  -Package $PWD.Path -BackupDir <dir>                                  manual rollback from the backup folder Deploy printed
+    .\deploy_earnings_monitor.ps1 -Action Update    -Package $PWD.Path -ManifestSha256 <sha256 of MANIFEST.sha256>      replaces the monitor's code and the frontend of an ALREADY installed monitor; main.py and .env are not touched,
+                                                                                                                         the scheduler mode (OFF or CACHE_ONLY) must be the same afterwards; rolls back by itself on ANY failure
+    .\deploy_earnings_monitor.ps1 -Action Rollback  -Package $PWD.Path -BackupDir <dir>                                  manual rollback from the backup folder Deploy / Update printed
 
   Always pass -Package explicitly (PowerShell does not fill $PSScriptRoot in a param default when started with -File).
   Test switches (offline rehearsal only): -NoRestart -NoHealth -SimulateHealthFailure -SkipManifestAnchor
 #>
 [CmdletBinding()]
 param(
-  [ValidateSet('Preflight', 'Deploy', 'Rollback')][string]$Action = 'Preflight',
+  [ValidateSet('Preflight', 'Deploy', 'Update', 'Rollback')][string]$Action = 'Preflight',
   [string]$App = 'C:\apps\us-stock-reader',
   [Parameter(Mandatory = $true)][string]$Package,
   [string]$ManifestSha256 = '',
@@ -31,6 +33,7 @@ $PatchedMainLf  = '211b3b57c22289f0e70129aba6826dc2039231e44504aa80d37e4df7a173a
 $Anchor = 'app.include_router(_sm_engine20_router)'
 $PatchLf = "`n# Automatic earnings monitor: read-only API (behind the same session gate) and a scheduler that starts ONLY when EARNINGS_MONITOR_ENABLED=1 and does nothing without a valid owner approval file.`nfrom earnings_monitor.routes import router as _earnings_monitor_router  # noqa: E402`napp.include_router(_earnings_monitor_router)`n`n`n@_bg`ndef _earnings_monitor_boot():`n    from earnings_monitor import runtime as _em_runtime`n    _em_runtime.start_if_enabled()`n"
 
+$AllowMonitorOn = ($Action -eq 'Update') -or ($BackupDir -and (Test-Path (Join-Path $BackupDir 'update.marker')))      # an update (or the rollback of one) may find the monitor in cache-only mode; a first install may not
 $Backend = Join-Path $App 'backend'
 $MainPy = Join-Path $Backend 'main.py'
 $EnvFile = Join-Path $Backend '.env'
@@ -103,8 +106,9 @@ function Test-Health([bool]$full) {
     $a = Get-Status "$base/api/earnings-monitor/status" $h
     if ($a.code -ne 200) { throw "authenticated monitor route returned $($a.code)" }
     $j = ConvertFrom-Json $a.body
-    if ($j.scheduling -ne 'OFF') { throw "the monitor reports scheduling $($j.scheduling), expected OFF (nothing may be switched on by this release)" }
-    Log 'health: monitor API 401 unauthenticated; authenticated OK; scheduling OFF'
+    if (-not $AllowMonitorOn -and $j.scheduling -ne 'OFF') { throw "the monitor reports scheduling $($j.scheduling), expected OFF (nothing may be switched on by this release)" }
+    if ($AllowMonitorOn -and $j.scheduling -eq 'REFRESH') { throw 'the monitor reports provider refresh: this update never enables it' }
+    Log "health: monitor API 401 unauthenticated; authenticated OK; scheduling $($j.scheduling)"
   } elseif ($u.code -eq 200) { throw 'monitor route still answers 200 after rollback' }
   Remove-Variable pw, h
 }
@@ -141,10 +145,12 @@ function Invoke-Preflight {
 function Invoke-Rollback([string]$bk) {
   Log "ROLLBACK from $bk"
   if (-not (Test-Path $bk)) { throw "backup folder not found: $bk" }
+  $isUpdate = Test-Path (Join-Path $bk 'update.marker')
   Copy-Item (Join-Path $bk 'main.py') $MainPy -Force
   $mod = Join-Path $Backend $PkgMod; if (Test-Path $mod) { Remove-Item $mod -Recurse -Force }
+  if ($isUpdate) { Copy-Item -Recurse (Join-Path $bk $PkgMod) $mod }
   if (Test-Path (Join-Path $bk 'dist')) { if (Test-Path $Dist) { Remove-Item $Dist -Recurse -Force }; Move-Item (Join-Path $bk 'dist') $Dist }
-  if ((ShaLf $MainPy) -ne $ExpectedMainLf) { throw 'rollback: main.py does not match the original after restore' }
+  if ((ShaLf $MainPy) -ne $(if ($isUpdate) { $PatchedMainLf } else { $ExpectedMainLf })) { throw 'rollback: main.py does not match the original after restore' }
   Restart-Svc
   if (-not $NoHealth) { Test-Health $false }
   Log 'ROLLBACK COMPLETE: main.py, frontend\dist and the backend files are as before'
@@ -178,8 +184,56 @@ function Invoke-Deploy {
   }
 }
 
+function Get-MonitorMode {
+  if ($NoHealth -or $SimulateHealthFailure) { return 'UNCHECKED' }
+  $pw = Get-Pw; $h = @{ Authorization = "Bearer $pw" }
+  $a = Get-Status "http://127.0.0.1:$Port/api/earnings-monitor/status" $h
+  if ($a.code -ne 200) { throw "monitor status answers HTTP $($a.code)" }
+  $j = ConvertFrom-Json $a.body
+  Remove-Variable pw, h
+  return [string]$j.scheduling
+}
+
+function Invoke-Update {
+  Log "UPDATE PREFLIGHT  app=$App  package=$Package"
+  Test-Manifest
+  foreach ($p in @($MainPy, $EnvFile, $Dist, (Join-Path $Dist 'index.html'), (Join-Path $Backend $PkgMod))) { if (-not (Test-Path $p)) { throw "not found: $p (is the monitor installed?)" } }
+  if ((ShaLf $MainPy) -ne $PatchedMainLf) { throw 'main.py is not the version this release expects (the Engine20 release plus the monitor patch). Stop.' }
+  if (-not $NoRestart) { if ((Get-Service $Service).Status -ne 'Running') { throw "$Service is not Running" } }
+  $drive = (Get-Item $App).PSDrive; if ($drive.Free -lt 300MB) { throw 'less than 300 MB free' }
+  $modeBefore = Get-MonitorMode
+  if (-not $NoHealth) { Test-Health $false; Log "health (baseline) OK; the monitor reports scheduling $modeBefore" }
+  Log 'UPDATE PREFLIGHT OK'
+  $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd_HHmmss_fff'); $bk = Join-Path $App "_backup_monitor_update_$stamp"
+  New-Item -ItemType Directory $bk | Out-Null
+  Copy-Item $MainPy (Join-Path $bk 'main.py'); Copy-Item -Recurse (Join-Path $Backend $PkgMod) (Join-Path $bk $PkgMod); Set-Content (Join-Path $bk 'update.marker') 'update' -Encoding ascii
+  Log "backup written: $bk"
+  try {
+    Remove-Item (Join-Path $Backend $PkgMod) -Recurse -Force
+    Copy-Item -Recurse (Join-Path $Package "backend\$PkgMod") (Join-Path $Backend $PkgMod)
+    Log 'monitor code replaced (main.py and .env untouched)'
+    Move-Item $Dist (Join-Path $bk 'dist'); Copy-Item -Recurse (Join-Path $Package $PkgDist) $Dist
+    Log 'frontend\dist swapped (the old one is in the backup)'
+    Restart-Svc
+    if (-not $NoHealth) {
+      Test-Health $true
+      $until = (Get-Date).AddSeconds(150)
+      do { $modeAfter = Get-MonitorMode; if ($modeAfter -eq $modeBefore) { break }; Start-Sleep -Seconds 5 } while ((Get-Date) -lt $until)
+      if ($modeAfter -ne $modeBefore) { throw "the scheduler mode changed from $modeBefore to $modeAfter" }
+      Log "monitor still reports scheduling $modeAfter"
+    }
+    Log "UPDATE OK. Backup kept at $bk (delete it only after you are satisfied)."
+  } catch {
+    $why = $_.Exception.Message
+    Log "FAILURE: $why  -> rolling back automatically"
+    Invoke-Rollback $bk
+    throw "UPDATE FAILED AND WAS ROLLED BACK: $why"
+  }
+}
+
 switch ($Action) {
   'Preflight' { Invoke-Preflight }
+  'Update'    { Invoke-Update }
   'Deploy'    { Invoke-Deploy }
   'Rollback'  { if (-not $BackupDir) { throw '-BackupDir is required' }; Invoke-Rollback $BackupDir }
 }

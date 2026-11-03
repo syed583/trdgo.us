@@ -33,7 +33,7 @@ class Config:
     backoff_max_s: int = 3600
     breaker_threshold: int = 3
     breaker_cooldown_min: int = 30
-    lease_s: int = 900
+    lease_s: int = 1800
     max_inflight: int = 1
     strong_agreement_min_models: int = 3
     strong_agreement_share: float = 0.75

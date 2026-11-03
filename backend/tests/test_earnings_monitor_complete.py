@@ -430,3 +430,46 @@ def test_thanksgiving_week_end_to_end_checks_outcomes_and_eligibility_follow_the
     sched.run_pending(clock())
     assert ad.calls["verify_outcome"] == 2
     assert {r["symbol"] for r in store.q("SELECT symbol FROM events WHERE outcome_at IS NOT NULL")} == {"AAA", "BBB"}
+
+
+# ------------------------------------------------------------------ performance: a full-size first pass must not hold the single worker for minutes
+def test_a_full_size_pass_over_300_events_and_all_models_is_fast_and_changes_nothing_when_nothing_changed(tmp_path):
+    import time
+    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path)
+    n = 302
+    day = CAL.next_trading_day(BASE.date())
+    ad.cal = [{"symbol": "S%03d" % i, "company": "S", "date": day.isoformat(), "session": "BMO" if i % 2 else "AMC"} for i in range(n)]
+    t = time.time()
+    mon.observe_calendar(ad.cal, clock(), complete=False)
+    t_obs = time.time() - t
+    for m in ad.model_labels:
+        for i in range(n):
+            ad.set_model(m, "S%03d" % i, "BUY" if i % 3 else "SELL", BASE - timedelta(hours=1), score=60 + (i % 7), coverage=0.8)
+    t = time.time()
+    first = mon.recompute(clock())
+    t_first = time.time() - t
+    counts = (store.one("SELECT COUNT(*) n FROM predictions")["n"], store.one("SELECT COUNT(*) n FROM changes")["n"], store.one("SELECT COUNT(*) n FROM alerts")["n"], store.one("SELECT COUNT(*) n FROM model_state")["n"])
+    t = time.time()
+    second = mon.recompute(clock())
+    t_second = time.time() - t
+    assert first["events"] == n and counts[0] == n * 5 and counts[3] == n * len(ad.model_labels)      # five models carry a call, all nine have a state row for every event
+    assert second["new_predictions"] == 0 and second["changes"] == 0 and (store.one("SELECT COUNT(*) n FROM predictions")["n"], store.one("SELECT COUNT(*) n FROM changes")["n"], store.one("SELECT COUNT(*) n FROM alerts")["n"]) == counts[:3]
+    assert t_obs < 10 and t_first < 20 and t_second < 8, (t_obs, t_first, t_second)                  # before the fix: 8 s / 27 s / 15 s on a fast disk and many minutes on the server
+
+
+def test_nested_transactions_join_the_outer_one_and_a_failure_rolls_everything_back(tmp_path):
+    from earnings_monitor.store import Store
+    s = Store(tmp_path / "t.sqlite")
+    with pytest.raises(RuntimeError):
+        with s.tx() as c:
+            c.execute("INSERT INTO kv(k,v) VALUES('a','1')")
+            with s.tx() as c2:
+                c2.execute("INSERT INTO kv(k,v) VALUES('b','2')")
+            raise RuntimeError("boom")
+    assert s.q("SELECT k FROM kv WHERE k IN ('a','b')") == []                          # one commit or none
+    with s.tx() as c:
+        c.execute("INSERT INTO kv(k,v) VALUES('a','1')")
+        with s.tx() as c2:
+            c2.execute("INSERT INTO kv(k,v) VALUES('b','2')")
+    assert sorted(r["k"] for r in s.q("SELECT k FROM kv WHERE k IN ('a','b')")) == ["a", "b"]
+    s.close()

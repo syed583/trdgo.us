@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -66,6 +67,13 @@ class Store:
     def __init__(self, path):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._local = threading.local()                      # one connection per thread, reused: opening a connection per statement was the slow part on the server
+        try:
+            ready = self._conn().execute("SELECT v FROM kv WHERE k='schema_version'").fetchone()
+        except sqlite3.Error:
+            ready = None
+        if ready:
+            return                                           # an existing store: no DDL, so opening it never waits for a writer
         with self.tx() as c:
             for stmt in [s.strip() for s in SCHEMA.split(";") if s.strip()]:
                 c.execute(stmt)
@@ -79,14 +87,37 @@ class Store:
         c = sqlite3.connect(str(self.path), timeout=30, isolation_level=None)
         c.row_factory = sqlite3.Row
         c.execute("PRAGMA journal_mode=WAL")
+        c.execute("PRAGMA synchronous=NORMAL")               # WAL + NORMAL never corrupts; at worst the last few commits are lost in a power cut, which a monitor rebuilds on its next pass
         c.execute("PRAGMA busy_timeout=30000")
         return c
 
+    def _conn(self) -> sqlite3.Connection:
+        c = getattr(self._local, "c", None)
+        if c is None:
+            c = self._local.c = self._connect()
+            self._local.depth = 0
+        return c
+
+    def close(self):
+        c = getattr(self._local, "c", None)
+        if c is not None:
+            c.close()
+            self._local.c = None
+
     @contextmanager
     def tx(self):
-        c = self._connect()
+        """A transaction. Re-entrant: a tx() opened inside another joins it, so a caller can group many small writes into ONE commit (one fsync) and the callee code does not change."""
+        c = self._conn()
+        if self._local.depth > 0:
+            self._local.depth += 1
+            try:
+                yield c
+            finally:
+                self._local.depth -= 1
+            return
+        c.execute("BEGIN IMMEDIATE")
+        self._local.depth = 1
         try:
-            c.execute("BEGIN IMMEDIATE")
             yield c
             c.execute("COMMIT")
         except Exception:
@@ -96,14 +127,10 @@ class Store:
                 pass
             raise
         finally:
-            c.close()
+            self._local.depth = 0
 
     def q(self, sql: str, args: Iterable = ()) -> list:
-        c = self._connect()
-        try:
-            return [dict(r) for r in c.execute(sql, tuple(args)).fetchall()]
-        finally:
-            c.close()
+        return [dict(r) for r in self._conn().execute(sql, tuple(args)).fetchall()]
 
     def one(self, sql: str, args: Iterable = ()) -> Optional[dict]:
         r = self.q(sql, args)
