@@ -93,7 +93,7 @@ def evaluate(cfg: C.Config, data_dir, now: datetime, env: Optional[dict] = None)
                     budget = int(a.get("daily_request_budget"))
                 except (TypeError, ValueError):
                     budget = 0
-                if budget <= 0 or budget > C.HARD_DAILY_CAP:
+                if budget <= 0 or budget > cfg.hard_daily_cap:
                     st.reasons.append("DAILY_BUDGET_INVALID")
                 else:
                     need = C.estimate(cfg, int(a.get("expected_events_per_day") or 20), purposes=purposes or ("calendar",))["total_requests_per_day"]
@@ -145,7 +145,7 @@ class ProviderAccess:
 
     def call(self, provider: str, n: int, fn: Callable, purpose: Optional[str] = None):
         self.check(provider, n, purpose)
-        if not self._sem.acquire(blocking=False):
+        if not self._sem.acquire(timeout=max(0, self.cfg.inflight_wait_s)):               # two lanes may want a provider at once: the second waits its turn instead of being refused
             raise ProviderBlocked("CONCURRENCY_CEILING")
         try:
             try:

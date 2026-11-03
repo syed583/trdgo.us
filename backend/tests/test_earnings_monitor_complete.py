@@ -23,7 +23,7 @@ UTC = timezone.utc
 BASE = datetime(2026, 11, 9, 17, 0, tzinfo=UTC)
 
 
-def mk(tmp_path, purposes=("calendar", "event", "outcome"), budget=450, cfg=None, mode="refresh", start=BASE):
+def mk(tmp_path, purposes=("calendar", "event", "outcome"), budget=700, cfg=None, mode="refresh", start=BASE):
     clock = Clock(start)
     d = tmp_path / "em"
     d.mkdir(parents=True, exist_ok=True)
@@ -184,7 +184,7 @@ def test_scanner_failures_are_never_capped_or_cooled_down(tmp_path):
 
 # ------------------------------------------------------------------ per-purpose provider permission
 def test_each_refresh_purpose_needs_its_own_approval_and_a_missing_one_costs_nothing(tmp_path):
-    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path, purposes=("calendar",), budget=100)
+    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path, purposes=("calendar",), budget=200)
     seed(mon, ad, clock, date_="2026-11-09", sess="BMO")
     clock.t = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)                                # 07:00 ET: inside the Before-Open window
     mon.earnings_day_check(clock())
@@ -197,7 +197,7 @@ def test_each_refresh_purpose_needs_its_own_approval_and_a_missing_one_costs_not
     with pytest.raises(ProviderBlocked, match="COLLECTOR_ACTIVE"):
         access.call("calendar", 20, lambda: "ok", purpose="calendar")                  # the monitor waits while the Smart Move collector runs
     (d / "collector.active").unlink()
-    write_approval(d, clock(), mode="refresh", budget=450, purposes=())
+    write_approval(d, clock(), mode="refresh", budget=700, purposes=())
     st = sched.gate_fn(clock())
     assert st.mode == "OFF" and "NO_REFRESH_PURPOSE_APPROVED" in st.reasons
 
@@ -269,7 +269,8 @@ def fake_app(monkeypatch):
     cal.calendar = lambda days=14: calls.__setitem__("cal", calls["cal"] + 1) or {"status": "OK", "rows": [{"symbol": "AAA", "company": "Alpha", "date": "2026-11-11", "reporting_time": "BMO"},
                                                                                                          {"symbol": "BBB", "company": "Beta", "date": "2026-11-12", "reporting_time": "AMC"}]}
     fv = types.ModuleType("finviz_service")
-    fv.earnings_map = lambda: {"AAA": {"date": "2026-11-11", "time": "Before Market Open"}, "BBB": {"date": "2026-11-13", "time": "after"}}
+    fv.earnings_map = lambda: calls.__setitem__("finviz_fetch", 1) or {}              # must NEVER be reached: Finviz is read from its cache only
+    swr._values["fviz:earn"] = (1.0, {"AAA": {"date": "2026-11-11", "time": "Before Market Open"}, "BBB": {"date": "2026-11-13", "time": "after"}})
     for name, mod in (("swr", swr), ("earnings_equity_service", eq), ("earnings_trade_service", ets), ("uw_earnings_calendar", cal), ("finviz_service", fv)):
         monkeypatch.setitem(sys.modules, name, mod)
     return swr, calls
@@ -397,7 +398,7 @@ def test_the_smart_move_plan_is_a_recorded_request_not_an_action(tmp_path):
 # ------------------------------------------------------------------ end to end: Thanksgiving week (holiday + early close)
 def test_thanksgiving_week_end_to_end_checks_outcomes_and_eligibility_follow_the_exchange_calendar(tmp_path):
     start = datetime(2026, 11, 24, 17, 0, tzinfo=UTC)
-    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path, start=start)
+    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path, start=start, cfg=C.Config(plan_driven_refresh=False))
     ad.cal = [{"symbol": "AAA", "company": "A", "date": "2026-11-25", "session": "AMC"}, {"symbol": "BBB", "company": "B", "date": "2026-11-27", "session": "BMO"},
               {"symbol": "CCC", "company": "C", "date": "2026-11-26", "session": "BMO"}]
     mon.observe_calendar(ad.cal, clock(), complete=True)
@@ -427,7 +428,7 @@ def test_thanksgiving_week_end_to_end_checks_outcomes_and_eligibility_follow_the
     assert store.one("SELECT COUNT(*) n FROM jobs WHERE kind='OUTCOME_VERIFY'")["n"] == 2
     ad.out[("AAA", "2026-11-25")] = {"move_pct": 2.5, "verified": True, "source": "daily_bars"}
     ad.out[("BBB", "2026-11-27")] = {"move_pct": -1.5, "verified": True, "source": "daily_bars"}
-    sched.run_pending(clock())
+    sched.run_pending(clock(), lane="light")
     assert ad.calls["verify_outcome"] == 2
     assert {r["symbol"] for r in store.q("SELECT symbol FROM events WHERE outcome_at IS NOT NULL")} == {"AAA", "BBB"}
 

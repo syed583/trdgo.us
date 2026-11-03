@@ -58,13 +58,13 @@ def test_health_endpoint_reports_runs_stuck_jobs_and_duplicates_read_only(tmp_pa
     assert c.post("/api/earnings-monitor/health").status_code == 405
 
 
-def test_a_store_written_by_the_previous_release_is_used_unchanged(tmp_path):
-    """The previous release's store (same schema) opens, scans and reports with the new code and no migration."""
+def test_a_store_reopens_unchanged_after_a_restart(tmp_path):
+    """A restarted process opens the same file and sees the same rows (the upgrade of a store written by the previous release is covered in test_earnings_intelligence)."""
     d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path)
-    assert json.loads(store.one("SELECT v FROM kv WHERE k='schema_version'")["v"]) == 2
+    assert json.loads(store.one("SELECT v FROM kv WHERE k='schema_version'")["v"]) == 3
     ad.cal = [{"symbol": "AAA", "date": "2026-11-12", "session": "BMO"}]
     ad.set_model("claude", "AAA", "BUY", clock(), score=70, coverage=0.9)
     cycle(sched, clock)
     from earnings_monitor.store import Store
     again = Store(d / "monitor.sqlite")                           # a restarted process opens the same file
-    assert again.one("SELECT COUNT(*) n FROM predictions")["n"] == 1 and json.loads(again.one("SELECT v FROM kv WHERE k='schema_version'")["v"]) == 2
+    assert again.one("SELECT COUNT(*) n FROM predictions")["n"] == 1 and json.loads(again.one("SELECT v FROM kv WHERE k='schema_version'")["v"]) == 3

@@ -69,6 +69,7 @@ class LocalEngine:
 class SmartMoveSource:
     def __init__(self, engine=None, snapshot_dir: Optional[str] = None, clock: Callable[[], datetime] = lambda: datetime.now(UTC)):
         self.engine, self.snapshot_dir, self.clock = engine, snapshot_dir, clock
+        self._rows: dict = {}                                    # symbol -> the engine's / snapshot's own classified row from the latest read
 
     @classmethod
     def from_env(cls):
@@ -92,6 +93,7 @@ class SmartMoveSource:
             try:
                 for r in self.engine.classify(now):
                     out[r["symbol"]] = to_obs(r, now, "smart_move_engine")
+                    self._rows[r["symbol"]] = r
                 if out:
                     return out
             except Exception:  # noqa: BLE001 - a broken engine must not turn into invented calls
@@ -107,9 +109,18 @@ class SmartMoveSource:
                     sig = r["category"] if r["category"] in ("BUY", "SELL", "NO_TRADE") else "NO_VALID_PREDICTION"
                     cov = "%s/%s" % (r["coverage_points"], r["coverage_max"]) if r.get("coverage_points") is not None else None
                     ev = r.get("evidence_retrieved") or []
+                    self._rows[r["symbol"]] = r
                     out[r["symbol"]] = {"signal": sig, "score": None, "coverage": cov, "tier": r.get("liquidity"), "as_of": ev[-1] if ev else snap["generated_at"], "evidence_as_of": ev[-1] if ev else None,
                                         "source": "smart_move_snapshot", "engine_version": snap.get("model_version")}
         return out
+
+    DETAIL_KEYS = ("result", "category", "coverage_points", "coverage_max", "bull_points", "bear_points", "margin", "liquidity", "evidence_retrieved", "model_version", "reasons", "missing_evidence",
+                   "blocked_by", "why", "components")
+
+    def details(self, symbol: str, d: Optional[str] = None) -> Optional[dict]:
+        """The engine's own row for one symbol, restricted to descriptive keys, as of the latest models() read. None when the engine has not scored it."""
+        r = self._rows.get(symbol)
+        return {k: r[k] for k in self.DETAIL_KEYS if k in r} if r else None
 
     def plan(self, events: list, now: datetime) -> Optional[dict]:
         return self.engine.plan(events, now) if self.engine is not None else None

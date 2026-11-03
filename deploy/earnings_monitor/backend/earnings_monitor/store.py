@@ -14,19 +14,24 @@ from typing import Any, Iterable, Optional
 
 UTC = timezone.utc
 APPEND_ONLY = ("predictions", "changes", "event_versions", "audit_log")
+SCHEMA_VERSION = 3
+# Existing stores (schema 2, the one running on the server) are upgraded in place: columns are added, nothing is dropped or rewritten.
+MIGRATIONS = {3: ["ALTER TABLE jobs ADD COLUMN lane TEXT NOT NULL DEFAULT 'heavy'", "ALTER TABLE events ADD COLUMN last_verified TEXT", "ALTER TABLE predictions ADD COLUMN reason TEXT",
+                  "CREATE TABLE IF NOT EXISTS evidence_items(id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER NOT NULL, kind TEXT NOT NULL, provider TEXT NOT NULL, ext_id TEXT NOT NULL, occurred_at TEXT, title TEXT, summary TEXT, data TEXT, stage TEXT NOT NULL DEFAULT 'DISCOVERED', verified INTEGER NOT NULL DEFAULT 0, verified_by TEXT, relevant_models TEXT, used_by_models TEXT, discovered_at TEXT NOT NULL, collected_at TEXT, last_seen TEXT NOT NULL, dedupe_key TEXT NOT NULL UNIQUE)",
+                  "CREATE INDEX IF NOT EXISTS ix_evidence_ev ON evidence_items(event_id, kind, id)"]}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS events(
   id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT NOT NULL, company TEXT, earnings_date TEXT NOT NULL, session TEXT NOT NULL DEFAULT 'UNKNOWN',
   status TEXT NOT NULL DEFAULT 'ACTIVE', first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, last_changed TEXT NOT NULL, missing_scans INTEGER NOT NULL DEFAULT 0,
-  reported_at TEXT, canceled_at TEXT, outcome_json TEXT, outcome_at TEXT, source TEXT, verification TEXT NOT NULL DEFAULT 'UNVERIFIED', sources TEXT);
+  reported_at TEXT, canceled_at TEXT, outcome_json TEXT, outcome_at TEXT, source TEXT, verification TEXT NOT NULL DEFAULT 'UNVERIFIED', sources TEXT, last_verified TEXT);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_events_active_symbol ON events(symbol) WHERE status='ACTIVE';
 CREATE INDEX IF NOT EXISTS ix_events_date ON events(earnings_date);
 CREATE TABLE IF NOT EXISTS event_versions(
   id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER NOT NULL, earnings_date TEXT NOT NULL, session TEXT NOT NULL, observed_at TEXT NOT NULL, reason TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS predictions(
   id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER NOT NULL, model TEXT NOT NULL, signal TEXT NOT NULL, score REAL, coverage TEXT, tier TEXT,
-  as_of TEXT NOT NULL, evidence_as_of TEXT, recorded_at TEXT NOT NULL, input_hash TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'unknown', engine_version TEXT);
+  as_of TEXT NOT NULL, evidence_as_of TEXT, recorded_at TEXT NOT NULL, input_hash TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'unknown', engine_version TEXT, reason TEXT);
 CREATE INDEX IF NOT EXISTS ix_pred_ev ON predictions(event_id, model, id);
 CREATE TABLE IF NOT EXISTS model_state(
   event_id INTEGER NOT NULL, model TEXT NOT NULL, status TEXT NOT NULL, signal TEXT, score REAL, coverage TEXT, as_of TEXT, prediction_id INTEGER,
@@ -41,13 +46,18 @@ CREATE TABLE IF NOT EXISTS alerts(
 CREATE TABLE IF NOT EXISTS jobs(
   id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, run_after TEXT NOT NULL, payload TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'QUEUED',
   attempts INTEGER NOT NULL DEFAULT 0, max_attempts INTEGER NOT NULL DEFAULT 4, locked_by TEXT, lease_until TEXT, dedupe_key TEXT, last_error TEXT,
-  created_at TEXT NOT NULL, finished_at TEXT, result TEXT);
+  created_at TEXT NOT NULL, finished_at TEXT, result TEXT, lane TEXT NOT NULL DEFAULT 'heavy');
 CREATE UNIQUE INDEX IF NOT EXISTS ux_jobs_dedupe ON jobs(dedupe_key) WHERE dedupe_key IS NOT NULL;
 CREATE INDEX IF NOT EXISTS ix_jobs_due ON jobs(status, run_after);
 CREATE TABLE IF NOT EXISTS usage(day TEXT NOT NULL, provider TEXT NOT NULL, requests INTEGER NOT NULL DEFAULT 0, failures INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(day, provider));
 CREATE TABLE IF NOT EXISTS scan_runs(
   id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT, ok INTEGER, summary TEXT);
 CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY, v TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS evidence_items(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER NOT NULL, kind TEXT NOT NULL, provider TEXT NOT NULL, ext_id TEXT NOT NULL, occurred_at TEXT, title TEXT, summary TEXT, data TEXT,
+  stage TEXT NOT NULL DEFAULT 'DISCOVERED', verified INTEGER NOT NULL DEFAULT 0, verified_by TEXT, relevant_models TEXT, used_by_models TEXT, discovered_at TEXT NOT NULL, collected_at TEXT,
+  last_seen TEXT NOT NULL, dedupe_key TEXT NOT NULL UNIQUE);
+CREATE INDEX IF NOT EXISTS ix_evidence_ev ON evidence_items(event_id, kind, id);
 CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL, detail TEXT);
 """
 
@@ -73,14 +83,26 @@ class Store:
         except sqlite3.Error:
             ready = None
         if ready:
-            return                                           # an existing store: no DDL, so opening it never waits for a writer
+            have = int(json.loads(ready["v"]))
+            if have >= SCHEMA_VERSION:
+                return                                       # an up-to-date store: no DDL, so opening it never waits for a writer
+            with self.tx() as c:                             # upgrade in place
+                for ver in sorted(v for v in MIGRATIONS if v > have):
+                    for stmt in MIGRATIONS[ver]:
+                        try:
+                            c.execute(stmt)
+                        except sqlite3.OperationalError as e:
+                            if "duplicate column" not in str(e).lower():
+                                raise
+                c.execute("UPDATE kv SET v=? WHERE k='schema_version'", (json.dumps(SCHEMA_VERSION),))
+            return
         with self.tx() as c:
             for stmt in [s.strip() for s in SCHEMA.split(";") if s.strip()]:
                 c.execute(stmt)
             for t in APPEND_ONLY:
                 for op in ("UPDATE", "DELETE"):
                     c.execute("CREATE TRIGGER IF NOT EXISTS %s_no_%s BEFORE %s ON %s BEGIN SELECT RAISE(ABORT, '%s is append-only'); END" % (t, op.lower(), op, t, t))
-            c.execute("INSERT INTO kv(k,v) VALUES('schema_version','2') ON CONFLICT(k) DO NOTHING")
+            c.execute("INSERT INTO kv(k,v) VALUES('schema_version',?) ON CONFLICT(k) DO NOTHING", (json.dumps(SCHEMA_VERSION),))
 
     # ---------------------------------------------------------------- plumbing
     def _connect(self) -> sqlite3.Connection:
@@ -172,12 +194,12 @@ class Store:
         return self.one("SELECT * FROM scan_runs WHERE kind=? AND finished_at IS NOT NULL" + (" AND ok=1" if ok_only else "") + " ORDER BY id DESC LIMIT 1", (kind,))
 
     # ---------------------------------------------------------------- jobs
-    def enqueue(self, kind: str, run_after: datetime, payload: Optional[dict] = None, dedupe_key: Optional[str] = None, max_attempts: int = 4, now: Optional[datetime] = None) -> Optional[int]:
+    def enqueue(self, kind: str, run_after: datetime, payload: Optional[dict] = None, dedupe_key: Optional[str] = None, max_attempts: int = 4, now: Optional[datetime] = None, lane: str = "heavy") -> Optional[int]:
         """Returns the job id, or None when a job with the same dedupe key was ever created: a recurring bucket (for example the 6-hour calendar slot) runs once, however often tick() is called."""
         try:
             with self.tx() as c:
-                return c.execute("INSERT INTO jobs(kind,run_after,payload,dedupe_key,max_attempts,created_at) VALUES(?,?,?,?,?,?)",
-                                 (kind, iso(run_after), json.dumps(payload or {}), dedupe_key, max_attempts, iso(now or run_after))).lastrowid
+                return c.execute("INSERT INTO jobs(kind,run_after,payload,dedupe_key,max_attempts,created_at,lane) VALUES(?,?,?,?,?,?,?)",
+                                 (kind, iso(run_after), json.dumps(payload or {}), dedupe_key, max_attempts, iso(now or run_after), lane)).lastrowid
         except sqlite3.IntegrityError:
             return None
 
@@ -191,10 +213,10 @@ class Store:
                           ("DEAD" if dead else "QUEUED", "lease expired (worker stopped)", iso(now) if dead else None, r["id"]))
             return len(rows)
 
-    def claim(self, now: datetime, worker: str, lease_s: int) -> Optional[dict]:
+    def claim(self, now: datetime, worker: str, lease_s: int, lane: str = "heavy") -> Optional[dict]:
         from datetime import timedelta
         with self.tx() as c:
-            r = c.execute("SELECT * FROM jobs WHERE status='QUEUED' AND run_after <= ? ORDER BY run_after, id LIMIT 1", (iso(now),)).fetchone()
+            r = c.execute("SELECT * FROM jobs WHERE status='QUEUED' AND lane=? AND run_after <= ? ORDER BY run_after, id LIMIT 1", (lane, iso(now))).fetchone()
             if not r:
                 return None
             c.execute("UPDATE jobs SET status='RUNNING', locked_by=?, lease_until=?, attempts=attempts+1 WHERE id=?", (worker, iso(now + timedelta(seconds=lease_s)), r["id"]))

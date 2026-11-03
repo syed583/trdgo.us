@@ -25,7 +25,7 @@ UTC = timezone.utc
 BASE = datetime(2026, 11, 9, 17, 0, tzinfo=UTC)          # Monday 12:00 ET
 
 
-def mk(tmp_path, mode="refresh", budget=450, events=20, approval=True, cfg=None, **over):
+def mk(tmp_path, mode="refresh", budget=700, events=8, approval=True, cfg=None, **over):
     clock = Clock(BASE)
     d = tmp_path / "em"
     d.mkdir(parents=True, exist_ok=True)
@@ -37,7 +37,7 @@ def mk(tmp_path, mode="refresh", budget=450, events=20, approval=True, cfg=None,
 
 def cycle(sched, clock):
     t = sched.tick(clock())
-    return t, sched.run_pending(clock())
+    return t, sched.run_pending(clock()) + sched.run_pending(clock(), lane="light")
 
 
 def ev(store, sym):
@@ -72,17 +72,17 @@ def test_the_monitor_is_off_by_default_and_every_approval_requirement_is_enforce
     write_approval(d, BASE, mode="cache_only")
     assert evaluate(cfg, d, BASE, env).mode == CACHE_ONLY
     assert evaluate(cfg, d, BASE, {}).mode == OFF                                    # the environment switch is separate from the file
-    write_approval(d, BASE, mode="refresh", budget=450)
+    write_approval(d, BASE, mode="refresh", budget=700)
     assert evaluate(cfg, d, BASE, env).mode == REFRESH
     for k, v, reason in (("approved_by", "", "APPROVAL_NOT_SIGNED"), ("expires_at", (BASE - timedelta(days=1)).isoformat(), "APPROVAL_EXPIRED"), ("scheduling_approved", False, "SCHEDULING_NOT_APPROVED"),
                          ("provider_authorization", False, "PROVIDER_AUTHORIZATION_MISSING"), ("kill_switch_acknowledged", False, "KILL_SWITCH_NOT_ACKNOWLEDGED"), ("daily_request_budget", 10, "BUDGET_BELOW_WORST_CASE"),
                          ("daily_request_budget", 5000, "DAILY_BUDGET_INVALID"), ("mode", "bogus", "APPROVAL_MODE_INVALID"), ("max_inflight", 3, "APPROVED_CONCURRENCY_ABOVE_CEILING")):
-        write_approval(d, BASE, **{**{"mode": "refresh", "budget": 450}, k: v})
+        write_approval(d, BASE, **{**{"mode": "refresh", "budget": 700}, k: v})
         s = evaluate(cfg, d, BASE, env)
         assert s.mode == OFF and any(r.startswith(reason) for r in s.reasons), (k, s.reasons)
-    write_approval(d, BASE, mode="refresh", budget=450, expires_at=(BASE + timedelta(days=90)).isoformat())
+    write_approval(d, BASE, mode="refresh", budget=700, expires_at=(BASE + timedelta(days=90)).isoformat())
     assert "APPROVAL_LONGER_THAN_30_DAYS" in evaluate(cfg, d, BASE, env).reasons
-    write_approval(d, BASE, mode="refresh", budget=450)
+    write_approval(d, BASE, mode="refresh", budget=700)
     (d / "KILL").write_text("x")
     s = evaluate(cfg, d, BASE, env)
     assert s.mode == OFF and "KILL_SWITCH_ENGAGED" in s.reasons                       # a kill switch beats a valid approval
@@ -92,7 +92,7 @@ def test_provider_access_blocks_never_bypasses(tmp_path):
     d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path, mode="cache_only")
     with pytest.raises(ProviderBlocked, match="NOT_APPROVED"):
         access.call("p", 1, lambda: 1)
-    d2, clock2, store2, cfg2, ad2, mon2, sched2, access2 = mk(tmp_path / "b", mode="refresh", budget=450)
+    d2, clock2, store2, cfg2, ad2, mon2, sched2, access2 = mk(tmp_path / "b", mode="refresh", budget=700)
     sched2.tick(clock2())
     assert access2.call("p", 5, lambda: "ok") == "ok" and store2.usage("2026-11-09") == 5
     (d2 / "KILL").write_text("x")
@@ -100,7 +100,7 @@ def test_provider_access_blocks_never_bypasses(tmp_path):
         access2.call("p", 1, lambda: 1)
     (d2 / "KILL").unlink()
     with pytest.raises(ProviderBlocked, match="BUDGET"):
-        access2.call("p", 500, lambda: 1)
+        access2.call("p", 700, lambda: 1)
     for _ in range(3):                                                                # failed attempts count and trip the breaker
         with pytest.raises(RuntimeError):
             access2.call("q", 1, lambda: (_ for _ in ()).throw(RuntimeError("boom")))
@@ -276,9 +276,9 @@ def test_nothing_is_scheduled_without_approval_and_cache_only_never_calls_a_prov
 
 
 def test_recurring_jobs_are_idempotent_and_follow_their_intervals(tmp_path):
-    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path)
+    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path, cfg=C.Config(plan_driven_refresh=False))
     ad.cal = [{"symbol": "AAA", "date": "2026-11-11", "session": "BMO"}]
-    assert sched.tick(clock())["enqueued"] == 4
+    assert sched.tick(clock())["enqueued"] == 7                                       # plan-driven refresh is off by default
     assert sched.tick(clock())["enqueued"] == 0                                       # same buckets: nothing new
     sched.run_pending(clock())
     assert ad.calls["refresh_calendar"] == 1 and store.usage("2026-11-09") == C.COST_CALENDAR_REFRESH
@@ -338,14 +338,14 @@ def test_failures_back_off_open_the_breaker_and_end_in_a_dead_letter_with_an_ale
 
 
 def test_the_kill_switch_and_budget_stop_work_immediately(tmp_path):
-    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path, budget=100, events=1, purposes=("calendar",))
+    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path, budget=200, events=1, purposes=("calendar",))
     sched.tick(clock())
     (d / "KILL").write_text("x")
     assert sched.run_once(clock()) == {"ran": False, "reason": "GATE_OFF", "gate": ["KILL_SWITCH_ENGAGED"]}
     assert ad.calls["refresh_calendar"] == 0
     (d / "KILL").unlink()
     sched.run_pending(clock())
-    assert store.usage("2026-11-09") == 20
+    assert store.usage("2026-11-09") == C.COST_CALENDAR_REFRESH
     ok = 0
     for _ in range(8):
         try:
@@ -354,20 +354,20 @@ def test_the_kill_switch_and_budget_stop_work_immediately(tmp_path):
         except ProviderBlocked as b:
             assert b.reason.startswith("DAILY_BUDGET_EXHAUSTED")
             break
-    assert store.usage("2026-11-09") <= 100 and ok == 4
+    assert store.usage("2026-11-09") <= 200 and ok == 3
 
 
 def test_request_estimate_matches_the_defaults_and_the_budget_check_uses_it():
     e = C.estimate(C.Config(), 20)
-    assert e["calendar_requests"] == 80 and e["earnings_day_requests"] == 300 and e["outcome_requests"] == 40 and e["total_requests_per_day"] == 420 and e["cache_only_requests_per_day"] == 0
-    assert C.estimate(C.Config(), 10)["total_requests_per_day"] == 250 and C.estimate(C.Config(), 40)["total_requests_per_day"] == 760 and C.estimate(C.Config(), 0)["total_requests_per_day"] == 80
-    assert C.estimate(C.Config(), 20, purposes=("calendar",))["total_requests_per_day"] == 80 and C.estimate(C.Config(), 20, purposes=())["total_requests_per_day"] == 0
-    assert C.estimate(C.Config(calendar_every_h=12), 20)["calendar_requests"] == 40
+    assert e["calendar_requests"] == 184 and e["earnings_day_requests"] == 1220 and e["outcome_requests"] == 40 and e["total_requests_per_day"] == 1444 and e["cache_only_requests_per_day"] == 0
+    assert C.estimate(C.Config(), 10)["total_requests_per_day"] == 814 and C.estimate(C.Config(), 40)["total_requests_per_day"] == 2704 and C.estimate(C.Config(), 0)["total_requests_per_day"] == 184
+    assert C.estimate(C.Config(), 20, purposes=("calendar",))["total_requests_per_day"] == 184 and C.estimate(C.Config(), 20, purposes=())["total_requests_per_day"] == 0
+    assert C.estimate(C.Config(calendar_every_h=12), 20)["calendar_requests"] == 92
 
 
 # ------------------------------------------------------------------ end-to-end offline simulation
 def test_full_simulation_new_changed_canceled_stale_reported_and_graded_events(tmp_path):
-    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path, budget=450, events=20)
+    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path, budget=700, events=8, cfg=C.Config(plan_driven_refresh=False))      # this test is about the earnings-day refresh only
     t0 = BASE
     ad.cal = [{"symbol": "AAA", "company": "Alpha", "date": "2026-11-11", "session": "BMO"}, {"symbol": "BBB", "company": "Beta", "date": "2026-11-12", "session": "AMC"},
               {"symbol": "CCC", "company": "Gamma", "date": "2026-11-12", "session": "UNKNOWN"}]
@@ -438,7 +438,7 @@ def test_api_is_read_only_and_reports_status_models_changes_consensus_and_accura
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
     from earnings_monitor import routes
-    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path, budget=450, events=20)
+    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path, budget=700, events=8)
     ad.cal = [{"symbol": "AAA", "company": "Alpha", "date": "2026-11-12", "session": "BMO"}]
     for m, sig in (("claude", "SELL"), ("grok", "BUY"), ("meta", "BUY"), ("smart_move", "BUY")):
         ad.set_model(m, "AAA", sig, BASE, score=50, coverage="9/10")
@@ -459,7 +459,7 @@ def test_api_is_read_only_and_reports_status_models_changes_consensus_and_accura
     ad.out[("AAA", "2026-11-12")] = {"move_pct": -4.2, "direction": "SELL"}
     cycle(sched, clock)
     s = c.get("/api/earnings-monitor/status").json()
-    assert s["status"] == "OK" and s["scheduling"] in (REFRESH, CACHE_ONLY, OFF) and s["last_any_success"] and s["estimate_20_events_per_day"]["total_requests_per_day"] == 420
+    assert s["status"] == "OK" and s["scheduling"] in (REFRESH, CACHE_ONLY, OFF) and s["last_any_success"] and s["estimate_20_events_per_day"]["total_requests_per_day"] == 1444
     up = c.get("/api/earnings-monitor/upcoming?include_history=1").json()["rows"]
     assert up[0]["symbol"] == "AAA" and up[0]["status"] == "REPORTED" and up[0]["outcome"]["move_pct"] == -4.2 and up[0]["latest_change"]["kind"] == "OUTCOME_AVAILABLE"
     ch = c.get("/api/earnings-monitor/changes?limit=50").json()

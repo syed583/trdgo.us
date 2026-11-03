@@ -54,8 +54,8 @@ def _db_session():
 class ProdAdapters(Adapters):
     model_labels = LABELS
 
-    def __init__(self, days: int = HORIZON_DAYS, smart_move: Optional[SmartMoveSource] = None, session_factory: Optional[Callable] = None, clock: Callable[[], datetime] = lambda: datetime.now(UTC)):
-        self.days, self.smart = days, smart_move if smart_move is not None else SmartMoveSource.from_env()
+    def __init__(self, days: int = HORIZON_DAYS, calendar_days: int = 30, smart_move: Optional[SmartMoveSource] = None, session_factory: Optional[Callable] = None, clock: Callable[[], datetime] = lambda: datetime.now(UTC)):
+        self.days, self.calendar_days, self.smart = days, calendar_days, smart_move if smart_move is not None else SmartMoveSource.from_env()
         self._session, self.clock = session_factory or _db_session, clock
         self._moves: dict = {}                                    # symbol -> {report date: move_pct} from the last verify_outcome in this process
 
@@ -114,8 +114,53 @@ class ProdAdapters(Adapters):
         out["smart_move"] = self.smart.models(self.clock()) if self.smart else {}
         return out
 
+    def _uw_calendar_cache(self) -> list:
+        """The 30-day calendar from Unusual Whales' per-date responses the application has already cached (uwcal:<path>:<date>). Only entries that exist and are not older than two future-TTLs are used; a date that was never
+        fetched contributes nothing (a gap is a gap, never an invented event). Nothing is requested."""
+        try:
+            import uw_earnings_calendar as cal
+            import unusualwhales_service as uw
+            data = self._cache_snapshot()
+        except Exception:  # noqa: BLE001
+            return []
+        horizon = self.clock().date()
+        out, t_now = [], time.time()
+        for off in range(0, self.calendar_days + 1):
+            d = horizon.toordinal() + off
+            when = date.fromordinal(d)
+            if when.weekday() >= 5:
+                continue
+            w = when.isoformat()
+            for path in ("/api/earnings/premarket", "/api/earnings/afterhours"):
+                hit = data.get("uwcal:%s:%s" % (path, w))
+                if not (isinstance(hit, tuple) and isinstance(hit[1], dict) and hit[1].get("status") == "OK") or t_now - hit[0] > 2 * getattr(cal, "TTL_FUTURE", 6 * 3600.0):
+                    continue
+                for r in uw._rows(hit[1]):
+                    if cal._us_listed(r):
+                        row = cal._row(r, w)
+                        if cal.MIN_PRICE <= 0 or row.get("prior_close") is None or row["prior_close"] >= cal.MIN_PRICE:
+                            out.append(row)
+        return out
+
+    def _finviz_source(self, sym: str) -> list:
+        try:
+            import swr
+            fv = (swr.peek("fviz:earn") or {}).get(sym)
+        except Exception:  # noqa: BLE001
+            fv = None
+        if not (fv and fv.get("date")):
+            return []
+        t = str(fv.get("time") or "").lower()
+        return [{"vendor": "FINVIZ", "date": str(fv["date"])[:10], "session": "BMO" if "pre" in t or "bmo" in t else "AMC" if "after" in t or "amc" in t else "UNKNOWN"}]
+
     def calendar(self) -> list:
         seen = {}
+        for r in self._uw_calendar_cache():
+            s = (r.get("symbol") or "").upper()
+            if s and s not in seen:                                # the earliest date of a symbol wins
+                sess = r.get("reporting_time") or "UNKNOWN"
+                seen[s] = {"symbol": s, "company": r.get("company"), "date": r["date"], "session": sess, "source": "uw_calendar_cache",
+                           "sources": [{"vendor": "UW", "date": r["date"], "session": sess}] + self._finviz_source(s)}
         for m, (res, _) in self._scans().items():
             for r in res.get("rows") or []:
                 s = (r.get("symbol") or "").upper()
@@ -147,16 +192,180 @@ class ProdAdapters(Adapters):
     def smart_move_plan(self, events: list, now: datetime) -> Optional[dict]:
         return self.smart.plan(events, now) if self.smart else None
 
+    def app_requests_today(self) -> Optional[int]:
+        try:
+            import unusualwhales_service as uw
+            sp = uw._spent
+            return int(sp["count"]) if sp.get("day") == uw._today() else 0
+        except Exception:  # noqa: BLE001
+            return None
+
+    def smart_move_details(self, symbol: str, d: str) -> Optional[dict]:
+        return self.smart.details(symbol, d) if self.smart and hasattr(self.smart, "details") else None
+
+    # ------------------------------------------------------------ evidence (cache reads only)
+    def _cache_snapshot(self) -> dict:
+        """One shallow copy of the in-memory response cache, reused for 20 s: an evidence scan over hundreds of events must not copy a cache of thousands of entries per event. Retries if the app mutates it meanwhile."""
+        t = time.time()
+        if getattr(self, "_snap", None) is not None and t - self._snap[0] < 20:
+            return self._snap[1]
+        import live_market_service as lms
+        for _ in range(5):
+            try:
+                data = dict(lms.cache._data)
+                break
+            except RuntimeError:                                  # dictionary changed size during iteration
+                continue
+        else:
+            data = {}
+        self._snap = (t, data)
+        return data
+
+    def _uw_cached(self, prefix: str) -> list:
+        """Every cached Unusual Whales response whose key starts with prefix, freshest first. Reads the in-memory cache; a miss is a miss and never a request."""
+        try:
+            data = self._cache_snapshot()
+        except Exception:  # noqa: BLE001
+            return []
+        hits = [(v[0], v[1]) for k, v in data.items() if k.startswith(prefix) and isinstance(v, tuple) and isinstance(v[1], dict) and v[1].get("status") == "OK"]
+        return [p for _, p in sorted(hits, key=lambda x: -x[0])]
+
+    def evidence(self, symbol: str, d: str) -> list:
+        import hashlib
+        sym = symbol.upper()
+        items: list = []
+        # 1. the scored inputs the formula models read: earn:equity:{SYM}.params, each with its own bias in -1..+1
+        try:
+            import swr
+            from . import evidence as EV
+            eq = swr.peek("earn:equity:%s" % sym)
+            for p in (eq or {}).get("params") or []:
+                name = str(p.get("name") or p.get("key") or "")
+                kind = EV.kind_of_param(name)
+                b = p.get("bias")
+                if kind and isinstance(b, (int, float)) and not isinstance(b, bool):
+                    items.append({"kind": kind, "provider": "earn:equity", "ext_id": name, "occurred_at": None, "title": p.get("label") or name, "summary": p.get("detail") or p.get("why"),
+                                  "data": {"bias": round(float(b), 4), "weight": p.get("weight")}, "provider_structured": True})
+        except Exception:  # noqa: BLE001
+            pass
+        # 2. headlines already cached for this symbol
+        try:
+            import unusualwhales_service as uw
+            seen = set()
+            for payload in self._uw_cached("uw:news:%s:" % sym):
+                for r in uw._rows(payload)[:30]:
+                    head = str(r.get("headline") or r.get("title") or "").strip()
+                    if not head:
+                        continue
+                    ext = str(r.get("id") or hashlib.sha1((head + str(r.get("created_at"))).encode()).hexdigest()[:16])
+                    if ext in seen:
+                        continue
+                    seen.add(ext)
+                    low = head.lower()
+                    guide = any(w in low for w in ("guidance", "outlook", "raises forecast", "lowers forecast", "cuts forecast", "preannounce", "pre-announce", "restat", "withdraws"))
+                    items.append({"kind": "NEWS", "provider": "UW", "ext_id": ext, "occurred_at": str(r.get("created_at") or "") or None, "title": head[:300], "summary": None,
+                                  "data": {"sentiment": r.get("sentiment"), "source": r.get("source"), "is_major": bool(r.get("is_major")), "guidance_keyword": guide}, "provider_structured": False})
+            # 3. the options tape already cached for this symbol, summarised (a lean of -1..+1 plus the numbers behind it)
+            import uw_flow_service as fs
+            prints = []
+            for payload in self._uw_cached("uw:flowrecent:%s:" % sym)[:1]:
+                prints = [fs._print_row(r) for r in uw._rows(payload)]
+            if prints:
+                total = sum(p.get("premium") or 0 for p in prints)
+                bull = sum(p.get("premium") or 0 for p in prints if p.get("sentiment") == "BULLISH")
+                share = round(100 * bull / total, 1) if total else None
+                items.append({"kind": "OPTIONS_FLOW", "provider": "UW", "ext_id": "flow-recent", "occurred_at": max((p.get("time") or "" for p in prints), default=None) or None,
+                              "title": "Options tape summary", "summary": None,
+                              "data": {"total_premium": round(total, 0), "bullish_share": share, "prints": len(prints), "sweeps": sum(1 for p in prints if p.get("kind") == "SWEEP"),
+                                       "bias": None if share is None else round((share - 50) / 50, 2)}, "provider_structured": True})
+        except Exception:  # noqa: BLE001
+            pass
+        return items
+
+    # ------------------------------------------------------------ read-only compatibility probe
+    NEEDS = {"model_scan_rows": ("symbol", "signal", "score", "coverage", "date"), "uw_news_rows": ("headline", "created_at", "sentiment"),
+             "uw_flow_rows": ("premium", "tags", "option_type"), "uw_calendar_rows": ("symbol", "report_time", "full_name"), "finviz_rows": ("date", "time"), "equity_params": ("name", "bias")}
+
+    def cache_probe(self) -> dict:
+        """Shapes only (field names and types, counts), never values: whether the live caches hold what each reader needs. Cache reads only; makes no request."""
+        out: dict = {}
+
+        def fields(rows):
+            seen: dict = {}
+            for r in rows[:25]:
+                if isinstance(r, dict):
+                    for k, v in r.items():
+                        seen.setdefault(k, type(v).__name__)
+            return seen
+
+        def check(name, rows):
+            fs = fields(rows)
+            missing = [k for k in self.NEEDS[name] if k not in fs]
+            return {"rows_sampled": min(len(rows), 25), "fields": sorted(fs), "missing_fields": missing, "compatible": bool(rows) and not missing}
+        scans = {}
+        try:
+            for m, (res, held) in self._scans().items():
+                scans[m] = dict(check("model_scan_rows", res.get("rows") or []), rows=len(res.get("rows") or []), built_at=_iso(held))
+        except Exception as e:  # noqa: BLE001
+            scans["error"] = type(e).__name__
+        out["model_scan_caches"] = {"present": sorted(k for k in scans if k != "error"), "absent": sorted(m for m in MODEL_KEYS if m not in scans), "detail": scans}
+        try:
+            import swr
+            eq = [(k, v[1]) for k, v in list(swr._values.items()) if k.startswith("earn:equity:")]
+            params = [p for _, v in eq[:25] for p in ((v or {}).get("params") or [])]
+            from . import evidence as EV
+            mapped = sorted({EV.kind_of_param(str(p.get("name") or p.get("key") or "")) or "UNMAPPED:" + str(p.get("name") or p.get("key")) for p in params})
+            out["earn_equity"] = dict(check("equity_params", [dict(p, name=p.get("name") or p.get("key")) for p in params]), symbols_cached=len(eq), evidence_kinds_mapped=mapped)
+            fv = swr.peek("fviz:earn")
+            out["finviz_cache"] = dict(check("finviz_rows", list(fv.values()) if isinstance(fv, dict) else []), symbols=len(fv) if isinstance(fv, dict) else 0, present=isinstance(fv, dict))
+        except Exception as e:  # noqa: BLE001
+            out["earn_equity"] = {"error": type(e).__name__}
+        try:
+            import unusualwhales_service as uw
+            data = self._cache_snapshot()
+            news = [uw._rows(v[1]) for k, v in data.items() if k.startswith("uw:news:") and isinstance(v, tuple) and isinstance(v[1], dict) and v[1].get("status") == "OK"]
+            flow = [uw._rows(v[1]) for k, v in data.items() if k.startswith("uw:flowrecent:") and isinstance(v, tuple) and isinstance(v[1], dict) and v[1].get("status") == "OK"]
+            cal_keys = sorted(k for k in data if k.startswith("uwcal:"))
+            cal_rows = [r for k in cal_keys for r in (uw._rows(data[k][1]) if isinstance(data[k], tuple) and isinstance(data[k][1], dict) else [])]
+            out["uw_news"] = dict(check("uw_news_rows", [r for rows in news for r in rows]), symbols_cached=len(news))
+            out["uw_flow"] = dict(check("uw_flow_rows", [r for rows in flow for r in rows]), symbols_cached=len(flow))
+            wanted = []
+            d0 = self.clock().date()
+            for off in range(0, self.calendar_days + 1):
+                d = date.fromordinal(d0.toordinal() + off)
+                if d.weekday() < 5:
+                    wanted.append(d.isoformat())
+            have = {k.rsplit(":", 1)[1] for k in cal_keys}
+            out["uw_calendar"] = dict(check("uw_calendar_rows", cal_rows), dates_cached=len(have & set(wanted)), dates_wanted=len(wanted), dates_missing=sorted(set(wanted) - have)[:40])
+        except Exception as e:  # noqa: BLE001
+            out["uw_cache"] = {"error": type(e).__name__}
+        out["smart_move"] = self.smart.status() if self.smart else {"engine_installed": False}
+        out["all_readers_compatible"] = all(v.get("compatible") for k, v in out.items() if isinstance(v, dict) and "compatible" in v)
+        return out
+
+    def model_sources(self) -> dict:
+        if getattr(self, "_msrc", None) is None:
+            import importlib
+            import inspect
+            out = {}
+            for m, meta in MODEL_META.items():
+                try:
+                    out[m] = inspect.getsource(importlib.import_module(meta["module"]))
+                except Exception:  # noqa: BLE001
+                    out[m] = ""
+            self._msrc = out
+        return self._msrc
+
     # ------------------------------------------------------------ provider paths (only through ProviderAccess)
     def refresh_calendar(self) -> list:
         import uw_earnings_calendar as cal                         # has its own UW gate and per-date cache
-        res = cal.calendar(days=self.days)
+        res = cal.calendar(days=self.calendar_days)
         if res.get("status") != "OK":
             raise RuntimeError("calendar refresh returned %s" % res.get("status"))
         fmap = {}
         try:
-            import finviz_service as fv                            # a second, independent vendor for verification
-            fmap = fv.earnings_map() or {}
+            import swr                                             # a second, independent vendor, read from its cache ONLY: earnings_map() would fetch one page per symbol on a cold cache
+            fmap = swr.peek("fviz:earn") or {}
         except Exception:  # noqa: BLE001
             fmap = {}
         rows = []

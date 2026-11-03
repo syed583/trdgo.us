@@ -7,20 +7,29 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Optional
 
-ALERT_RULES = ("NEW_BUY_SELL", "DIRECTION_CHANGE", "STRONG_AGREEMENT", "DATE_CHANGE", "STALE_OR_MISSING_EVIDENCE", "SCANNER_FAILURE")
+ALERT_RULES = ("NEW_BUY_SELL", "DIRECTION_CHANGE", "STRONG_AGREEMENT", "MODEL_DISAGREEMENT", "NEW_EARNINGS", "DATE_CHANGE", "STALE_OR_MISSING_EVIDENCE", "NEWS_OR_GUIDANCE", "UNUSUAL_OPTIONS_FLOW",
+               "OUTCOME_VERIFIED", "APPROVAL_EXPIRING", "SCANNER_FAILURE")
 
 # Provider requests the MONITOR itself may start (cache reads cost none). Measured/assumed per action; the budget check and the estimator use the same numbers.
-COST_CALENDAR_REFRESH = 20       # uw_earnings_calendar.calendar(): premarket + afterhours for each weekday in the 14-day window (about 10 weekdays); cached dates cost 0
-COST_EVENT_REFRESH = 15          # ASSUMPTION, to be measured on the first authorised run: earnings_equity_service.get_analysis + earnings_trade_service.get_summary fan out to estimates, peers, dark pool, flow, history
-COST_OUTCOME_VERIFY = 2          # earnings_trade_service._historical_moves: earnings history + daily candles for ONE symbol
-HARD_DAILY_CAP = 1000            # no approval can raise the monitor above this
+COST_CALENDAR_REFRESH = 46       # MEASURED (offline fan-out audit, cold cache): uw_earnings_calendar.calendar(days=30) = 23 weekdays x (premarket + afterhours); dates already cached cost 0
+COST_EVENT_REFRESH = 61          # MEASURED LOWER BOUND (offline fan-out audit, cold cache, empty payloads): get_analysis 31 + get_summary 131 less the 80 calendar-date fetches shared with the calendar cache = 61. With real data
+                                 # (per-expiry fan-out) the true figure can be higher; the first authorised run records the real count in the usage table
+COST_OUTCOME_VERIFY = 2          # earnings_trade_service._historical_moves: measured 1 request (earnings history) cold; 2 allows for the daily-candle read
+HARD_DAILY_CAP = 1000            # DEFAULT of Config.hard_daily_cap: the monitor's OWN operational safety guard against a runaway loop. It is not a provider limit (the provider has no daily or per-minute limit; its one limit is 3 concurrent REST requests across all machines).
+                                 # Changing it is an owner decision made in em_data\config.json; an approval file alone cannot raise it.
 
 
 @dataclass
 class Config:
+    horizon_days: int = 30                       # the rolling calendar window
+    model_window_days: int = 15                  # the eight model tabs score the next 15 days (their scan caches are keyed :15); later events show OUT_OF_WINDOW, never PENDING-as-if-neutral
     calendar_every_h: float = 6.0
     eligibility_every_min: float = 30.0
+    evidence_scan_every_min: float = 15.0        # cached-evidence change detection (cache reads only)
+    news_flow_every_min: float = 60.0            # news / options-flow checks; provider refresh of them needs its own approval
     earnings_day_every_min: float = 15.0
+    finnhub_verify_max_per_refresh: int = 0      # third-vendor date checks (1 Finnhub request each) for NEW or CHANGED events only; 0 = off
+    inflight_wait_s: int = 60                    # how long a provider call waits for the single in-flight slot before it is refused
     bmo_window_et: tuple = ("05:30", "10:30")
     amc_window_et: tuple = ("15:00", "20:30")
     outcome_delay_min: int = 45                  # after the reaction session closes
@@ -38,6 +47,17 @@ class Config:
     strong_agreement_min_models: int = 3
     strong_agreement_share: float = 0.75
     comparable_max_spread_h: float = 24.0
+    new_event_alert_burst: int = 25              # more new events than this in one scan is a widened window, not 'newly announced' news
+    hard_daily_cap: int = HARD_DAILY_CAP         # configurable operational guard (see HARD_DAILY_CAP); 1..100000
+    approval_warn_days: int = 3                  # an approval that ends within this many days raises one alert a day
+    external_reserve: int = 250                  # LEAN planning baseline: requests/day kept free for the app's existing warmers, Options Flow and Smart Move collection (replace with the measured figure)
+    plan_driven_refresh: bool = False            # OFF by default. True (set in em_data\config.json) lets a REFRESH approval that allows the 'event' purpose also refresh the funded events ahead of their day; False = only on the earnings day itself
+    refresh_batch: int = 4                       # event refreshes per EVENT_REFRESH job (they run one at a time through the shared gate)
+    refresh_plan_every_min: float = 60.0
+    event_refresh_every_min: float = 15.0
+    flow_alert_premium: float = 1_000_000.0      # an options-flow alert needs at least this much premium on one side ...
+    flow_alert_share: float = 0.70               # ... with this share of it pointing the same way ...
+    flow_alert_min_prints: int = 5               # ... across at least this many prints
     alert_cooldown_min: int = 360                # the same rule for the same event/model is not repeated inside this window
     alert_hourly_cap: int = 20                   # more than this many ordinary alerts in an hour are suppressed and summarised once
     flap_changes_24h: int = 3                    # a model changing its call this often in 24 h is reported as unstable, not alerted every time

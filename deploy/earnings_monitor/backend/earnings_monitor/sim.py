@@ -72,12 +72,24 @@ class SimAdapters(Adapters):
                                                    "source": source, "engine_version": engine_version}
 
     plan = None                                      # scripted answer of smart_move_plan (None = engine not installed)
+    ev_items: dict = {}                              # scripted cache-only evidence: {SYMBOL: [item, ...]}
+    sources: dict = {}                               # scripted model source text: {model: "..."}
+    smd: dict = {}                                   # scripted Smart Move details: {(SYMBOL, date): {...}}
+
+    def evidence(self, symbol, d):
+        return [dict(i) for i in self.ev_items.get(symbol, [])]
+
+    def model_sources(self):
+        return dict(self.sources)
+
+    def smart_move_details(self, symbol, d):
+        return self.smd.get((symbol, d))
 
     def smart_move_plan(self, events, now):
         return self.plan
 
 
-def write_approval(d: Path, now: datetime, mode: str = "refresh", budget: int = 450, events: int = 20, days: int = 14, purposes=("calendar", "event", "outcome"), **over) -> Path:
+def write_approval(d: Path, now: datetime, mode: str = "refresh", budget: int = 700, events: int = 8, days: int = 14, purposes=("calendar", "event", "outcome"), **over) -> Path:
     a = {"approved_by": "owner", "approved_at": now.isoformat(), "expires_at": (now + timedelta(days=days)).isoformat(), "mode": mode, "scheduling_approved": True,
          "provider_authorization": mode == "refresh", "kill_switch_acknowledged": True, "daily_request_budget": budget, "expected_events_per_day": events, "max_inflight": 1,
          "refresh_calendar": "calendar" in purposes, "refresh_event_evidence": "event" in purposes, "verify_outcomes": "outcome" in purposes}

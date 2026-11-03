@@ -17,7 +17,7 @@ from typing import Callable, Optional
 
 from .store import Store, iso
 
-COOLDOWN_RULES = ("DIRECTION_CHANGE", "STRONG_AGREEMENT", "STALE_OR_MISSING_EVIDENCE")
+COOLDOWN_RULES = ("DIRECTION_CHANGE", "STRONG_AGREEMENT", "MODEL_DISAGREEMENT", "STALE_OR_MISSING_EVIDENCE", "NEWS_OR_GUIDANCE", "UNUSUAL_OPTIONS_FLOW")
 NEVER_CAPPED = ("SCANNER_FAILURE", "ALERT_SUMMARY")
 
 
@@ -42,6 +42,16 @@ def build(change: dict, event: dict, pred_ts: Optional[str], cfg, extra: Optiona
         add("DIRECTION_CHANGE", "%s changed from %s to %s (%s)" % (model, old, new, (change.get("detail") or {}).get("subtype", "")), (old, new, pred_ts))
     elif kind == "AGREEMENT_CHANGED" and new == "STRONG":
         add("STRONG_AGREEMENT", "strong agreement across comparable models: %s" % (change.get("detail") or {}).get("majority"), ((change.get("detail") or {}).get("majority"), (change.get("detail") or {}).get("comparable")))
+    elif kind == "NEW_EVENT" and not (change.get("detail") or {}).get("reactivated") and not (change.get("detail") or {}).get("baseline"):
+        add("NEW_EARNINGS", "newly announced earnings: %s" % new, ("new", new))
+    elif kind == "AGREEMENT_CHANGED" and new == "CONFLICT":
+        add("MODEL_DISAGREEMENT", "comparable models now disagree (BUY and SELL both present)", ("conflict", (change.get("detail") or {}).get("comparable")))
+    elif kind == "OUTCOME_AVAILABLE":
+        add("OUTCOME_VERIFIED", "the real post-earnings reaction is verified: %s" % new, ("outcome", new))
+    elif kind in ("EVIDENCE_NEW", "EVIDENCE_CHANGED") and (change.get("detail") or {}).get("alert") == "NEWS_OR_GUIDANCE":
+        add("NEWS_OR_GUIDANCE", (change.get("detail") or {}).get("reason") or "significant news or guidance evidence", ((change.get("detail") or {}).get("ext_id"), (change.get("detail") or {}).get("fp")))
+    elif kind in ("EVIDENCE_NEW", "EVIDENCE_CHANGED") and (change.get("detail") or {}).get("alert") == "UNUSUAL_OPTIONS_FLOW":
+        add("UNUSUAL_OPTIONS_FLOW", (change.get("detail") or {}).get("reason") or "unusual options flow", ((change.get("detail") or {}).get("fp"),))
     elif kind in ("EVENT_RESCHEDULED", "SESSION_CHANGED", "EVENT_CANCELED"):
         add("DATE_CHANGE", "earnings %s: %s -> %s" % ({"EVENT_RESCHEDULED": "date changed", "SESSION_CHANGED": "session changed", "EVENT_CANCELED": "event canceled"}[kind], old, new), (kind, old, new))
     elif kind == "VERIFICATION_CHANGED" and new == "CONFLICT":
@@ -64,6 +74,14 @@ def scanner_failure(now: datetime, job_kind: str, error: str, cfg, event_id=None
         return None
     return {"rule": "SCANNER_FAILURE", "event_id": event_id, "symbol": None, "model": None, "dedupe_key": _key("SCANNER_FAILURE", job_kind, error[:80], now.strftime("%Y-%m-%d-%H")),
             "payload": {"rule": "SCANNER_FAILURE", "reason": "scanner job %s failed: %s" % (job_kind, error[:200]), "job": job_kind, "detected_at": iso(now), "prediction_ts": None, "model": None}}
+
+
+def approval_expiring(now: datetime, expires_at: str, cfg) -> Optional[dict]:
+    """One alert a day while the owner's approval is about to end (when it does, the monitor stops: nothing is renewed automatically)."""
+    if not cfg.alert_rules.get("APPROVAL_EXPIRING", {}).get("enabled", True):
+        return None
+    return {"rule": "APPROVAL_EXPIRING", "event_id": None, "symbol": None, "model": None, "dedupe_key": _key("APPROVAL_EXPIRING", expires_at, now.strftime("%Y-%m-%d")),
+            "payload": {"rule": "APPROVAL_EXPIRING", "reason": "the monitor approval ends %s; the scheduler stops until a new approval is signed" % expires_at, "expires_at": expires_at, "detected_at": iso(now), "prediction_ts": None, "model": None}}
 
 
 def missing_evidence(now: datetime, event: dict, model: Optional[str], why: str, cfg) -> Optional[dict]:

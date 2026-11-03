@@ -15,7 +15,7 @@ UTC = timezone.utc
 VALID_SIGNALS = ("BUY", "SELL", "NEUTRAL", "NO_TRADE")
 DIRECTIONAL = ("BUY", "SELL")
 CHANGE_KINDS = ("NEW_EVENT", "EVENT_RESCHEDULED", "SESSION_CHANGED", "EVENT_CANCELED", "VERIFICATION_CHANGED", "NEW_PREDICTION", "SIGNAL_CHANGED", "AGREEMENT_CHANGED", "COVERAGE_IMPROVED",
-                "COVERAGE_DETERIORATED", "PREDICTION_STALE", "PREDICTION_REFRESHED", "RESULT_PUBLISHED", "OUTCOME_AVAILABLE", "OUTCOME_UNVERIFIED")
+                "COVERAGE_DETERIORATED", "PREDICTION_STALE", "PREDICTION_REFRESHED", "EVIDENCE_NEW", "EVIDENCE_CHANGED", "RESULT_PUBLISHED", "OUTCOME_AVAILABLE", "OUTCOME_UNVERIFIED")
 
 
 def direction_class(signal: Optional[str]) -> Optional[str]:
@@ -137,6 +137,8 @@ def display_status(state: dict) -> str:
         if state.get("stale"):
             return "STALE"
         return "NO_TRADE" if sig == "NO_TRADE" else sig
+    if st == "OUT_OF_WINDOW":
+        return "OUT_OF_WINDOW"
     if st == "PENDING":
         return "PENDING"
     if st == "INSUFFICIENT_DATA":

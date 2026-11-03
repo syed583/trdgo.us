@@ -7,6 +7,7 @@ import os
 import threading
 import time
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from typing import Callable, Optional
 
 from . import alerts as A
@@ -18,11 +19,15 @@ from .service import Monitor, in_session_window, outcome_ready_at, today_et
 from .store import Store, iso, parse
 
 UTC = timezone.utc
-KINDS = ("CALENDAR_REFRESH", "ELIGIBILITY_CHECK", "EARNINGS_DAY_CHECK", "OUTCOME_VERIFY", "SMART_MOVE_PLAN", "ALERT_DISPATCH")
+KINDS = ("CALENDAR_REFRESH", "ELIGIBILITY_CHECK", "EVIDENCE_SCAN", "NEWS_FLOW_CHECK", "REFRESH_PLAN", "EVENT_REFRESH", "EARNINGS_DAY_CHECK", "OUTCOME_VERIFY", "SMART_MOVE_PLAN", "ALERT_DISPATCH")
+# Two lanes with their own cross-process locks: a long scan can no longer keep alert delivery, outcome checks or planning waiting. Scans never overlap each other (one heavy lock), and alert delivery never overlaps itself.
+LANE_OF = {"CALENDAR_REFRESH": "heavy", "ELIGIBILITY_CHECK": "heavy", "EVIDENCE_SCAN": "heavy", "NEWS_FLOW_CHECK": "heavy", "REFRESH_PLAN": "heavy", "EVENT_REFRESH": "heavy", "EARNINGS_DAY_CHECK": "heavy",
+           "OUTCOME_VERIFY": "light", "SMART_MOVE_PLAN": "light", "ALERT_DISPATCH": "light"}
+LANES = ("heavy", "light")
 MAX_OUTCOME_TRIES = 8
 
 
-def events_processed(res):
+def events_processed(res) -> Optional[int]:
     """How many events a job looked at, read from its own result (None when the job has no per-event work)."""
     if not isinstance(res, dict):
         return None
@@ -36,8 +41,8 @@ def events_processed(res):
 
 
 def run_meta(job: dict, t_start: datetime, t_end: datetime, res) -> dict:
-    """Timing facts stored with every run: execution time and the time the job waited in the queue (start minus the moment it was due)."""
-    return {"job_id": job["id"], "queue_wait_ms": max(0, int((t_start - parse(job["run_after"])).total_seconds() * 1000)),
+    """Timing facts stored with every run: real start/finish, execution time and the time the job waited in the queue (start minus the moment it was due)."""
+    return {"job_id": job["id"], "lane": job.get("lane"), "queue_wait_ms": max(0, int((t_start - parse(job["run_after"])).total_seconds() * 1000)),
             "duration_ms": max(0, int((t_end - t_start).total_seconds() * 1000)), "events_processed": events_processed(res)}
 
 
@@ -46,8 +51,9 @@ def _bucket(now: datetime, seconds: float) -> int:
 
 
 class Scheduler:
-    def __init__(self, store: Store, cfg: C.Config, monitor: Monitor, access: ProviderAccess, lock: ScanLock, gate_fn: Callable[[datetime], GateState], worker_id: Optional[str] = None):
+    def __init__(self, store: Store, cfg: C.Config, monitor: Monitor, access: ProviderAccess, lock: ScanLock, gate_fn: Callable[[datetime], GateState], worker_id: Optional[str] = None, light_lock: Optional[ScanLock] = None):
         self.store, self.cfg, self.mon, self.access, self.lock, self.gate_fn = store, cfg, monitor, access, lock, gate_fn
+        self.locks = {"heavy": lock, "light": light_lock or ScanLock(Path(lock.path).with_name("light.lock"))}
         self.worker_id = worker_id or "w%d" % os.getpid()
 
     # ------------------------------------------------------------ enqueue
@@ -62,11 +68,19 @@ class Scheduler:
 
         def enq(kind, key, payload=None):
             nonlocal n
-            if self.store.enqueue(kind, now, payload, dedupe_key=key, max_attempts=c.max_attempts, now=now):
+            if self.store.enqueue(kind, now, payload, dedupe_key=key, max_attempts=c.max_attempts, now=now, lane=LANE_OF[kind]):
                 n += 1
 
         enq("CALENDAR_REFRESH", "CAL:%d" % _bucket(now, c.calendar_every_h * 3600))
         enq("ELIGIBILITY_CHECK", "ELIG:%d" % _bucket(now, c.eligibility_every_min * 60))
+        enq("EVIDENCE_SCAN", "EVD:%d" % _bucket(now, c.evidence_scan_every_min * 60))                  # cached-evidence change detection: cache reads only
+        enq("NEWS_FLOW_CHECK", "NEWS:%d" % _bucket(now, c.news_flow_every_min * 60))
+        enq("REFRESH_PLAN", "PLAN:%d" % _bucket(now, c.refresh_plan_every_min * 60))                     # planning only: no request
+        if c.plan_driven_refresh and state.mode == "REFRESH" and "event" in state.purposes:
+            enq("EVENT_REFRESH", "EVR:%d" % _bucket(now, c.event_refresh_every_min * 60))
+        exp = (state.approval or {}).get("expires_at")
+        if exp and parse(exp) - now <= timedelta(days=c.approval_warn_days):                              # the owner's approval is about to end: say so, once a day
+            A.enqueue(self.store, now, [A.approval_expiring(now, exp, c)], c)
         enq("ALERT_DISPATCH", "ALR:%d" % _bucket(now, 300))
         enq("SMART_MOVE_PLAN", "SMP:%d" % _bucket(now, 3600))                     # offline planning only: records what the separately authorised collector would need
         active_today = [e for e in self.store.q("SELECT * FROM events WHERE status='ACTIVE' AND earnings_date=?", (today_et(now).isoformat(),)) if in_session_window(c, now, e)]
@@ -77,7 +91,7 @@ class Scheduler:
                 tries = int(self.store.kv_get("outcome_tries:%d" % ev["id"], 0))
                 if tries < MAX_OUTCOME_TRIES:
                     key = "OUT:%d:%d" % (ev["id"], _bucket(now, 3600))
-                    if self.store.enqueue("OUTCOME_VERIFY", now, {"event_id": ev["id"]}, dedupe_key=key, max_attempts=c.max_attempts, now=now):
+                    if self.store.enqueue("OUTCOME_VERIFY", now, {"event_id": ev["id"]}, dedupe_key=key, max_attempts=c.max_attempts, now=now, lane="light"):
                         self.store.kv_set("outcome_tries:%d" % ev["id"], tries + 1)
                         n += 1
         return {"scheduling": state.mode, "enqueued": n}
@@ -89,6 +103,14 @@ class Scheduler:
             return self.mon.calendar_refresh(now)
         if k == "ELIGIBILITY_CHECK":
             return self.mon.eligibility_check(now)
+        if k == "EVIDENCE_SCAN":
+            return self.mon.evidence_scan(now)
+        if k == "NEWS_FLOW_CHECK":
+            return self.mon.news_flow_check(now)
+        if k == "REFRESH_PLAN":
+            return self.mon.refresh_plan(now)
+        if k == "EVENT_REFRESH":
+            return self.mon.event_refresh(now)
         if k == "EARNINGS_DAY_CHECK":
             return self.mon.earnings_day_check(now)
         if k == "OUTCOME_VERIFY":
@@ -99,21 +121,22 @@ class Scheduler:
             return self.mon.alert_dispatch(now)
         raise ValueError("unknown job kind %s" % k)
 
-    def run_once(self, now: datetime) -> dict:
+    def run_once(self, now: datetime, lane: str = "heavy") -> dict:
         state = self.gate_fn(now)
         self.access.state = state
         if not state.scheduling_on:
             return {"ran": False, "reason": "GATE_OFF", "gate": state.reasons}
-        if not self.lock.acquire():
+        lock = self.locks[lane]
+        if not lock.acquire():
             return {"ran": False, "reason": "SCAN_LOCK_HELD"}
         try:
             recovered = self.store.recover_expired(now)
             if recovered:
                 self.store.audit(now, self.worker_id, "RECOVERED_JOBS", {"count": recovered})
-            job = self.store.claim(now, self.worker_id, self.cfg.lease_s)
+            job = self.store.claim(now, self.worker_id, self.cfg.lease_s, lane)
             if job is None:
                 return {"ran": False, "reason": "NO_DUE_JOB", "recovered": recovered}
-            t_start = self.mon.clock()                                           # the loop's `now` is one instant for a whole pass: real start / end times come from the clock itself
+            t_start = self.mon.clock()                                           # real start / end times of the job (the loop's `now` is one instant for the whole pass)
             run_id = self.store.start_run(job["kind"], t_start)
             try:
                 res = self._handler(job, now)
@@ -139,12 +162,12 @@ class Scheduler:
             self.store.finish_run(run_id, t_end, True, dict(res if isinstance(res, dict) else {"result": res}, _run=run_meta(job, t_start, t_end, res)))
             return {"ran": True, "kind": job["kind"], "result": res}
         finally:
-            self.lock.release()
+            lock.release()
 
-    def run_pending(self, now: datetime, max_jobs: int = 25) -> list:
+    def run_pending(self, now: datetime, max_jobs: int = 25, lane: str = "heavy") -> list:
         out = []
         for _ in range(max_jobs):
-            r = self.run_once(now)
+            r = self.run_once(now, lane)
             if not r.get("ran"):
                 if r.get("reason") == "SCAN_LOCK_HELD":
                     out.append(r)
@@ -159,7 +182,7 @@ def status_report(store: Store, cfg: C.Config, now: datetime) -> dict:
     return {"scheduling": gate.get("mode", OFF), "gate_reasons": gate.get("reasons", ["NEVER_EVALUATED"]), "gate_checked_at": gate.get("checked_at"), "approval": gate.get("approval", {}),
             "last_success": {k: (v or {}).get("finished_at") for k, v in last.items()}, "last_any_success": max([v["finished_at"] for v in last.values() if v] or [None], default=None),
             "queue": store.job_counts(), "provider_requests_today": store.usage(day_key(now)), "daily_budget": gate.get("daily_budget", 0), "breakers": store.kv_get("breaker", {}) or {},
-            "heartbeat": store.kv_get("heartbeat"), "intervals": {"calendar_h": cfg.calendar_every_h, "eligibility_min": cfg.eligibility_every_min, "earnings_day_min": cfg.earnings_day_every_min},
+            "heartbeat": store.kv_get("heartbeat"), "intervals": {"calendar_h": cfg.calendar_every_h, "eligibility_min": cfg.eligibility_every_min, "evidence_scan_min": cfg.evidence_scan_every_min, "news_flow_min": cfg.news_flow_every_min, "refresh_plan_min": cfg.refresh_plan_every_min, "event_refresh_min": cfg.event_refresh_every_min, "earnings_day_min": cfg.earnings_day_every_min},
             "pending_alerts": (store.one("SELECT COUNT(*) n FROM alerts WHERE status='PENDING'") or {}).get("n", 0)}
 
 
@@ -170,22 +193,28 @@ class Runner:
         self.s, self.clock, self.every_s = sched, clock, every_s
         self._stop = threading.Event()
         self.thread: Optional[threading.Thread] = None
+        self.light_thread: Optional[threading.Thread] = None
 
     def start(self):
-        self.thread = threading.Thread(target=self._loop, name="earnings-monitor", daemon=True)
+        self.thread = threading.Thread(target=self._loop, args=("heavy",), name="earnings-monitor-scans", daemon=True)
+        self.light_thread = threading.Thread(target=self._loop, args=("light",), name="earnings-monitor-light", daemon=True)
         self.thread.start()
+        self.light_thread.start()
         return self
 
     def stop(self):
         self._stop.set()
 
-    def _loop(self):
+    def _loop(self, lane: str = "heavy"):
         while not self._stop.is_set():
             try:
                 now = self.clock()
-                self.s.store.kv_set("heartbeat", iso(now))
-                self.s.tick(now)
-                self.s.run_pending(now)
+                if lane == "heavy":
+                    self.s.store.kv_set("heartbeat", iso(now))
+                    self.s.tick(now)
+                else:
+                    self.s.store.kv_set("heartbeat_light", iso(now))
+                self.s.run_pending(self.clock(), lane=lane)
             except Exception as e:  # noqa: BLE001
                 try:
                     self.s.store.audit(self.clock(), "runner", "LOOP_ERROR", {"error": "%s: %s" % (type(e).__name__, e)})

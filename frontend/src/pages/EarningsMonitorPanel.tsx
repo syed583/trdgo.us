@@ -4,8 +4,8 @@ import { earningsMonitor } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import './smart-move.css';
 
-type Tab = 'upcoming' | 'models' | 'changes' | 'consensus' | 'accuracy' | 'health';
-const TABS: [Tab, string][] = [['upcoming', 'Upcoming Earnings'], ['models', 'All Models'], ['changes', 'Prediction Changes'], ['consensus', 'Model Consensus'], ['accuracy', 'Historical Accuracy'], ['health', 'Scanner Health']];
+type Tab = 'upcoming' | 'models' | 'smart' | 'changes' | 'evidence' | 'consensus' | 'accuracy' | 'health';
+const TABS: [Tab, string][] = [['upcoming', 'Upcoming Earnings'], ['models', 'All 9 Models'], ['smart', 'Smart Money Move'], ['changes', 'Prediction Changes'], ['evidence', 'News & Options Activity'], ['consensus', 'Model Consensus'], ['accuracy', 'Historical Accuracy'], ['health', 'Scanner Health']];
 
 export function fmtTime(iso?: string | null): string {
   if (!iso) return '—';
@@ -28,8 +28,9 @@ export function scanBadge(s: any): { text: string; tone: string } {
 }
 const LEVEL_TONE: Record<string, string> = { STRONG: 'green', WEAK: 'gray', CONFLICT: 'red', INSUFFICIENT: 'amber', NONE: 'gray' };
 const VER_TONE: Record<string, string> = { CONFIRMED: 'green', SINGLE_VENDOR: 'amber', CONFLICT: 'red', UNVERIFIED: 'gray' };
-const LABEL_TEXT: Record<string, string> = { NO_TRADE: 'NO TRADE', NO_VALID_PREDICTION: 'NO VALID PREDICTION', LOW_DATA: 'LOW DATA', PENDING: 'PENDING', STALE: 'STALE', NEUTRAL: 'NEUTRAL' };
+const LABEL_TEXT: Record<string, string> = { OUT_OF_WINDOW: 'OUTSIDE MODEL WINDOW', NO_TRADE: 'NO TRADE', NO_VALID_PREDICTION: 'NO VALID PREDICTION', LOW_DATA: 'LOW DATA', PENDING: 'PENDING', STALE: 'STALE', NEUTRAL: 'NEUTRAL' };
 const LABEL_HINT: Record<string, string> = {
+  OUT_OF_WINDOW: 'On the calendar, but further out than the models score. No prediction exists yet; this is not a neutral view.',
   NO_TRADE: 'A real call: every gate passed and the model says do nothing.',
   NO_VALID_PREDICTION: 'No usable call: data was missing or insufficient. Not a neutral view.',
   LOW_DATA: 'The model had too little data to call.', PENDING: 'The model has not scored this event yet.', STALE: 'The last call is older than the freshness limit.',
@@ -46,6 +47,7 @@ export function SignalCell({ c }: { c: any }) {
       <span className={cls} data-testid="cell-label" data-call={isCall ? 'yes' : 'no'}>{LABEL_TEXT[label] || label}</span>
       {c.status === 'VALID' && <div className="sm-q-muted">{c.score != null ? `score ${c.score} · ` : ''}{c.coverage_fraction != null ? `cov ${Math.round(c.coverage_fraction * 100)}%` : 'cov —'} · {c.age_h != null ? `${c.age_h} h old` : ''}</div>}
       {c.status === 'VALID' && c.source && <div className="sm-q-muted">{nice(c.source)}</div>}
+      {c.previous && <div className="sm-q-muted" data-testid="cell-previous">was {nice(c.previous.signal)}{c.previous.score != null ? ` (${c.previous.score})` : ''} · {fmtTime(c.previous.recorded_at)}{c.reason ? ` — ${c.reason}` : ''}</div>}
     </div>
   );
 }
@@ -75,6 +77,45 @@ function Sources() {
   );
 }
 
+const STAGE_TONE: Record<string, string> = { VERIFIED: 'green', COLLECTED: 'gray', DISCOVERED: 'gray' };
+
+function SmartMovePanel({ d }: { d: any }) {
+  const rows: any[] = d.rows || [];
+  return (
+    <div data-testid="smart-move-panel">
+      <div className="sm-q-muted" data-testid="sm-engine">{d.engine?.model_version}: {d.engine?.how_predictions_arise}. Counts: {Object.entries(d.counts || {}).map(([k, v]) => `${nice(k)} ${v}`).join(' · ') || 'none yet'}.</div>
+      {!rows.length && <div className="sm-none">No upcoming event is tracked yet.</div>}
+      <div className="sm-table-wrap"><table className="sm-table sm-q-table"><thead><tr><th>Event</th><th>Smart Money Move</th><th>Origin</th><th>Coverage</th><th>Evidence as of</th><th>Engine detail</th></tr></thead>
+        <tbody>{rows.map((r) => (
+          <tr key={r.id}><td><b>{r.symbol}</b><div className="sm-q-muted">{r.earnings_date} {r.session} · {r.days_to} d</div></td>
+            <td><SignalCell c={{ label: r.label, status: ['BUY', 'SELL', 'NO_TRADE', 'NEUTRAL'].includes(r.label) ? 'VALID' : r.label, signal: r.signal, coverage_fraction: null, age_h: r.age_h, source: r.source }} /></td>
+            <td data-testid="sm-origin">{r.origin === 'HISTORICAL_SNAPSHOT' ? <span className="sm-q-badge amber" title="A stored result of an earlier run, not a new live prediction">historical snapshot</span> : r.origin === 'LIVE_ENGINE' ? <span className="sm-q-badge green">live engine</span> : <span className="sm-q-muted">—</span>}</td>
+            <td>{r.coverage ?? '—'}</td><td>{r.as_of ? `${fmtTime(r.as_of)}${r.age_h != null ? ` (${r.age_h} h)` : ''}` : '—'}</td>
+            <td className="sm-q-muted">{r.details ? Object.entries(r.details).filter(([k]) => k !== 'evidence_retrieved').map(([k, v]) => `${nice(k)}: ${typeof v === 'object' ? JSON.stringify(v) : String(v)}`).join(' · ') : 'the engine has not scored this event'}</td></tr>))}</tbody></table></div>
+      <div className="sm-q-muted">{d.note}</div>
+      {d.plan?.requests_needed != null && <div className="sm-q-muted">Evidence request on file: {d.plan.requests_needed} provider request(s) for {d.plan.symbols?.length ?? 0} stock(s), waiting for the separately authorised collector.</div>}
+    </div>
+  );
+}
+
+function EvidencePanel({ d, symbol, setSymbol }: { d: any; symbol: string; setSymbol: (v: string) => void }) {
+  const rows: any[] = d.rows || [];
+  return (
+    <div data-testid="evidence-panel">
+      <div className="sm-filters"><input aria-label="Filter by symbol" placeholder="Symbol (all)" value={symbol} maxLength={12} onChange={(e) => setSymbol(e.target.value.toUpperCase())} />
+        <span className="sm-q-muted">{d.last_scan ? `Last evidence scan ${fmtTime(d.last_scan.at)}: ${d.last_scan.items} items, ${d.last_scan.new} new, ${d.last_scan.changed} changed` : 'The evidence scan has not run yet.'}</span></div>
+      <table className="sm-mini" data-testid="evidence-summary"><thead><tr><th>Evidence type</th><th>Collected</th><th>Verified (provider field)</th><th>Can change a score?</th></tr></thead>
+        <tbody>{(d.summary || []).map((k: any) => <tr key={k.kind}><td>{nice(k.kind)}</td><td>{k.collected}</td><td>{k.verified}</td><td>{k.feeds_a_score ? 'only if a model reads it' : 'never: shown here only'}</td></tr>)}</tbody></table>
+      {!rows.length && <div className="sm-none">No evidence items stored yet.</div>}
+      {rows.length > 0 && <div className="sm-table-wrap"><table className="sm-table sm-q-table"><thead><tr><th>Stock</th><th>Type</th><th>Item</th><th>Stage</th><th>Relevant to</th><th>Used by</th><th>Seen</th></tr></thead>
+        <tbody>{rows.map((r) => <tr key={r.id}><td><b>{r.symbol}</b></td><td>{nice(r.kind)}</td><td>{r.title}{r.data?.total_premium != null ? <div className="sm-q-muted">${Math.round(r.data.total_premium / 1000)}k premium · {r.data.bullish_share ?? '—'}% bullish · {r.data.prints} prints</div> : null}</td>
+          <td><span className={`sm-q-badge ${STAGE_TONE[r.stage] || 'gray'}`}>{nice(r.stage)}</span></td><td>{r.relevant_models.join(', ') || '—'}</td><td>{r.used_by_models.join(', ') || '—'}</td><td className="sm-q-muted">{fmtTime(r.last_seen)}</td></tr>)}</tbody></table></div>}
+      <div className="sm-q-muted">{d.note}</div>
+      {(d.unsupported || []).map((u: string) => <div key={u} className="sm-q-muted">• {u}</div>)}
+    </div>
+  );
+}
+
 function HealthPanel({ d }: { d: any }) {
   return (
     <div data-testid="health-panel">
@@ -85,6 +126,10 @@ function HealthPanel({ d }: { d: any }) {
         <div className="sm-card"><div className="sm-card-k">Provider requests today</div><div className="sm-card-v">{Object.values(d.provider_requests_today || {}).reduce((a: number, b: any) => a + Number(b || 0), 0) || d.provider_requests_today || 0}</div></div>
         <div className="sm-card"><div className="sm-card-k">Pending alerts</div><div className="sm-card-v">{d.pending_alerts ?? 0}</div></div>
       </div>
+      {d.approval_days_left != null && <div className={d.approval_days_left <= 3 ? 'sm-fresh stale' : 'sm-q-muted'} data-testid="approval-left" role={d.approval_days_left <= 3 ? 'alert' : undefined}>Owner approval ends {fmtTime(d.approval_expires_at)} ({d.approval_days_left} days left). When it ends the scheduler stops until a new approval is signed.</div>}
+      {d.usage_by_day?.length > 0 && <table className="sm-mini" data-testid="usage"><thead><tr><th>Day</th><th>Provider requests by the monitor</th><th>Failures</th></tr></thead><tbody>{d.usage_by_day.map((u: any) => <tr key={u.day}><td>{u.day}</td><td>{u.requests}</td><td>{u.failures}</td></tr>)}</tbody></table>}
+      {d.refresh_plan && <div data-testid="refresh-plan" className="sm-q-muted">Refresh plan ({d.refresh_plan.profile}): daily cap {d.refresh_plan.daily_cap}, reserved {d.refresh_plan.external_reserve} for the app's other collectors, {d.refresh_plan.calendar_reserve} for the calendar and {d.refresh_plan.outcome_reserve} for outcomes → {d.refresh_plan.event_slots} event refresh(es) fit; {d.refresh_plan.unfunded_count} of {d.refresh_plan.needing_refresh} events that need one do not. {d.refresh_plan.app_requests_today != null ? `The application has made ${d.refresh_plan.app_requests_today} request(s) today in total.` : ''}
+        {d.refresh_plan.unfunded?.length > 0 && <div>Not covered: {d.refresh_plan.unfunded.slice(0, 25).map((u: any) => `${u.symbol} ${u.earnings_date}`).join(', ')}{d.refresh_plan.unfunded_count > 25 ? ` and ${d.refresh_plan.unfunded_count - 25} more` : ''}</div>}</div>}
       <table className="sm-mini" data-testid="recent-runs"><thead><tr><th>Job</th><th>Started</th><th>Finished</th><th>Execution (ms)</th><th>Events processed</th><th>Waited in queue (ms)</th><th>Result</th></tr></thead>
         <tbody>{(d.recent_runs || []).map((r: any, i: number) => <tr key={i}><td>{nice(r.kind)}</td><td>{fmtTime(r.started_at)}</td><td>{r.finished_at ? fmtTime(r.finished_at) : '—'}</td>
           <td>{r.duration_ms != null ? r.duration_ms : <span className="sm-q-muted">not recorded</span>}</td><td>{r.events_processed ?? '—'}</td><td>{r.queue_wait_ms != null ? r.queue_wait_ms : '—'}</td>
@@ -93,7 +138,7 @@ function HealthPanel({ d }: { d: any }) {
       {d.dead_jobs?.length > 0 && <div className="sm-fresh stale" role="alert"><AlertTriangle size={14} /> {d.dead_jobs.length} job(s) gave up after repeated failures.</div>}
       {d.duplicate_active_events?.length > 0 && <div className="sm-fresh stale" role="alert"><AlertTriangle size={14} /> Duplicate active events: {d.duplicate_active_events.map((x: any) => x.symbol).join(', ')}</div>}
       {d.duplicate_prediction_rows > 0 && <div className="sm-fresh stale" role="alert"><AlertTriangle size={14} /> {d.duplicate_prediction_rows} duplicated prediction version(s).</div>}
-      <div className="sm-q-muted">Runs recorded before this update have no execution time ("not recorded"). A run with no finish time and an old start was interrupted (for example by a restart).</div>
+      <div className="sm-q-muted">No stuck jobs, duplicate events or duplicate predictions are expected; the figures above come from the durable queue and the run log.</div>
     </div>
   );
 }
@@ -105,18 +150,22 @@ export default function EarningsMonitorPanel({ initialTab = 'upcoming' }: { init
   const [kind, setKind] = useState('');
   const [open, setOpen] = useState('');
   const [showSources, setShowSources] = useState(false);
+  const [evSymbol, setEvSymbol] = useState('');
   const status = useApi<any>((s) => earningsMonitor.status(s), [], { refreshMs: 60_000 });
   const upcoming = useApi<any>((s) => earningsMonitor.upcoming(hist, s), [hist], { refreshMs: 60_000, enabled: tab === 'upcoming' });
   const models = useApi<any>((s) => earningsMonitor.models(s), [], { refreshMs: 60_000, enabled: tab === 'models' });
   const changes = useApi<any>((s) => earningsMonitor.changes(kind, s), [kind], { refreshMs: 60_000, enabled: tab === 'changes' });
   const consensus = useApi<any>((s) => earningsMonitor.consensus(s), [], { refreshMs: 60_000, enabled: tab === 'consensus' });
   const accuracy = useApi<any>((s) => earningsMonitor.accuracy(s), [], { refreshMs: 300_000, enabled: tab === 'accuracy' });
+  const outcomes = useApi<any>((s) => earningsMonitor.outcomes(s), [], { refreshMs: 300_000, enabled: tab === 'accuracy' });
   const comparison = useApi<any>((s) => earningsMonitor.comparison(s), [], { refreshMs: 300_000, enabled: tab === 'accuracy' });
+  const smart = useApi<any>((s) => earningsMonitor.smartMove(s), [], { refreshMs: 60_000, enabled: tab === 'smart' });
+  const evidence = useApi<any>((s) => earningsMonitor.evidence(evSymbol, s), [evSymbol], { refreshMs: 60_000, enabled: tab === 'evidence' });
   const health = useApi<any>((s) => earningsMonitor.health(s), [], { refreshMs: 30_000, enabled: tab === 'health' });
-  const reload = () => { status.refresh(); upcoming.refresh(); models.refresh(); changes.refresh(); consensus.refresh(); accuracy.refresh(); comparison.refresh(); health.refresh(); };
+  const reload = () => { status.refresh(); upcoming.refresh(); models.refresh(); changes.refresh(); consensus.refresh(); accuracy.refresh(); comparison.refresh(); smart.refresh(); evidence.refresh(); health.refresh(); };
   const s = status.data;
   const badge = scanBadge(s);
-  const cur: any = { upcoming, models, changes, consensus, accuracy, health }[tab];
+  const cur: any = { upcoming, models, smart, changes, evidence, consensus, accuracy, health }[tab];
 
   return (
     <div className="sm" data-testid="earnings-monitor">
@@ -150,21 +199,23 @@ export default function EarningsMonitorPanel({ initialTab = 'upcoming' }: { init
         <>
           <label className="sm-q-muted"><input type="checkbox" checked={hist} onChange={(e) => setHist(e.target.checked)} /> include reported and canceled events (history)</label>
           {!upcoming.data.rows.length && <div className="sm-none">No upcoming earnings are tracked yet.</div>}
-          <div className="sm-table-wrap"><table className="sm-table sm-q-table"><thead><tr><th>Symbol</th><th>Earnings date</th><th>Session</th><th>Days</th><th>Calendar check</th><th>Status</th><th>Eligible</th><th>Valid predictions</th><th>Latest change</th></tr></thead>
+          <div className="sm-table-wrap"><table className="sm-table sm-q-table"><thead><tr><th>Symbol</th><th>Earnings date</th><th>Session</th><th>Days</th><th>Calendar check</th><th>Last verified</th><th>Status</th><th>Eligible</th><th>Models with a fresh call</th><th>Evidence</th><th>Latest change</th></tr></thead>
             <tbody>{upcoming.data.rows.map((r: any) => (
               <Fragment key={r.id}>
                 <tr className="sm-q-row" tabIndex={0} onClick={() => setOpen(open === 'u' + r.id ? '' : 'u' + r.id)} onKeyDown={(e) => { if (e.key === 'Enter') setOpen(open === 'u' + r.id ? '' : 'u' + r.id); }}>
                   <td><b>{r.symbol}</b><div className="sm-q-muted">{r.company || '—'}</div></td><td>{r.earnings_date}</td><td>{r.session === 'BMO' ? 'Before Open' : r.session === 'AMC' ? 'After Close' : 'not confirmed'}</td><td>{r.days_to}</td>
-                  <td><span className={`sm-q-badge ${VER_TONE[r.verification] || 'gray'}`} data-testid="verification">{nice(r.verification)}</span></td>
+                  <td><span className={`sm-q-badge ${VER_TONE[r.verification] || 'gray'}`} data-testid="verification">{nice(r.verification)}</span></td><td className="sm-q-muted">{r.last_verified ? fmtTime(r.last_verified) : 'never'}</td>
                   <td><span className={`sm-q-badge ${r.status === 'ACTIVE' ? 'green' : r.status === 'CANCELED' ? 'red' : 'gray'}`}>{r.status}</span></td>
-                  <td>{r.eligible ? 'yes' : <span className="sm-q-muted">{r.ineligible_reasons.map(nice).join(', ')}</span>}</td><td>{r.valid_predictions}</td>
+                  <td>{r.eligible ? 'yes' : r.out_of_window ? <span className="sm-q-badge gray" data-testid="oow">outside {upcoming.data.model_window_days}-day model window</span> : <span className="sm-q-muted">{r.ineligible_reasons.map(nice).join(', ')}</span>}</td>
+                  <td data-testid="coverage">{r.out_of_window ? <span className="sm-q-muted">not scored yet</span> : <span className={`sm-q-badge ${r.fresh_predictions >= 7 ? 'green' : r.fresh_predictions >= 4 ? 'amber' : 'gray'}`}>{r.fresh_predictions ?? r.valid_predictions} of {r.models_total ?? 9}</span>}{r.valid_predictions > (r.fresh_predictions ?? r.valid_predictions) ? <div className="sm-q-muted">{r.valid_predictions - r.fresh_predictions} stale</div> : null}</td>
+                  <td className="sm-q-muted" data-testid="evidence-fresh">{r.evidence_items ? `${r.evidence_items} item(s), newest ${fmtTime(r.last_evidence_at)}` : 'none stored'}</td>
                   <td>{r.latest_change ? `${nice(r.latest_change.kind)} · ${fmtTime(r.latest_change.detected_at)}` : '—'}</td>
                 </tr>
-                {open === 'u' + r.id && <tr><td colSpan={9}><div data-testid="versions"><b>Date / session history</b>{r.versions.map((v: any, i: number) => <div key={i} className="sm-q-muted">{fmtTime(v.observed_at)} — {v.earnings_date} {v.session} ({nice(v.reason)})</div>)}
+                {open === 'u' + r.id && <tr><td colSpan={12}><div data-testid="versions"><b>Date / session history</b>{r.versions.map((v: any, i: number) => <div key={i} className="sm-q-muted">{fmtTime(v.observed_at)} — {v.earnings_date} {v.session} ({nice(v.reason)})</div>)}
                   {r.sources?.length > 0 && <div className="sm-q-muted">Vendors: {r.sources.map((x: any) => `${x.vendor} ${x.date}`).join(' · ')}</div>}
                   {r.outcome && <div>Real reaction: <b>{r.outcome.move_pct}%</b> ({nice(r.outcome.source)})</div>}</div></td></tr>}
               </Fragment>))}</tbody></table></div>
-          <div className="sm-q-muted">Looks {upcoming.data.horizon_days} days ahead. "single vendor" means only one calendar vendor lists the event; "conflict" means the vendors disagree and no prediction is made until they agree.</div>
+          <div className="sm-q-muted">Looks {upcoming.data.horizon_days} days ahead; the eight models score the next {upcoming.data.model_window_days} days. "single vendor" means only one calendar vendor lists the event; "conflict" means the vendors disagree and no prediction is made until they agree.</div>
         </>
       )}
 
@@ -175,7 +226,7 @@ export default function EarningsMonitorPanel({ initialTab = 'upcoming' }: { init
             <tbody>{models.data.rows.map((r: any) => (
               <Fragment key={r.id}>
                 <tr className="sm-q-row" tabIndex={0} onClick={() => setOpen(open === 'm' + r.id ? '' : 'm' + r.id)} onKeyDown={(e) => { if (e.key === 'Enter') setOpen(open === 'm' + r.id ? '' : 'm' + r.id); }}>
-                  <td><b>{r.symbol}</b><div className="sm-q-muted">{r.earnings_date} {r.session}</div></td>{models.data.models.map((m: any) => <td key={m.id}><SignalCell c={r.cells[m.id]} /></td>)}</tr>
+                  <td><b>{r.symbol}</b><div className="sm-q-muted">{r.earnings_date} {r.session}</div></td>{models.data.models.map((m: any) => <td key={m.id}>{r.out_of_window ? <SignalCell c={{ label: 'OUT_OF_WINDOW', status: 'OUT_OF_WINDOW' }} /> : <SignalCell c={r.cells[m.id]} />}</td>)}</tr>
                 {open === 'm' + r.id && <tr><td colSpan={models.data.models.length + 1}><History symbol={r.symbol} /></td></tr>}
               </Fragment>))}</tbody></table></div>
           <div className="sm-q-muted">{models.data.note} A call older than {models.data.stale_after_h} h is marked stale. Click a row for every stored version.</div>
@@ -189,10 +240,14 @@ export default function EarningsMonitorPanel({ initialTab = 'upcoming' }: { init
           <div className="sm-filters"><select value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Change type"><option value="">All changes</option>{changes.data.kinds.map((k: string) => <option key={k} value={k}>{nice(k)}</option>)}</select>
             <span className="sm-q-muted" data-testid="latest-change">Latest change: {fmtTime(changes.data.latest_change_at)}</span></div>
           {!changes.data.rows.length && <div className="sm-none">No changes recorded.</div>}
-          <div className="sm-table-wrap"><table className="sm-table sm-q-table"><thead><tr><th>When</th><th>Stock</th><th>Change</th><th>Model</th><th>From</th><th>To</th></tr></thead>
-            <tbody>{changes.data.rows.map((r: any) => <tr key={r.id}><td>{fmtTime(r.detected_at)}</td><td><b>{r.symbol}</b></td><td>{nice(r.kind)}{r.detail?.subtype ? <div className="sm-q-muted">{nice(r.detail.subtype)}</div> : null}</td><td>{r.model || '—'}</td><td>{r.old_value ?? '—'}</td><td>{r.new_value ?? '—'}</td></tr>)}</tbody></table></div>
+          <div className="sm-table-wrap"><table className="sm-table sm-q-table"><thead><tr><th>When</th><th>Stock</th><th>Change</th><th>Model</th><th>From (previous)</th><th>To (latest)</th><th>Why</th></tr></thead>
+            <tbody>{changes.data.rows.map((r: any) => <tr key={r.id}><td>{fmtTime(r.detected_at)}</td><td><b>{r.symbol}</b></td><td>{nice(r.kind)}{r.detail?.subtype ? <div className="sm-q-muted">{nice(r.detail.subtype)}</div> : null}</td><td>{r.model || '—'}</td><td>{r.old_value ?? '—'}</td><td>{r.new_value ?? '—'}</td><td className="sm-q-muted">{r.detail?.reason || (r.detail?.title ? `${nice(r.detail.kind)}: ${r.detail.title}` : '—')}</td></tr>)}</tbody></table></div>
         </>
       )}
+
+      {tab === 'smart' && smart.data?.status === 'OK' && <SmartMovePanel d={smart.data} />}
+      {tab === 'evidence' && evidence.data?.status === 'OK' && <EvidencePanel d={evidence.data} symbol={evSymbol} setSymbol={setEvSymbol} />}
+      {tab === 'health' && health.data?.status === 'OK' && <HealthPanel d={health.data} />}
 
       {tab === 'consensus' && consensus.data?.status === 'OK' && (
         <>
@@ -205,15 +260,24 @@ export default function EarningsMonitorPanel({ initialTab = 'upcoming' }: { init
         </>
       )}
 
-      {tab === 'health' && health.data?.status === 'OK' && <HealthPanel d={health.data} />}
-
       {tab === 'accuracy' && accuracy.data?.status === 'OK' && (
         <>
           {!accuracy.data.rows.length && <div className="sm-none" data-testid="no-accuracy">No verified outcomes yet, so no accuracy can be shown. {accuracy.data.events_unverified} event(s) are waiting for their real reaction.</div>}
-          {accuracy.data.rows.length > 0 && <div className="sm-table-wrap"><table className="sm-table sm-q-table"><thead><tr><th>Model</th><th>Scored BUY/SELL calls (n)</th><th>Correct</th><th>Incorrect</th><th>Accuracy</th><th>Flat reaction</th><th>No directional call</th></tr></thead>
+          {accuracy.data.rows.length > 0 && <div className="sm-table-wrap"><table className="sm-table sm-q-table"><thead><tr><th>Model</th><th>Scored BUY/SELL calls (n)</th><th>Correct</th><th>Incorrect</th><th>Accuracy</th><th>BUY accuracy</th><th>SELL accuracy</th><th>Avg real move</th><th>Verified outcomes</th><th>Flat reaction</th><th>No directional call</th></tr></thead>
             <tbody>{accuracy.data.rows.map((r: any) => <tr key={r.model}><td><b>{r.label}</b></td><td>{r.decisive}</td><td>{r.correct}</td><td>{r.incorrect}</td>
-              <td data-testid="accuracy-cell">{r.accuracy_pct != null ? `${r.accuracy_pct}%` : <span className="sm-q-muted" title={r.sample_status}>needs {accuracy.data.min_sample}+ scored calls</span>}</td><td>{r.flat_outcome}</td><td>{r.abstained}</td></tr>)}</tbody></table></div>}
+              <td data-testid="accuracy-cell">{r.accuracy_pct != null ? `${r.accuracy_pct}%` : <span className="sm-q-muted" title={r.sample_status}>needs {accuracy.data.min_sample}+ scored calls</span>}</td><td>{r.buy_accuracy_pct != null ? `${r.buy_accuracy_pct}%` : <span className="sm-q-muted">n={r.buy_calls}</span>}</td><td>{r.sell_accuracy_pct != null ? `${r.sell_accuracy_pct}%` : <span className="sm-q-muted">n={r.sell_calls}</span>}</td><td>{r.avg_abs_move_pct != null ? `${r.avg_abs_move_pct}%` : '—'}</td><td>{r.verified_outcomes}</td><td>{r.flat_outcome}</td><td>{r.abstained}</td></tr>)}</tbody></table></div>}
+          {accuracy.data.agreement_vs_outcome && <div className="sm-q-muted" data-testid="agreement-outcome">Agreement vs real outcome: {accuracy.data.agreement_vs_outcome.status === 'OK' ? `${accuracy.data.agreement_vs_outcome.strong_agreement_accuracy_pct}% of ${accuracy.data.agreement_vs_outcome.strong_agreement_events} strong-agreement events moved the agreed way` : accuracy.data.agreement_vs_outcome.status} · events with comparable disagreement: {accuracy.data.agreement_vs_outcome.disagreement_events}. Outcomes seen but not verifiable: {accuracy.data.events_outcome_unverifiable}.</div>}
           <div className="sm-q-muted">{accuracy.data.note} Events with a verified outcome: {accuracy.data.events_with_verified_outcome}; still unverified: {accuracy.data.events_unverified}.</div>
+          {outcomes.data?.status === 'OK' && (
+            <div data-testid="outcomes"><b>Verified earnings reactions</b> (calls made before the reporting window opened; later calls are excluded)
+              {!outcomes.data.rows.length && <div className="sm-q-muted">No reaction has been verified yet.</div>}
+              {outcomes.data.rows.length > 0 && <table className="sm-mini"><thead><tr><th>Event</th><th>Real move</th><th>Calls used (cutoff)</th><th>Graded</th></tr></thead>
+                <tbody>{outcomes.data.rows.map((r: any, i: number) => <tr key={i}><td><b>{r.symbol}</b> {r.earnings_date} {r.session}</td><td>{r.verified ? `${r.move_pct}%` : <span className="sm-q-muted">not verifiable</span>}</td>
+                  <td className="sm-q-muted">{Object.entries(r.calls).map(([m, c]: any) => `${m} ${nice(c.signal)}`).join(' · ') || 'no call existed before the cutoff'} ({fmtTime(r.prediction_cutoff)})</td>
+                  <td className="sm-q-muted">{Object.entries(r.results).map(([m, v]: any) => `${m} ${nice(v)}`).join(' · ') || '—'}</td></tr>)}</tbody></table>}
+              {outcomes.data.waiting_for_outcome?.length > 0 && <div className="sm-q-muted" data-testid="outcomes-waiting">Waiting for a verified reaction: {outcomes.data.waiting_for_outcome.map((w: any) => `${w.symbol} ${w.earnings_date}`).join(', ')}</div>}
+            </div>
+          )}
           {comparison.data?.status === 'OK' && comparison.data.rows.length > 0 && (
             <div data-testid="comparison"><b>Model vs model</b> (same events, both called BUY/SELL, decisive real reaction; shown from {comparison.data.min_shared} shared events)
               <table className="sm-mini"><thead><tr><th>Models</th><th>Shared events</th><th>Both right</th><th>Only first right</th><th>Only second right</th><th>Both wrong</th><th>Agreed</th></tr></thead>

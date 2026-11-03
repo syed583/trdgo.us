@@ -6,6 +6,7 @@ Smart Move, trades, or substitutes one model's call for another's."""
 from __future__ import annotations
 
 import json
+import math
 from datetime import date, datetime, timedelta, timezone
 from typing import Callable, Optional
 from zoneinfo import ZoneInfo
@@ -13,6 +14,7 @@ from zoneinfo import ZoneInfo
 from . import alerts as A
 from . import calendar_us as CAL
 from . import config as C
+from . import evidence as EV
 from . import logic as L
 from .gate import GateState, ProviderAccess, ProviderBlocked, day_key
 from .store import Store, iso, parse
@@ -42,6 +44,21 @@ class Adapters:
     def smart_move_plan(self, events: list, now: datetime) -> Optional[dict]:      # offline: which Smart Move evidence is missing for these events (no provider call)
         return None
 
+    def evidence(self, symbol: str, d: str) -> list:  # cache reads only: [{kind, provider, ext_id, occurred_at, title, summary, data, provider_structured}]
+        return []
+
+    def model_sources(self) -> dict:                  # {model: source text of the model's own code}, used only to see which KIND of evidence each model reads
+        return {}
+
+    def model_rows(self) -> dict:                     # {model: {SYMBOL: row with params}} when the cached scans carry the scored inputs
+        return {}
+
+    def smart_move_details(self, symbol: str, d: str) -> Optional[dict]:      # stored Smart Move evidence / feature detail for one event (no provider call)
+        return None
+
+    def app_requests_today(self) -> Optional[int]:    # every Unusual Whales request the application itself has made today (warmers, Options Flow, monitor), or None when unknown
+        return None
+
     def refresh_calendar(self) -> list:               # provider
         raise ProviderBlocked("NO_CALENDAR_REFRESH_ADAPTER")
 
@@ -63,6 +80,14 @@ def in_session_window(cfg: C.Config, now: datetime, ev: dict) -> bool:
     lo, hi = CAL.window_et(d, ev["session"], cfg.bmo_window_et if ev["session"] == "BMO" else cfg.amc_window_et)
     t = now.astimezone(ET).strftime("%H:%M")
     return lo <= t <= hi
+
+
+def prediction_cutoff(cfg: C.Config, ev: dict) -> datetime:
+    """The last moment a prediction may be used to grade this event without look-ahead: the START of the session's reporting window (before open for BMO, from 15:00 ET for AMC; an unconfirmed session uses the earlier one)."""
+    d = date.fromisoformat(ev["earnings_date"])
+    lo = cfg.amc_window_et[0] if ev["session"] == "AMC" else cfg.bmo_window_et[0]
+    h, m = (int(x) for x in lo.split(":"))
+    return datetime(d.year, d.month, d.day, h, m, tzinfo=ET).astimezone(UTC)
 
 
 def reaction_session_date(ev: dict) -> date:
@@ -111,7 +136,7 @@ class Monitor:
     def _update_verification(self, ev: dict, ver: str, sources: list, now: datetime):
         if sources:
             with self.store.tx() as c:
-                c.execute("UPDATE events SET sources=? WHERE id=?", (json.dumps(sources), ev["id"]))
+                c.execute("UPDATE events SET sources=?, last_verified=? WHERE id=?", (json.dumps(sources), iso(now), ev["id"]))
         if ver != ev["verification"] and (sources or ver != "UNVERIFIED"):
             with self.store.tx() as c:
                 self._touch_event(c, ev["id"], now, verification=ver)
@@ -129,6 +154,8 @@ class Monitor:
     def _observe_calendar(self, rows: list, now: datetime, complete: bool) -> dict:
         stats = {"new": 0, "rescheduled": 0, "session": 0, "canceled": 0, "unchanged": 0, "ignored": 0}
         seen = set()
+        baseline = (self.store.one("SELECT COUNT(*) n FROM events") or {}).get("n", 0) == 0        # the very first scan populates the calendar: that is not 300 "newly announced" events
+        fresh: list = []
         today = today_et(now).isoformat()
         for r in rows:
             sym = (r.get("symbol") or "").upper().strip()
@@ -159,7 +186,7 @@ class Monitor:
                     continue
                 with self.store.tx() as c:
                     eid = self._new_event(c, r, sym, d, sess, now, ver, sources)
-                self._change(now, self.event(eid), sym, "NEW_EVENT", new="%s %s" % (d, sess), detail={"verification": ver})
+                fresh.append((eid, self._change(now, self.event(eid), sym, "NEW_EVENT", new="%s %s" % (d, sess), detail={"verification": ver})))
                 stats["new"] += 1
                 continue
             changed = False
@@ -182,7 +209,7 @@ class Monitor:
                     prev = ev
                     with self.store.tx() as c:
                         eid = self._new_event(c, r, sym, d, sess, now, ver, sources)
-                    self._change(now, self.event(eid), sym, "NEW_EVENT", new="%s %s" % (d, sess), detail={"previous": prev["earnings_date"], "verification": ver})
+                    fresh.append((eid, self._change(now, self.event(eid), sym, "NEW_EVENT", new="%s %s" % (d, sess), detail={"previous": prev["earnings_date"], "verification": ver})))
                     stats["new"] += 1
                     continue
             if sess != "UNKNOWN" and ev["session"] != sess:
@@ -218,6 +245,14 @@ class Monitor:
                 else:
                     with self.store.tx() as c:
                         c.execute("UPDATE events SET missing_scans=? WHERE id=?", (miss, ev["id"]))
+        if fresh and not baseline:
+            if len(fresh) > self.cfg.new_event_alert_burst:                         # a window that suddenly widened: one audit line, not a flood of alerts
+                self.store.audit(now, "monitor", "CALENDAR_EXPANSION", {"new_events": len(fresh)})
+            else:
+                for eid, cid in fresh:
+                    if cid:
+                        ev = self.event(eid)
+                        self._alerts_for(now, {"kind": "NEW_EVENT", "old": None, "new": "%s %s" % (ev["earnings_date"], ev["session"]), "detail": {}}, ev)
         return stats
 
     # ------------------------------------------------------------ predictions
@@ -235,12 +270,13 @@ class Monitor:
         days = (d - today_et(now)).days
         if days < 0:
             reasons.append("ALREADY_HAPPENED")
-        elif days > HORIZON_DAYS:
-            reasons.append("BEYOND_%d_DAY_HORIZON" % HORIZON_DAYS)
+        elif days > self.cfg.model_window_days:
+            reasons.append("BEYOND_%d_DAY_MODEL_WINDOW" % self.cfg.model_window_days)
         return {"eligible": not reasons, "reasons": reasons, "days_to": days}
 
-    def recompute(self, now: datetime, event_id: Optional[int] = None) -> dict:
+    def recompute(self, now: datetime, event_id: Optional[int] = None, reason: Optional[str] = None) -> dict:
         """Record a new prediction row only when a model's real call actually changed; detect every change; refresh consensus. Reads caches only."""
+        self._reason = reason
         models = self.ad.models()
         stats = {"events": 0, "new_predictions": 0, "changes": 0, "stale": 0, "refreshed": 0, "alerts": 0}
         sql, args = "SELECT * FROM events WHERE status='ACTIVE'", ()
@@ -272,14 +308,18 @@ class Monitor:
                     last = lastp.get((ev["id"], model))
                     if last is None or last["input_hash"] != h:
                         old_state = None if last is None else {"signal": last["signal"], "score": last["score"], "coverage": None if last["coverage"] is None else json.loads(last["coverage"])}
+                        why = ("first stored call for this event" if last is None else "the model's own call changed: %s %s -> %s %s" % (last["signal"], last["score"], obs["signal"], obs.get("score")))
+                        if getattr(self, "_reason", None):
+                            why += " (re-read after: %s)" % self._reason
+                        prev_pred_id = None if last is None else last["id"]
                         with self.store.tx() as c:
-                            pred_id = c.execute("INSERT INTO predictions(event_id,model,signal,score,coverage,tier,as_of,evidence_as_of,recorded_at,input_hash,source,engine_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                            pred_id = c.execute("INSERT INTO predictions(event_id,model,signal,score,coverage,tier,as_of,evidence_as_of,recorded_at,input_hash,source,engine_version,reason) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
                                                 (ev["id"], model, obs["signal"], obs.get("score"), None if obs.get("coverage") is None else json.dumps(obs.get("coverage")), obs.get("tier"),
-                                                 obs["as_of"], obs.get("evidence_as_of"), iso(now), h, src, obs.get("engine_version"))).lastrowid
+                                                 obs["as_of"], obs.get("evidence_as_of"), iso(now), h, src, obs.get("engine_version"), why)).lastrowid
                         lastp[(ev["id"], model)] = {"id": pred_id, "signal": obs["signal"], "score": obs.get("score"), "coverage": None if obs.get("coverage") is None else json.dumps(obs.get("coverage")), "input_hash": h}
                         stats["new_predictions"] += 1
                         for ch in L.prediction_changes(old_state, obs, self.cfg):
-                            if self._change(now, ev, ev["symbol"], ch["kind"], model=model, old=ch["old"], new=ch["new"], detail=dict(ch["detail"], source=src), key_extra=pred_id):
+                            if self._change(now, ev, ev["symbol"], ch["kind"], model=model, old=ch["old"], new=ch["new"], detail=dict(ch["detail"], source=src, previous_prediction_id=prev_pred_id, new_prediction_id=pred_id, reason=why), key_extra=pred_id):
                                 stats["changes"] += 1
                                 stats["alerts"] += self._alerts_for(now, dict(ch, model=model), ev, pred_ts=obs["as_of"])
                     else:
@@ -308,10 +348,13 @@ class Monitor:
                 states.append({"model": model, "status": st["status"], "stale": st["stale"], "signal": obs.get("signal") if obs else None, "as_of": obs.get("as_of") if obs else None})
             if stale_models:                                          # ONE digest per event instead of one alert per model
                 stats["alerts"] += A.enqueue(self.store, now, [A.stale_digest(now, ev, stale_models, self.cfg)], self.cfg)
+            det = self.ad.smart_move_details(ev["symbol"], ev["earnings_date"])         # the engine's own row, kept so the dashboard never has to run the engine per request
+            if det is not None and self.store.kv_get("smd:%d" % ev["id"]) != json.loads(json.dumps(det, default=str)):
+                self.store.kv_set("smd:%d" % ev["id"], json.loads(json.dumps(det, default=str)))
             cons = L.consensus(states, self.cfg)
             key = "consensus:%d" % ev["id"]
             prev_level = self.store.kv_get(key)
-            if (prev_level is not None and prev_level != cons["level"]) or (prev_level is None and cons["level"] == "STRONG"):
+            if (prev_level is not None and prev_level != cons["level"]) or (prev_level is None and cons["level"] in ("STRONG", "CONFLICT")):
                 if self._change(now, ev, ev["symbol"], "AGREEMENT_CHANGED", old=prev_level or "NONE_YET", new=cons["level"], detail={"majority": cons["majority"], "comparable": cons["comparable"]}, key_extra=iso(now)):
                     stats["changes"] += 1
                     stats["alerts"] += self._alerts_for(now, {"kind": "AGREEMENT_CHANGED", "old": prev_level or "NONE_YET", "new": cons["level"], "detail": {"majority": cons["majority"], "comparable": cons["comparable"]}}, ev)
@@ -343,7 +386,8 @@ class Monitor:
                     out = dict(out, verified=True)
                     with self.store.tx() as c:
                         self._touch_event(c, ev["id"], now, outcome_json=json.dumps(out, default=str), outcome_at=iso(now), status="REPORTED")
-                    self._change(now, ev, ev["symbol"], "OUTCOME_AVAILABLE", new="%s%%" % out["move_pct"], detail=out)
+                    if self._change(now, ev, ev["symbol"], "OUTCOME_AVAILABLE", new="%s%%" % out["move_pct"], detail=out):
+                        self._alerts_for(now, {"kind": "OUTCOME_AVAILABLE", "old": None, "new": "%s%%" % out["move_pct"], "detail": out}, self.event(ev["id"]))
                     n_out += 1
         return {"results_published": n_res, "outcomes_available": n_out, "outcomes_unverified": n_unv}
 
@@ -369,10 +413,148 @@ class Monitor:
         res = self.check_results(now)
         return {"observed": obs, "recompute": rec, "results": res}
 
+    # ------------------------------------------------------------ evidence ledger
+    def _flow_alert(self, it: dict) -> Optional[str]:
+        d = it.get("data") or {}
+        if it["kind"] != "OPTIONS_FLOW" or d.get("total_premium") is None or d.get("bullish_share") is None:
+            return None
+        share = float(d["bullish_share"]) / 100.0
+        lean = max(share, 1 - share)
+        if d["total_premium"] >= self.cfg.flow_alert_premium and lean >= self.cfg.flow_alert_share and (d.get("prints") or 0) >= self.cfg.flow_alert_min_prints:
+            return "%s premium $%.1fM on %d prints, %.0f%% %s" % ("options", d["total_premium"] / 1e6, d["prints"], 100 * lean, "bullish" if share >= 0.5 else "bearish")
+        return None
+
+    def evidence_scan(self, now: datetime, kinds: Optional[tuple] = None) -> dict:
+        """Cache reads only. Records what each supported evidence kind holds for every active event inside the horizon, compares with the stored copy, and records a NEW / CHANGED evidence change. A changed
+        input that a model reads makes that one event's models re-read their own cached calls (never the other events, and never a call of one model copied to another). News and filings are stored and shown; they never
+        change a score."""
+        relevant = EV.relevance_map(self.ad.model_sources())
+        model_rows = self.ad.model_rows()
+        stats = {"events": 0, "items": 0, "new": 0, "changed": 0, "recomputed": 0, "alerts": 0, "errors": 0}
+        for ev in self.store.q("SELECT * FROM events WHERE status='ACTIVE' ORDER BY earnings_date, symbol"):
+            days = (date.fromisoformat(ev["earnings_date"]) - today_et(now)).days
+            if days < 0 or days > self.cfg.horizon_days:
+                continue
+            try:
+                items = [i for i in self.ad.evidence(ev["symbol"], ev["earnings_date"]) if kinds is None or i["kind"] in kinds]
+            except Exception as e:  # noqa: BLE001
+                stats["errors"] += 1
+                self.store.audit(now, "monitor", "EVIDENCE_READ_FAILED", {"symbol": ev["symbol"], "error": "%s: %s" % (type(e).__name__, e)})
+                continue
+            stats["events"] += 1
+            stats["items"] += len(items)
+            res = EV.record(self.store, ev, items, now, relevant, model_rows)
+            trigger = None
+            for r in res:
+                it, st = r["item"], r["status"]
+                stats["new" if st == "NEW" else "changed"] += 1
+                alert, reason = None, None
+                if it["kind"] == "OPTIONS_FLOW":
+                    reason = self._flow_alert(it)
+                    alert = "UNUSUAL_OPTIONS_FLOW" if reason else None
+                elif it["kind"] in ("NEWS", "FILING", "GUIDANCE") and (it.get("data") or {}).get("guidance_keyword"):
+                    alert, reason = "NEWS_OR_GUIDANCE", "%s: %s" % ("headline mentions guidance / results", (it.get("title") or "")[:140])
+                fp = EV.fingerprint(it)
+                detail = {"kind": it["kind"], "provider": it["provider"], "ext_id": it["ext_id"], "fp": fp, "title": it.get("title"), "stage": "VERIFIED" if it.get("provider_structured") else "COLLECTED",
+                          "relevant_models": r["relevant"], "used_by_models": r["used_by"], "alert": alert, "reason": reason, "changes_a_score": False}
+                if st == "CHANGED":
+                    detail["previous_fp"] = (r.get("previous") or {}).get("_fp")
+                cid = self._change(now, ev, ev["symbol"], "EVIDENCE_NEW" if st == "NEW" else "EVIDENCE_CHANGED", old=detail.get("previous_fp"), new=fp, detail=detail, key_extra="%s|%s" % (it["provider"], it["ext_id"]))
+                if cid and alert:
+                    stats["alerts"] += self._alerts_for(now, {"kind": "EVIDENCE_NEW" if st == "NEW" else "EVIDENCE_CHANGED", "old": None, "new": fp, "detail": detail}, ev)
+                if st == "CHANGED" and r["relevant"] and it["kind"] not in EV.NOT_MODEL_INPUT and trigger is None:
+                    trigger = "%s evidence changed" % it["kind"]
+            if trigger:
+                self.recompute(now, event_id=ev["id"], reason=trigger)
+                stats["recomputed"] += 1
+        self.store.kv_set("evidence_scan:last" if kinds is None else "news_flow:last", dict(stats, at=iso(now)))
+        return stats
+
+    def news_flow_check(self, now: datetime) -> dict:
+        """The slower news / options-tape pass: the same cache-only ledger restricted to the kinds that move during a day. Provider refresh of the underlying caches stays a separate, approved purpose."""
+        return self.evidence_scan(now, kinds=("NEWS", "FILING", "GUIDANCE", "OPTIONS_FLOW", "DARK_POOL"))
+
+    # ------------------------------------------------------------ priority-based refresh planning (LEAN baseline)
+    def refresh_plan(self, now: datetime) -> dict:
+        """Decides, from the budget alone and with no provider request, which events an authorised refresh could cover today and which could not. Priority: soonest report first, Before-Open before After-Close, then the event
+        with the most models lacking a call, then alphabetical. Every event that does not fit is LISTED with its reason: nothing is dropped silently."""
+        c, st = self.cfg, self.access.state
+        cap = min(st.daily_budget, c.hard_daily_cap) if st.daily_budget else c.hard_daily_cap        # cache-only mode has no budget: plan against the hard cap to show what WOULD fit
+        today = today_et(now)
+        evs, outside = [], 0
+        for e in self.store.q("SELECT * FROM events WHERE status='ACTIVE'"):
+            el = self.eligible(e, now)
+            if el["eligible"]:
+                evs.append((e, el["days_to"]))
+            elif el["days_to"] is not None and el["days_to"] > c.model_window_days:
+                outside += 1
+        have = {r["event_id"]: r["n"] for r in self.store.q("SELECT event_id, COUNT(*) n FROM model_state WHERE status='VALID' GROUP BY event_id")}
+
+        def key(x):
+            e, days = x
+            return (days, e["session"] != "BMO", -(len(self.ad.model_labels) - have.get(e["id"], 0)), e["symbol"])
+        ranked = sorted(evs, key=key)
+        fresh_cut = timedelta(minutes=c.day_refresh_min_age_min)
+        pending = [x for x in ranked if not ((self.store.kv_get("refreshed:%d" % x[0]["id"])) and now - parse(self.store.kv_get("refreshed:%d" % x[0]["id"])) < fresh_cut)]
+        cal_cost = math.ceil(24 / c.calendar_every_h) * C.COST_CALENDAR_REFRESH
+        out_reserve = sum(1 for e, d in ranked if d <= 1) * C.COST_OUTCOME_VERIFY
+        used = self.store.usage(day_key(now))
+        app_total = self.ad.app_requests_today()
+        other_today = max(0, app_total - used) if app_total is not None else 0                      # what the existing warmers, Options Flow and Smart Move have ALREADY used today
+        reserve = max(c.external_reserve, other_today)                                               # the shared cap is shared: what they used (or the planning reserve, if larger) is not available to the monitor
+        avail = max(0, cap - reserve - cal_cost - out_reserve)
+        slots = avail // C.COST_EVENT_REFRESH
+        row = lambda x, i: {"symbol": x[0]["symbol"], "earnings_date": x[0]["earnings_date"], "session": x[0]["session"], "days_to": x[1], "rank": i + 1}
+        funded = [row(x, i) for i, x in enumerate(pending[:slots])]
+        unfunded = [dict(row(x, slots + i), reason="NOT_FUNDED_BY_DAILY_BUDGET_PLAN") for i, x in enumerate(pending[slots:])]
+        plan = {"at": iso(now), "profile": "lean", "daily_cap": cap, "external_reserve": reserve, "planning_reserve": c.external_reserve, "other_requests_today": other_today, "calendar_reserve": cal_cost, "outcome_reserve": out_reserve, "available_for_events": avail,
+                "cost_per_event_refresh": C.COST_EVENT_REFRESH, "event_slots": int(slots), "eligible_events": len(ranked), "needing_refresh": len(pending), "outside_model_window": outside,
+                "funded": funded, "unfunded": unfunded[:300], "unfunded_count": len(unfunded), "monitor_requests_today": used, "app_requests_today": app_total,
+                "note": "Planning only. A refresh runs only in REFRESH mode with the 'event' purpose approved; the plan is recomputed hourly."}
+        self.store.kv_set("refresh:plan", plan)
+        return {k: plan[k] for k in ("event_slots", "eligible_events", "needing_refresh", "unfunded_count", "available_for_events")}
+
+    def event_refresh(self, now: datetime) -> dict:
+        """Runs the funded part of the plan (a few events per job, one at a time through the shared gate). Does nothing unless an authorised REFRESH mode with the 'event' purpose is active."""
+        st = self.access.state
+        if st.mode != "REFRESH" or "event" not in st.purposes:
+            return {"skipped": "NOT_IN_REFRESH_MODE_WITH_EVENT_PURPOSE", "refreshed": 0}
+        self.refresh_plan(now)
+        plan = self.store.kv_get("refresh:plan") or {}
+        done, skipped_rows, stop = 0, [], None
+        for r in plan.get("funded", []):
+            if stop:
+                skipped_rows.append(dict(r, reason=stop))
+                continue
+            if done >= self.cfg.refresh_batch:
+                break
+            ev = self.store.one("SELECT * FROM events WHERE symbol=? AND status='ACTIVE' ORDER BY id DESC", (r["symbol"],))
+            if not ev:
+                continue
+            try:
+                self.access.call("event", C.COST_EVENT_REFRESH, lambda s=ev["symbol"]: self.ad.refresh_event(s), purpose="event")
+                self.store.kv_set("refreshed:%d" % ev["id"], iso(now))
+                done += 1
+                self.recompute(now, event_id=ev["id"], reason="evidence refreshed")
+            except ProviderBlocked as b:
+                skipped_rows.append(dict(r, reason=b.reason))
+                self.store.audit(now, "monitor", "REFRESH_BLOCKED", {"symbol": ev["symbol"], "reason": b.reason})
+                if b.reason.startswith(("DAILY_BUDGET_EXHAUSTED", "KILL_SWITCH", "CIRCUIT_BREAKER_OPEN")):
+                    stop = b.reason
+        if skipped_rows:
+            self.store.kv_set("refresh:skipped", {"at": iso(now), "rows": skipped_rows})
+        return {"refreshed": done, "skipped": len(skipped_rows)}
+
     def earnings_day_check(self, now: datetime) -> dict:
         refreshed = skipped = 0
-        for ev in self.store.q("SELECT * FROM events WHERE status='ACTIVE' AND earnings_date=?", (today_et(now).isoformat(),)):
-            if not in_session_window(self.cfg, now, ev):
+        skipped_rows: list = []
+        todays = [e for e in self.store.q("SELECT * FROM events WHERE status='ACTIVE' AND earnings_date=?", (today_et(now).isoformat(),)) if in_session_window(self.cfg, now, e)]
+        todays.sort(key=lambda e: (e["session"] != "BMO", e["symbol"]))             # a stated order: stocks reporting soonest first, then alphabetical (never random)
+        stop_reason = None
+        for ev in todays:
+            if stop_reason:                                                        # the budget / kill switch / breaker stopped refreshing: every remaining stock is listed, not dropped
+                skipped += 1
+                skipped_rows.append({"symbol": ev["symbol"], "session": ev["session"], "reason": stop_reason})
                 continue
             last = self.store.kv_get("refreshed:%d" % ev["id"])
             if last and now - parse(last) < timedelta(minutes=self.cfg.day_refresh_min_age_min):
@@ -385,8 +567,13 @@ class Monitor:
                     refreshed += 1
                 except ProviderBlocked as b:
                     skipped += 1
+                    skipped_rows.append({"symbol": ev["symbol"], "session": ev["session"], "reason": b.reason})
                     self.store.audit(now, "monitor", "REFRESH_BLOCKED", {"symbol": ev["symbol"], "reason": b.reason})
-        return {"refreshed": refreshed, "skipped": skipped, "recompute": self.recompute(now), "results": self.check_results(now)}
+                    if b.reason.startswith(("DAILY_BUDGET_EXHAUSTED", "KILL_SWITCH", "CIRCUIT_BREAKER_OPEN")):
+                        stop_reason = b.reason
+        if skipped_rows:
+            self.store.kv_set("refresh:skipped", {"at": iso(now), "rows": skipped_rows})
+        return {"refreshed": refreshed, "skipped": skipped, "skipped_symbols": [r["symbol"] for r in skipped_rows], "recompute": self.recompute(now), "results": self.check_results(now)}
 
     def outcome_verify(self, now: datetime, event_id: Optional[int] = None) -> dict:
         ev = self.event(event_id) if event_id else None

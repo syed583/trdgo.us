@@ -93,6 +93,25 @@ if ($so.code -eq 200) {
   foreach ($x in @($ms | Where-Object { -not $_.stored_predictions_now })) { Say 'INFO' "no stored prediction yet: $($x.label) -> $($x.needs_authorised_execution)" }
 } else { Say 'FAIL' "sources HTTP $($so.code)" }
 
+# 6. live-cache compatibility (read-only; field names and counts only, never values)
+$cp = Get-Json '/api/earnings-monitor/cache-probe' $h
+if ($cp.code -eq 200) {
+  $j = $cp.json
+  if ($j.all_readers_compatible) { Say 'PASS' 'cache probe: every reader matches the shapes in the live caches' } else { Say 'WARN' 'cache probe: not every reader found compatible data yet (caches may still be warming; run this again in 10 minutes). The monitor skips whatever it cannot read and never invents data.' }
+  foreach ($k in 'uw_news', 'uw_flow', 'uw_calendar', 'earn_equity', 'finviz_cache') { $x = $j.$k; if ($x) { Say 'INFO' ("probe {0}: compatible={1} missing fields=[{2}]" -f $k, $x.compatible, ((@($x.missing_fields)) -join ',')) } }
+  if ($j.model_scan_caches) { Say 'INFO' ("model scan caches present: {0}; absent: {1}" -f ((@($j.model_scan_caches.present)) -join ','), ((@($j.model_scan_caches.absent)) -join ',')) }
+  if ($j.uw_calendar) { Say 'INFO' ("30-day calendar cache: {0} of {1} weekday dates cached" -f $j.uw_calendar.dates_cached, $j.uw_calendar.dates_wanted) }
+} elseif ($cp.code -eq 404) { Say 'INFO' 'cache-probe is not part of the installed version' } else { Say 'WARN' "cache-probe HTTP $($cp.code)" }
+
+# 7. scanner health: timings, stuck and duplicate jobs
+$hl = Get-Json '/api/earnings-monitor/health' $h
+if ($hl.code -eq 200) {
+  $e = @($hl.json.recent_runs | Where-Object { $_.kind -eq 'ELIGIBILITY_CHECK' -and $null -ne $_.duration_ms }) | Select-Object -First 1
+  if ($e) { Say 'INFO' ("latest ELIGIBILITY_CHECK: {0} ms, {1} events, waited {2} ms" -f $e.duration_ms, $e.events_processed, $e.queue_wait_ms) } else { Say 'INFO' 'no timed ELIGIBILITY_CHECK yet (the next 30-minute slot records one)' }
+  if ($hl.json.healthy) { Say 'PASS' 'scanner health: no stuck jobs, no duplicate events or predictions, nothing dead' } else { Say 'FAIL' ("scanner health reports a problem: stuck={0} duplicates={1} dead={2}" -f @($hl.json.stuck_jobs).Count, @($hl.json.duplicate_active_events).Count, @($hl.json.dead_jobs).Count) }
+  if ($null -ne $hl.json.approval_days_left) { Say $(if ($hl.json.approval_days_left -le 3) { 'WARN' } else { 'INFO' }) ("owner approval ends in {0} day(s)" -f $hl.json.approval_days_left) }
+} elseif ($hl.code -eq 404) { Say 'INFO' 'health view is not part of the installed version' } else { Say 'WARN' "health HTTP $($hl.code)" }
+
 Remove-Variable pw, h
 Write-Host ("RESULT: " + $(if ($script:fail) { 'FAIL' } elseif ($script:warn) { 'PASS with warnings' } else { 'PASS' }) + "  ($script:fail fail, $script:warn warn)")
 if ($script:fail) { exit 1 }
