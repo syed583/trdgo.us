@@ -219,3 +219,33 @@ def test_the_runner_reads_the_applications_env_file_when_told_and_a_ledger_failu
     finally:
         monkeypatch.delenv("SMART_MOVE_ENV_FILE")
         importlib.reload(RUNNER)
+
+
+def test_a_live_pass_keeps_exactly_one_provider_request_in_flight(tmp_path, monkeypatch):
+    """The collector uses ONE of the provider's three simultaneous-request slots (the application's cap of two is the rest): the fetcher never sees an overlapping call."""
+    import argparse
+    import threading
+    import smart_move_collection_runner as RUNNER
+
+    class Counting(Stub):
+        def __init__(self):
+            super().__init__()
+            self.now_in, self.max_in, self.lock = 0, 0, threading.Lock()
+
+        def fetch(self, kind, symbol, params):
+            with self.lock:
+                self.now_in += 1
+                self.max_in = max(self.max_in, self.now_in)
+            try:
+                return super().fetch(kind, symbol, params)
+            finally:
+                with self.lock:
+                    self.now_in -= 1
+    f = Counting()
+    svc = make(tmp_path / "s", f, authorized=150)
+    svc.store.kill_file.parent.mkdir(parents=True, exist_ok=True)
+    svc.store.kill_file.write_text("x", encoding="utf-8")
+    monkeypatch.setattr(RUNNER.G, "needs_refresh", lambda *a, **k: False)
+    a = argparse.Namespace(select_top=5, select_policy="deadline", select_symbols=None, select_date="2026-11-04", select_session="BMO", with_f7=False, ceiling=150, daily_limit=700, authorize_requests=150,
+                           state_dir=str(tmp_path / "st"), publish_dir=str(tmp_path / "live"), calendar_days_ahead=None)
+    assert RUNNER.engine20_profile(a, svc, NOW, live=True) == 0 and len(f.calls) == 14 and f.max_in == 1
