@@ -1,0 +1,109 @@
+{
+ "version": 1,
+ "base_ref": "ebf6b3cc",
+ "targets": [
+  {
+   "file": "backend/api_routes.py",
+   "base_sha256_lf": "9b50254cd32658b5c666df510fe5f3524c98b599da0d787da4bf7e61a2a59b8a",
+   "result_sha256_lf": "2832e1dd7c28b5edf54922635f89da9c1a0130348b049bab26649b9227346377",
+   "edits": [
+    {
+     "old": "    return mflow.get_baseline(symbol, sessions=sessions)\n\n\n@router.get(\"/options/flow/{symbol}\")\ndef options_flow(symbol: str, limit: int = 200) -> dict:\n    \"\"\"",
+     "new": "    return mflow.get_baseline(symbol, sessions=sessions)\n\n\ndef _with_data_class(key: str, res, ttl) -> object:\n    \"\"\"Add `data_class` (LIVE / CACHED / STALE / HISTORICAL / UNAVAILABLE) to an Options Flow answer. Reads the cache age and the market session only; never raises and never changes the data.\"\"\"\n    try:\n        import signal_class\n        at = swr.held_at(key)\n        session = (market.market_clock() or {}).get(\"session\")\n        out = dict(res) if isinstance(res, dict) else res\n        if isinstance(out, dict):\n            out[\"data_class\"] = signal_class.options_flow_class(res, session, (time.time() - at) if at else None, ttl)\n        return out\n    except Exception:  # noqa: BLE001\n        return res\n\n\n@router.get(\"/options/flow/{symbol}\")\ndef options_flow(symbol: str, limit: int = 200) -> dict:\n    \"\"\""
+    },
+    {
+     "old": "            return out\n        return base\n\n    return swr.serve(f\"options:flow:{symbol.upper()}:{limit}\", build,\n                     market.session_ttl(4, 600))\n\n\n@router.get(\"/options/flow\")\ndef options_flow_market(limit: int = 200) -> dict:\n    \"\"\"Market-wide flow tape (all tickers) for the Live Flow default view.\"\"\"\n    return swr.serve(f\"options:marketflow:{limit}\",\n                     lambda: options.get_market_flow(limit=limit),\n                     market.session_ttl(4, 600))\n\n\n@router.get(\"/trade-plan/{symbol}\")",
+     "new": "            return out\n        return base\n\n    key, ttl = f\"options:flow:{symbol.upper()}:{limit}\", market.session_ttl(4, 600)\n    return _with_data_class(key, swr.serve(key, build, ttl), ttl)\n\n\n@router.get(\"/options/flow\")\ndef options_flow_market(limit: int = 200) -> dict:\n    \"\"\"Market-wide flow tape (all tickers) for the Live Flow default view.\"\"\"\n    key, ttl = f\"options:marketflow:{limit}\", market.session_ttl(4, 600)\n    return _with_data_class(key, swr.serve(key, lambda: options.get_market_flow(limit=limit), ttl), ttl)\n\n\n@router.get(\"/trade-plan/{symbol}\")"
+    },
+    {
+     "old": "    return uw.metrics()\n\n\n@router.post(\"/admin/provider/key\")\ndef admin_set_provider_key(request: Request, payload: dict = Body(...)) -> dict:\n    \"\"\"",
+     "new": "    return uw.metrics()\n\n\n@router.get(\"/admin/provider-ledger\")\ndef admin_provider_ledger(request: Request, days: int = 7) -> dict:\n    \"\"\"Requests, outcomes, latency, limits and (only where the owner set a plan price) cost, per provider and day. Read only.\"\"\"\n    import auth_service as auth\n    auth.require_admin(request)\n    import provider_ledger\n    return provider_ledger.snapshot(history_days=max(1, min(int(days), 62)))\n\n\n@router.post(\"/admin/provider/key\")\ndef admin_set_provider_key(request: Request, payload: dict = Body(...)) -> dict:\n    \"\"\""
+    }
+   ]
+  },
+  {
+   "file": "backend/finnhub_service.py",
+   "base_sha256_lf": "fce256fd77b20b1fe625c0c33115f922ffde3aeac9e006ace7acf64ed6d0f8d3",
+   "result_sha256_lf": "669e0e57c2c75e3dad473671d25a532ce13f594643ac03f3ad3f1fb52137bfe6",
+   "edits": [
+    {
+     "old": "        time.sleep(wait)\n\n\ndef _get(path: str, ttl: float = 600.0) -> Optional[object]:\n    \"\"\"GET a Finnhub path with a short in-proc cache. Returns parsed JSON or None.\"\"\"\n    k = _key()",
+     "new": "        time.sleep(wait)\n\n\ndef _ledger(kind: str, exc, started: float) -> None:\n    \"\"\"Count one real request in the provider ledger. Never raises, never changes what _get returns.\"\"\"\n    try:\n        import provider_ledger as _pl\n        if kind == \"ok\":\n            _pl.record_ok(\"FINNHUB\", started)\n        else:\n            _pl.record_exception(\"FINNHUB\", exc, started)\n    except Exception:  # noqa: BLE001\n        pass\n\n\ndef _get(path: str, ttl: float = 600.0) -> Optional[object]:\n    \"\"\"GET a Finnhub path with a short in-proc cache. Returns parsed JSON or None.\"\"\"\n    k = _key()"
+    },
+    {
+     "old": "    if hit and now - hit[0] < ttl:\n        return hit[1]\n    _rate_gate()   # pace every real request, across all callers\n    try:\n        req = urllib.request.Request(BASE + path, headers={\"X-Finnhub-Token\": k})\n        with urllib.request.urlopen(req, timeout=12) as r:\n            data = json.loads(r.read().decode(\"utf-8\", \"replace\"))\n        _cache[path] = (time.time(), data)\n        return data\n    except Exception:  # noqa: BLE001 - a missing provider just means no data\n        return None\n\n",
+     "new": "    if hit and now - hit[0] < ttl:\n        return hit[1]\n    _rate_gate()   # pace every real request, across all callers\n    t0 = time.time()\n    try:\n        req = urllib.request.Request(BASE + path, headers={\"X-Finnhub-Token\": k})\n        with urllib.request.urlopen(req, timeout=12) as r:\n            data = json.loads(r.read().decode(\"utf-8\", \"replace\"))\n        _cache[path] = (time.time(), data)\n        _ledger(\"ok\", None, t0)\n        return data\n    except Exception as exc:  # noqa: BLE001 - a missing provider just means no data\n        _ledger(\"exc\", exc, t0)\n        return None\n\n"
+    }
+   ]
+  },
+  {
+   "file": "backend/finviz_service.py",
+   "base_sha256_lf": "11e3bcc22001d2bd308f22eb7d82e63d78e42cf932ef69eec537f35ca430d226",
+   "result_sha256_lf": "42208fcf47bbad9ff461fff3eb0f32db31d9ba10a14972f5ce266039560c3db5",
+   "edits": [
+    {
+     "old": "import csv\nimport io\nimport os\nimport urllib.parse\nimport urllib.request\nfrom datetime import datetime",
+     "new": "import csv\nimport io\nimport os\nimport time\nimport urllib.parse\nimport urllib.request\nfrom datetime import datetime"
+    },
+    {
+     "old": "    return _token() is not None\n\n\ndef _get(params: dict) -> Optional[str]:\n    tok = _token()\n    if not tok:\n        return None\n    url = f\"{BASE}?{urllib.parse.urlencode(params)}&auth={urllib.parse.quote(tok)}\"\n    try:\n        req = urllib.request.Request(url, headers={\"User-Agent\": _UA})\n        with urllib.request.urlopen(req, timeout=30) as r:\n            if r.status != 200:\n                return None\n            return r.read().decode(\"utf-8\", \"replace\")\n    except Exception:  # noqa: BLE001\n        return None\n\n",
+     "new": "    return _token() is not None\n\n\ndef _ledger(kind: str, detail, started: float) -> None:\n    \"\"\"Count one real request in the provider ledger. Never raises, never changes what _get returns.\"\"\"\n    try:\n        import provider_ledger as _pl\n        if kind == \"ok\":\n            _pl.record_ok(\"FINVIZ\", started)\n        elif kind == \"status\":\n            _pl.record(\"FINVIZ\", _pl.classify_http(code=int(detail)), (time.time() - started) * 1000.0)\n        else:\n            _pl.record_exception(\"FINVIZ\", detail, started)\n    except Exception:  # noqa: BLE001\n        pass\n\n\ndef _get(params: dict) -> Optional[str]:\n    tok = _token()\n    if not tok:\n        return None\n    url = f\"{BASE}?{urllib.parse.urlencode(params)}&auth={urllib.parse.quote(tok)}\"\n    t0 = time.time()\n    try:\n        req = urllib.request.Request(url, headers={\"User-Agent\": _UA})\n        with urllib.request.urlopen(req, timeout=30) as r:\n            if r.status != 200:\n                _ledger(\"status\", r.status, t0)\n                return None\n            body = r.read().decode(\"utf-8\", \"replace\")\n            _ledger(\"ok\", None, t0)\n            return body\n    except Exception as exc:  # noqa: BLE001\n        _ledger(\"exc\", exc, t0)\n        return None\n\n"
+    }
+   ]
+  }
+ ],
+ "new_files": [
+  {
+   "file": "backend/provider_ledger.py",
+   "source": "new/provider_ledger.py",
+   "sha256_lf": "c2e6715c97bc7a68200e1c80d92f3ed0c2c66af3de169582ab5ed0c7c94a5f42"
+  },
+  {
+   "file": "backend/signal_class.py",
+   "source": "new/signal_class.py",
+   "sha256_lf": "1a951a51fb37490e481918f0bbe8d3e6a6d71fbd8d627f2a3dbad8ff16c9c1f3"
+  }
+ ],
+ "requires": [
+  {
+   "file": "backend/swr.py",
+   "contains": "def held_at("
+  },
+  {
+   "file": "backend/live_market_service.py",
+   "contains": "def market_clock("
+  },
+  {
+   "file": "backend/unusualwhales_service.py",
+   "contains": "_spent: dict"
+  },
+  {
+   "file": "backend/unusualwhales_service.py",
+   "contains": "_metrics: dict"
+  },
+  {
+   "file": "backend/unusualwhales_service.py",
+   "contains": "def _today("
+  },
+  {
+   "file": "backend/auth_service.py",
+   "contains": "def require_admin("
+  },
+  {
+   "file": "backend/api_routes.py",
+   "contains": "\nimport time\n"
+  },
+  {
+   "file": "backend/api_routes.py",
+   "contains": "import swr\n"
+  },
+  {
+   "file": "backend/finnhub_service.py",
+   "contains": "def _rate_gate("
+  },
+  {
+   "file": "backend/finviz_service.py",
+   "contains": "def _get(params: dict)"
+  }
+ ]
+}

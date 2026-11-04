@@ -63,6 +63,18 @@ def _rate_gate() -> None:
         time.sleep(wait)
 
 
+def _ledger(kind: str, exc, started: float) -> None:
+    """Count one real request in the provider ledger. Never raises, never changes what _get returns."""
+    try:
+        import provider_ledger as _pl
+        if kind == "ok":
+            _pl.record_ok("FINNHUB", started)
+        else:
+            _pl.record_exception("FINNHUB", exc, started)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _get(path: str, ttl: float = 600.0) -> Optional[object]:
     """GET a Finnhub path with a short in-proc cache. Returns parsed JSON or None."""
     k = _key()
@@ -73,13 +85,16 @@ def _get(path: str, ttl: float = 600.0) -> Optional[object]:
     if hit and now - hit[0] < ttl:
         return hit[1]
     _rate_gate()   # pace every real request, across all callers
+    t0 = time.time()
     try:
         req = urllib.request.Request(BASE + path, headers={"X-Finnhub-Token": k})
         with urllib.request.urlopen(req, timeout=12) as r:
             data = json.loads(r.read().decode("utf-8", "replace"))
         _cache[path] = (time.time(), data)
+        _ledger("ok", None, t0)
         return data
-    except Exception:  # noqa: BLE001 - a missing provider just means no data
+    except Exception as exc:  # noqa: BLE001 - a missing provider just means no data
+        _ledger("exc", exc, t0)
         return None
 
 

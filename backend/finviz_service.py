@@ -12,6 +12,7 @@ from __future__ import annotations
 import csv
 import io
 import os
+import time
 import urllib.parse
 import urllib.request
 from datetime import datetime
@@ -32,18 +33,37 @@ def configured() -> bool:
     return _token() is not None
 
 
+def _ledger(kind: str, detail, started: float) -> None:
+    """Count one real request in the provider ledger. Never raises, never changes what _get returns."""
+    try:
+        import provider_ledger as _pl
+        if kind == "ok":
+            _pl.record_ok("FINVIZ", started)
+        elif kind == "status":
+            _pl.record("FINVIZ", _pl.classify_http(code=int(detail)), (time.time() - started) * 1000.0)
+        else:
+            _pl.record_exception("FINVIZ", detail, started)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _get(params: dict) -> Optional[str]:
     tok = _token()
     if not tok:
         return None
     url = f"{BASE}?{urllib.parse.urlencode(params)}&auth={urllib.parse.quote(tok)}"
+    t0 = time.time()
     try:
         req = urllib.request.Request(url, headers={"User-Agent": _UA})
         with urllib.request.urlopen(req, timeout=30) as r:
             if r.status != 200:
+                _ledger("status", r.status, t0)
                 return None
-            return r.read().decode("utf-8", "replace")
-    except Exception:  # noqa: BLE001
+            body = r.read().decode("utf-8", "replace")
+            _ledger("ok", None, t0)
+            return body
+    except Exception as exc:  # noqa: BLE001
+        _ledger("exc", exc, t0)
         return None
 
 

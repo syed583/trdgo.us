@@ -15,7 +15,7 @@
 #>
 [CmdletBinding()]
 param(
-  [ValidateSet('Preflight', 'Deploy', 'Update', 'Rollback', 'RollbackCheck')][string]$Action = 'Preflight',
+  [ValidateSet('Preflight', 'Deploy', 'Update', 'Rollback', 'RollbackCheck', 'AppCheck')][string]$Action = 'Preflight',
   [string]$App = 'C:\apps\us-stock-reader',
   [Parameter(Mandatory = $true)][string]$Package,
   [string]$ManifestSha256 = '',
@@ -44,6 +44,8 @@ $EnvFile = Join-Path $Backend '.env'
 $Dist = Join-Path $App 'frontend\dist'
 $PkgDist = 'frontend_dist'
 $PkgMod = 'earnings_monitor'
+$AppPlanPath = Join-Path $Package 'app_component\plan.json'          # the application-side component of the release (provider ledger, data-class labels); absent in older packages
+$DigestScope = if (Test-Path -LiteralPath $AppPlanPath) { 'v2' } else { 'v1' }
 
 function Log([string]$m) { Write-Host ((Get-Date).ToUniversalTime().ToString('HH:mm:ss') + 'Z  ' + $m) }
 function Sha([string]$p) { (Get-FileHash -Algorithm SHA256 -LiteralPath $p).Hash.ToLower() }
@@ -146,14 +148,120 @@ function Invoke-Preflight {
   Log 'PREFLIGHT OK'
 }
 
+# ---- application component: anchored edits to existing application files + two new modules. Never replaces a whole application file. ----
+function Read-AppText([string]$p) {
+  $b = [IO.File]::ReadAllBytes($p); $bom = ($b.Length -ge 3 -and $b[0] -eq 0xEF -and $b[1] -eq 0xBB -and $b[2] -eq 0xBF); $skip = $(if ($bom) { 3 } else { 0 })
+  $t = [Text.Encoding]::UTF8.GetString($b, $skip, $b.Length - $skip)
+  return @{ text = $t.Replace("`r`n", "`n"); crlf = $t.Contains("`r`n"); bom = $bom; mixed = ($t.Contains("`r`n") -and $t.Replace("`r`n", '').Contains("`n")) }
+}
+function Get-OccurrenceCount([string]$hay, [string]$needle) {
+  $n = 0; $i = 0
+  while (($i = $hay.IndexOf($needle, $i, [StringComparison]::Ordinal)) -ge 0) { $n++; $i += $needle.Length }
+  return $n
+}
+function Get-AppPlan { Get-Content -LiteralPath $AppPlanPath -Raw -Encoding UTF8 | ConvertFrom-Json }
+function Get-AppFileList {
+  $plan = Get-AppPlan
+  return @(@($plan.targets | ForEach-Object { $_.file }) + @($plan.new_files | ForEach-Object { $_.file }) | ForEach-Object { $_.Replace('/', '\') })
+}
+function Get-AppState {
+  # READ ONLY. Decides whether the application component can be applied to the files that are installed right now. Returns state PATCHABLE / ALREADY / NONE and the lines to show; throws when the live files are not what the edits were written for.
+  if (-not (Test-Path -LiteralPath $AppPlanPath)) { return @{ state = 'NONE'; lines = @('this package has no application component') } }
+  $plan = Get-AppPlan; $lines = @(); $kinds = @()
+  foreach ($r in @($plan.requires)) {
+    $f = Join-Path $App $r.file.Replace('/', '\')
+    if (-not (Test-Path -LiteralPath $f)) { throw "application component: a file this release depends on is missing: $($r.file)" }
+    if ((Get-OccurrenceCount (Read-AppText $f).text $r.contains) -lt 1) { throw "application component: $($r.file) does not contain what this release depends on ($($r.contains.Trim())). Nothing was changed." }
+  }
+  foreach ($t in @($plan.targets)) {
+    $f = Join-Path $App $t.file.Replace('/', '\')
+    if (-not (Test-Path -LiteralPath $f)) { throw "application component: target file not found: $($t.file)" }
+    $r = Read-AppText $f; if ($r.mixed) { throw "application component: $($t.file) has mixed line endings; refusing to edit it" }
+    $o1 = 0; $n1 = 0
+    foreach ($e in @($t.edits)) {
+      $o = Get-OccurrenceCount $r.text $e.old; $n = Get-OccurrenceCount $r.text $e.new
+      if ($o -eq 1 -and $n -eq 0) { $o1++ } elseif ($o -eq 0 -and $n -eq 1) { $n1++ } else { throw "application component: an edit for $($t.file) cannot be placed (anchor found $o time(s), result found $n time(s)). The live file differs from the version this release was written for. Nothing was changed." }
+    }
+    $cnt = @($t.edits).Count
+    if ($o1 -eq $cnt) { $k = 'PATCHABLE' } elseif ($n1 -eq $cnt) { $k = 'ALREADY' } else { throw "application component: $($t.file) is partly patched ($o1 of $cnt edits still to apply). Nothing was changed." }
+    $kinds += $k; $lines += ("{0}: {1} ({2} edit(s); live LF sha256 {3}; written for base {4})" -f $t.file, $k, $cnt, (ShaLf $f).Substring(0, 12), $t.base_sha256_lf.Substring(0, 12))
+  }
+  foreach ($nf in @($plan.new_files)) {
+    $f = Join-Path $App $nf.file.Replace('/', '\')
+    if (-not (Test-Path -LiteralPath $f)) { $k = 'PATCHABLE' } elseif ((ShaLf $f) -eq $nf.sha256_lf) { $k = 'ALREADY' } else { throw "application component: $($nf.file) already exists with different content. Nothing was changed." }
+    $kinds += $k; $lines += ("{0}: {1} (new module)" -f $nf.file, $k)
+  }
+  $u = @($kinds | Sort-Object -Unique)
+  if ($u.Count -ne 1) { throw "application component: some files are patched and some are not ($($u -join ', ')). Investigate before updating. Nothing was changed." }
+  return @{ state = $u[0]; lines = $lines }
+}
+function Backup-AppFiles([string]$bk) {
+  $plan = Get-AppPlan; $dir = Join-Path $bk 'app'; New-Item -ItemType Directory $dir | Out-Null; $absent = @()
+  foreach ($rel in (Get-AppFileList)) {
+    $src = Join-Path $App $rel
+    if (Test-Path -LiteralPath $src) { $dst = Join-Path $dir $rel; New-Item -ItemType Directory -Force (Split-Path $dst) | Out-Null; Copy-Item -LiteralPath $src -Destination $dst }
+    else { $absent += $rel }
+  }
+  Set-Content -LiteralPath (Join-Path $dir '_new_files.txt') -Value $absent -Encoding ascii
+}
+function Test-AppBackup([string]$bk) {
+  $bad = 0
+  foreach ($f in Get-ChildItem -LiteralPath (Join-Path $bk 'app') -Recurse -File | Where-Object { $_.Name -ne '_new_files.txt' }) {
+    $rel = $f.FullName.Substring((Join-Path $bk 'app').Length); $src = Join-Path $App $rel
+    if (-not (Test-Path -LiteralPath $src) -or (Sha $src) -ne (Sha $f.FullName)) { $bad++; Log ("application backup differs from its source: " + $rel) }
+  }
+  return $bad
+}
+function Invoke-AppPatch {
+  $plan = Get-AppPlan
+  foreach ($t in @($plan.targets)) {
+    $f = Join-Path $App $t.file.Replace('/', '\'); $r = Read-AppText $f; $txt = $r.text
+    foreach ($e in @($t.edits)) {
+      if ((Get-OccurrenceCount $txt $e.old) -ne 1) { throw "application component: anchor lost while patching $($t.file)" }
+      $i = $txt.IndexOf($e.old, [StringComparison]::Ordinal); $txt = $txt.Substring(0, $i) + $e.new + $txt.Substring($i + $e.old.Length)
+    }
+    $out = $(if ($r.crlf) { $txt.Replace("`n", "`r`n") } else { $txt })
+    $bytes = [Text.Encoding]::UTF8.GetBytes($out); if ($r.bom) { $bytes = [byte[]](0xEF, 0xBB, 0xBF) + $bytes }
+    [IO.File]::WriteAllBytes($f, $bytes)
+    $chk = (Read-AppText $f).text
+    foreach ($e in @($t.edits)) { if ((Get-OccurrenceCount $chk $e.new) -ne 1 -or (Get-OccurrenceCount $chk $e.old) -ne 0) { throw "application component: $($t.file) does not hold the patched text after writing" } }
+    Log ("application file patched: {0} ({1} edit(s))" -f $t.file, @($t.edits).Count)
+  }
+  foreach ($nf in @($plan.new_files)) {
+    $dst = Join-Path $App $nf.file.Replace('/', '\')
+    Copy-Item -LiteralPath (Join-Path $Package ('app_component\' + $nf.source.Replace('/', '\'))) -Destination $dst -Force
+    if ((ShaLf $dst) -ne $nf.sha256_lf) { throw "application component: new module $($nf.file) does not match the package after copying" }
+    Log ("application module added: " + $nf.file)
+  }
+}
+function Test-AppHealth {
+  if ($SimulateHealthFailure) { return }
+  $base = "http://127.0.0.1:$Port"; $pw = Get-Pw; $h = @{ Authorization = "Bearer $pw" }
+  $l = Get-Status "$base/api/admin/provider-ledger" $h
+  if ($l.code -ne 200 -or -not (ConvertFrom-Json $l.body).PSObject.Properties['providers']) { throw "the provider ledger endpoint is not OK (HTTP $($l.code))" }
+  $un = Get-Status "$base/api/admin/provider-ledger" @{}
+  if ($un.code -eq 200) { throw 'the provider ledger endpoint answers without authentication' }
+  $o = Get-Status "$base/api/options/flow/AAPL?limit=5" $h
+  if ($o.code -ne 200 -or -not (ConvertFrom-Json $o.body).PSObject.Properties['data_class']) { throw "Options Flow does not carry a data_class (HTTP $($o.code))" }
+  Log "health: provider ledger endpoint OK and refused without authentication ($($un.code)); Options Flow carries data_class"
+  Remove-Variable pw, h
+}
+function Invoke-AppCheck {
+  Log "APPLICATION COMPONENT CHECK  app=$App  package=$Package (read only)"
+  Test-Manifest
+  $st = Get-AppState; foreach ($l in $st.lines) { Log ("  " + $l) }
+  Log ("APPLICATION COMPONENT CHECK DONE (read only, nothing was changed): " + $st.state)
+}
+
 $RecordPath = Join-Path $App 'monitor_install_record.json'
-function Get-StateDigest {
+function Get-StateDigest([string]$scope = 'v1') {
   # one digest of what is installed: main.py, every monitor code file, every frontend file (so a rollback can tell whether the server is still exactly as the recorded install left it)
   $lines = @()
   foreach ($f in @($MainPy) + @(Get-ChildItem -LiteralPath (Join-Path $Backend $PkgMod) -Recurse -File -Filter '*.py') + @(Get-ChildItem -LiteralPath $Dist -Recurse -File)) {
     $full = if ($f -is [string]) { $f } else { $f.FullName }
     $lines += ("{0}:{1}" -f $full.Substring($App.Length), (ShaLf $full))
   }
+  if ($scope -eq 'v2') { foreach ($rel in (Get-AppFileList)) { $p = Join-Path $App $rel; $lines += ("{0}:{1}" -f ('\' + $rel), $(if (Test-Path -LiteralPath $p) { ShaLf $p } else { 'ABSENT' })) } }
   $bytes = [Text.Encoding]::UTF8.GetBytes((($lines | Sort-Object) -join "`n"))
   return ([BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($bytes)) -replace '-', '').ToLower()
 }
@@ -192,7 +300,7 @@ function Test-BackupManifest([string]$bk) {
 function Write-InstallRecord([string]$bk, [string]$kind) {
   $hist = @(); if (Test-Path -LiteralPath $RecordPath) { $old = Get-Content -LiteralPath $RecordPath -Raw | ConvertFrom-Json; $hist = @($old.history) + @($old.last) }
   $last = [pscustomobject]@{ action = $kind; at_utc = (Get-Date).ToUniversalTime().ToString('o'); release_manifest_sha256 = (Sha (Join-Path $Package 'MANIFEST.sha256')); backup_path = $bk
-                             backup_manifest_sha256 = (Sha (Join-Path $bk 'backup_manifest.json')); installed_state_digest = (Get-StateDigest) }
+                             backup_manifest_sha256 = (Sha (Join-Path $bk 'backup_manifest.json')); installed_state_digest = (Get-StateDigest $DigestScope); state_digest_scope = $DigestScope }
   [pscustomobject]@{ last = $last; history = @($hist | Where-Object { $_ }) } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $RecordPath -Encoding ascii
   Log "install recorded in $RecordPath (backup $bk)"
 }
@@ -205,7 +313,9 @@ function Assert-RecordedRollbackReady([string]$given) {
   foreach ($need in 'main.py', $PkgMod, 'dist', 'backup_manifest.json') { if (-not (Test-Path -LiteralPath (Join-Path $rec.backup_path $need))) { throw "the recorded backup is incomplete: $need is missing. Stopping, nothing was changed." } }
   if (-not (Test-BackupManifest $rec.backup_path)) { throw 'the recorded backup is not intact: stopping, nothing was changed' }
   if ((Sha (Join-Path $rec.backup_path 'backup_manifest.json')) -ne $rec.backup_manifest_sha256) { throw 'the backup manifest differs from the one recorded at install time: stopping' }
-  if ((Get-StateDigest) -ne $rec.installed_state_digest) { throw 'the installed files are not exactly what the recorded install left (something changed since): stopping, nothing was changed. Investigate before any rollback.' }
+  $scope = $(if ($rec.PSObject.Properties['state_digest_scope']) { [string]$rec.state_digest_scope } else { 'v1' })
+  if ($scope -eq 'v2' -and -not (Test-Path -LiteralPath $AppPlanPath)) { throw 'the recorded install includes the application component but this package has none: use the package that was installed' }
+  if ((Get-StateDigest $scope) -ne $rec.installed_state_digest) { throw 'the installed files are not exactly what the recorded install left (something changed since): stopping, nothing was changed. Investigate before any rollback.' }
   return $rec
 }
 function Invoke-RollbackCheck {
@@ -240,6 +350,17 @@ function Invoke-Rollback([string]$bk) {
     if (Test-Path $Dist) { Remove-Item $Dist -Recurse -Force }
     Copy-Item -Recurse (Join-Path $bk 'dist') $Dist                                    # a COPY: the backup stays complete after a rollback
     foreach ($f in Get-ChildItem -LiteralPath (Join-Path $bk 'dist') -Recurse -File) { $t = Join-Path $Dist $f.FullName.Substring((Join-Path $bk 'dist').Length); if (-not (Test-Path -LiteralPath $t) -or (Sha $t) -ne (Sha $f.FullName)) { throw "rollback: restored frontend file differs from the backup: $t" } }
+  }
+  $appBk = Join-Path $bk 'app'
+  if (Test-Path -LiteralPath $appBk) {
+    foreach ($f in Get-ChildItem -LiteralPath $appBk -Recurse -File | Where-Object { $_.Name -ne '_new_files.txt' }) {
+      $rel = $f.FullName.Substring($appBk.Length); $t = Join-Path $App $rel
+      Copy-Item -LiteralPath $f.FullName -Destination $t -Force
+      if ((Sha $t) -ne (Sha $f.FullName)) { throw "rollback: restored application file differs from the backup: $rel" }
+    }
+    $nf = Join-Path $appBk '_new_files.txt'
+    if (Test-Path -LiteralPath $nf) { foreach ($rel in @(Get-Content -LiteralPath $nf)) { if ($rel) { $t = Join-Path $App $rel; if (Test-Path -LiteralPath $t) { Remove-Item -LiteralPath $t -Force } } } }
+    Log 'application files restored from the backup (modules added by the update removed)'
   }
   if ((ShaLf $MainPy) -ne $(if ($isUpdate) { $PatchedMainLf } else { $ExpectedMainLf })) { throw 'rollback: main.py does not match the original after restore' }
   Restart-Svc
@@ -296,15 +417,20 @@ function Invoke-Update {
   $drive = (Get-Item $App).PSDrive; if ($drive.Free -lt 300MB) { throw 'less than 300 MB free' }
   $modeBefore = Get-MonitorMode
   if (-not $NoHealth) { Test-Health $false; Log "health (baseline) OK; the monitor reports scheduling $modeBefore" }
+  $appState = Get-AppState; foreach ($l in $appState.lines) { Log ("application component: " + $l) }
+  $appDo = ($appState.state -eq 'PATCHABLE')
+  if ($appState.state -eq 'ALREADY') { Log 'application component is already in place: only the monitor and the frontend are replaced' }
   Log 'UPDATE PREFLIGHT OK'
   $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd_HHmmss_fff'); $bk = Join-Path $App "_backup_monitor_update_$stamp"
   New-Item -ItemType Directory $bk | Out-Null
   $srcMap = Get-HashMap @($MainPy, (Join-Path $Backend $PkgMod), $Dist)
   Copy-Item $MainPy (Join-Path $bk 'main.py'); Copy-Item -Recurse (Join-Path $Backend $PkgMod) (Join-Path $bk $PkgMod); Copy-Item -Recurse $Dist (Join-Path $bk 'dist'); Set-Content (Join-Path $bk 'update.marker') 'update' -Encoding ascii
+  if ($appDo) { Backup-AppFiles $bk }
   if ($SimulateBadBackup) { Add-Content (Join-Path $bk 'main.py') '# corrupted for the rehearsal' }
   Log "backup written: $bk"
   $badCopies = Test-CopyMatchesSource $srcMap $bk $MainPy $PkgMod 'check'
   if ($badCopies) { throw "STOPPED BEFORE ANY CHANGE: the backup is not an exact copy of the installed files ($badCopies file(s) differ). The application was NOT modified; the incomplete backup folder $bk was left in place for inspection." }
+  if ($appDo) { $badApp = Test-AppBackup $bk; if ($badApp) { throw "STOPPED BEFORE ANY CHANGE: the backup of the application files is not an exact copy ($badApp file(s) differ). The application was NOT modified; the incomplete backup folder $bk was left in place for inspection." } }
   Log ("backup verified BEFORE any change: main.py, all {0} monitor files and all {1} frontend files are byte-identical to the installed files" -f @($srcMap.Keys | Where-Object { $_ -like '*earnings_monitor*' }).Count, @($srcMap.Keys | Where-Object { $_ -like '*\dist\*' }).Count)
   Write-BackupManifest $bk                    # SHA-256 of every backup file, written BEFORE the first change: it survives a crash and proves the backup was not altered afterwards
   try {
@@ -313,9 +439,11 @@ function Invoke-Update {
     Log 'monitor code replaced (main.py and .env untouched)'
     Remove-Item $Dist -Recurse -Force; Copy-Item -Recurse (Join-Path $Package $PkgDist) $Dist
     Log 'frontend\dist replaced (the old one is in the backup, verified byte-identical before this step)'
+    if ($appDo) { Invoke-AppPatch }
     Restart-Svc
     if (-not $NoHealth) {
       Test-Health $true
+      if ($appDo) { Test-AppHealth }
       $until = (Get-Date).AddSeconds(150)
       do { $modeAfter = Get-MonitorMode; if ($modeAfter -eq $modeBefore) { break }; Start-Sleep -Seconds 5 } while ((Get-Date) -lt $until)
       if ($modeAfter -ne $modeBefore) { throw "the scheduler mode changed from $modeBefore to $modeAfter" }
@@ -338,4 +466,5 @@ switch ($Action) {
   'Deploy'    { Invoke-Deploy }
   'Rollback'  { Invoke-RecordedRollback $BackupDir }
   'RollbackCheck' { Invoke-RollbackCheck }
+  'AppCheck'  { Invoke-AppCheck }
 }

@@ -9,6 +9,7 @@ import {
   ChevronRight, Filter, Info, Lightbulb, Shield, Sparkles, Target,
   TrendingDown, TrendingUp,
 } from 'lucide-react';
+import { DataClassBadge } from '../components/DataClass';
 import Freshness from '../components/Freshness';
 import { NavLink } from 'react-router-dom';
 import { api, api2 } from '../api/client';
@@ -347,7 +348,7 @@ export default function OptionsFlowPage({ ctx }: { ctx: PageContext }) {
                   "Live data" over a fifteen-minute-delayed tape, which is the
                   one thing a flow screen must not get wrong. */}
               {marketTape.data?.freshness
-                ? <Freshness stamp={marketTape.data.freshness} />
+                ? <><Freshness stamp={marketTape.data.freshness} /> <DataClassBadge klass={marketTape.data.data_class} /></>
                 : (
                   <span className={`mf-live ${marketTape.data?.status === 'OK' ? 'on' : ''}`}>
                     <i />{marketTape.data?.status === 'OK'

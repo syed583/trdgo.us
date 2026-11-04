@@ -2347,6 +2347,20 @@ def flow_baseline(symbol: str, sessions: int = 20) -> dict:
     return mflow.get_baseline(symbol, sessions=sessions)
 
 
+def _with_data_class(key: str, res, ttl) -> object:
+    """Add `data_class` (LIVE / CACHED / STALE / HISTORICAL / UNAVAILABLE) to an Options Flow answer. Reads the cache age and the market session only; never raises and never changes the data."""
+    try:
+        import signal_class
+        at = swr.held_at(key)
+        session = (market.market_clock() or {}).get("session")
+        out = dict(res) if isinstance(res, dict) else res
+        if isinstance(out, dict):
+            out["data_class"] = signal_class.options_flow_class(res, session, (time.time() - at) if at else None, ttl)
+        return out
+    except Exception:  # noqa: BLE001
+        return res
+
+
 @router.get("/options/flow/{symbol}")
 def options_flow(symbol: str, limit: int = 200) -> dict:
     """
@@ -2372,16 +2386,15 @@ def options_flow(symbol: str, limit: int = 200) -> dict:
             return out
         return base
 
-    return swr.serve(f"options:flow:{symbol.upper()}:{limit}", build,
-                     market.session_ttl(4, 600))
+    key, ttl = f"options:flow:{symbol.upper()}:{limit}", market.session_ttl(4, 600)
+    return _with_data_class(key, swr.serve(key, build, ttl), ttl)
 
 
 @router.get("/options/flow")
 def options_flow_market(limit: int = 200) -> dict:
     """Market-wide flow tape (all tickers) for the Live Flow default view."""
-    return swr.serve(f"options:marketflow:{limit}",
-                     lambda: options.get_market_flow(limit=limit),
-                     market.session_ttl(4, 600))
+    key, ttl = f"options:marketflow:{limit}", market.session_ttl(4, 600)
+    return _with_data_class(key, swr.serve(key, lambda: options.get_market_flow(limit=limit), ttl), ttl)
 
 
 @router.get("/trade-plan/{symbol}")
@@ -3366,6 +3379,15 @@ def admin_flow_metrics(request: Request) -> dict:
     import unusualwhales_service as uw
 
     return uw.metrics()
+
+
+@router.get("/admin/provider-ledger")
+def admin_provider_ledger(request: Request, days: int = 7) -> dict:
+    """Requests, outcomes, latency, limits and (only where the owner set a plan price) cost, per provider and day. Read only."""
+    import auth_service as auth
+    auth.require_admin(request)
+    import provider_ledger
+    return provider_ledger.snapshot(history_days=max(1, min(int(days), 62)))
 
 
 @router.post("/admin/provider/key")
