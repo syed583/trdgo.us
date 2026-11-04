@@ -38,7 +38,10 @@ def select_top(rows: list, market_caps: dict, now, *, n: int = 20, event_date: O
         if audit is not None:
             audit.append({"symbol": r["symbol"], "event_date": r.get("earnings_date"), "session": r.get("kind"), "status": status, "reason": why})
     for r in rows:
-        p = r["plan"]
+        p = r.get("plan")
+        if p is None:                                                    # no event date (vendors more than one day apart, or only stale vendor rows): no window exists, so it can never be selected; say why
+            note(r, "SKIPPED", "no usable event date: %s%s" % (",".join(map(str, r.get("blocked_by") or ["NO_EVENT_DATE"])), (" (%s)" % ",".join(map(str, (r.get("calendar") or {}).get("no_trade_reasons") or []))) if (r.get("calendar") or {}).get("no_trade_reasons") else ""))
+            continue
         if r["blocked_by"] or r["kind"] not in ("BMO", "AMC") or not (_dt(p["window_start_utc"]) <= now <= _dt(p["cutoff_utc"])):
             if audit is not None and r.get("kind") in ("BMO", "AMC"):
                 note(r, "SKIPPED", "calendar not vendor-confirmed: %s" % ",".join(map(str, r["blocked_by"])) if r["blocked_by"] else "prediction window not open now")
