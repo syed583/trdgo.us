@@ -1,3 +1,5 @@
+> **SUPERSEDED by RELEASE_A5_1.md. Commit `77a4ef31` has a known defect (the monitor could rebuild the stock universe through the provider screener). Do not install it.**
+
 # Stage A.5 release candidate (local, NOT pushed, NOT deployed)
 
 Base: Stage A.4 `ebf6b3cc` (production). Package: `deploy/earnings_monitor`, manifest SHA-256 anchor `49da449d595eb33a6d5f0ed504732e056833c64709a934e163d1d6f98c3b3268` (138 files). The anchor changes only if any package byte changes; the owner is given it out of band and the updater refuses a package that does not match.

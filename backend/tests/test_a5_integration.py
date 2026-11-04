@@ -114,3 +114,79 @@ def test_warm_universe_read_never_builds_the_universe_or_calls_a_provider(monkey
     monkeypatch.setattr(US, "peek", lambda: {"rows": [{"ticker": "AAPL"}, {"ticker": "MSFT"}]})
     out = ProdAdapters.warm_universe(object.__new__(ProdAdapters))
     assert out["symbols"] == ["AAPL", "MSFT"] and out["horizon_days"] >= 14
+
+
+def _arm_provider_tripwires(monkeypatch):
+    """Every way the monitor could reach a provider or rebuild a cache now raises: the real provider doors, urllib, any non-local socket, and the swr build/refresh paths."""
+    import socket
+    import urllib.request
+    import finnhub_service
+    import finviz_service
+    import swr
+    import universe_service
+    import unusualwhales_service
+
+    touched = []
+
+    def boom(*a, **k):
+        touched.append(1)                                  # recorded as well as raised: a broad `except` in the code under test cannot hide a touch
+        raise AssertionError("A PROVIDER OR BUILD PATH WAS TOUCHED")
+    real_connect = socket.socket.connect
+
+    def guarded(self, address, *a, **k):
+        host = address[0] if isinstance(address, tuple) else str(address)
+        if host not in ("127.0.0.1", "::1", "localhost"):
+            touched.append(address)
+            raise AssertionError("network access attempted: %r" % (address,))
+        return real_connect(self, address, *a, **k)
+    monkeypatch.setattr(socket.socket, "connect", guarded)
+    monkeypatch.setattr(urllib.request, "urlopen", boom)
+    monkeypatch.setattr(unusualwhales_service, "get", boom)
+    monkeypatch.setattr(finnhub_service, "_get", boom)
+    monkeypatch.setattr(finviz_service, "_get", boom)
+    monkeypatch.setattr(universe_service, "build", boom)
+    monkeypatch.setattr(swr, "serve", boom)
+    monkeypatch.setattr(swr, "_refresh", boom, raising=False)
+    monkeypatch.setattr(swr, "_run", boom, raising=False)
+    return swr, touched
+
+
+@pytest.mark.parametrize("universe_state", ["missing", "stale_over_24h", "fresh"])
+def test_a_full_monitor_cycle_on_the_production_adapter_cannot_rebuild_the_universe_or_reach_a_provider(tmp_path, monkeypatch, universe_state):
+    import time
+    from datetime import datetime, timezone
+    from earnings_monitor.adapters import ProdAdapters
+    from earnings_monitor.sim import Clock, build_sim, write_approval
+    from earnings_monitor.smart_move import SmartMoveSource
+    swr, touched = _arm_provider_tripwires(monkeypatch)
+    now = time.time()
+    swr._values.pop("universe:top1000", None)
+    if universe_state != "missing":
+        age = 30 * 3600 if universe_state == "stale_over_24h" else 60
+        swr._values["universe:top1000"] = (now - age, {"rows": [{"ticker": "AAA"}, {"ticker": "BBB"}], "count": 2})
+    swr._values["v3:scan:v2:15"] = (now, {"rows": [{"symbol": "AAA", "signal": "BUY", "score": 72, "coverage": 80, "date": "2026-11-12", "company": "Alpha", "report_timing": "Before Open"}]})
+    swr._values["earn:equity:AAA"] = (now, {"params": [{"name": "eps_estimates", "bias": 0.4, "weight": 16}]})
+    clock = Clock(datetime(2026, 11, 9, 13, 0, tzinfo=timezone.utc))
+    d = tmp_path / "em"
+    d.mkdir()
+    write_approval(d, clock(), mode="cache_only", days=14)
+    ad = ProdAdapters(smart_move=SmartMoveSource(), session_factory=lambda: (_ for _ in ()).throw(RuntimeError("no db")), clock=clock)
+    store, cfg, _, mon, sched, access = build_sim(d, clock, adapters=ad)
+    for _ in range(3):                                                    # several full cycles: scan, evidence, recompute (which reads the warm universe), health and provider snapshots, alerts
+        sched.tick(clock())
+        sched.run_pending(clock())
+        mon.recompute(clock())
+        mon.evidence_scan(clock())
+        mon.alert_dispatch(clock())
+        clock.advance(minutes=20)
+    assert touched == [], "the monitor touched a provider or build path %d time(s)" % len(touched)
+    held = swr._values.get("universe:top1000")
+    if universe_state == "missing":
+        assert held is None                                              # nothing was built to fill the gap
+    elif universe_state == "stale_over_24h":
+        assert held[0] == now - 30 * 3600                                # the stale copy was left exactly as it was (no refresh was started)
+    assert store.q("SELECT COUNT(*) n FROM provider_calls")[0]["n"] == 0 if _table_exists(store, "provider_calls") else True
+
+
+def _table_exists(store, name):
+    return bool(store.q("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (name,)))
