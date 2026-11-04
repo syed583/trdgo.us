@@ -105,3 +105,10 @@ def _no_access_gate(monkeypatch):
     except Exception:  # noqa: BLE001
         pass
     yield
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _isolated_provider_ledger(tmp_path_factory):
+    """The provider ledger writes a small file; keep every test run's file out of the source tree."""
+    os.environ.setdefault("PROVIDER_LEDGER_DIR", str(tmp_path_factory.mktemp("provider_ledger")))
+    yield
