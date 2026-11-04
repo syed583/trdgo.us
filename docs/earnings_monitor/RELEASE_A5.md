@@ -1,6 +1,6 @@
 # Stage A.5 release candidate (local, NOT pushed, NOT deployed)
 
-Base: Stage A.4 `ebf6b3cc` (production). Package: `deploy/earnings_monitor`, manifest SHA-256 anchor `MANIFEST_SHA_PLACEHOLDER` (138 files). The anchor changes only if any package byte changes; the owner is given it out of band and the updater refuses a package that does not match.
+Base: Stage A.4 `ebf6b3cc` (production). Package: `deploy/earnings_monitor`, manifest SHA-256 anchor `49da449d595eb33a6d5f0ed504732e056833c64709a934e163d1d6f98c3b3268` (138 files). The anchor changes only if any package byte changes; the owner is given it out of band and the updater refuses a package that does not match.
 
 ## What is in it
 1. Monitor code (5 changed modules: adapters, logic, routes, service, sim) and the rebuilt frontend (monitor panel, shared data-class badge, Options Flow label).
