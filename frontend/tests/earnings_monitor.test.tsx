@@ -308,3 +308,25 @@ test('quick filters: days ahead and Smart Money Move status are offered next to 
   assert.match(html, /aria-label="Smart Money Move"/);
   assert.match(html, />NOT SCORED</);
 });
+
+test('every stored call states whether it is LIVE, CACHED, STALE or HISTORICAL', () => {
+  const cell = (dc: string, extra: any = {}) => ({ status: 'VALID', label: 'BUY', signal: 'BUY', score: 61, coverage_fraction: 0.9, age_h: 2, source: 'x', data_class: dc, ...extra });
+  const row = { id: 1, symbol: 'ZZZ', company: 'Z', earnings_date: '2026-11-12', session: 'BMO', status: 'ACTIVE', days_to: 3, verification: 'CONFIRMED', out_of_window: false,
+    cells: { claude: cell('CACHED'), grok: cell('STALE'), smart_move: cell('HISTORICAL', { origin: 'HISTORICAL_SNAPSHOT' }), meta: cell('LIVE', { origin: 'LIVE_ENGINE' }) } };
+  const md = { status: 'OK', models: [{ id: 'claude', label: 'Claude' }, { id: 'grok', label: 'Grok' }, { id: 'smart_move', label: 'Smart Move' }, { id: 'meta', label: 'Meta' }], stale_after_h: 36, rows: [row], count: 1, total: 1, limit: 200, offset: 0, by_date: [],
+    summary: { events: 1, dates: 1, in_window: 1, outside_window: 0, with_fresh_call: 1, in_window_without_call: 0, max_days_ahead: 3 } };
+  const html = panel({ emstatus: { data: on }, emmodels: { data: md } }, 'models');
+  for (const k of ['LIVE', 'CACHED', 'STALE', 'HISTORICAL']) assert.match(html, new RegExp('data-testid="data-class"[^>]*>' + k + '<'));
+});
+
+test('the health page shows each provider\'s real request counts and says UNKNOWN where no limit, quota or price is known', () => {
+  const h = { status: 'OK', now: '2026-11-04T15:00:00Z', approval_days_left: 13, usage_by_day: [], providers: { day: '2026-11-04', providers: {
+    UNUSUAL_WHALES: { today_requests: 812, today_error_requests: 3, today_error_rate: 0.0037, today_outcomes: { OK: 800, RATE_LIMITED: 2 }, avg_latency_ms: 240, remaining_today: 'UNKNOWN', limit: 'no daily cap', limits: { source: 'owner-confirmed plan' }, month_to_date_requests: 9000, plan_usd_month: null },
+    FINVIZ: { today_requests: 4, today_error_requests: 0, today_error_rate: 0, today_outcomes: { OK: 4 }, avg_latency_ms: null, remaining_today: 'UNKNOWN', limit: 'UNKNOWN', limits: {}, month_to_date_requests: 40, plan_usd_month: null } } } };
+  const html = panel({ emstatus: { data: on }, emhealth: { data: h } }, 'health');
+  assert.match(html, /data-testid="providers"/);
+  assert.match(html, /UNUSUAL_WHALES<\/td><td>812</);
+  assert.match(html, /FINVIZ<\/td><td>4</);
+  assert.match(html, /UNKNOWN/);
+  assert.doesNotMatch(html, /\$\d/);
+});

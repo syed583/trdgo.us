@@ -770,3 +770,106 @@ def test_quick_filters_days_ahead_and_smart_move_status_apply_to_totals_and_page
     for ep in ("models", "smart-move"):
         assert c.get("/api/earnings-monitor/%s?days=0&sm=SELL" % ep).json()["total"] == 1
     assert c.get("/api/earnings-monitor/upcoming?sm=maybe").status_code == 422
+
+
+def test_data_class_names_how_a_call_came_to_exist():
+    from earnings_monitor import logic as L
+    assert L.data_class(None, False, None) is None                                                  # no call, no class
+    assert L.data_class("smart_move_snapshot", False, "HISTORICAL_SNAPSHOT") == "HISTORICAL"        # a stored earlier run
+    assert L.data_class("smart_move_engine", False, "LIVE_ENGINE") == "LIVE"                        # the frozen engine on in-window evidence
+    assert L.data_class("smart_move_engine", True, "LIVE_ENGINE") == "STALE"                        # live once, too old now
+    assert L.data_class("swr_cache", False) == "CACHED"                                             # the application's own cache, fresh enough
+    assert L.data_class("swr_cache", True) == "STALE"
+    assert L.data_class("smart_move_engine", False, "LIVE_ENGINE", event_reported=True) == "HISTORICAL"       # the event already reported
+
+
+def test_cells_carry_a_data_class_and_the_days_filter_is_echoed_back_unchanged(tmp_path, monkeypatch):
+    from datetime import timedelta
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from earnings_monitor import calendar_us as CAL, routes
+    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path)
+    tds = [clock().date() + timedelta(days=i) for i in range(0, 12) if CAL.is_trading_day(clock().date() + timedelta(days=i))]
+    ad.cal = [{"symbol": s_, "date": tds[1].isoformat(), "session": "BMO"} for s_ in ("AAA", "BBB", "CCC")]
+    ad.set_model("claude", "AAA", "BUY", clock(), coverage="9/10", source="swr_cache")
+    ad.set_model("smart_move", "BBB", "SELL", clock(), coverage="30/40", source="smart_move_engine", event_date=tds[1].isoformat())
+    ad.set_model("smart_move", "CCC", "BUY", clock(), coverage="30/40", source="smart_move_snapshot", event_date=tds[1].isoformat())
+    mon.observe_calendar(ad.cal, clock(), complete=True)
+    mon.recompute(clock())
+    monkeypatch.setenv("EARNINGS_MONITOR_DIR", str(d))
+    monkeypatch.setattr(routes, "now", lambda: clock())
+    app = FastAPI(); app.include_router(routes.router); c = TestClient(app)
+    rows = {r["symbol"]: r for r in c.get("/api/earnings-monitor/models?days=30").json()["rows"]}
+    assert rows["AAA"]["cells"]["claude"]["data_class"] == "CACHED"
+    assert rows["BBB"]["cells"]["smart_move"]["data_class"] == "LIVE" and rows["CCC"]["cells"]["smart_move"]["data_class"] == "HISTORICAL"
+    for ep in ("upcoming", "models", "smart-move"):
+        j = c.get("/api/earnings-monitor/%s?days=30&sm=BUY" % ep).json()
+        assert j["days"] == 30 and j["sm"] == "BUY", ep                                             # (the loop variable used to overwrite the echoed filter)
+    sm_rows = {r["symbol"]: r for r in c.get("/api/earnings-monitor/smart-move?days=30").json()["rows"]}
+    assert sm_rows["BBB"].get("data_class") == "LIVE" and sm_rows["CCC"].get("data_class") == "HISTORICAL"
+
+
+def test_no_call_is_classed_unavailable_and_the_provider_ledger_reaches_the_health_page(tmp_path, monkeypatch):
+    from datetime import timedelta
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from earnings_monitor import calendar_us as CAL, routes
+    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path)
+    tds = [clock().date() + timedelta(days=i) for i in range(0, 12) if CAL.is_trading_day(clock().date() + timedelta(days=i))]
+    ad.cal = [{"symbol": "AAA", "date": tds[1].isoformat(), "session": "BMO"}]
+    ad.ledger = {"status": "OK", "day": "2026-11-04", "providers": {"FINNHUB": {"today_requests": 12, "remaining_today": "UNKNOWN", "limit": "UNKNOWN"}}}
+    mon.observe_calendar(ad.cal, clock(), complete=True)
+    mon.recompute(clock())
+    mon.alert_dispatch(clock())                                              # the light lane reads the ledger every 10 minutes
+    monkeypatch.setenv("EARNINGS_MONITOR_DIR", str(d)); monkeypatch.setattr(routes, "now", lambda: clock())
+    app = FastAPI(); app.include_router(routes.router); c = TestClient(app)
+    row = c.get("/api/earnings-monitor/models").json()["rows"][0]
+    assert row["cells"]["smart_move"]["data_class"] == "UNAVAILABLE"        # no Smart Money Move call exists for it
+    assert c.get("/api/earnings-monitor/smart-move").json()["rows"][0]["data_class"] == "UNAVAILABLE"
+    h = c.get("/api/earnings-monitor/health").json()
+    assert h["providers"]["providers"]["FINNHUB"]["today_requests"] == 12 and h["providers"]["read_at"]
+
+
+def test_options_flow_class_follows_the_session_the_cache_age_and_the_answer():
+    import signal_class as SC
+    ok = {"status": "OK", "trades": [{"x": 1}], "delay_minutes": 0}
+    assert SC.options_flow_class(ok, "OPEN", 2, 4) == "LIVE"
+    assert SC.options_flow_class(dict(ok, delay_minutes=15), "OPEN", 2, 4) == "CACHED"          # a delayed tape is real data, not live
+    assert SC.options_flow_class(ok, "OPEN", 100, 4) == "STALE"                                 # cached copy far older than its limit
+    assert SC.options_flow_class(dict(ok, delay_minutes=120), "OPEN", 1, 4) == "STALE"
+    assert SC.options_flow_class(ok, "CLOSED", 1, 4) == "HISTORICAL"                            # the market is closed: last session's tape
+    assert SC.options_flow_class({"status": "RATE_LIMITED"}, "OPEN", 1, 4) == "UNAVAILABLE"
+    assert SC.options_flow_class({"status": "OK", "trades": []}, "OPEN", 1, 4) == "UNAVAILABLE"
+    assert SC.options_flow_class(None, "OPEN", 1, 4) == "UNAVAILABLE"
+    assert SC.from_stamp("SNAPSHOT") == "HISTORICAL" and SC.from_stamp("LIVE") == "LIVE" and SC.from_stamp("LIVE", stale=True) == "STALE" and SC.from_stamp("DELAYED") == "CACHED" and SC.from_stamp(None) == "UNAVAILABLE"
+
+
+def test_missing_prediction_coverage_is_split_into_universe_horizon_warm_gap_and_vendor_conflict(tmp_path, monkeypatch):
+    from datetime import timedelta
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from earnings_monitor import calendar_us as CAL, routes
+    d, clock, store, cfg, ad, mon, sched, access = mk(tmp_path)
+    tds = [clock().date() + timedelta(days=i) for i in range(0, 25) if CAL.is_trading_day(clock().date() + timedelta(days=i))]
+    near, far = tds[1].isoformat(), tds[8].isoformat()
+    ad.cal = [{"symbol": "COV", "date": near, "session": "BMO"}, {"symbol": "OUT", "date": near, "session": "BMO"}, {"symbol": "FAR", "date": far, "session": "BMO"},
+              {"symbol": "GAP", "date": near, "session": "BMO"}, {"symbol": "CFL", "date": near, "session": "BMO"}]
+    ad.set_model("claude", "COV", "BUY", clock(), coverage="9/10", source="swr_cache")                  # the only stock with a fresh call: it makes the model scans "exist"
+    ad.set_model("claude", "ZZZ", "SELL", clock(), coverage="9/10", source="swr_cache")
+    ad.warm = {"symbols": ["COV", "FAR", "GAP", "CFL"], "horizon_days": 3}                              # OUT is not in the warmed universe; FAR is, but its date is beyond a 3-day horizon; GAP is in and inside
+    mon.observe_calendar(ad.cal, clock(), complete=True)
+    with store.tx() as c:
+        c.execute("UPDATE events SET verification='CONFLICT' WHERE symbol='CFL'")
+    mon.recompute(clock())
+    monkeypatch.setenv("EARNINGS_MONITOR_DIR", str(d)); monkeypatch.setattr(routes, "now", lambda: clock())
+    app = FastAPI(); app.include_router(routes.router); c = TestClient(app)
+    j = c.get("/api/earnings-monitor/upcoming?limit=1000").json()
+    why = {r["symbol"]: r["no_call_reason"] for r in j["rows"]}
+    assert why["OUT"] == "OUTSIDE_TOP_LIQUID_UNIVERSE" and why["FAR"] == "BEYOND_WARM_HORIZON" and why["GAP"] == "IN_UNIVERSE_NOT_YET_WARMED" and why["CFL"] == "CALENDAR_VENDORS_DISAGREE" and why["COV"] is None
+    reasons = j["summary"]["no_call_reasons"]
+    assert {k: v["events"] for k, v in reasons.items()} == {"OUTSIDE_TOP_LIQUID_UNIVERSE": 1, "BEYOND_WARM_HORIZON": 1, "IN_UNIVERSE_NOT_YET_WARMED": 1, "CALENDAR_VENDORS_DISAGREE": 1}
+    assert all(k in j["summary"]["reason_help"] for k in reasons)
+    ad.warm = None                                                                                    # universe unreadable: fall back to the generic, still truthful, reason
+    store.kv_set("warm:universe", None)
+    j2 = c.get("/api/earnings-monitor/upcoming?limit=1000").json()
+    assert {r["symbol"]: r["no_call_reason"] for r in j2["rows"]}["OUT"] == "OUTSIDE_MODEL_UNIVERSE"

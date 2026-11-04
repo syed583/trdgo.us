@@ -1,3 +1,4 @@
+import { DataClassBadge } from '../components/DataClass';
 import { Fragment, useState } from 'react';
 import { AlertTriangle, Info, RefreshCw } from 'lucide-react';
 import { earningsMonitor } from '../api/client';
@@ -39,6 +40,22 @@ const LABEL_HINT: Record<string, string> = {
 };
 
 /** One model's cell. A label other than BUY / SELL / NEUTRAL / NO TRADE is never drawn as a call. */
+const unk = (v: any) => (v === undefined || v === null ? 'UNKNOWN' : String(v));
+
+/** Per-provider request counts from the application's ledger. Anything not known or not configured says UNKNOWN: no figure is ever guessed. */
+export function ProviderTable({ p }: { p: any }) {
+  const rows = Object.entries(p.providers || {}) as [string, any][];
+  return (
+    <div data-testid="providers">
+      <div className="sm-q-muted">Provider requests, {p.day} (New York day). Counts are real requests made by the application; quotas and prices are shown only where the owner configured them.</div>
+      <table className="sm-mini"><thead><tr><th>Provider</th><th>Requests today</th><th>Errors</th><th>Rate-limited</th><th>Avg latency</th><th>Remaining today</th><th>Limit</th><th>Month to date</th><th>Cost</th></tr></thead>
+        <tbody>{rows.map(([name, r]) => <tr key={name}><td>{name}</td><td>{r.today_requests}</td><td>{r.today_error_requests}{r.today_error_rate != null ? ` (${Math.round(r.today_error_rate * 100)}%)` : ''}</td><td>{r.today_outcomes?.RATE_LIMITED ?? 0}</td>
+          <td>{r.avg_latency_ms != null ? `${r.avg_latency_ms} ms` : 'UNKNOWN'}</td><td>{unk(r.remaining_today)}</td><td title={r.limits?.source}>{r.limit}</td><td>{r.month_to_date_requests}</td>
+          <td>{r.plan_usd_month != null ? `$${r.plan_usd_month}/month` + (r.effective_usd_per_1000_requests_month_to_date != null ? ` · $${r.effective_usd_per_1000_requests_month_to_date}/1,000 requests` : '') : 'UNKNOWN'}</td></tr>)}</tbody></table>
+    </div>
+  );
+}
+
 export function SignalCell({ c }: { c: any }) {
   if (!c) return <span className="sm-q-muted">—</span>;
   const label: string = c.label || (c.status === 'VALID' ? c.signal : 'PENDING');
@@ -49,6 +66,7 @@ export function SignalCell({ c }: { c: any }) {
       <span className={cls} data-testid="cell-label" data-call={isCall ? 'yes' : 'no'}>{LABEL_TEXT[label] || label}</span>
       {c.status === 'VALID' && <div className="sm-q-muted">{c.score != null ? `score ${c.score} · ` : ''}{c.coverage_fraction != null ? `cov ${Math.round(c.coverage_fraction * 100)}%` : 'cov —'} · {c.age_h != null ? `${c.age_h} h old` : ''}</div>}
       {c.status === 'VALID' && c.source && <div className="sm-q-muted">{nice(c.source)}</div>}
+      {c.status === 'VALID' && c.data_class && <div><DataClassBadge klass={c.data_class} /></div>}
       {label === 'NO_PREDICTION_AVAILABLE' && c.reason && <div className="sm-q-muted" data-testid="cell-reason">{c.reason}</div>}
       {c.origin && c.status === 'VALID' && <div className="sm-q-muted" data-testid="cell-origin">{c.origin === 'HISTORICAL_SNAPSHOT' ? 'historical snapshot' : c.origin === 'LIVE_ENGINE' ? 'live engine' : nice(c.origin)}</div>}
       {c.previous && <div className="sm-q-muted" data-testid="cell-previous">was {nice(c.previous.signal)}{c.previous.score != null ? ` (${c.previous.score})` : ''} · {fmtTime(c.previous.recorded_at)}{c.reason ? ` — ${c.reason}` : ''}</div>}
@@ -143,6 +161,7 @@ function HealthPanel({ d }: { d: any }) {
       </div>
       {d.approval_days_left != null && <div className={d.approval_days_left <= 3 ? 'sm-fresh stale' : 'sm-q-muted'} data-testid="approval-left" role={d.approval_days_left <= 3 ? 'alert' : undefined}>Owner approval ends {fmtTime(d.approval_expires_at)} ({d.approval_days_left} days left). When it ends the scheduler stops until a new approval is signed.</div>}
       {d.usage_by_day?.length > 0 && <table className="sm-mini" data-testid="usage"><thead><tr><th>Day</th><th>Provider requests by the monitor</th><th>Failures</th></tr></thead><tbody>{d.usage_by_day.map((u: any) => <tr key={u.day}><td>{u.day}</td><td>{u.requests}</td><td>{u.failures}</td></tr>)}</tbody></table>}
+      {d.providers?.providers && <ProviderTable p={d.providers} />}
       {d.refresh_plan && <div data-testid="refresh-plan" className="sm-q-muted">Refresh plan ({d.refresh_plan.profile}): daily cap {d.refresh_plan.daily_cap}, reserved {d.refresh_plan.external_reserve} for the app's other collectors, {d.refresh_plan.calendar_reserve} for the calendar and {d.refresh_plan.outcome_reserve} for outcomes → {d.refresh_plan.event_slots} event refresh(es) fit; {d.refresh_plan.unfunded_count} of {d.refresh_plan.needing_refresh} events that need one do not. {d.refresh_plan.app_requests_today != null ? `The application has made ${d.refresh_plan.app_requests_today} request(s) today in total.` : ''}
         {d.refresh_plan.unfunded?.length > 0 && <div>Not covered: {d.refresh_plan.unfunded.slice(0, 25).map((u: any) => `${u.symbol} ${u.earnings_date}`).join(', ')}{d.refresh_plan.unfunded_count > 25 ? ` and ${d.refresh_plan.unfunded_count - 25} more` : ''}</div>}</div>}
       <table className="sm-mini" data-testid="recent-runs"><thead><tr><th>Job</th><th>Started</th><th>Finished</th><th>Execution (ms)</th><th>Events processed</th><th>Waited in queue (ms)</th><th>Result</th></tr></thead>

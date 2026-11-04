@@ -73,6 +73,16 @@ class SimAdapters(Adapters):
     def smart_move_windows(self):
         return self.sm_win
 
+    warm = None                                      # scripted warm universe: {"symbols": [...], "horizon_days": 14}
+
+    def warm_universe(self):
+        return self.warm
+
+    ledger = None                                    # scripted provider-ledger snapshot
+
+    def provider_ledger(self):
+        return self.ledger
+
     infra = None                                     # scripted infra status ({"broker_ok": bool, "provider_down": bool})
 
     def infra_status(self):

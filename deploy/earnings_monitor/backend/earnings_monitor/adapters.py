@@ -207,6 +207,25 @@ class ProdAdapters(Adapters):
     def smart_move_windows(self) -> Optional[dict]:
         return self.smart.window_report() if self.smart and hasattr(self.smart, "window_report") else None
 
+    def warm_universe(self) -> Optional[dict]:
+        """The application's own warm universe (the ranked liquid stocks its warmer refreshes) and the warm horizon, read from what is already held: no provider call, no rebuild."""
+        try:
+            import local_warmer as LW
+            import universe_service as US
+            syms = US.symbols()
+            if not syms:
+                return None
+            return {"symbols": sorted(syms), "horizon_days": LW.trading_days_window(10)}
+        except Exception:  # noqa: BLE001
+            return None
+
+    def provider_ledger(self) -> Optional[dict]:
+        try:
+            import provider_ledger as PL
+            return PL.snapshot(7)
+        except Exception:  # noqa: BLE001
+            return None
+
     def collector_status(self) -> Optional[dict]:
         """Read-only summary of the collector wrapper's run log (env EM_COLLECTOR_LOG, one JSON object per line). None when not configured or unreadable: then no collector alert can fire."""
         p = os.environ.get("EM_COLLECTOR_LOG")

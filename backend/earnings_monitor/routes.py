@@ -62,6 +62,9 @@ def status():
 SCOPES = ("all", "window", "outside", "withcall", "nocall")
 FORMULA_MODELS = [m for m in LABELS if m != "smart_move"]
 REASON_HELP = {
+    "OUTSIDE_TOP_LIQUID_UNIVERSE": "This stock is not among the top-1,000 liquid stocks that the application's warmer keeps fresh, so none of the eight models has a call for it. Covering it means widening that universe (about 60 provider requests per stock per refresh) and accepting thinner options data.",
+    "BEYOND_WARM_HORIZON": "The stock is in the warmed universe but its report is further away than the warmer's horizon (the next 10 trading days), so it has not been warmed yet. It is picked up automatically as the date approaches.",
+    "IN_UNIVERSE_NOT_YET_WARMED": "The stock is in the warmed universe and inside the warm horizon, yet no model has a fresh call for it: the warmer has not reached it yet, it ended as partial data, or the provider returned nothing. Check the warmer progress.",
     "OUTSIDE_MODEL_UNIVERSE": "The eight formula models scored other stocks but not this one: it is outside their stock universe (the most liquid names). No existing cache holds a prediction for it. Coverage can grow only by widening that universe in the application and fetching the evidence for these stocks (about 61 provider requests per stock, Stage D); no scoring formula changes.",
     "CALENDAR_VENDORS_DISAGREE": "The two calendar vendors disagree about this report's date or session, so no prediction is made until they agree. A calendar refresh (Stage D) re-checks both.",
     "SESSION_NOT_CONFIRMED": "The report time (before open or after close) is not confirmed, so no model is run for it.",
@@ -73,7 +76,7 @@ REASON_HELP = {
 }
 
 
-def _why_no_call(ev: dict, states: dict) -> Optional[str]:
+def _why_no_call(ev: dict, states: dict, uni: Optional[dict] = None, ahead: Optional[int] = None) -> Optional[str]:
     """The verified reason an in-window event has no fresh formula-model call, from the stored per-model state (None when it has one). Only reasons the stored facts support are returned."""
     if ev.get("verification") == "CONFLICT":
         return "CALENDAR_VENDORS_DISAGREE"
@@ -91,6 +94,12 @@ def _why_no_call(ev: dict, states: dict) -> Optional[str]:
     if not scored:
         return "SOURCE_NOT_AVAILABLE"
     if all(x == "NOT_COVERED" for x in scored):                                      # every existing scan scored other stocks but not this one
+        if uni and uni.get("symbols") is not None:                           # the application's warm universe is known: say exactly which exclusion applies
+            if ev.get("symbol") not in uni["_set"]:
+                return "OUTSIDE_TOP_LIQUID_UNIVERSE"
+            if ahead is not None and uni.get("horizon_days") is not None and ahead > int(uni["horizon_days"]):
+                return "BEYOND_WARM_HORIZON"
+            return "IN_UNIVERSE_NOT_YET_WARMED"
         return "OUTSIDE_MODEL_UNIVERSE"
     if "PENDING" in scored:
         return "MODEL_PENDING"
@@ -113,6 +122,11 @@ def _overview(s: Store, cfg, t: datetime, include_history: bool = False) -> dict
     for r in s.q("SELECT event_id, model, status, stale FROM model_state"):
         states.setdefault(r["event_id"], {})[r["model"]] = (r["status"], bool(r["stale"]))
     smsig = {r["event_id"]: r["signal"] for r in s.q("SELECT event_id, signal FROM model_state WHERE model='smart_move' AND status='VALID'")}
+    uni = s.kv_get("warm:universe")
+    if uni and uni.get("symbols") is not None:
+        uni = dict(uni, _set=set(uni["symbols"]))
+    else:
+        uni = None
     evs = []
     for e in s.q("SELECT id, symbol, earnings_date, status, session, verification FROM events" + ("" if include_history else " WHERE status='ACTIVE'") + " ORDER BY earnings_date, symbol"):
         days = (date.fromisoformat(e["earnings_date"]) - today).days
@@ -122,7 +136,7 @@ def _overview(s: Store, cfg, t: datetime, include_history: bool = False) -> dict
         win = days <= cfg.model_window_days
         evs.append({"id": e["id"], "symbol": e["symbol"], "date": e["earnings_date"], "days": days, "window": win, "fresh": int(c.get("fresh") or 0), "valid": int(c.get("valid") or 0),
                     "sm": smsig.get(e["id"]),
-                    "why": (_why_no_call(e, states.get(e["id"], {})) if win and not int(c.get("fresh") or 0) else None)})
+                    "why": (_why_no_call(e, states.get(e["id"], {}), uni, days) if win and not int(c.get("fresh") or 0) else None)})
     by_date: dict = {}
     for e in evs:
         d = by_date.setdefault(e["date"], {"date": e["date"], "events": 0, "in_window": 0, "with_fresh_call": 0})
@@ -171,7 +185,7 @@ def upcoming(include_history: bool = False, limit: int = Query(200, ge=1, le=100
     whymap = {e["id"]: e["why"] for e in ov["events"] if e["why"]}
     out = []
     for e in rows:
-        days = (date.fromisoformat(e["earnings_date"]) - today_et(t)).days
+        ahead = (date.fromisoformat(e["earnings_date"]) - today_et(t)).days
         reasons = []
         if e["status"] != "ACTIVE":
             reasons.append(e["status"])
@@ -179,15 +193,15 @@ def upcoming(include_history: bool = False, limit: int = Query(200, ge=1, le=100
             reasons.append("SESSION_NOT_CONFIRMED")
         if e["verification"] == "CONFLICT":
             reasons.append("CALENDAR_VENDORS_DISAGREE")
-        if days > cfg.model_window_days:
+        if ahead > cfg.model_window_days:
             reasons.append("BEYOND_%d_DAY_MODEL_WINDOW" % cfg.model_window_days)
         last = s.one("SELECT detected_at, kind FROM changes WHERE event_id=? ORDER BY id DESC LIMIT 1", (e["id"],))
         versions = s.q("SELECT earnings_date, session, observed_at, reason FROM event_versions WHERE event_id=? ORDER BY id", (e["id"],))
         valid = (s.one("SELECT COUNT(*) n FROM model_state WHERE event_id=? AND status='VALID'", (e["id"],)) or {}).get("n", 0)
         fresh_models = (s.one("SELECT COUNT(*) n FROM model_state WHERE event_id=? AND status='VALID' AND stale=0", (e["id"],)) or {}).get("n", 0)
         ev_info = s.one("SELECT COUNT(*) n, MAX(last_seen) t FROM evidence_items WHERE event_id=?", (e["id"],)) or {}
-        out.append({"id": e["id"], "symbol": e["symbol"], "company": e["company"], "earnings_date": e["earnings_date"], "session": e["session"], "status": e["status"], "days_to": days,
-                    "verification": e["verification"], "last_verified": e.get("last_verified"), "out_of_window": days > cfg.model_window_days,
+        out.append({"id": e["id"], "symbol": e["symbol"], "company": e["company"], "earnings_date": e["earnings_date"], "session": e["session"], "status": e["status"], "days_to": ahead,
+                    "verification": e["verification"], "last_verified": e.get("last_verified"), "out_of_window": ahead > cfg.model_window_days,
                     "sources": json.loads(e["sources"]) if e["sources"] else [], "eligible": not reasons, "ineligible_reasons": reasons, "first_seen": e["first_seen"],
                     "last_seen": e["last_seen"], "last_changed": e["last_changed"], "latest_change": last, "versions": versions, "valid_predictions": valid, "fresh_predictions": fresh_models, "models_total": len(LABELS), "no_call_reason": whymap.get(e["id"]),
                     "evidence_items": ev_info.get("n", 0), "last_evidence_at": ev_info.get("t"), "outcome": json.loads(e["outcome_json"]) if e["outcome_json"] else None})
@@ -208,7 +222,7 @@ def models(limit: int = Query(200, ge=1, le=1000), offset: int = Query(0, ge=0),
     byid = {r["id"]: r for r in s.q("SELECT * FROM events WHERE id IN (%s)" % ",".join(str(i) for i in ids))} if ids else {}
     out = []
     for e in [byid[i] for i in ids if i in byid]:
-        days = (date.fromisoformat(e["earnings_date"]) - today_et(t)).days
+        ahead = (date.fromisoformat(e["earnings_date"]) - today_et(t)).days
         cells = {}
         for m in s.q("SELECT * FROM model_state WHERE event_id=?", (e["id"],)):
             pred = s.one("SELECT recorded_at, as_of, source, engine_version, reason FROM predictions WHERE id=?", (m["prediction_id"],)) if m["prediction_id"] else None
@@ -223,14 +237,17 @@ def models(limit: int = Query(200, ge=1, le=1000), offset: int = Query(0, ge=0),
                                  "previous": {"signal": prior["signal"], "score": prior["score"], "recorded_at": prior["recorded_at"]} if prior else None,
                                  "changed_since_previous": bool(prior and prior["signal"] != (two[0]["signal"])),
                                  "validation": "VALID" if m["status"] == "VALID" and not m["stale"] else ("STALE" if m["status"] == "VALID" else m["status"])}
+            cells[m["model"]]["data_class"] = L.data_class(cells[m["model"]]["source"], bool(m["stale"]), None, e["status"] == "REPORTED") if m["status"] == "VALID" else "UNAVAILABLE"
         sm_c = cells.get("smart_move")
         if sm_c and sm_c["status"] != "VALID" and not sm_c.get("source"):                              # no call exists: the truthful label and the real reason
             why = _sm_reason(s, e, cfg, t, False)
             sm_c["label"], sm_c["reason"], sm_c["reason_code"], sm_c["origin"] = "NO_PREDICTION_AVAILABLE", why["text"], why["code"], "NOT_GENERATED"
+            sm_c["data_class"] = "UNAVAILABLE"
         elif sm_c:
             sm_c["origin"] = {"smart_move_snapshot": "HISTORICAL_SNAPSHOT", "smart_move_engine": "LIVE_ENGINE"}.get(sm_c.get("source"))
-        out.append({"id": e["id"], "symbol": e["symbol"], "company": e["company"], "earnings_date": e["earnings_date"], "session": e["session"], "verification": e["verification"], "days_to": days,
-                    "out_of_window": days > cfg.model_window_days, "cells": cells})
+            sm_c["data_class"] = L.data_class(sm_c.get("source"), bool(sm_c.get("stale")), sm_c["origin"], e["status"] == "REPORTED") if sm_c["status"] == "VALID" else "UNAVAILABLE"
+        out.append({"id": e["id"], "symbol": e["symbol"], "company": e["company"], "earnings_date": e["earnings_date"], "session": e["session"], "verification": e["verification"], "days_to": ahead,
+                    "out_of_window": ahead > cfg.model_window_days, "cells": cells})
     return {"status": "OK", "models": [{"id": k, "label": v} for k, v in LABELS.items()], "stale_after_h": cfg.stale_after_h, "rows": out, "count": len(out), **_page_meta(ov, total, limit, offset, on, scope, days, sm),
             "note": "A cell is a model's own call. PENDING, LOW DATA and NO VALID PREDICTION mean it made no call; they are never a neutral view. NO TRADE is a real call that says do nothing."}
 
@@ -497,7 +514,7 @@ def smart_move(limit: int = Query(200, ge=1, le=1000), offset: int = Query(0, ge
     ids, total = _select(ov, on, scope, limit, offset, days, sm)
     byid = {r["id"]: r for r in s.q("SELECT * FROM events WHERE id IN (%s)" % ",".join(str(i) for i in ids))} if ids else {}
     for e in [byid[i] for i in ids if i in byid]:
-        days = (date.fromisoformat(e["earnings_date"]) - today_et(t)).days
+        ahead = (date.fromisoformat(e["earnings_date"]) - today_et(t)).days
         m = s.one("SELECT * FROM model_state WHERE event_id=? AND model='smart_move'", (e["id"],))
         st = {"status": (m or {}).get("status", "PENDING"), "signal": (m or {}).get("signal"), "stale": bool((m or {}).get("stale"))}
         label = L.display_status(st)
@@ -508,12 +525,13 @@ def smart_move(limit: int = Query(200, ge=1, le=1000), offset: int = Query(0, ge
             if has_row:                                                                             # the frozen engine's own "no valid prediction": keep its result and its reason
                 reason = {"code": "ENGINE_RESULT", "text": str((det or {}).get("reason") or "The frozen engine returned no valid prediction for this event.")}
             else:
-                reason = _sm_reason(s, e, cfg, t, False) if days <= cfg.model_window_days else {"code": "NOT_YET_IN_WINDOW", "text": "Dated %s, %d days ahead. Predictions are made 48 to 24 hours before the report." % (e["earnings_date"], days)}
+                reason = _sm_reason(s, e, cfg, t, False) if ahead <= cfg.model_window_days else {"code": "NOT_YET_IN_WINDOW", "text": "Dated %s, %d days ahead. Predictions are made 48 to 24 hours before the report." % (e["earnings_date"], ahead)}
                 label = "NO_PREDICTION_AVAILABLE"
         counts[label] = counts.get(label, 0) + 1
-        out.append({"id": e["id"], "symbol": e["symbol"], "company": e["company"], "earnings_date": e["earnings_date"], "session": e["session"], "days_to": days, "label": label, "signal": (m or {}).get("signal"),
+        out.append({"id": e["id"], "symbol": e["symbol"], "company": e["company"], "earnings_date": e["earnings_date"], "session": e["session"], "days_to": ahead, "label": label, "signal": (m or {}).get("signal"),
                     "coverage": json.loads(m["coverage"]) if m and m["coverage"] else None, "as_of": (m or {}).get("as_of"), "age_h": _age_h((m or {}).get("as_of"), t), "stale": st["stale"],
-                    "source": (m or {}).get("source"), "origin": {"smart_move_snapshot": "HISTORICAL_SNAPSHOT", "smart_move_engine": "LIVE_ENGINE"}.get((m or {}).get("source")) or "NOT_GENERATED", "reason": reason, "details": det})
+                    "source": (m or {}).get("source"), "origin": {"smart_move_snapshot": "HISTORICAL_SNAPSHOT", "smart_move_engine": "LIVE_ENGINE"}.get((m or {}).get("source")) or "NOT_GENERATED", "reason": reason, "details": det,
+                    "data_class": L.data_class((m or {}).get("source"), st["stale"], {"smart_move_snapshot": "HISTORICAL_SNAPSHOT", "smart_move_engine": "LIVE_ENGINE"}.get((m or {}).get("source")), e["status"] == "REPORTED") if (m or {}).get("status") == "VALID" else "UNAVAILABLE"})
     return {"status": "OK", "engine": info, "coverage": s.kv_get("smd:coverage"), "windows": s.kv_get("smd:windows"), "plan": s.kv_get("smart_move:plan"), "counts": counts, "counts_scope": "this page", "rows": out, "count": len(out), **_page_meta(ov, total, limit, offset, on, scope, days, sm),
             "note": "The monitor never scores Smart Move: it reads the frozen engine's own result. Collecting the evidence is a separate, attested provider run; until it has run, the honest label is PENDING or NO VALID PREDICTION."}
 
@@ -549,7 +567,8 @@ def health():
     rep = status_report(s, cfg, t)
     exp = (rep.get("approval") or {}).get("expires_at")
     usage = s.q("SELECT day, SUM(requests) requests, SUM(failures) failures FROM usage GROUP BY day ORDER BY day DESC LIMIT 7")
-    return {"status": "OK", "now": t.isoformat(), "approval_expires_at": exp, "approval_days_left": None if not exp else round((parse(exp) - t).total_seconds() / 86400, 1), "usage_by_day": usage,
+    prov = s.kv_get("providers:ledger")
+    return {"providers": prov, "providers_note": None if prov else "No provider ledger has been read yet (it is read every 10 minutes by the alert job).", "status": "OK", "now": t.isoformat(), "approval_expires_at": exp, "approval_days_left": None if not exp else round((parse(exp) - t).total_seconds() / 86400, 1), "usage_by_day": usage,
             "refresh_plan": s.kv_get("refresh:plan"), "scheduling": rep["scheduling"], "queue": rep["queue"], "last_runs": runs, "recent_runs": recent, "stuck_jobs": stuck, "dead_jobs": dead,
             "duplicate_active_events": dup_events, "duplicate_prediction_rows": dup_preds, "heartbeat": {"scans": hb, "light": hbl, "scans_age_s": None if not hb else round((t - parse(hb)).total_seconds())},
             "provider_requests_today": rep["provider_requests_today"], "pending_alerts": rep["pending_alerts"], "breakers": rep["breakers"], "evidence_scan": s.kv_get("evidence_scan:last"), "news_flow": s.kv_get("news_flow:last"), "refresh_skipped": s.kv_get("refresh:skipped"),

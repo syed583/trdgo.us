@@ -65,6 +65,12 @@ class Adapters:
     def smart_move_coverage(self) -> Optional[dict]:  # what the Smart Money Move engine / snapshot covered on its latest read: source, generated_at, event_dates, rows
         return None
 
+    def warm_universe(self) -> Optional[dict]:        # {"symbols": [...], "horizon_days": calendar days the warmer covers} when the application's warm universe can be read without a provider call
+        return None
+
+    def provider_ledger(self) -> Optional[dict]:      # the application's per-provider request ledger (counts, outcomes, limits, owner-configured cost): read only, no provider call
+        return None
+
     def infra_status(self) -> Optional[dict]:         # {"broker_ok": bool|None, "provider_down": bool|None}: the shared-lease broker and the provider breaker, when those exist (None = nothing to report)
         return None
 
@@ -297,6 +303,13 @@ class Monitor:
         cov = self.ad.smart_move_coverage()
         if cov is not None and self.store.kv_get("smd:coverage") != cov:
             self.store.kv_set("smd:coverage", cov)
+        if event_id is None:
+            try:
+                wu = self.ad.warm_universe()
+                if wu and wu.get("symbols"):
+                    self.store.kv_set("warm:universe", {"symbols": sorted(wu["symbols"]), "horizon_days": wu.get("horizon_days"), "size": len(wu["symbols"]), "read_at": iso(now)})
+            except Exception as e:  # noqa: BLE001
+                self.store.kv_set("warm:universe_error", {"at": iso(now), "error": type(e).__name__})
         full_wrep = None
         wrep = self.ad.smart_move_windows()
         if wrep is not None:
@@ -699,6 +712,15 @@ class Monitor:
             self.store.kv_set("alerts:health_error", {"at": iso(now), "error": type(e).__name__})
         return A.enqueue(self.store, now, out, self.cfg)
 
+    def _provider_snapshot(self, now: datetime) -> None:
+        try:
+            snap = self.ad.provider_ledger()
+            if snap:
+                self.store.kv_set("providers:ledger", dict(snap, read_at=iso(now)))
+        except Exception as e:  # noqa: BLE001 - a broken ledger read must never stop a scan
+            self.store.kv_set("providers:ledger_error", {"at": iso(now), "error": type(e).__name__})
+
     def alert_dispatch(self, now: datetime) -> dict:
+        self._provider_snapshot(now)
         self._health_alerts(now)
         return A.dispatch(self.store, now, self.sinks, self.cfg)
