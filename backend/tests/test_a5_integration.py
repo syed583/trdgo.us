@@ -95,3 +95,22 @@ def test_ledger_survives_real_restarts_without_double_counting_unusual_whales(tm
     assert _run_child(d, 3) == 13                     # process 2 restarted its own counter at 3: banked 10 + 3, not 3 and not 23
     assert _run_child(d, 5) == 18                     # process 3: banked 10 + 3, plus its own 5
     assert _run_child(d, 5) == 23                     # process 4 starts at 5 again: banked 10 + 3 + 5, plus its own 5
+
+
+def test_warm_universe_read_never_builds_the_universe_or_calls_a_provider(monkeypatch):
+    """The monitor's coverage-reason read must only LOOK at the held universe. universe_service.symbols()/get() would rebuild it through the provider screener when it is missing or stale; peek() cannot."""
+    import swr
+    import universe_service as US
+    from earnings_monitor.adapters import ProdAdapters
+
+    def boom(*a, **k):
+        raise AssertionError("a provider build was attempted")
+    monkeypatch.setattr(swr, "serve", boom)
+    monkeypatch.setattr(US, "build", boom)
+    monkeypatch.setattr(US, "get", boom)
+    monkeypatch.setattr(US, "symbols", boom)
+    monkeypatch.setattr(US, "peek", lambda: None)
+    assert ProdAdapters.warm_universe(object.__new__(ProdAdapters)) is None          # nothing held: no answer, no build
+    monkeypatch.setattr(US, "peek", lambda: {"rows": [{"ticker": "AAPL"}, {"ticker": "MSFT"}]})
+    out = ProdAdapters.warm_universe(object.__new__(ProdAdapters))
+    assert out["symbols"] == ["AAPL", "MSFT"] and out["horizon_days"] >= 14

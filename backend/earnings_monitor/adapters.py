@@ -212,9 +212,10 @@ class ProdAdapters(Adapters):
         try:
             import local_warmer as LW
             import universe_service as US
-            syms = US.symbols()
-            if not syms:
+            held = US.peek()                      # the held universe (memory or shared DB tier) WITHOUT building it: symbols() would rebuild it through the provider screener when it is missing or older than 24 h
+            if not held:
                 return None
+            syms = {r["ticker"] for r in held["rows"]}
             return {"symbols": sorted(syms), "horizon_days": LW.trading_days_window(10)}
         except Exception:  # noqa: BLE001
             return None
