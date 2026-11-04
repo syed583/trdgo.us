@@ -32,7 +32,7 @@ import smart_move_secret_check as SC  # noqa: E402
 import smart_move_shared_key_gate as SK  # noqa: E402
 from smvshadow import governor as gv  # noqa: E402
 
-ENV = Path(r"C:\Users\initi\Downloads\US-STOCKS\backend\.env")
+ENV = Path(os.environ.get("SMART_MOVE_ENV_FILE") or r"C:\Users\initi\Downloads\US-STOCKS\backend\.env")         # on the server the wrapper points this at the application's own backend\.env
 UTC = timezone.utc
 
 
@@ -127,7 +127,7 @@ def engine20_profile(a, svc, now, live: bool) -> int:
                "tasks": [(t["kind"], t["symbol"], t["why"]) for t in plan["funded"]], "provider_requests": 0}
     (d / "engine20_plan.json").write_text(json.dumps(summary, indent=1, default=str), encoding="utf-8")
     (d / "engine20_selection.json").write_text(json.dumps({"policy": a.select_policy, "slots": a.select_top, "as_of": now.isoformat(), "decisions": audit}, indent=1, default=str), encoding="utf-8")
-    limits = {"run_limit": a.ceiling, "daily_limit": a.daily_limit or a.authorize_requests}
+    limits = {"run_limit": a.ceiling, "daily_limit": a.daily_limit or a.authorize_requests or DAILY_LIMIT_MAX}
     if not live:
         if a.publish_dir:
             import smart_move_live_publisher as PUB                                # a dry run shows itself on the dashboard (status only) and publishes NO prediction
@@ -168,7 +168,7 @@ def engine20_profile(a, svc, now, live: bool) -> int:
                 print(json.dumps({"published": st["events"]}, default=str))
             except PUB.LedgerError as e:
                 print("PUBLISH BLOCKED: the prediction ledger failed its integrity check:", e)
-                return 7
+                return 8                                                       # 8 = ledger; 7 is the shared-key gate, 6 the live gates, 4 the token configuration
         return 0
     finally:
         svc.engage_kill_switch("engine20 run finished: re-engaged")

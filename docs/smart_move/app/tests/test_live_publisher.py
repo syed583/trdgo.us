@@ -16,6 +16,7 @@ import smart_move_engine20 as E20  # noqa: E402
 import smart_move_live as L  # noqa: E402
 import smart_move_live_publisher as PUB  # noqa: E402
 from test_engine20 import NOW, Stub, make, row, select  # noqa: E402
+T_Stub, make_svc = Stub, make
 
 UTC = timezone.utc
 
@@ -194,4 +195,27 @@ def test_the_approved_design_limits_are_honoured_by_the_runner_constants(monkeyp
     finally:
         monkeypatch.delenv("SMART_MOVE_RUN_MAX")
         monkeypatch.delenv("SMART_MOVE_DAILY_MAX")
+        importlib.reload(RUNNER)
+
+
+def test_the_runner_reads_the_applications_env_file_when_told_and_a_ledger_failure_has_its_own_exit_code(tmp_path, monkeypatch):
+    import argparse
+    import smart_move_collection_runner as RUNNER
+    monkeypatch.setenv("SMART_MOVE_ENV_FILE", str(tmp_path / "backend" / ".env"))
+    R2 = importlib.reload(RUNNER)
+    try:
+        assert R2.ENV == tmp_path / "backend" / ".env"
+        svc = make_svc(tmp_path / "svc", T_Stub())
+        live = tmp_path / "live"
+        live.mkdir()
+        (live / PUB.LEDGER).write_text('{"not": "a ledger line"}\n', encoding="utf-8")                  # a damaged ledger
+        svc.store.kill_file.parent.mkdir(parents=True, exist_ok=True)
+        svc.store.kill_file.write_text("x", encoding="utf-8")
+        monkeypatch.setattr(R2.G, "needs_refresh", lambda *a, **k: False)
+        a = argparse.Namespace(select_top=3, select_policy="deadline", select_symbols=None, select_date="2026-11-04", select_session="BMO", with_f7=False, ceiling=150, daily_limit=700, authorize_requests=150,
+                               state_dir=str(tmp_path / "st"), publish_dir=str(live), calendar_days_ahead=None)
+        assert R2.engine20_profile(a, svc, NOW, live=True) == 8                                    # 8 = ledger; 7 is the shared-key gate, 6 the live gates, 4 the token configuration
+        assert svc.store.kill_file.exists()                                                         # and the kill switch is back
+    finally:
+        monkeypatch.delenv("SMART_MOVE_ENV_FILE")
         importlib.reload(RUNNER)
