@@ -1022,6 +1022,7 @@ export const earningsMonitor = {
   history: (symbol: string, s?: AbortSignal) => request<any>(`/api/earnings-monitor/history?symbol=${encodeURIComponent(symbol)}`, s),
   evidence: (symbol: string, s?: AbortSignal) => request<any>(`/api/earnings-monitor/evidence${symbol ? `?symbol=${encodeURIComponent(symbol)}` : ''}`, s),
   smartMove: (q: EmPage, s?: AbortSignal) => request<any>(`/api/earnings-monitor/smart-move?${emQs(q)}`, s),
+  smartLive: (s?: AbortSignal) => request<any>('/api/earnings-monitor/smart-move/live', s),
   health: (s?: AbortSignal) => request<any>('/api/earnings-monitor/health', s),
   outcomes: (s?: AbortSignal) => request<any>('/api/earnings-monitor/outcomes', s),
 };

@@ -1,0 +1,49 @@
+{
+ "calendar": {
+  "age_h": 2.2,
+  "through": "2026-11-04"
+ },
+ "events": {
+  "open_scanned": 4,
+  "published_by_result": {
+   "BUY": 1
+  },
+  "published_new": 1,
+  "skipped": {},
+  "unchanged": 3,
+  "unfunded_this_pass": 0,
+  "upcoming": 0,
+  "window_closed": 1,
+  "window_missed_noted": 0
+ },
+ "last_successful_scan_at": "2026-11-02T21:30:00+00:00",
+ "ledger": {
+  "head_sha256": "29485f30366c514a9673b55d20ef602f2fa2379be4e17a39cdf7151a62b0777e",
+  "records": 6
+ },
+ "limits": {
+  "concurrency": 1,
+  "daily_limit": 700,
+  "run_limit": 150
+ },
+ "mode": "LIVE",
+ "requests": {
+  "ny_date": "2026-11-02",
+  "remaining_today": 683,
+  "used_today": 17
+ },
+ "run": {
+  "failed": 0,
+  "halted": null,
+  "ok": 3,
+  "requests_attempted": 3
+ },
+ "scan_id": "run_20261102_213000",
+ "scan_ok": true,
+ "schedule": {
+  "every_minutes": 60
+ },
+ "schema": "smart_move.live_status.v1",
+ "written_at": "2026-11-02T21:30:00+00:00",
+ "written_at_et": "2026-11-02 16:30:00 EST"
+}

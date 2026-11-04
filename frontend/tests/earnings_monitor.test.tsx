@@ -330,3 +330,55 @@ test('the health page shows each provider\'s real request counts and says UNKNOW
   assert.match(html, /UNKNOWN/);
   assert.doesNotMatch(html, /\$\d/);
 });
+
+const liveBase = { status: 'OK', configured: true, now: '2026-11-02T21:40:00+00:00', now_et: '2026-11-02 16:40 EST', state: 'OK', state_text: 'The last successful live scan is 10 minutes old.', kill_switch: false,
+  ledger: { ok: true, problem: null, records: 6 },
+  scan: { mode: 'LIVE', last_successful_scan_et: '2026-11-02 16:30 EST', minutes_since_success: 10, stale_after_min: 150, next_scan_expected_et: '2026-11-02 17:31 EST' },
+  events: { open_scanned: 4, published_new: 1, unchanged: 3, upcoming: 2, unfunded_this_pass: 0, skipped: { 'calendar not confirmed by two vendors': 2 } },
+  requests: { used_today: 17, remaining_today: 683, daily_limit: 700, run_limit: 150, concurrency: 1 }, calendar: { through: '2026-11-05', age_h: 2.2 },
+  rows: [
+    { symbol: 'AAA', company: 'Alpha', earnings_date: '2026-11-04', session: 'BMO', label: 'LIVE', signal: 'BUY', generated_at_et: '2026-11-02 16:30 EST', evidence_latest_et: '2026-11-02 16:20 EST', evidence_age_h: 0.3, evidence_warning: false,
+      coverage: '30/40', liquidity: 'PASS', window_cutoff_et: '2026-11-03 06:00 EST', hours_to_cutoff: 13.3, missing: [] },
+    { symbol: 'LOW', company: 'Low', earnings_date: '2026-11-04', session: 'AMC', label: 'LIVE', signal: 'NO VALID PREDICTION', generated_at_et: '2026-11-02 16:30 EST', evidence_latest_et: null, evidence_age_h: null, evidence_warning: false,
+      coverage: '10/40', liquidity: 'FAIL', window_cutoff_et: '2026-11-03 16:00 EST', hours_to_cutoff: 23.3, missing: ['F7: NOT_CAPTURED_LIVE_IN_WINDOW'] },
+    { symbol: 'OLD', company: 'Old', earnings_date: '2026-11-02', session: 'BMO', label: 'WINDOW MISSED', signal: null, generated_at_et: '2026-11-02 15:30 EST', evidence_latest_et: null, evidence_age_h: null, evidence_warning: false,
+      coverage: null, liquidity: null, window_cutoff_et: '2026-11-01 06:00 EST', hours_to_cutoff: null, missing: ['no prediction was produced before the window closed (nothing is back-filled)'] }],
+  historical_snapshot: { generated_at: '2026-11-03T08:29:08+00:00', rows: 20, label: 'HISTORICAL', is_live_signal: false, event_dates: ['2026-11-04'] }, note: 'Rows are the frozen engine\'s own output.' };
+
+test('Smart Money LIVE shows signal, ET times, evidence age, last and next scan, scanned/skipped and requests used/remaining', () => {
+  const sm = { status: 'OK', engine: {}, counts: {}, rows: [], count: 0, total: 0 };
+  const html = panel({ emstatus: { data: on }, emsmart: { data: sm }, emsmartlive: { data: liveBase } }, 'smart');
+  assert.match(html, /data-testid="sm-live"/);
+  assert.match(html, /Last successful scan: <b>2026-11-02 16:30 EST<\/b>/);
+  assert.match(html, /Next scan: <b>2026-11-02 17:31 EST<\/b>/);
+  assert.match(html, /scanned: <b>4<\/b>/);
+  assert.match(html, /skipped: calendar not confirmed by two vendors \(2\)/);
+  assert.match(html, /collector today: <b>17<\/b> of 700 · remaining <b>683<\/b> · per run ≤ 150/);
+  assert.match(html, />BUY<\/span>/);
+  assert.match(html, /NO VALID PREDICTION/);
+  assert.match(html, /2026-11-02 16:30 EST/);
+  assert.match(html, /0\.3 h old/);
+  assert.match(html, /F7: NOT_CAPTURED_LIVE_IN_WINDOW/);
+  assert.match(html, /WINDOW MISSED/);
+  assert.match(html, /\(nothing is back-filled\)/);
+});
+
+test('a stale collector raises an alert and the historical November 3 snapshot is labelled historical, never live', () => {
+  const stale = { ...liveBase, state: 'STALE', state_text: 'The last successful live scan is 200 min old (limit 150 minutes).', rows: liveBase.rows.map((r: any) => (r.label === 'LIVE' ? { ...r, label: 'STALE' } : r)) };
+  const html = panel({ emstatus: { data: on }, emsmart: { data: { status: 'OK', engine: {}, counts: {}, rows: [], count: 0, total: 0 } }, emsmartlive: { data: stale } }, 'smart');
+  assert.match(html, /role="alert"[^>]*data-testid="sm-live-state">STALE: The last successful live scan is 200 min old/);
+  assert.match(html, /data-testid="sm-live-label">STALE</);
+  assert.doesNotMatch(html, /data-testid="sm-live-label">LIVE</);
+  assert.match(html, /data-testid="sm-live-historical">Historical snapshot \(not a live signal\): generated/);
+});
+
+test('a failed ledger check shows no call, and a collector that is not installed says so instead of showing anything as live', () => {
+  const bad = { ...liveBase, state: 'OK', ledger: { ok: false, problem: 'line 2 does not continue the hash chain' }, rows: [] };
+  const a = panel({ emstatus: { data: on }, emsmart: { data: { status: 'OK', engine: {}, counts: {}, rows: [], count: 0, total: 0 } }, emsmartlive: { data: bad } }, 'smart');
+  assert.match(a, /Prediction ledger integrity check FAILED/);
+  assert.doesNotMatch(a, /data-testid="sm-live-row"/);
+  const off = { status: 'OK', configured: false, note: 'Smart Money Move LIVE is not installed here (SMART_MOVE_LIVE_DIR is not set). Nothing on this page is a live signal.', rows: [] };
+  const b = panel({ emstatus: { data: on }, emsmart: { data: { status: 'OK', engine: {}, counts: {}, rows: [], count: 0, total: 0 } }, emsmartlive: { data: off } }, 'smart');
+  assert.match(b, /data-testid="sm-live-off">Smart Money Move LIVE is not installed here/);
+  assert.doesNotMatch(b, /data-testid="sm-live-row"/);
+});

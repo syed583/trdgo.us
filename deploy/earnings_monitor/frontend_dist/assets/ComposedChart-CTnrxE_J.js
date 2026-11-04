@@ -1,0 +1,1 @@
+import{f as e,l as t}from"./jsx-runtime-CuXpNVCp.js";import{Q as n,t as r}from"./CartesianChart-B_PqMX1j.js";var i=e(t()),a=[`axis`],o=(0,i.forwardRef)((e,t)=>i.createElement(r,{chartName:`ComposedChart`,defaultTooltipEventType:`axis`,validateTooltipEventTypes:a,tooltipPayloadSearcher:n,categoricalChartProps:e,ref:t}));export{o as t};

@@ -1,0 +1,4 @@
+{"event": "STARTED", "at": "2026-11-02T20:30:00+00:00", "mode": "LIVE"}
+{"event": "FINISHED", "at": "2026-11-02T20:34:00+00:00", "mode": "LIVE", "exit_code": 0, "attempts": 14}
+{"event": "STARTED", "at": "2026-11-02T21:30:00+00:00", "mode": "LIVE"}
+{"event": "FINISHED", "at": "2026-11-02T21:31:00+00:00", "mode": "LIVE", "exit_code": 0, "attempts": 3}

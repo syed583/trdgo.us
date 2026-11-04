@@ -103,6 +103,62 @@ const STAGE_TONE: Record<string, string> = { VERIFIED: 'green', COLLECTED: 'gray
 
 const ORIGIN: Record<string, [string, string, string]> = { HISTORICAL_SNAPSHOT: ['historical snapshot', 'amber', 'A stored result of an earlier run, not a new live prediction'], LIVE_ENGINE: ['live engine', 'green', 'Scored now by the installed frozen engine'], NOT_GENERATED: ['not generated', 'gray', 'No prediction was generated for this event'] };
 
+const LIVE_LABEL: Record<string, [string, string]> = {
+  LIVE: ['green', 'The prediction window is open and the last successful scan is recent.'],
+  STALE: ['amber', 'The window is open but the last successful scan is older than its limit: this call may be out of date.'],
+  HISTORICAL: ['gray', 'The prediction window has closed: a record of what was predicted, not a current signal.'],
+  'WINDOW MISSED': ['amber', 'The window closed before any prediction was produced. Nothing is back-filled.'],
+  UNAVAILABLE: ['amber', 'The prediction ledger failed its integrity check, so no call is shown.'],
+};
+const SIGNAL_TONE: Record<string, string> = { BUY: 'green', SELL: 'amber', 'NO TRADE': 'gray', 'NO VALID PREDICTION': 'gray', 'PENDING FINAL REFRESH': 'gray' };
+
+/** Smart Money Move LIVE: the separate collector's own ledger and status, read from files. Times are US Eastern as sent by the server. */
+export function SmartLivePanel({ d }: { d: any }) {
+  if (!d) return null;
+  if (!d.configured) return <div className="sm-q-muted" data-testid="sm-live-off">{d.note}{d.historical_snapshot && <> A historical snapshot exists (generated {fmtTime(d.historical_snapshot.generated_at)}, {d.historical_snapshot.rows} events): it is HISTORICAL and not a live signal.</>}</div>;
+  const s = d.scan || {}, e = d.events || {}, q = d.requests || {};
+  const skipped = Object.entries(e.skipped || {}) as [string, number][];
+  const rows: any[] = d.rows || [];
+  return (
+    <div data-testid="sm-live">
+      <h3 style={{ margin: '8px 0 4px' }}>Smart Money Move — LIVE scanner</h3>
+      {d.state !== 'OK' && <div className="sm-fresh stale" role="alert" data-testid="sm-live-state">{d.state.replace('_', ' ')}: {d.state_text}</div>}
+      {d.state === 'OK' && <div className="sm-q-muted" data-testid="sm-live-state">Collector OK: {d.state_text}</div>}
+      {d.ledger && !d.ledger.ok && <div className="sm-fresh stale" role="alert" data-testid="sm-live-ledger">Prediction ledger integrity check FAILED ({d.ledger.problem}). No call is shown.</div>}
+      <div className="sm-q-muted" data-testid="sm-live-status">
+        Last successful scan: <b>{s.last_successful_scan_et ?? 'none yet'}</b>{s.minutes_since_success != null && <> ({s.minutes_since_success} min ago; stale after {s.stale_after_min} min)</>}
+        {' · '}Next scan: <b>{s.next_scan_expected_et ?? '—'}</b> (hourly schedule)
+        {' · '}Mode: {s.mode ?? '—'}{d.kill_switch && <b> · KILL SWITCH ENGAGED</b>}
+        {' · '}Now: {d.now_et}
+      </div>
+      <div className="sm-q-muted" data-testid="sm-live-events">
+        Events in an open window scanned: <b>{e.open_scanned ?? '—'}</b> · new records {e.published_new ?? '—'} · unchanged {e.unchanged ?? '—'} · upcoming {e.upcoming ?? '—'} · not funded this pass {e.unfunded_this_pass ?? '—'}
+        {skipped.length > 0 && <> · skipped: {skipped.map(([k, v]) => `${k} (${v})`).join('; ')}</>}
+      </div>
+      <div className="sm-q-muted" data-testid="sm-live-requests">
+        Unusual Whales requests by the collector today: <b>{q.used_today ?? 'UNKNOWN'}</b> of {q.daily_limit ?? 'UNKNOWN'} · remaining <b>{q.remaining_today ?? 'UNKNOWN'}</b> · per run ≤ {q.run_limit ?? 'UNKNOWN'} · {q.concurrency ?? 1} at a time
+        {d.calendar?.through && <> · calendar through {d.calendar.through} (age {d.calendar.age_h} h)</>}
+      </div>
+      {!rows.length && <div className="sm-none" data-testid="sm-live-none">No live prediction has been recorded yet.</div>}
+      {rows.length > 0 && (
+        <div className="sm-table-wrap"><table className="sm-table sm-q-table" data-testid="sm-live-table"><thead><tr><th>Event</th><th>Signal</th><th>Generated (ET)</th><th>Evidence (ET)</th><th>Coverage</th><th>Window closes (ET)</th><th>Missing data</th></tr></thead>
+          <tbody>{rows.map((r) => (
+            <tr key={r.symbol + r.earnings_date} data-testid="sm-live-row">
+              <td><b>{r.symbol}</b><div className="sm-q-muted">{r.earnings_date} {r.session}</div></td>
+              <td>{r.signal && <span className={`sm-q-badge ${SIGNAL_TONE[r.signal] || 'gray'}`}>{r.signal}</span>} <span className={`sm-q-badge ${(LIVE_LABEL[r.label] || ['gray'])[0]}`} title={(LIVE_LABEL[r.label] || ['', ''])[1]} data-testid="sm-live-label">{r.label}</span></td>
+              <td>{r.generated_at_et ?? '—'}</td>
+              <td>{r.evidence_latest_et ?? '—'}{r.evidence_age_h != null && <div className={r.evidence_warning ? 'sm-fresh stale' : 'sm-q-muted'}>{r.evidence_age_h} h old{r.evidence_warning ? ' — old evidence' : ''}</div>}</td>
+              <td>{r.coverage ?? '—'}{r.liquidity && <div className="sm-q-muted">liquidity {r.liquidity}</div>}</td>
+              <td>{r.window_cutoff_et ?? '—'}{r.hours_to_cutoff != null && <div className="sm-q-muted">{r.hours_to_cutoff} h left</div>}</td>
+              <td className="sm-q-muted">{r.missing?.length ? r.missing.join('; ') : '—'}</td>
+            </tr>))}</tbody></table></div>
+      )}
+      {d.historical_snapshot && <div className="sm-q-muted" data-testid="sm-live-historical">Historical snapshot (not a live signal): generated {fmtTime(d.historical_snapshot.generated_at)}, {d.historical_snapshot.rows} events dated {(d.historical_snapshot.event_dates || []).join(', ')}.</div>}
+      <div className="sm-q-muted">{d.note}</div>
+    </div>
+  );
+}
+
 /** Rows are grouped by the MARKET date of the report (the plain calendar date the exchange uses): no timezone conversion is applied to a date. */
 function SmartMovePanel({ d }: { d: any }) {
   const rows: any[] = d.rows || [];
@@ -235,9 +291,10 @@ export default function EarningsMonitorPanel({ initialTab = 'upcoming' }: { init
   const outcomes = useApi<any>((s) => earningsMonitor.outcomes(s), [], { refreshMs: 300_000, enabled: tab === 'accuracy' });
   const comparison = useApi<any>((s) => earningsMonitor.comparison(s), [], { refreshMs: 300_000, enabled: tab === 'accuracy' });
   const smart = useApi<any>((s) => earningsMonitor.smartMove(q, s), [mDate, mScope, mPage, mDays, mSm], { refreshMs: 60_000, enabled: tab === 'smart' });
+  const smartLive = useApi<any>((s) => earningsMonitor.smartLive(s), [], { refreshMs: 30_000, enabled: tab === 'smart' });
   const evidence = useApi<any>((s) => earningsMonitor.evidence(evSymbol, s), [evSymbol], { refreshMs: 60_000, enabled: tab === 'evidence' });
   const health = useApi<any>((s) => earningsMonitor.health(s), [], { refreshMs: 30_000, enabled: tab === 'health' });
-  const reload = () => { status.refresh(); upcoming.refresh(); models.refresh(); changes.refresh(); consensus.refresh(); accuracy.refresh(); comparison.refresh(); smart.refresh(); evidence.refresh(); health.refresh(); };
+  const reload = () => { status.refresh(); upcoming.refresh(); models.refresh(); changes.refresh(); consensus.refresh(); accuracy.refresh(); comparison.refresh(); smart.refresh(); smartLive.refresh(); evidence.refresh(); health.refresh(); };
   const s = status.data;
   const badge = scanBadge(s);
   const cur: any = { upcoming, models, smart, changes, evidence, consensus, accuracy, health }[tab];
@@ -322,6 +379,7 @@ export default function EarningsMonitorPanel({ initialTab = 'upcoming' }: { init
         </>
       )}
 
+      {tab === 'smart' && smartLive.data?.status === 'OK' && <SmartLivePanel d={smartLive.data} />}
       {tab === 'smart' && smart.data?.status === 'OK' && <><Pager d={smart.data} date={mDate} setDate={setMDate} scope={mScope} setScope={setMScope} page={mPage} setPage={setMPage} days={mDays} setDays={setMDays} smv={mSm} setSmv={setMSm} /><SmartMovePanel d={smart.data} /></>}
       {tab === 'evidence' && evidence.data?.status === 'OK' && <EvidencePanel d={evidence.data} symbol={evSymbol} setSymbol={setEvSymbol} />}
       {tab === 'health' && health.data?.status === 'OK' && <HealthPanel d={health.data} />}

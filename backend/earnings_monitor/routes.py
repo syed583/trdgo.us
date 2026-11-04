@@ -536,6 +536,31 @@ def smart_move(limit: int = Query(200, ge=1, le=1000), offset: int = Query(0, ge
             "note": "The monitor never scores Smart Move: it reads the frozen engine's own result. Collecting the evidence is a separate, attested provider run; until it has run, the honest label is PENDING or NO VALID PREDICTION."}
 
 
+@router.get("/smart-move/live")
+def smart_move_live():
+    """Smart Money Move LIVE: the separate collector's prediction ledger and status, read from files only (SMART_MOVE_LIVE_DIR). No provider request, no scoring. A historical snapshot is reported separately and is never a live signal."""
+    import os
+    from . import smart_live as SL
+    meta = None
+    sd = os.getenv("SMART_MOVE_ENGINE20_DIR")
+    if sd:
+        try:
+            import smart_move_engine20_snapshot as S
+            snap = S.load_latest(sd)                                          # verifies the snapshot's SHA-256
+            if snap and "error" not in snap:
+                meta = {"generated_at": snap.get("generated_at"), "rows": len(snap["rows"]), "label": "HISTORICAL", "is_live_signal": False,
+                        "event_dates": sorted({str(r.get("event_date"))[:10] for r in snap["rows"] if r.get("event_date")}),
+                        "note": "A stored snapshot of one earlier run. It is not a live prediction for any later date."}
+        except Exception:  # noqa: BLE001
+            meta = None
+    try:
+        stale = int(os.getenv("SMART_MOVE_LIVE_STALE_MIN") or SL.STALE_MIN_DEFAULT)
+    except ValueError:
+        stale = SL.STALE_MIN_DEFAULT
+    out = SL.load(os.getenv("SMART_MOVE_LIVE_DIR"), now(), kill_file=os.getenv("SMART_MOVE_LIVE_KILL_FILE") or None, stale_min=stale, snapshot_meta=meta)
+    return dict(out, status="OK")
+
+
 @router.get("/health")
 def health():
     """Scanner health from the durable queue and the run log: last duration of every job kind, running/stuck/dead jobs, duplicate events or predictions, lane heartbeats and today's provider requests."""
