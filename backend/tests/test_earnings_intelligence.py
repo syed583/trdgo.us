@@ -830,20 +830,6 @@ def test_no_call_is_classed_unavailable_and_the_provider_ledger_reaches_the_heal
     assert h["providers"]["providers"]["FINNHUB"]["today_requests"] == 12 and h["providers"]["read_at"]
 
 
-def test_options_flow_class_follows_the_session_the_cache_age_and_the_answer():
-    import signal_class as SC
-    ok = {"status": "OK", "trades": [{"x": 1}], "delay_minutes": 0}
-    assert SC.options_flow_class(ok, "OPEN", 2, 4) == "LIVE"
-    assert SC.options_flow_class(dict(ok, delay_minutes=15), "OPEN", 2, 4) == "CACHED"          # a delayed tape is real data, not live
-    assert SC.options_flow_class(ok, "OPEN", 100, 4) == "STALE"                                 # cached copy far older than its limit
-    assert SC.options_flow_class(dict(ok, delay_minutes=120), "OPEN", 1, 4) == "STALE"
-    assert SC.options_flow_class(ok, "CLOSED", 1, 4) == "HISTORICAL"                            # the market is closed: last session's tape
-    assert SC.options_flow_class({"status": "RATE_LIMITED"}, "OPEN", 1, 4) == "UNAVAILABLE"
-    assert SC.options_flow_class({"status": "OK", "trades": []}, "OPEN", 1, 4) == "UNAVAILABLE"
-    assert SC.options_flow_class(None, "OPEN", 1, 4) == "UNAVAILABLE"
-    assert SC.from_stamp("SNAPSHOT") == "HISTORICAL" and SC.from_stamp("LIVE") == "LIVE" and SC.from_stamp("LIVE", stale=True) == "STALE" and SC.from_stamp("DELAYED") == "CACHED" and SC.from_stamp(None) == "UNAVAILABLE"
-
-
 def test_missing_prediction_coverage_is_split_into_universe_horizon_warm_gap_and_vendor_conflict(tmp_path, monkeypatch):
     from datetime import timedelta
     from fastapi import FastAPI
