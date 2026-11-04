@@ -107,6 +107,23 @@ def useful_calendar_slots(now) -> list:
     return out
 
 
+def horizon_calendar_slots(now, days_ahead: int = 3) -> list:
+    """(date, side) for BOTH sessions of every trading day from today through today + `days_ahead`, plus every slot whose prediction window is open now. The calendar the collector keeps therefore always
+    reaches at least `days_ahead` days forward (the dashboard can show upcoming events and the planner knows what opens next); two requests per trading day instead of only the open windows' share."""
+    from smvshadow import cutoff as _co
+    mc = _co._mc()
+    today = now.astimezone(_co.ET).date()
+    out = []
+    for k in range(0, max(0, int(days_ahead)) + 1):
+        d = today + timedelta(days=k)
+        if mc.is_trading_day(d):
+            out += [(d, "premarket"), (d, "afterhours")]
+    for slot in useful_calendar_slots(now):
+        if slot not in out:
+            out.append(slot)
+    return out
+
+
 def attempts(svc) -> int:
     """Every governor-granted attempt (a retry counts as an attempt). The ceiling is enforced on THIS number, not on the number of tasks."""
     return sum(svc.gov.used_day.values()) if svc.gov.used_day else 0

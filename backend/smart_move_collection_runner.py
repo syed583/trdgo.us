@@ -118,7 +118,8 @@ def engine20_profile(a, svc, now, live: bool) -> int:
 
     selected = choose(now)
     cal_needed = G.needs_refresh(svc.store, now)
-    cal_est = 4 if cal_needed else 0
+    cal_slots = J.horizon_calendar_slots(now, a.calendar_days_ahead) if a.calendar_days_ahead is not None else J.useful_calendar_slots(now)
+    cal_est = (len(cal_slots) if a.calendar_days_ahead is not None else 4) if cal_needed else 0          # unchanged default: 4 requests for the open windows only
     plan = E20.plan_tasks(svc, selected, now, budget=a.ceiling - cal_est, with_f7=a.with_f7)
     summary = {"mode": "LIVE" if live else "DRY_RUN", "profile": "engine20", "as_of": now.isoformat(), "selected": selected, "calendar_refresh_needed": cal_needed, "calendar_attempts_reserved": cal_est,
                "attempts_planned_for_evidence": plan["attempts_planned"], "total_attempts_planned": plan["attempts_planned"] + cal_est, "ceiling": a.ceiling, "spare": plan["spare"],
@@ -126,7 +127,12 @@ def engine20_profile(a, svc, now, live: bool) -> int:
                "tasks": [(t["kind"], t["symbol"], t["why"]) for t in plan["funded"]], "provider_requests": 0}
     (d / "engine20_plan.json").write_text(json.dumps(summary, indent=1, default=str), encoding="utf-8")
     (d / "engine20_selection.json").write_text(json.dumps({"policy": a.select_policy, "slots": a.select_top, "as_of": now.isoformat(), "decisions": audit}, indent=1, default=str), encoding="utf-8")
+    limits = {"run_limit": a.ceiling, "daily_limit": a.daily_limit or a.authorize_requests}
     if not live:
+        if a.publish_dir:
+            import smart_move_live_publisher as PUB                                # a dry run shows itself on the dashboard (status only) and publishes NO prediction
+            PUB.publish(svc, now, a.publish_dir, scan_id=d.name, mode="DRY_RUN", scan_ok=True, run={"started_at": now.isoformat(), "requests_attempted": 0, "planned": summary["total_attempts_planned"]},
+                        limits=limits, unfunded=len(summary["unfunded"]))
         print(json.dumps({k: v for k, v in summary.items() if k != "tasks"}, indent=1, default=str))
         return 0
     svc.store.kill_file.unlink()
@@ -134,7 +140,7 @@ def engine20_profile(a, svc, now, live: bool) -> int:
     try:
         used = 0
         if cal_needed:
-            g = G.ensure_fresh(svc, budget_left=a.ceiling, stopped=lambda: bool(svc.gov.stopped_until and svc.clock.now() < svc.gov.stopped_until), max_requests=cal_est, dates=J.useful_calendar_slots(svc.clock.now()))
+            g = G.ensure_fresh(svc, budget_left=a.ceiling, stopped=lambda: bool(svc.gov.stopped_until and svc.clock.now() < svc.gov.stopped_until), max_requests=cal_est, dates=(J.horizon_calendar_slots(svc.clock.now(), a.calendar_days_ahead) if a.calendar_days_ahead is not None else J.useful_calendar_slots(svc.clock.now())))
             used = g.get("requests", 0)
             summary["calendar_refresh"] = g
             if not g["ok"]:
@@ -153,6 +159,16 @@ def engine20_profile(a, svc, now, live: bool) -> int:
         rep = E20.report(svc, selected, svc.clock.now())
         (d / "engine20_report.json").write_text(json.dumps(rep, indent=1, default=str), encoding="utf-8")
         print(json.dumps({"requests_attempted": res["requests_attempted"] + used, "ok": res["ok"], "failed": res["failed"], "halted": res["halted"], "counts": rep["counts"]}, indent=1))
+        if a.publish_dir:
+            import smart_move_live_publisher as PUB
+            try:
+                st = PUB.publish(svc, svc.clock.now(), a.publish_dir, scan_id=d.name, mode="LIVE", scan_ok=(res["halted"] is None and res["failed"] == 0),
+                                 run={"started_at": now.isoformat(), "finished_at": svc.clock.now().isoformat(), "requests_attempted": res["requests_attempted"] + used, "ok": res["ok"], "failed": res["failed"], "halted": res["halted"]},
+                                 limits=limits, unfunded=len(summary["unfunded"]))
+                print(json.dumps({"published": st["events"]}, default=str))
+            except PUB.LedgerError as e:
+                print("PUBLISH BLOCKED: the prediction ledger failed its integrity check:", e)
+                return 7
         return 0
     finally:
         svc.engage_kill_switch("engine20 run finished: re-engaged")
@@ -216,6 +232,8 @@ def main(argv=None) -> int:
     ap.add_argument("--select-date", default=None, help="engine20 profile: only events on this date, e.g. 2026-11-04")
     ap.add_argument("--select-session", default=None, choices=("BMO", "AMC"), help="engine20 profile: only this announcement session")
     ap.add_argument("--select-policy", choices=("cap", "deadline"), default="cap", help="engine20 profile: cap = the n largest market caps (default, unchanged); deadline = stocks that still NEED evidence, closest prediction cutoff first (already-collected stocks never take a slot)")
+    ap.add_argument("--publish-dir", default=None, help="engine20 profile: folder for the live prediction ledger and status file read by the dashboard (append-only; a dry run writes status only)")
+    ap.add_argument("--calendar-days-ahead", type=int, default=None, help="engine20 profile: keep the calendar this many days forward (both sessions of every trading day, 2 requests per day) instead of only the open windows")
     ap.add_argument("--with-f7", action="store_true", help="engine20 profile: also request volatility context and IV rank (2 more requests per stock)")
     ap.add_argument("--require-rotated-from", default=None, help="8-hex fingerprint of the OLD token; a live run is BLOCKED while the active token still has this fingerprint")
     ap.add_argument("--shared-key-attestation", default=None, help="owner acknowledgement file (see smart_move_shared_key_gate); without a valid one a live run stays BLOCKED")
