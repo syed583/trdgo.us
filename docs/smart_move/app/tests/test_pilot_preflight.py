@@ -282,8 +282,8 @@ def test_a_busy_target_day_fits_the_fourteen_request_calendar_cap_with_the_pilot
     busy_earlier = [uw("C%03d" % i, "2026-11-02", "postmarket", flag="estimation") for i in range(206)] + [uw("D%03d" % i, "2026-11-03", "premarket", flag="estimation") for i in range(200)]         + [uw("F%03d" % i, "2026-11-03", "postmarket", flag="estimation") for i in range(274)]
     old_style = Provider(rows + busy_earlier)                                                                  # the real calendar is busy on the days before the target day
     svc2, _ = service(tmp_path / "old", old_style, start=after_close)
-    svc2.refresh_calendar([14], 3)                                                                              # the unscoped 3-day refresh starts at today and runs out before reaching 4 Nov after-close
-    assert not any(c[2]["date"] == "2026-11-04" and c[2]["side"] == "afterhours" for c in old_style.calls if c[0] == "uw_calendar")
+    svc2.refresh_calendar([14], 3)                                                                              # was: the unscoped 3-day refresh started at today and ran out before 4 Nov after-close (found live on 2026-11-04); now the open windows are fetched first
+    assert any(c[2]["date"] == "2026-11-04" and c[2]["side"] == "afterhours" for c in old_style.calls if c[0] == "uw_calendar")
 
 
 def test_pilot_run_with_scope_collects_the_open_window_events_within_fifty(tmp_path):
