@@ -398,7 +398,7 @@ class RefreshService:
             days = sorted({d for d in ds if mc_.is_trading_day(d)})                         # only these event dates (a pilot skips days and sides whose windows cannot be open)
         else:
             days = self._trading_days(now, days_ahead)
-        uw_rows, done, truncated = [], 0, []
+        uw_rows, done, truncated, incomplete = [], 0, [], []
         reserve = 2 if budget[0] > 2 else 0                              # the Finviz and Finnhub confirmations are kept: without a second vendor no event can become eligible
         stamp = now.strftime("%Y%m%dT%H%M%S")
         slots = [(d, side) for d in days for side in ("premarket", "afterhours") if side in side_only.get(d, ("premarket", "afterhours"))]
@@ -411,6 +411,7 @@ class RefreshService:
         slots.sort(key=_rank)
         for d, side in slots:
             page = 0
+            fetched = 0
             while budget[0] > reserve:
                 rid = "uwcal-%s-%s-%s-p%d" % (stamp, d, side, page)
                 body, sha, at = self._call("uw_calendar", None, {"date": str(d), "side": side, "page": page}, rid)
@@ -418,6 +419,7 @@ class RefreshService:
                 if body is None:
                     return done
                 done += 1
+                fetched += 1
                 rows = parse_calendar("uw_calendar", body, at, sha, rid, self.fetcher.mode)
                 for r in rows:
                     self.store.append("cal_obs", r)
@@ -428,6 +430,8 @@ class RefreshService:
                         continue
                     truncated.append({"date": str(d), "side": side, "pages": page + 1})        # still full at the page cap: later rows were never seen
                 break
+            else:                                                        # the request budget ran out inside or before this slot: say so (it used to look like a complete calendar)
+                incomplete.append({"date": str(d), "side": side, "pages_fetched": fetched, "reason": "BUDGET_EXHAUSTED_AFTER_FULL_PAGE" if fetched else "NOT_FETCHED_BUDGET_EXHAUSTED"})
         tickers = pick_tickers(uw_rows, self.cfg.finviz_tickers)
         if tickers and budget[0] > 0:
             rid = "fzcal-%s" % stamp
@@ -447,6 +451,7 @@ class RefreshService:
                     self.store.append("cal_obs", r)
         st = self.store.state()
         st["calendar_truncated"] = truncated
+        st["calendar_incomplete"] = incomplete                          # record only: slots the budget cut short or never reached (no selection, scoring or window logic reads it)
         st["last_calendar_refresh"] = self.clock.now().isoformat()
         self.store.save_state(st)
         return done
