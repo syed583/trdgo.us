@@ -1,0 +1,250 @@
+{
+ "schema": "smart-move-universe-1",
+ "generated_utc": "2026-11-02T20:30:00+00:00",
+ "generated": {
+  "utc": "2026-11-02T20:30:00+00:00",
+  "new_york": "2026-11-02 15:30 EST",
+  "dubai": "2026-11-03 00:30"
+ },
+ "horizon_days": 30,
+ "ledger_ok": true,
+ "ledger_problem": null,
+ "calendar_completeness": {
+  "as_of": "2026-11-02T20:30:00+00:00",
+  "horizon_days": 30,
+  "t0_open_stale": [
+   "2026-11-03|afterhours"
+  ],
+  "t0_next_stale": [
+   "2026-11-04|afterhours"
+  ],
+  "t1_stale": [
+   "2026-11-05|premarket",
+   "2026-11-05|afterhours",
+   "2026-11-06|premarket",
+   "2026-11-06|afterhours",
+   "2026-11-09|premarket",
+   "2026-11-09|afterhours",
+   "2026-11-10|premarket",
+   "2026-11-10|afterhours",
+   "2026-11-11|premarket",
+   "2026-11-11|afterhours",
+   "2026-11-12|premarket",
+   "2026-11-12|afterhours",
+   "2026-11-13|premarket",
+   "2026-11-13|afterhours",
+   "2026-11-16|premarket",
+   "2026-11-16|afterhours",
+   "2026-11-17|premarket",
+   "2026-11-17|afterhours",
+   "2026-11-18|premarket",
+   "2026-11-18|afterhours",
+   "2026-11-19|premarket",
+   "2026-11-19|afterhours",
+   "2026-11-20|premarket",
+   "2026-11-20|afterhours",
+   "2026-11-23|premarket",
+   "2026-11-23|afterhours",
+   "2026-11-24|premarket",
+   "2026-11-24|afterhours",
+   "2026-11-25|premarket",
+   "2026-11-25|afterhours",
+   "2026-11-27|premarket",
+   "2026-11-27|afterhours",
+   "2026-11-30|premarket",
+   "2026-11-30|afterhours",
+   "2026-12-01|premarket",
+   "2026-12-01|afterhours",
+   "2026-12-02|premarket",
+   "2026-12-02|afterhours"
+  ],
+  "slots_total": 41,
+  "slots_fresh": 1,
+  "t0_complete": false
+ },
+ "summary": {
+  "events": 4,
+  "by_status": {
+   "EVIDENCE_COMPLETE": 2,
+   "DEFERRED": 2
+  },
+  "by_tier": {
+   "A": 4
+  },
+  "deferred": 2,
+  "excluded_by_proxy": 0,
+  "by_event_date": {
+   "2026-11-04": {
+    "EVIDENCE_COMPLETE": 2,
+    "DEFERRED": 2
+   }
+  }
+ },
+ "note": "Discovered is not eligible and eligible is not collected: each row says which. The proxy only orders work; no event is excluded by it.",
+ "rows": [
+  {
+   "symbol": "AAA",
+   "company": "AAA INC",
+   "event_date": "2026-11-04",
+   "session": "BMO",
+   "sector": "Technology",
+   "market_cap": "500000000000",
+   "priority_proxy_tier": "A",
+   "excluded_by_proxy": false,
+   "vendor_status": "VENDOR_CONFIRMED",
+   "vendor_conflict": false,
+   "prediction_eligible": true,
+   "ineligible_reasons": [],
+   "window": "OPEN",
+   "window_start": {
+    "utc": "2026-11-02T11:00:00+00:00",
+    "new_york": "2026-11-02 06:00 EST",
+    "dubai": "2026-11-02 15:00"
+   },
+   "cutoff": {
+    "utc": "2026-11-03T11:00:00+00:00",
+    "new_york": "2026-11-03 06:00 EST",
+    "dubai": "2026-11-03 15:00"
+   },
+   "hours_to_cutoff": 14.5,
+   "calendar_tier": "T0_OPEN",
+   "calendar_slot": "2026-11-04|premarket",
+   "calendar_slot_state": "FRESH",
+   "calendar_slot_observed_at": "2026-11-02T20:30:00+00:00",
+   "calendar_change": "LISTED",
+   "evidence": {
+    "F5_price": "FRESH",
+    "F3_earnings_history": "FRESH",
+    "F8_market": "FRESH",
+    "F8_sector_etf": "FRESH"
+   },
+   "collection_status": "EVIDENCE_COMPLETE",
+   "deferred": false,
+   "deferred_reason": null,
+   "latest_result": null
+  },
+  {
+   "symbol": "BBB",
+   "company": "BBB INC",
+   "event_date": "2026-11-04",
+   "session": "BMO",
+   "sector": "Technology",
+   "market_cap": "300000000000",
+   "priority_proxy_tier": "A",
+   "excluded_by_proxy": false,
+   "vendor_status": "VENDOR_CONFIRMED",
+   "vendor_conflict": false,
+   "prediction_eligible": true,
+   "ineligible_reasons": [],
+   "window": "OPEN",
+   "window_start": {
+    "utc": "2026-11-02T11:00:00+00:00",
+    "new_york": "2026-11-02 06:00 EST",
+    "dubai": "2026-11-02 15:00"
+   },
+   "cutoff": {
+    "utc": "2026-11-03T11:00:00+00:00",
+    "new_york": "2026-11-03 06:00 EST",
+    "dubai": "2026-11-03 15:00"
+   },
+   "hours_to_cutoff": 14.5,
+   "calendar_tier": "T0_OPEN",
+   "calendar_slot": "2026-11-04|premarket",
+   "calendar_slot_state": "FRESH",
+   "calendar_slot_observed_at": "2026-11-02T20:30:00+00:00",
+   "calendar_change": "LISTED",
+   "evidence": {
+    "F5_price": "FRESH",
+    "F3_earnings_history": "FRESH",
+    "F8_market": "FRESH",
+    "F8_sector_etf": "FRESH"
+   },
+   "collection_status": "EVIDENCE_COMPLETE",
+   "deferred": false,
+   "deferred_reason": null,
+   "latest_result": null
+  },
+  {
+   "symbol": "CCC",
+   "company": "CCC INC",
+   "event_date": "2026-11-04",
+   "session": "BMO",
+   "sector": "Healthcare",
+   "market_cap": "200000000000",
+   "priority_proxy_tier": "A",
+   "excluded_by_proxy": false,
+   "vendor_status": "VENDOR_CONFIRMED",
+   "vendor_conflict": false,
+   "prediction_eligible": true,
+   "ineligible_reasons": [],
+   "window": "OPEN",
+   "window_start": {
+    "utc": "2026-11-02T11:00:00+00:00",
+    "new_york": "2026-11-02 06:00 EST",
+    "dubai": "2026-11-02 15:00"
+   },
+   "cutoff": {
+    "utc": "2026-11-03T11:00:00+00:00",
+    "new_york": "2026-11-03 06:00 EST",
+    "dubai": "2026-11-03 15:00"
+   },
+   "hours_to_cutoff": 14.5,
+   "calendar_tier": "T0_OPEN",
+   "calendar_slot": "2026-11-04|premarket",
+   "calendar_slot_state": "FRESH",
+   "calendar_slot_observed_at": "2026-11-02T20:30:00+00:00",
+   "calendar_change": "LISTED",
+   "evidence": {
+    "F5_price": "MISSING",
+    "F3_earnings_history": "MISSING",
+    "F8_market": "FRESH",
+    "F8_sector_etf": "MISSING"
+   },
+   "collection_status": "DEFERRED",
+   "deferred": true,
+   "deferred_reason": "selected but not funded: the run budget is used up; still eligible while its window is open",
+   "latest_result": null
+  },
+  {
+   "symbol": "DDD",
+   "company": "DDD INC",
+   "event_date": "2026-11-04",
+   "session": "BMO",
+   "sector": "Energy",
+   "market_cap": "100000000000",
+   "priority_proxy_tier": "A",
+   "excluded_by_proxy": false,
+   "vendor_status": "VENDOR_CONFIRMED",
+   "vendor_conflict": false,
+   "prediction_eligible": true,
+   "ineligible_reasons": [],
+   "window": "OPEN",
+   "window_start": {
+    "utc": "2026-11-02T11:00:00+00:00",
+    "new_york": "2026-11-02 06:00 EST",
+    "dubai": "2026-11-02 15:00"
+   },
+   "cutoff": {
+    "utc": "2026-11-03T11:00:00+00:00",
+    "new_york": "2026-11-03 06:00 EST",
+    "dubai": "2026-11-03 15:00"
+   },
+   "hours_to_cutoff": 14.5,
+   "calendar_tier": "T0_OPEN",
+   "calendar_slot": "2026-11-04|premarket",
+   "calendar_slot_state": "FRESH",
+   "calendar_slot_observed_at": "2026-11-02T20:30:00+00:00",
+   "calendar_change": "LISTED",
+   "evidence": {
+    "F5_price": "MISSING",
+    "F3_earnings_history": "MISSING",
+    "F8_market": "FRESH",
+    "F8_sector_etf": "MISSING"
+   },
+   "collection_status": "DEFERRED",
+   "deferred": true,
+   "deferred_reason": "ranked below the run's slots by deadline and priority proxy; still eligible while its window is open",
+   "latest_result": null
+  }
+ ]
+}

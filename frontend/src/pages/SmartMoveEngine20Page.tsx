@@ -201,19 +201,102 @@ export function LiveView() {
   );
 }
 
-/** Smart Money Move: the LIVE scanner (default) and the frozen historical snapshot, as two clearly separate views. A historical snapshot is never shown as a live signal. */
+const UNI_STATUS: Record<string, [string, string]> = {
+  EVIDENCE_COMPLETE: ['green', 'F3, F5 and the market evidence are fresh: the frozen engine can score it'],
+  QUEUED_THIS_RUN: ['blue', 'funded in the latest planned run'],
+  DEFERRED: ['amber', 'not funded yet: still eligible while its prediction window is open (never excluded by a proxy)'],
+  WAITING_WINDOW: ['gray', 'its 48-to-24-hour prediction window has not opened yet'],
+  PREDICTED: ['green', 'a prediction is in the ledger'],
+  WINDOW_CLOSED_NO_PREDICTION: ['amber', 'the window closed without a prediction (nothing is back-filled)'],
+  NOT_ELIGIBLE: ['amber', 'the frozen rules do not accept this event (see the reasons)'],
+  CALENDAR_MISSING_UNCONFIRMED: ['amber', 'missing from its calendar slot once: may have moved, not removed yet'],
+  REMOVED: ['red', 'gone from its calendar slot in two complete refreshes in a row'],
+};
+const UNI_FILTERS = ['', 'DEFERRED', 'QUEUED_THIS_RUN', 'EVIDENCE_COMPLETE', 'WAITING_WINDOW', 'PREDICTED', 'NOT_ELIGIBLE', 'WINDOW_CLOSED_NO_PREDICTION', 'CALENDAR_MISSING_UNCONFIRMED', 'REMOVED'];
+const uniKey = (s: string) => (s || '').split(':')[0];
+
+/** Per-event universe of the rolling horizon, read from the collector's universe.json. Discovered is not eligible and eligible is not collected: each row says which. The proxy tier only orders work; nothing is excluded by it. */
+export function UniverseView() {
+  const uni = useApi<any>((s) => earningsMonitor.smartUniverse(s), [], { refreshMs: 120_000 });
+  const [f, setF] = useState('');
+  const [q, setQ] = useState('');
+  const d = uni.data;
+  const all: any[] = d?.rows || [];
+  const rows = all.filter((r) => (!f || uniKey(r.collection_status) === f) && (!q || String(r.symbol).includes(q.trim().toUpperCase())));
+  const by = d?.summary?.by_status || {};
+  const comp = d?.calendar_completeness;
+  return (
+    <div className="sm" data-testid="sm-universe-view">
+      <PageHead title="Smart Money Move — event universe" subtitle="Every earnings event in the rolling horizon: what the calendar says, what evidence the frozen engine has, and what is queued, deferred or predicted." />
+      {uni.initialLoading && <div className="sm-none" role="status">Loading the event universe…</div>}
+      {uni.error && <div className="sm-fresh stale" role="alert"><AlertTriangle size={14} /> The universe could not be loaded: {uni.error} <button className="ghost-btn" onClick={() => uni.refresh()}><RefreshCw size={14} /> Retry</button></div>}
+      {d && !d.available && <div className="sm-q-state" role="status" data-testid="sm-universe-off"><b>No event universe yet</b><div>{d.note}</div></div>}
+      {d?.available && (
+        <>
+          {d.stale && <div className="sm-fresh stale" role="alert" data-testid="sm-universe-stale"><AlertTriangle size={14} /> This table is {d.age_h} h old (written {d.generated_et}); no collector pass has refreshed it within {d.stale_after_h} h.</div>}
+          {d.ledger_ok === false && <div className="sm-q-state bad" role="alert"><b>Prediction ledger integrity check FAILED</b><div>{d.ledger_problem}. Predictions are not shown in this table.</div></div>}
+          <div className="sm-q-banner" role="note"><Info size={16} /><div><b>{d.summary?.events ?? 0} events in the next {d.horizon_days} days</b> (written {d.generated_et}). DEFERRED events stay eligible while their window is open: the market-cap proxy only orders the work and
+            excludes nothing ({d.summary?.excluded_by_proxy ?? 0} excluded). The frozen ADV20 liquidity gate still decides from the price bars.</div></div>
+          {comp && (
+            <div className={`sm-fresh ${comp.t0_complete ? '' : 'stale'}`} data-testid="sm-universe-calendar">
+              {comp.t0_complete ? <Info size={14} /> : <AlertTriangle size={14} />}
+              Calendar: {comp.slots_fresh} of {comp.slots_total} slots fresh; open or about-to-open windows {comp.t0_complete ? 'are all fresh' : `have STALE slots: ${[...(comp.t0_open_stale || []), ...(comp.t0_next_stale || [])].join(', ')}`}; far days waiting for their daily refresh: {(comp.t1_stale || []).length}.
+            </div>
+          )}
+          <div className="sm-summary" data-testid="sm-universe-counts">
+            {Object.keys(UNI_STATUS).filter((k) => by[k]).map((k) => <div className="sm-card" key={k}><div className="sm-card-k">{k.replace(/_/g, ' ')}</div><div className="sm-card-v">{by[k]}</div></div>)}
+          </div>
+          <div className="sm-filters">
+            <div className="sm-tabs" role="group" aria-label="Status filter">
+              {UNI_FILTERS.map((k) => <button key={k || 'all'} className={`sm-tab ${f === k ? 'on' : ''}`} aria-pressed={f === k} onClick={() => setF(k)}>{k ? k.replace(/_/g, ' ') : 'All'}{k && by[k] ? ` (${by[k]})` : ''}</button>)}
+            </div>
+            <input className="sm-search" placeholder="Symbol" aria-label="Symbol" value={q} onChange={(e) => setQ(e.target.value)} />
+            <button className="ghost-btn" onClick={() => uni.refresh()}><RefreshCw size={14} /> Reload</button>
+          </div>
+          {!rows.length && <div className="sm-none" data-testid="sm-universe-none">No event matches this filter.</div>}
+          {rows.length > 0 && (
+            <div className="sm-table-wrap"><table className="sm-table sm-q-table" data-testid="sm-universe-table">
+              <thead><tr><th>Event date</th><th>Symbol</th><th>Session</th><th>Window (ET)</th><th>Status</th><th>F5 price</th><th>F3 history</th><th>F8 market / ETF</th><th>Proxy tier</th><th>Calendar</th><th>Why</th></tr></thead>
+              <tbody>{rows.map((r) => {
+                const k = uniKey(r.collection_status);
+                const tone = UNI_STATUS[k] || ['gray', ''];
+                const ev = r.evidence || {};
+                return (
+                  <tr key={r.symbol + r.event_date} data-testid="sm-universe-row">
+                    <td>{r.event_date}</td>
+                    <td><b>{r.symbol}</b><div className="sm-q-muted">{r.company || '—'}</div></td>
+                    <td>{r.session === 'BMO' ? 'Before Open' : r.session === 'AMC' ? 'After Close' : r.session}</td>
+                    <td>{r.window_start?.new_york ?? '—'}<div className="sm-q-muted">→ {r.cutoff?.new_york ?? '—'}{r.hours_to_cutoff != null && r.window === 'OPEN' ? ` (${r.hours_to_cutoff} h left)` : ''}</div></td>
+                    <td><span className={`sm-q-badge ${tone[0]}`} title={tone[1]}>{r.collection_status.replace(/_/g, ' ')}</span></td>
+                    <td>{ev.F5_price ?? '—'}</td><td>{ev.F3_earnings_history ?? '—'}</td><td>{ev.F8_market ?? '—'} / {ev.F8_sector_etf ?? '—'}</td>
+                    <td>{r.priority_proxy_tier}<div className="sm-q-muted">orders work only</div></td>
+                    <td>{r.calendar_tier ?? '—'}<div className="sm-q-muted">{r.calendar_slot_state ?? '—'}{r.calendar_change && r.calendar_change !== 'LISTED' ? ` · ${r.calendar_change}` : ''}</div></td>
+                    <td>{r.deferred_reason || (r.ineligible_reasons?.length ? r.ineligible_reasons.join('; ') : '') || tone[1] || '—'}</td>
+                  </tr>
+                );
+              })}</tbody>
+            </table></div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Smart Money Move: the LIVE scanner (default), the 30-day event universe, and the frozen historical snapshot, as separate views. A historical snapshot is never shown as a live signal. */
 export default function SmartMoveEngine20Page({ ctx }: { ctx: PageContext }) {
   void ctx;
-  const [view, setView] = useState<'live' | 'snapshot'>('live');
+  const [view, setView] = useState<'live' | 'universe' | 'snapshot'>('live');
   return (
     <div>
       <div className="sm" style={{ paddingBottom: 0 }}>
         <div className="sm-tabs" role="tablist" aria-label="Smart Money Move view">
           <button role="tab" aria-selected={view === 'live'} className={`sm-tab ${view === 'live' ? 'on' : ''}`} data-testid="tab-live" onClick={() => setView('live')}>LIVE scanner</button>
+          <button role="tab" aria-selected={view === 'universe'} className={`sm-tab ${view === 'universe' ? 'on' : ''}`} data-testid="tab-universe" onClick={() => setView('universe')}>Event universe (30 days)</button>
           <button role="tab" aria-selected={view === 'snapshot'} className={`sm-tab ${view === 'snapshot' ? 'on' : ''}`} data-testid="tab-snapshot" onClick={() => setView('snapshot')}>Historical snapshot (20 stocks)</button>
         </div>
       </div>
-      {view === 'live' ? <LiveView /> : <SnapshotView />}
+      {view === 'live' ? <LiveView /> : view === 'universe' ? <UniverseView /> : <SnapshotView />}
     </div>
   );
 }
