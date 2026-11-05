@@ -80,5 +80,9 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--store-dir", required=True)
     ap.add_argument("--date", default=None)
+    ap.add_argument("--app", default=None, help="application root (e.g. C:\\apps\\us-stock-reader) when this file is run from another folder; only its code is imported")
     a = ap.parse_args()
+    if a.app:
+        sys.path.insert(0, str(Path(a.app) / "backend"))
+        sys.path.insert(0, str(Path(a.app) / "docs" / "smart_move" / "shadow_impl"))
     print(json.dumps(check(a.store_dir, a.date), indent=1))
