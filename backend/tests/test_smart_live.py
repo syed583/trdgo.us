@@ -1,4 +1,4 @@
-"""Smart Money Move LIVE dashboard reader. The fixture under tests/fixtures/smart_live was produced by the real (private) publisher from INVENTED rows, so these tests also pin the writer/reader contract. No provider, no network."""
+﻿"""Smart Money Move LIVE dashboard reader. The fixture under tests/fixtures/smart_live was produced by the real (private) publisher from INVENTED rows, so these tests also pin the writer/reader contract. No provider, no network."""
 import json
 import shutil
 import sys
@@ -40,6 +40,7 @@ def test_the_writers_real_output_is_accepted_and_every_required_field_is_present
     a = r["AAA"]
     assert (a["signal"], a["earnings_date"], a["session"]) == ("BUY", "2026-11-04", "BMO") and a["generated_at_et"] == "2026-11-02 16:30 EST" and a["evidence_latest_et"] == "2026-11-02 16:20 EST"
     assert a["evidence_age_h"] == 0.3 and a["evidence_items"] == 3 and a["coverage"] == "30/40" and a["window_cutoff_et"] == "2026-11-03 06:00 EST" and a["hours_to_cutoff"] == 13.3
+    assert {"bull", "bear", "adv20_usd"} <= set(a)   # the LIVE table shows both scores and the liquidity figure
     assert r["BBB"]["signal"] == "SELL" and r["CCC"]["signal"] == "NO TRADE" and r["LOW"]["signal"] == "NO VALID PREDICTION" and any("F7" in m for m in r["LOW"]["missing"])
     assert r["OLD"]["signal"] is None and r["OLD"]["missing"] == ["no prediction was produced before the window closed (nothing is back-filled)"]
 

@@ -154,7 +154,7 @@ def load(live_dir: Optional[str], now: datetime, *, kill_file: Optional[str] = N
         rows.append({"symbol": sym, "company": r.get("company"), "earnings_date": edate, "session": r.get("session"), "label": label, "signal": TEXT.get(r.get("result")) if r["record_type"] == "PREDICTION" else None,
                      "signal_code": r.get("result"), "generated_at": gen.isoformat() if gen else None, "generated_at_et": _et(gen), "evidence_latest": r.get("evidence_latest"), "evidence_latest_et": _et(ev_latest),
                      "evidence_age_h": ev_age, "evidence_warning": bool(ev_age is not None and ev_age > EVIDENCE_WARN_H), "evidence_items": len(r.get("evidence") or []),
-                     "coverage": "%s/%s" % (r["coverage_points"], r["coverage_max"]) if r.get("coverage_points") is not None else None, "liquidity": r.get("liquidity"),
+                     "coverage": "%s/%s" % (r["coverage_points"], r["coverage_max"]) if r.get("coverage_points") is not None else None, "liquidity": r.get("liquidity"), "bull": r.get("bull"), "bear": r.get("bear"), "adv20_usd": r.get("adv20_usd"),
                      "missing": miss, "reason": r.get("reason"), "window_cutoff_utc": r.get("window_cutoff_utc"), "window_cutoff_et": _et(cutoff),
                      "hours_to_cutoff": round((cutoff - now).total_seconds() / 3600, 1) if cutoff and cutoff > now else None, "record_sha256": r["record_sha256"][:12], "mode": r.get("mode")})
     order = {"LIVE": 0, "STALE": 1, "WINDOW MISSED": 2, "HISTORICAL": 3, "UNAVAILABLE": 4}

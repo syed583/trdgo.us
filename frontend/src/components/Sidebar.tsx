@@ -45,7 +45,7 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/tradgo-call', label: 'Tradgo Call', icon: <Gauge size={S} /> },
     { to: '/trade-plan', label: 'Trade Plan', icon: <Crosshair size={S} /> },
     { to: '/signal-history', label: 'Signal History', icon: <History size={S} /> },
-    { to: '/smart-move/engine20', label: 'Smart Move Snapshot (20)', icon: <Gauge size={S} /> },
+    { to: '/smart-move/engine20', label: 'Smart Money Move (LIVE)', icon: <Gauge size={S} /> },
     { to: '/peers', label: 'Sector Comparison', icon: <Scale size={S} /> },
   ] },
   { heading: 'Earnings & news', items: [

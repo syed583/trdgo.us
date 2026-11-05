@@ -2,6 +2,7 @@
 export const AUTH_ERROR = 'AUTH_ERROR';
 export const MAINTENANCE_ERROR = 'MAINTENANCE_ERROR';
 export type ProviderStatus = string;
+export const smartMoveEngine20 = { latest: () => ({ __k: 'sm20latest' }), outcomes: () => ({ __k: 'sm20out' }) };
 export const earningsMonitor = {
   status: () => ({ __k: 'emstatus' }),
   upcoming: () => ({ __k: 'emupcoming' }),
