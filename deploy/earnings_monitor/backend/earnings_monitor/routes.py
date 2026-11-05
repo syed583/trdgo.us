@@ -561,6 +561,14 @@ def smart_move_live():
     return dict(out, status="OK")
 
 
+@router.get("/smart-move/universe")
+def smart_move_universe():
+    """Per-event universe of the rolling horizon (calendar state, F3/F5/F8 evidence state, queued / deferred / predicted), read from the collector's universe.json only (SMART_MOVE_LIVE_DIR). No provider request, no scoring."""
+    import os
+    from . import smart_live as SL
+    return dict(SL.load_universe(os.getenv("SMART_MOVE_LIVE_DIR"), now()), status="OK")
+
+
 @router.get("/health")
 def health():
     """Scanner health from the durable queue and the run log: last duration of every job kind, running/stuck/dead jobs, duplicate events or predictions, lane heartbeats and today's provider requests."""

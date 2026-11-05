@@ -25,6 +25,8 @@ from zoneinfo import ZoneInfo
 UTC, ET = timezone.utc, ZoneInfo("America/New_York")
 LEDGER, STATUS, RUNS = "live_predictions.jsonl", "live_status.json", "collection_runs.jsonl"
 STALE_MIN_DEFAULT = 150            # hourly schedule + 30 minutes of grace
+UNIVERSE = "universe.json"
+UNIVERSE_STALE_H = 8.0             # the collector rewrites it on every pass; older than this means no pass has finished recently
 EVIDENCE_WARN_H = 30.0             # evidence older than this is flagged (the engine itself enforces its own freshness rules; this only warns)
 TEXT = {"BUY": "BUY", "SELL": "SELL", "NO_TRADE": "NO TRADE", "NO_VALID_PREDICTION": "NO VALID PREDICTION", "PENDING_REFRESH": "PENDING FINAL REFRESH"}
 
@@ -180,3 +182,24 @@ def load(live_dir: Optional[str], now: datetime, *, kill_file: Optional[str] = N
                          "concurrency": lim.get("concurrency"), "counted_for": rq.get("ny_date"), "as_of": (st or {}).get("written_at"), "provider": "Unusual Whales (collector only; the application's own requests are in the provider ledger)"},
             "calendar": (st or {}).get("calendar"), "counts": counts, "rows": rows, "historical_snapshot": snapshot_meta,
             "note": "Rows are the frozen score40-v1 engine's own output, recorded when each scan finished. A historical snapshot is never shown as a live signal; a missed window is never back-filled."}
+
+
+def load_universe(live_dir: Optional[str], now: datetime) -> dict:
+    """The per-event universe table the collector writes next to its ledger (universe.json): every earnings event in the rolling horizon with its calendar state, evidence state and what is being done about it.
+    READ ONLY: this reads one derived file, sends no request, scores nothing and never edits a ledger or store. A missing, unreadable or unrecognised file is reported, never invented; an old file is flagged stale."""
+    now = now if now.tzinfo else now.replace(tzinfo=UTC)
+    if not live_dir:
+        return {"configured": False, "available": False, "rows": [], "note": "Smart Money Move LIVE is not installed here (SMART_MOVE_LIVE_DIR is not set), so there is no event universe."}
+    obj = _json(Path(live_dir) / UNIVERSE)
+    if obj is None:
+        return {"configured": True, "available": False, "rows": [], "note": "The collector has not written an event universe yet (no universe.json). It appears after a pass that uses the rolling-horizon option."}
+    if not isinstance(obj, dict) or obj.get("schema") != "smart-move-universe-1" or not isinstance(obj.get("rows"), list):
+        return {"configured": True, "available": False, "rows": [], "note": "universe.json is not in the expected format, so nothing from it is shown."}
+    gen = _dt(obj.get("generated_utc"))
+    age_h = round((now - gen).total_seconds() / 3600, 2) if gen else None
+    keep = ("symbol", "company", "event_date", "session", "market_cap", "priority_proxy_tier", "excluded_by_proxy", "vendor_status", "prediction_eligible", "ineligible_reasons", "window", "window_start", "cutoff", "hours_to_cutoff",
+            "calendar_tier", "calendar_slot", "calendar_slot_state", "calendar_change", "evidence", "collection_status", "tradable", "status_note", "date_confirmed", "deferred", "deferred_reason", "latest_result")
+    rows = [{k: r.get(k) for k in keep} for r in obj["rows"] if isinstance(r, dict)]
+    return {"configured": True, "available": True, "generated_utc": gen.isoformat() if gen else None, "generated_et": _et(gen), "age_h": age_h, "stale": bool(age_h is None or age_h > UNIVERSE_STALE_H),
+            "stale_after_h": UNIVERSE_STALE_H, "horizon_days": obj.get("horizon_days"), "ledger_ok": obj.get("ledger_ok"), "ledger_problem": obj.get("ledger_problem"), "calendar_completeness": obj.get("calendar_completeness"),
+            "summary": obj.get("summary"), "rows": rows, "note": obj.get("note")}
