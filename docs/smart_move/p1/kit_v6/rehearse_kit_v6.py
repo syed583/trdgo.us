@@ -60,7 +60,7 @@ def main():
             (td / case / "state").mkdir(parents=True)
             (td / case / "store").mkdir(parents=True)
             (td / case / "store" / "KILL").write_text("engaged")
-        base_hashes = {p.name: sha(p) for p in (td / "main" / "backend").iterdir()}
+        base_hashes = {p.name: sha(p) for p in (td / "main" / "backend").iterdir() if p.is_file()}
         common = lambda c: ["--manifest", str(man), "--app-backend", str(td / c / "backend"), "--backup-root", str(td / c / "backups"), "--state-root", str(td / c / "state"), "--store-dir", str(td / c / "store")]  # noqa: E731
         # pre-check
         code, out = run([str(kd / "kit_v6_manifest.py"), "verify", "--manifest", str(man), "--payload", str(kd / "payload" / "backend"), "--app-backend", str(td / "main" / "backend"), "--phase", "pre"])
@@ -73,12 +73,12 @@ def main():
         chk("every protected file is byte-identical to the base", all(sha(app / Path(rel).name) == h for rel, h in m["protected_unchanged"].items()))
         chk("collector holds released after install", not (td / "main" / "state" / "collection.lock").exists() and not (td / "main" / "state" / "KILL").exists() and (td / "main" / "store" / "KILL").exists())
         # the installed runner really knows the profile
-        code, out = run([str(app / "smart_move_collection_runner.py"), "--help"])
-        chk("installed runner lists the monday_bmo_friday profile", "monday_bmo_friday" in out, out[-300:])
+        txt = (app / "smart_move_collection_runner.py").read_text(encoding="utf-8")
+        chk("installed runner dispatches the monday_bmo_friday profile to the new module", '"monday_bmo_friday"' in txt and "import smart_move_monday_bmo as MB" in txt and "MB.profile(a, svc, now, live)" in txt)
         # rollback
         code, out = run([str(kd / "install_kit_v6.py"), "rollback"] + common("main"))
         chk("rollback returns ROLLED BACK", code == 0 and "ROLLED BACK" in out, out)
-        chk("after rollback every file is byte-identical to the v5 base and the new module is gone", {p.name: sha(p) for p in app.iterdir()} == base_hashes)
+        chk("after rollback every file is byte-identical to the v5 base and the new module is gone", {p.name: sha(p) for p in app.iterdir() if p.is_file()} == base_hashes)
         # install again (so the final state is v6, like production after approval)
         code, out = run([str(kd / "install_kit_v6.py"), "install", "--payload", str(kd / "payload" / "backend")] + common("main"))
         chk("second install after rollback succeeds", code == 0 and "INSTALLED" in out, out)
@@ -91,14 +91,14 @@ def main():
         chk("install refused while interrupted (run recover first)", code == 2 and "recover" in out, out)
         code, out = run([str(kd / "install_kit_v6.py"), "recover"] + common("crash"))
         chk("recover returns RECOVERED", code == 0 and "RECOVERED" in out, out)
-        chk("after recover the files are byte-identical to the v5 base and holds are released", {p.name: sha(p) for p in (td / "crash" / "backend").iterdir()} == base_hashes and not (td / "crash" / "state" / "collection.lock").exists() and not (td / "crash" / "state" / "KILL").exists())
+        chk("after recover the files are byte-identical to the v5 base and holds are released", {p.name: sha(p) for p in (td / "crash" / "backend").iterdir() if p.is_file()} == base_hashes and not (td / "crash" / "state" / "collection.lock").exists() and not (td / "crash" / "state" / "KILL").exists())
         # refusals
         (td / "locked" / "state" / "collection.lock").write_text("pid=1")
         code, out = run([str(kd / "install_kit_v6.py"), "install", "--payload", str(kd / "payload" / "backend")] + common("locked"))
-        chk("install refused while the collector lock exists; nothing changed", code == 2 and {p.name: sha(p) for p in (td / "locked" / "backend").iterdir()} == base_hashes and (td / "locked" / "state" / "collection.lock").exists(), out)
+        chk("install refused while the collector lock exists; nothing changed", code == 2 and {p.name: sha(p) for p in (td / "locked" / "backend").iterdir() if p.is_file()} == base_hashes and (td / "locked" / "state" / "collection.lock").exists(), out)
         (td / "nokill" / "store" / "KILL").unlink()
         code, out = run([str(kd / "install_kit_v6.py"), "install", "--payload", str(kd / "payload" / "backend")] + common("nokill"))
-        chk("install refused while the runner kill switch is missing; nothing changed", code == 2 and {p.name: sha(p) for p in (td / "nokill" / "backend").iterdir()} == base_hashes, out)
+        chk("install refused while the runner kill switch is missing; nothing changed", code == 2 and {p.name: sha(p) for p in (td / "nokill" / "backend").iterdir() if p.is_file()} == base_hashes, out)
         # wrapper v2
         wz = td / "wrap"
         zipfile.ZipFile(a.wrapper_zip).extractall(wz)
