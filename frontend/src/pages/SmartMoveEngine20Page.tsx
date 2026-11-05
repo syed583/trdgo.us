@@ -204,7 +204,9 @@ export function LiveView() {
 const UNI_STATUS: Record<string, [string, string]> = {
   EVIDENCE_COMPLETE: ['green', 'F3, F5 and the market evidence are fresh: the frozen engine can score it'],
   QUEUED_THIS_RUN: ['blue', 'funded in the latest planned run'],
-  DEFERRED: ['amber', 'not funded yet: still eligible while its prediction window is open (never excluded by a proxy)'],
+  DEFERRED: ['amber', 'eligible, but not funded because of the request budget: still eligible while its prediction window is open (never excluded by a proxy)'],
+  NOT_TRADABLE: ['gray', 'permanently not tradable under the frozen order-deadline rule: the engine answers NO VALID PREDICTION whatever the evidence, so no evidence is requested'],
+  ELIGIBILITY_UNKNOWN: ['amber', 'eligibility cannot be established (date, session or tradability unknown): never skipped, never called deferred'],
   WAITING_WINDOW: ['gray', 'its 48-to-24-hour prediction window has not opened yet'],
   PREDICTED: ['green', 'a prediction is in the ledger'],
   WINDOW_CLOSED_NO_PREDICTION: ['amber', 'the window closed without a prediction (nothing is back-filled)'],
@@ -212,7 +214,7 @@ const UNI_STATUS: Record<string, [string, string]> = {
   CALENDAR_MISSING_UNCONFIRMED: ['amber', 'missing from its calendar slot once: may have moved, not removed yet'],
   REMOVED: ['red', 'gone from its calendar slot in two complete refreshes in a row'],
 };
-const UNI_FILTERS = ['', 'DEFERRED', 'QUEUED_THIS_RUN', 'EVIDENCE_COMPLETE', 'WAITING_WINDOW', 'PREDICTED', 'NOT_ELIGIBLE', 'WINDOW_CLOSED_NO_PREDICTION', 'CALENDAR_MISSING_UNCONFIRMED', 'REMOVED'];
+const UNI_FILTERS = ['', 'DEFERRED', 'NOT_TRADABLE', 'ELIGIBILITY_UNKNOWN', 'QUEUED_THIS_RUN', 'EVIDENCE_COMPLETE', 'WAITING_WINDOW', 'PREDICTED', 'NOT_ELIGIBLE', 'WINDOW_CLOSED_NO_PREDICTION', 'CALENDAR_MISSING_UNCONFIRMED', 'REMOVED'];
 const uniKey = (s: string) => (s || '').split(':')[0];
 
 /** Per-event universe of the rolling horizon, read from the collector's universe.json. Discovered is not eligible and eligible is not collected: each row says which. The proxy tier only orders work; nothing is excluded by it. */
@@ -235,7 +237,7 @@ export function UniverseView() {
         <>
           {d.stale && <div className="sm-fresh stale" role="alert" data-testid="sm-universe-stale"><AlertTriangle size={14} /> This table is {d.age_h} h old (written {d.generated_et}); no collector pass has refreshed it within {d.stale_after_h} h.</div>}
           {d.ledger_ok === false && <div className="sm-q-state bad" role="alert"><b>Prediction ledger integrity check FAILED</b><div>{d.ledger_problem}. Predictions are not shown in this table.</div></div>}
-          <div className="sm-q-banner" role="note"><Info size={16} /><div><b>{d.summary?.events ?? 0} events in the next {d.horizon_days} days</b> (written {d.generated_et}). DEFERRED events stay eligible while their window is open: the market-cap proxy only orders the work and
+          <div className="sm-q-banner" role="note"><Info size={16} /><div><b>{d.summary?.events ?? 0} events in the next {d.horizon_days} days</b> (written {d.generated_et}). DEFERRED means eligible but waiting for request budget and stays eligible while the window is open; NOT TRADABLE events can never be predicted (no evidence is requested); ELIGIBILITY UNKNOWN events are never skipped. The market-cap proxy only orders the work and
             excludes nothing ({d.summary?.excluded_by_proxy ?? 0} excluded). The frozen ADV20 liquidity gate still decides from the price bars.</div></div>
           {comp && (
             <div className={`sm-fresh ${comp.t0_complete ? '' : 'stale'}`} data-testid="sm-universe-calendar">
@@ -271,7 +273,7 @@ export function UniverseView() {
                     <td>{ev.F5_price ?? '—'}</td><td>{ev.F3_earnings_history ?? '—'}</td><td>{ev.F8_market ?? '—'} / {ev.F8_sector_etf ?? '—'}</td>
                     <td>{r.priority_proxy_tier}<div className="sm-q-muted">orders work only</div></td>
                     <td>{r.calendar_tier ?? '—'}<div className="sm-q-muted">{r.calendar_slot_state ?? '—'}{r.calendar_change && r.calendar_change !== 'LISTED' ? ` · ${r.calendar_change}` : ''}</div></td>
-                    <td>{r.deferred_reason || (r.ineligible_reasons?.length ? r.ineligible_reasons.join('; ') : '') || tone[1] || '—'}</td>
+                    <td>{r.deferred_reason || r.status_note || (r.ineligible_reasons?.length ? r.ineligible_reasons.join('; ') : '') || tone[1] || '—'}</td>
                   </tr>
                 );
               })}</tbody>

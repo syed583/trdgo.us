@@ -198,7 +198,7 @@ def load_universe(live_dir: Optional[str], now: datetime) -> dict:
     gen = _dt(obj.get("generated_utc"))
     age_h = round((now - gen).total_seconds() / 3600, 2) if gen else None
     keep = ("symbol", "company", "event_date", "session", "market_cap", "priority_proxy_tier", "excluded_by_proxy", "vendor_status", "prediction_eligible", "ineligible_reasons", "window", "window_start", "cutoff", "hours_to_cutoff",
-            "calendar_tier", "calendar_slot", "calendar_slot_state", "calendar_change", "evidence", "collection_status", "deferred", "deferred_reason", "latest_result")
+            "calendar_tier", "calendar_slot", "calendar_slot_state", "calendar_change", "evidence", "collection_status", "tradable", "status_note", "date_confirmed", "deferred", "deferred_reason", "latest_result")
     rows = [{k: r.get(k) for k in keep} for r in obj["rows"] if isinstance(r, dict)]
     return {"configured": True, "available": True, "generated_utc": gen.isoformat() if gen else None, "generated_et": _et(gen), "age_h": age_h, "stale": bool(age_h is None or age_h > UNIVERSE_STALE_H),
             "stale_after_h": UNIVERSE_STALE_H, "horizon_days": obj.get("horizon_days"), "ledger_ok": obj.get("ledger_ok"), "ledger_problem": obj.get("ledger_problem"), "calendar_completeness": obj.get("calendar_completeness"),

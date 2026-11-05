@@ -1,30 +1,20 @@
 {
  "schema": "smart-move-universe-1",
- "generated_utc": "2026-11-02T20:30:00+00:00",
+ "generated_utc": "2026-11-07T22:00:00+00:00",
  "generated": {
-  "utc": "2026-11-02T20:30:00+00:00",
-  "new_york": "2026-11-02 15:30 EST",
-  "dubai": "2026-11-03 00:30"
+  "utc": "2026-11-07T22:00:00+00:00",
+  "new_york": "2026-11-07 17:00 EST",
+  "dubai": "2026-11-08 02:00"
  },
  "horizon_days": 30,
  "ledger_ok": true,
  "ledger_problem": null,
  "calendar_completeness": {
-  "as_of": "2026-11-02T20:30:00+00:00",
+  "as_of": "2026-11-07T22:00:00+00:00",
   "horizon_days": 30,
-  "t0_open_stale": [
-   "2026-11-03|afterhours"
-  ],
-  "t0_next_stale": [
-   "2026-11-04|afterhours"
-  ],
+  "t0_open_stale": [],
+  "t0_next_stale": [],
   "t1_stale": [
-   "2026-11-05|premarket",
-   "2026-11-05|afterhours",
-   "2026-11-06|premarket",
-   "2026-11-06|afterhours",
-   "2026-11-09|premarket",
-   "2026-11-09|afterhours",
    "2026-11-10|premarket",
    "2026-11-10|afterhours",
    "2026-11-11|premarket",
@@ -56,40 +46,52 @@
    "2026-12-01|premarket",
    "2026-12-01|afterhours",
    "2026-12-02|premarket",
-   "2026-12-02|afterhours"
+   "2026-12-02|afterhours",
+   "2026-12-03|premarket",
+   "2026-12-03|afterhours",
+   "2026-12-04|premarket",
+   "2026-12-04|afterhours",
+   "2026-12-07|premarket",
+   "2026-12-07|afterhours"
   ],
-  "slots_total": 41,
-  "slots_fresh": 1,
-  "t0_complete": false
+  "slots_total": 40,
+  "slots_fresh": 2,
+  "t0_complete": true
  },
  "summary": {
-  "events": 4,
+  "events": 5,
   "by_status": {
-   "EVIDENCE_COMPLETE": 2,
-   "DEFERRED": 2
+   "NOT_TRADABLE": 1,
+   "EVIDENCE_COMPLETE": 1,
+   "DEFERRED": 1,
+   "ELIGIBILITY_UNKNOWN": 2
   },
   "by_tier": {
-   "A": 4
+   "B": 4,
+   "D": 1
   },
-  "deferred": 2,
+  "deferred": 1,
   "excluded_by_proxy": 0,
   "by_event_date": {
-   "2026-11-04": {
-    "EVIDENCE_COMPLETE": 2,
-    "DEFERRED": 2
+   "2026-11-09": {
+    "NOT_TRADABLE": 1,
+    "EVIDENCE_COMPLETE": 1,
+    "DEFERRED": 1,
+    "ELIGIBILITY_UNKNOWN": 2
    }
   }
  },
  "note": "Discovered is not eligible and eligible is not collected: each row says which. The proxy only orders work; no event is excluded by it.",
  "rows": [
   {
-   "symbol": "AAA",
-   "company": "AAA INC",
-   "event_date": "2026-11-04",
+   "symbol": "MBMO",
+   "company": "MBMO INC",
+   "event_date": "2026-11-09",
+   "date_confirmed": true,
    "session": "BMO",
    "sector": "Technology",
-   "market_cap": "500000000000",
-   "priority_proxy_tier": "A",
+   "market_cap": "5000000000",
+   "priority_proxy_tier": "B",
    "excluded_by_proxy": false,
    "vendor_status": "VENDOR_CONFIRMED",
    "vendor_conflict": false,
@@ -97,20 +99,64 @@
    "ineligible_reasons": [],
    "window": "OPEN",
    "window_start": {
-    "utc": "2026-11-02T11:00:00+00:00",
-    "new_york": "2026-11-02 06:00 EST",
-    "dubai": "2026-11-02 15:00"
+    "utc": "2026-11-07T11:00:00+00:00",
+    "new_york": "2026-11-07 06:00 EST",
+    "dubai": "2026-11-07 15:00"
    },
    "cutoff": {
-    "utc": "2026-11-03T11:00:00+00:00",
-    "new_york": "2026-11-03 06:00 EST",
-    "dubai": "2026-11-03 15:00"
+    "utc": "2026-11-08T11:00:00+00:00",
+    "new_york": "2026-11-08 06:00 EST",
+    "dubai": "2026-11-08 15:00"
    },
-   "hours_to_cutoff": 14.5,
+   "hours_to_cutoff": 13.0,
    "calendar_tier": "T0_OPEN",
-   "calendar_slot": "2026-11-04|premarket",
+   "calendar_slot": "2026-11-09|premarket",
    "calendar_slot_state": "FRESH",
-   "calendar_slot_observed_at": "2026-11-02T20:30:00+00:00",
+   "calendar_slot_observed_at": "2026-11-07T22:00:00+00:00",
+   "calendar_change": "LISTED",
+   "evidence": {
+    "F5_price": "MISSING",
+    "F3_earnings_history": "MISSING",
+    "F8_market": "FRESH",
+    "F8_sector_etf": "FRESH"
+   },
+   "collection_status": "NOT_TRADABLE",
+   "tradable": false,
+   "status_note": "not tradable under the frozen order-deadline rule: the entry would be a market-on-close order whose deadline passes before the prediction cutoff, so the engine answers NO VALID PREDICTION whatever the evidence. No evidence is requested.",
+   "deferred": false,
+   "deferred_reason": null,
+   "latest_result": null
+  },
+  {
+   "symbol": "SERV",
+   "company": "SERV INC",
+   "event_date": "2026-11-09",
+   "date_confirmed": true,
+   "session": "AMC",
+   "sector": "Technology",
+   "market_cap": "9000000000",
+   "priority_proxy_tier": "B",
+   "excluded_by_proxy": false,
+   "vendor_status": "VENDOR_CONFIRMED",
+   "vendor_conflict": false,
+   "prediction_eligible": true,
+   "ineligible_reasons": [],
+   "window": "OPEN",
+   "window_start": {
+    "utc": "2026-11-07T21:00:00+00:00",
+    "new_york": "2026-11-07 16:00 EST",
+    "dubai": "2026-11-08 01:00"
+   },
+   "cutoff": {
+    "utc": "2026-11-08T21:00:00+00:00",
+    "new_york": "2026-11-08 16:00 EST",
+    "dubai": "2026-11-09 01:00"
+   },
+   "hours_to_cutoff": 23.0,
+   "calendar_tier": "T0_OPEN",
+   "calendar_slot": "2026-11-09|afterhours",
+   "calendar_slot_state": "FRESH",
+   "calendar_slot_observed_at": "2026-11-07T22:00:00+00:00",
    "calendar_change": "LISTED",
    "evidence": {
     "F5_price": "FRESH",
@@ -119,18 +165,21 @@
     "F8_sector_etf": "FRESH"
    },
    "collection_status": "EVIDENCE_COMPLETE",
+   "tradable": true,
+   "status_note": null,
    "deferred": false,
    "deferred_reason": null,
    "latest_result": null
   },
   {
-   "symbol": "BBB",
-   "company": "BBB INC",
-   "event_date": "2026-11-04",
-   "session": "BMO",
+   "symbol": "DEFR",
+   "company": "DEFR INC",
+   "event_date": "2026-11-09",
+   "date_confirmed": true,
+   "session": "AMC",
    "sector": "Technology",
-   "market_cap": "300000000000",
-   "priority_proxy_tier": "A",
+   "market_cap": "100000000",
+   "priority_proxy_tier": "D",
    "excluded_by_proxy": false,
    "vendor_status": "VENDOR_CONFIRMED",
    "vendor_conflict": false,
@@ -138,112 +187,109 @@
    "ineligible_reasons": [],
    "window": "OPEN",
    "window_start": {
-    "utc": "2026-11-02T11:00:00+00:00",
-    "new_york": "2026-11-02 06:00 EST",
-    "dubai": "2026-11-02 15:00"
+    "utc": "2026-11-07T21:00:00+00:00",
+    "new_york": "2026-11-07 16:00 EST",
+    "dubai": "2026-11-08 01:00"
    },
    "cutoff": {
-    "utc": "2026-11-03T11:00:00+00:00",
-    "new_york": "2026-11-03 06:00 EST",
-    "dubai": "2026-11-03 15:00"
+    "utc": "2026-11-08T21:00:00+00:00",
+    "new_york": "2026-11-08 16:00 EST",
+    "dubai": "2026-11-09 01:00"
    },
-   "hours_to_cutoff": 14.5,
+   "hours_to_cutoff": 23.0,
    "calendar_tier": "T0_OPEN",
-   "calendar_slot": "2026-11-04|premarket",
+   "calendar_slot": "2026-11-09|afterhours",
    "calendar_slot_state": "FRESH",
-   "calendar_slot_observed_at": "2026-11-02T20:30:00+00:00",
+   "calendar_slot_observed_at": "2026-11-07T22:00:00+00:00",
    "calendar_change": "LISTED",
    "evidence": {
-    "F5_price": "FRESH",
-    "F3_earnings_history": "FRESH",
+    "F5_price": "MISSING",
+    "F3_earnings_history": "MISSING",
     "F8_market": "FRESH",
     "F8_sector_etf": "FRESH"
    },
-   "collection_status": "EVIDENCE_COMPLETE",
-   "deferred": false,
-   "deferred_reason": null,
-   "latest_result": null
-  },
-  {
-   "symbol": "CCC",
-   "company": "CCC INC",
-   "event_date": "2026-11-04",
-   "session": "BMO",
-   "sector": "Healthcare",
-   "market_cap": "200000000000",
-   "priority_proxy_tier": "A",
-   "excluded_by_proxy": false,
-   "vendor_status": "VENDOR_CONFIRMED",
-   "vendor_conflict": false,
-   "prediction_eligible": true,
-   "ineligible_reasons": [],
-   "window": "OPEN",
-   "window_start": {
-    "utc": "2026-11-02T11:00:00+00:00",
-    "new_york": "2026-11-02 06:00 EST",
-    "dubai": "2026-11-02 15:00"
-   },
-   "cutoff": {
-    "utc": "2026-11-03T11:00:00+00:00",
-    "new_york": "2026-11-03 06:00 EST",
-    "dubai": "2026-11-03 15:00"
-   },
-   "hours_to_cutoff": 14.5,
-   "calendar_tier": "T0_OPEN",
-   "calendar_slot": "2026-11-04|premarket",
-   "calendar_slot_state": "FRESH",
-   "calendar_slot_observed_at": "2026-11-02T20:30:00+00:00",
-   "calendar_change": "LISTED",
-   "evidence": {
-    "F5_price": "MISSING",
-    "F3_earnings_history": "MISSING",
-    "F8_market": "FRESH",
-    "F8_sector_etf": "MISSING"
-   },
    "collection_status": "DEFERRED",
-   "deferred": true,
-   "deferred_reason": "selected but not funded: the run budget is used up; still eligible while its window is open",
-   "latest_result": null
-  },
-  {
-   "symbol": "DDD",
-   "company": "DDD INC",
-   "event_date": "2026-11-04",
-   "session": "BMO",
-   "sector": "Energy",
-   "market_cap": "100000000000",
-   "priority_proxy_tier": "A",
-   "excluded_by_proxy": false,
-   "vendor_status": "VENDOR_CONFIRMED",
-   "vendor_conflict": false,
-   "prediction_eligible": true,
-   "ineligible_reasons": [],
-   "window": "OPEN",
-   "window_start": {
-    "utc": "2026-11-02T11:00:00+00:00",
-    "new_york": "2026-11-02 06:00 EST",
-    "dubai": "2026-11-02 15:00"
-   },
-   "cutoff": {
-    "utc": "2026-11-03T11:00:00+00:00",
-    "new_york": "2026-11-03 06:00 EST",
-    "dubai": "2026-11-03 15:00"
-   },
-   "hours_to_cutoff": 14.5,
-   "calendar_tier": "T0_OPEN",
-   "calendar_slot": "2026-11-04|premarket",
-   "calendar_slot_state": "FRESH",
-   "calendar_slot_observed_at": "2026-11-02T20:30:00+00:00",
-   "calendar_change": "LISTED",
-   "evidence": {
-    "F5_price": "MISSING",
-    "F3_earnings_history": "MISSING",
-    "F8_market": "FRESH",
-    "F8_sector_etf": "MISSING"
-   },
-   "collection_status": "DEFERRED",
+   "tradable": true,
+   "status_note": null,
    "deferred": true,
    "deferred_reason": "ranked below the run's slots by deadline and priority proxy; still eligible while its window is open",
+   "latest_result": null
+  },
+  {
+   "symbol": "CONF",
+   "company": "CONF INC",
+   "event_date": "2026-11-09",
+   "date_confirmed": false,
+   "session": "UNKNOWN",
+   "sector": "Technology",
+   "market_cap": "5000000000",
+   "priority_proxy_tier": "B",
+   "excluded_by_proxy": false,
+   "vendor_status": "UNKNOWN",
+   "vendor_conflict": true,
+   "prediction_eligible": false,
+   "ineligible_reasons": [
+    "DATE_CONFLICT_OVER_1_DAY",
+    "UNKNOWN_TIMING"
+   ],
+   "window": "UNKNOWN",
+   "window_start": null,
+   "cutoff": null,
+   "hours_to_cutoff": null,
+   "calendar_tier": null,
+   "calendar_slot": null,
+   "calendar_slot_state": null,
+   "calendar_slot_observed_at": null,
+   "calendar_change": "LISTED",
+   "evidence": {
+    "F5_price": "NOT_DUE",
+    "F3_earnings_history": "NOT_DUE",
+    "F8_market": "NOT_DUE",
+    "F8_sector_etf": "NOT_DUE"
+   },
+   "collection_status": "ELIGIBILITY_UNKNOWN",
+   "tradable": null,
+   "status_note": "the calendar vendors disagree on the event date (dates seen: 2026-11-09, 2026-11-12): no window exists, so the event is neither skipped nor called deferred.",
+   "deferred": false,
+   "deferred_reason": null,
+   "latest_result": null
+  },
+  {
+   "symbol": "NOSS",
+   "company": "NOSS INC",
+   "event_date": "2026-11-09",
+   "date_confirmed": true,
+   "session": "UNKNOWN",
+   "sector": "Technology",
+   "market_cap": "5000000000",
+   "priority_proxy_tier": "B",
+   "excluded_by_proxy": false,
+   "vendor_status": "ESTIMATED",
+   "vendor_conflict": false,
+   "prediction_eligible": false,
+   "ineligible_reasons": [
+    "UNKNOWN_TIMING"
+   ],
+   "window": "UNKNOWN",
+   "window_start": null,
+   "cutoff": null,
+   "hours_to_cutoff": null,
+   "calendar_tier": null,
+   "calendar_slot": null,
+   "calendar_slot_state": null,
+   "calendar_slot_observed_at": null,
+   "calendar_change": "LISTED",
+   "evidence": {
+    "F5_price": "NOT_DUE",
+    "F3_earnings_history": "NOT_DUE",
+    "F8_market": "NOT_DUE",
+    "F8_sector_etf": "NOT_DUE"
+   },
+   "collection_status": "ELIGIBILITY_UNKNOWN",
+   "tradable": null,
+   "status_note": "eligibility cannot be established (session not confirmed): the event is neither skipped nor called deferred.",
+   "deferred": false,
+   "deferred_reason": null,
    "latest_result": null
   }
  ]

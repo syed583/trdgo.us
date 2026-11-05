@@ -1,4 +1,4 @@
-﻿import test from 'node:test';
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -17,6 +17,18 @@ test('the universe lists every event with its window, evidence state, tier and s
   assert.match(h, /data-testid="sm-universe-table"/); assert.match(h, />AAA</); assert.match(h, />BBB</);
   assert.match(h, /2026-11-08 16:00 EST/); assert.match(h, /still eligible while its window is open/); assert.match(h, /0 excluded/); assert.match(h, /orders work only/);
   assert.match(h, /3 events in the next 30 days/); assert.match(h, /DEFERRED \(1\)/); assert.match(h, /F8 market \/ ETF/);
+});
+
+test('not tradable, deferred by budget, served and eligibility unknown are four different things on the screen', () => {
+  const h = show(base([row({ symbol: 'MBMO', collection_status: 'NOT_TRADABLE', tradable: false, status_note: 'not tradable under the frozen order-deadline rule', priority_proxy_tier: 'A' }),
+    row({ symbol: 'DEFR', collection_status: 'DEFERRED', deferred: true, deferred_reason: 'selected but not funded: the run budget is used up; still eligible while its window is open' }),
+    row({ symbol: 'SERV', collection_status: 'EVIDENCE_COMPLETE' }),
+    row({ symbol: 'CONF', collection_status: 'ELIGIBILITY_UNKNOWN', date_confirmed: false, status_note: 'the calendar vendors disagree on the event date' })]));
+  const cell = (sym: string) => h.split('<tr data-testid="sm-universe-row">').find((x) => x.includes('>' + sym + '<')) || '';
+  assert.match(cell('MBMO'), /NOT TRADABLE/); assert.ok(!/DEFERRED/.test(cell('MBMO')) && !/still eligible/.test(cell('MBMO')));
+  assert.match(cell('DEFR'), /DEFERRED/); assert.match(cell('DEFR'), /still eligible/);
+  assert.match(cell('SERV'), /EVIDENCE COMPLETE/); assert.match(cell('CONF'), /ELIGIBILITY UNKNOWN/); assert.ok(!/DEFERRED/.test(cell('CONF')));
+  assert.match(h, /NOT TRADABLE \(1\)/); assert.match(h, /ELIGIBILITY UNKNOWN \(1\)/);
 });
 
 test('stale calendar slots, a stale table and a failed ledger are shown, not hidden', () => {
