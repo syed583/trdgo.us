@@ -65,3 +65,18 @@ def test_the_route_reads_only_the_file_and_changes_nothing(live, monkeypatch):
     assert {p.name: p.read_bytes() for p in live.iterdir()} == before                                  # read only
     monkeypatch.delenv("SMART_MOVE_LIVE_DIR")
     assert c.get("/api/earnings-monitor/smart-move/universe").json()["configured"] is False
+
+
+def test_the_p1_collector_files_next_to_the_ledger_do_not_change_the_live_scanner_view(tmp_path):
+    """Dashboard compatibility: a folder that also holds universe.json, calendar_slots.json and event_changes.jsonl gives the SAME live view as one that does not; and the universe reader on a folder from the installed collector (no universe.json) says 'not written yet'."""
+    live_fix = Path(__file__).resolve().parent / "fixtures" / "smart_live"
+    a, b = tmp_path / "plain", tmp_path / "with_p1_files"
+    shutil.copytree(live_fix, a)
+    shutil.copytree(live_fix, b)
+    shutil.copyfile(FIX / "universe.json", b / "universe.json")
+    (b / "calendar_slots.json").write_text('{"version": 1, "slots": {}, "symbol_index": {}}', encoding="utf-8")
+    (b / "event_changes.jsonl").write_text('{"change": "NEW"}\n', encoding="utf-8")
+    t2 = datetime(2026, 11, 2, 21, 30, tzinfo=UTC)
+    assert SL.load(str(a), t2) == SL.load(str(b), t2)
+    out = SL.load_universe(str(a), t2)
+    assert out["configured"] is True and out["available"] is False and "not written an event universe" in out["note"]
