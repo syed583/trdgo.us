@@ -27,6 +27,9 @@ LEDGER, STATUS, RUNS = "live_predictions.jsonl", "live_status.json", "collection
 STALE_MIN_DEFAULT = 150            # hourly schedule + 30 minutes of grace
 UNIVERSE = "universe.json"
 UNIVERSE_STALE_H = 8.0             # the collector rewrites it on every pass; older than this means no pass has finished recently
+MONDAY_BMO_SUBDIR = "monday_bmo_friday"       # the SEPARATE Friday-window variant: its own ledger, status, outcomes and accuracy under this folder (never mixed with the frozen ledger above)
+MONDAY_BMO_ACCURACY = "accuracy.json"
+MONDAY_BMO_VARIANT = "MONDAY_BMO_FRIDAY"
 EVIDENCE_WARN_H = 30.0             # evidence older than this is flagged (the engine itself enforces its own freshness rules; this only warns)
 TEXT = {"BUY": "BUY", "SELL": "SELL", "NO_TRADE": "NO TRADE", "NO_VALID_PREDICTION": "NO VALID PREDICTION", "PENDING_REFRESH": "PENDING FINAL REFRESH"}
 
@@ -203,3 +206,59 @@ def load_universe(live_dir: Optional[str], now: datetime) -> dict:
     return {"configured": True, "available": True, "generated_utc": gen.isoformat() if gen else None, "generated_et": _et(gen), "age_h": age_h, "stale": bool(age_h is None or age_h > UNIVERSE_STALE_H),
             "stale_after_h": UNIVERSE_STALE_H, "horizon_days": obj.get("horizon_days"), "ledger_ok": obj.get("ledger_ok"), "ledger_problem": obj.get("ledger_problem"), "calendar_completeness": obj.get("calendar_completeness"),
             "summary": obj.get("summary"), "rows": rows, "note": obj.get("note")}
+
+
+def load_monday_bmo(live_dir: Optional[str], now: datetime, *, stale_min: int = STALE_MIN_DEFAULT) -> dict:
+    """The SEPARATE MONDAY_BMO_FRIDAY variant: predictions for Monday-before-open reports made on Friday before the US close (its own hash-chained ledger under <live>/monday_bmo_friday), its status, and its
+    own accuracy file (graded after Monday's close with the existing outcome methodology). READ ONLY. Nothing here is mixed with the frozen model's ledger or accuracy; a broken chain shows no row (fail closed)."""
+    now = now if now.tzinfo else now.replace(tzinfo=UTC)
+    base = {"configured": bool(live_dir), "variant": MONDAY_BMO_VARIANT, "now": now.isoformat(), "now_et": _et(now), "rows": [], "accuracy": None,
+            "note": "Separate variant: the frozen score40-v1 scorer, factors, thresholds and liquidity gate applied to a Friday window (Thursday close to Friday 15:30 ET) for reports released before "
+                    "the open on a day with no session in between (a Monday, or the day after a market holiday). The entry is a Friday close order exposed to the weekend gap. Its results are "
+                    "tracked separately from the frozen model and are never combined with it."}
+    if not live_dir:
+        return dict(base, available=False, note="Smart Money Move LIVE is not installed here (SMART_MOVE_LIVE_DIR is not set).")
+    d = Path(live_dir) / MONDAY_BMO_SUBDIR
+    led = read_ledger(d / LEDGER)
+    st = _json(d / STATUS)
+    acc = _json(d / MONDAY_BMO_ACCURACY)
+    if not st and not (d / LEDGER).exists():
+        return dict(base, available=False, note=base["note"] + " No variant pass has run yet (no monday_bmo_friday folder).")
+    last_ok = _dt((st or {}).get("last_successful_scan_at"))
+    scan_age_min = round((now - last_ok).total_seconds() / 60) if last_ok else None
+    scan_fresh = bool(last_ok and scan_age_min is not None and scan_age_min <= stale_min)
+    latest = {}
+    for r in (led["records"] if led["ok"] else []):
+        key = (r["symbol"], r["event_date"])
+        if r["record_type"] == "PREDICTION" or key not in latest:
+            latest[key] = r
+    acc_rows = {(r.get("symbol"), r.get("monday_earnings_date")): r for r in ((acc or {}).get("rows") or []) if isinstance(r, dict)}
+    rows = []
+    for (sym, edate), r in latest.items():
+        label = _label(r, now, led["ok"], scan_fresh)
+        gen = _dt(r.get("generated_at") or r.get("noted_at"))
+        cutoff = _dt(r.get("window_cutoff_utc"))
+        miss = [("%s: %s" % (m[0], m[1])) if isinstance(m, (list, tuple)) and len(m) == 2 else str(m) for m in (r.get("missing_factors") or [])]
+        if r["record_type"] == "WINDOW_MISSED":
+            miss = ["no prediction was produced before the Friday deadline (nothing is back-filled)"]
+        o = acc_rows.get((sym, edate)) or {}
+        rows.append({"symbol": sym, "company": r.get("company"), "monday_earnings_date": edate, "session": r.get("session"), "label": label, "variant": r.get("variant") or MONDAY_BMO_VARIANT,
+                     "signal": TEXT.get(r.get("result")) if r["record_type"] == "PREDICTION" else None, "signal_code": r.get("result"), "bull": r.get("bull"), "bear": r.get("bear"),
+                     "coverage": "%s/%s" % (r["coverage_points"], r["coverage_max"]) if r.get("coverage_points") is not None else None, "liquidity": r.get("liquidity"), "adv20_usd": r.get("adv20_usd"),
+                     "predicted_at": gen.isoformat() if gen else None, "predicted_at_et": _et(gen), "friday_entry_deadline_utc": r.get("friday_entry_deadline_utc") or r.get("window_cutoff_utc"),
+                     "friday_entry_deadline_et": r.get("friday_entry_deadline_et") or _et(cutoff), "hours_to_deadline": round((cutoff - now).total_seconds() / 3600, 1) if cutoff and cutoff > now else None,
+                     "base_session": r.get("base_session"), "reaction_session": r.get("reaction_session"), "evidence_latest": r.get("evidence_latest"), "evidence_items": len(r.get("evidence") or []), "missing": miss,
+                     "reason": r.get("reason"), "outcome_status": o.get("outcome_status"), "move_pct": o.get("move_pct"), "gap_pct": o.get("gap_pct"), "outcome_class": o.get("outcome_class"), "hit": o.get("hit"),
+                     "record_sha256": r["record_sha256"][:12], "mode": r.get("mode")})
+    order = {"LIVE": 0, "STALE": 1, "WINDOW MISSED": 2, "HISTORICAL": 3, "UNAVAILABLE": 4}
+    rows.sort(key=lambda x: (order.get(x["label"], 9), x["friday_entry_deadline_utc"] or "", x["symbol"]))
+    counts = {}
+    for r in rows:
+        counts[r["label"]] = counts.get(r["label"], 0) + 1
+    summ = (acc or {}).get("summary") if isinstance(acc, dict) else None
+    keep = ("variant", "generated_utc", "total_predictions", "by_signal", "graded_events", "decided_calls", "buy_accuracy", "sell_accuracy", "overall_directional_accuracy", "average_post_earnings_move_pct",
+            "average_abs_move_pct", "weekend_gap_risk", "hypothetical_trading_performance", "earnings_weeks", "minimum_sample_met", "claim_allowed", "claim_text", "separate_from_frozen_model")
+    return dict(base, available=True, ledger={"ok": led["ok"], "problem": led["problem"], "records": len(led["records"]) if led["ok"] else None},
+                scan={"mode": (st or {}).get("mode"), "last_successful_scan_at": last_ok.isoformat() if last_ok else None, "last_successful_scan_et": _et(last_ok), "minutes_since_success": scan_age_min,
+                      "last_scan_at": (st or {}).get("written_at"), "last_scan_et": _et(_dt((st or {}).get("written_at"))), "last_scan_ok": (st or {}).get("scan_ok"), "last_run": (st or {}).get("run"), "stale_after_min": stale_min},
+                events=(st or {}).get("events") or {}, counts=counts, rows=rows, accuracy=({k: summ.get(k) for k in keep} if isinstance(summ, dict) else None))

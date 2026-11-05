@@ -17,6 +17,7 @@ export const earningsMonitor = {
   smartMove: () => ({ __k: 'emsmart' }),
   smartLive: () => ({ __k: 'emsmartlive' }),
   smartUniverse: () => ({ __k: 'emsmartuniverse' }),
+  smartMondayBmo: () => ({ __k: 'emsmartmondaybmo' }),
   health: () => ({ __k: 'emhealth' }),
   outcomes: () => ({ __k: 'emoutcomes' }),
 };

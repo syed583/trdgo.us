@@ -569,6 +569,18 @@ def smart_move_universe():
     return dict(SL.load_universe(os.getenv("SMART_MOVE_LIVE_DIR"), now()), status="OK")
 
 
+@router.get("/smart-move/monday-bmo")
+def smart_move_monday_bmo():
+    """The SEPARATE MONDAY_BMO_FRIDAY variant (Friday predictions for Monday-before-open reports): its own ledger, status and accuracy file under SMART_MOVE_LIVE_DIR/monday_bmo_friday. Read only; never mixed with the frozen model."""
+    import os
+    from . import smart_live as SL
+    try:
+        stale = int(os.getenv("SMART_MOVE_LIVE_STALE_MIN") or SL.STALE_MIN_DEFAULT)
+    except ValueError:
+        stale = SL.STALE_MIN_DEFAULT
+    return dict(SL.load_monday_bmo(os.getenv("SMART_MOVE_LIVE_DIR"), now(), stale_min=stale), status="OK")
+
+
 @router.get("/health")
 def health():
     """Scanner health from the durable queue and the run log: last duration of every job kind, running/stuck/dead jobs, duplicate events or predictions, lane heartbeats and today's provider requests."""

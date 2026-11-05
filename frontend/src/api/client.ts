@@ -1024,6 +1024,7 @@ export const earningsMonitor = {
   smartMove: (q: EmPage, s?: AbortSignal) => request<any>(`/api/earnings-monitor/smart-move?${emQs(q)}`, s),
   smartLive: (s?: AbortSignal) => request<any>('/api/earnings-monitor/smart-move/live', s),
   smartUniverse: (s?: AbortSignal) => request<any>('/api/earnings-monitor/smart-move/universe', s),
+  smartMondayBmo: (s?: AbortSignal) => request<any>('/api/earnings-monitor/smart-move/monday-bmo', s),
   health: (s?: AbortSignal) => request<any>('/api/earnings-monitor/health', s),
   outcomes: (s?: AbortSignal) => request<any>('/api/earnings-monitor/outcomes', s),
 };

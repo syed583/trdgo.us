@@ -285,20 +285,87 @@ export function UniverseView() {
   );
 }
 
-/** Smart Money Move: the LIVE scanner (default), the 30-day event universe, and the frozen historical snapshot, as separate views. A historical snapshot is never shown as a live signal. */
+const pct = (v: any, digits = 2) => (v == null || Number.isNaN(Number(v)) ? '—' : `${Number(v) > 0 ? '+' : ''}${Number(v).toFixed(digits)}%`);
+const rate = (r: any) => (r && r.n ? `${r.hits}/${r.n} (${Math.round((r.rate || 0) * 100)}%)` : '—');
+
+/** MONDAY_BMO_FRIDAY: the SEPARATE variant for reports released before the open on a day with no session before it (a Monday). The frozen scorer, thresholds and gates are unchanged; only the window differs
+ *  (Thursday close to Friday 15:30 ET, a Friday close order held over the weekend). Its ledger and its accuracy are kept apart from the frozen model and never combined with it. */
+export function MondayBmoView() {
+  const mb = useApi<any>((s) => earningsMonitor.smartMondayBmo(s), [], { refreshMs: 120_000 });
+  const [f, setF] = useState('');
+  const d = mb.data;
+  const all: any[] = d?.rows || [];
+  const rows = all.filter((r) => !f || r.label === f);
+  const a = d?.accuracy;
+  const counts = d?.counts || {};
+  return (
+    <div className="sm" data-testid="sm-monday-bmo-view">
+      <PageHead title="Smart Money Move — Monday BMO (Friday window)" subtitle="Separate variant: Friday predictions for companies reporting Monday before the open. Same frozen scoring, separate ledger, separate accuracy." />
+      {mb.initialLoading && <div className="sm-none" role="status">Loading the Monday-BMO variant…</div>}
+      {mb.error && <div className="sm-fresh stale" role="alert"><AlertTriangle size={14} /> The variant could not be loaded: {mb.error} <button className="ghost-btn" onClick={() => mb.refresh()}><RefreshCw size={14} /> Retry</button></div>}
+      {d && !d.available && <div className="sm-q-state" role="status" data-testid="sm-monday-bmo-off"><b>No Monday-BMO variant pass yet</b><div>{d.note}</div></div>}
+      {d?.available && (
+        <>
+          <div className="sm-q-banner" role="note"><Info size={16} /><div><b>MONDAY_BMO_FRIDAY</b> · {d.note}</div></div>
+          {d.ledger?.ok === false && <div className="sm-q-state bad" role="alert" data-testid="sm-monday-bmo-ledger"><b>Variant ledger integrity check FAILED</b><div>{d.ledger.problem}. No row is shown.</div></div>}
+          <div className="sm-fresh" data-testid="sm-monday-bmo-scan">Last variant pass: {d.scan?.last_scan_et ?? '—'} ({d.scan?.mode ?? '—'}{d.scan?.last_scan_ok === false ? ', not successful' : ''}); last successful live pass {d.scan?.last_successful_scan_et ?? 'none'}.</div>
+          <div className="sm-summary" data-testid="sm-monday-bmo-accuracy">
+            <div className="sm-card"><div className="sm-card-k">Predictions</div><div className="sm-card-v">{a?.total_predictions ?? all.length}</div></div>
+            <div className="sm-card"><div className="sm-card-k">Graded</div><div className="sm-card-v">{a?.graded_events ?? 0}</div></div>
+            <div className="sm-card"><div className="sm-card-k">BUY accuracy</div><div className="sm-card-v">{rate(a?.buy_accuracy)}</div></div>
+            <div className="sm-card"><div className="sm-card-k">SELL accuracy</div><div className="sm-card-v">{rate(a?.sell_accuracy)}</div></div>
+            <div className="sm-card"><div className="sm-card-k">Directional (strict)</div><div className="sm-card-v">{a?.overall_directional_accuracy?.strict_hit_rate != null ? `${Math.round(a.overall_directional_accuracy.strict_hit_rate * 100)}%` : '—'}</div></div>
+            <div className="sm-card"><div className="sm-card-k">Avg move</div><div className="sm-card-v">{pct(a?.average_post_earnings_move_pct)}</div></div>
+            <div className="sm-card"><div className="sm-card-k">Weekend gap (mean |gap|)</div><div className="sm-card-v">{pct(a?.weekend_gap_risk?.mean_abs_gap_pct)}</div></div>
+            <div className="sm-card"><div className="sm-card-k">Net per trade (cost x1)</div><div className="sm-card-v">{pct(a?.hypothetical_trading_performance?.mean_net_pct_per_trade_cost_x1)}</div></div>
+          </div>
+          {a && <div className="sm-fresh stale" role="note" data-testid="sm-monday-bmo-claim"><AlertTriangle size={14} /> {a.claim_text} ({a.decided_calls ?? 0} decided calls over {a.earnings_weeks ?? 0} earnings weeks; minimum 100 over 8). Separate from the frozen model: never combined.</div>}
+          <div className="sm-filters">
+            <div className="sm-tabs" role="group" aria-label="Label filter">
+              {['', 'LIVE', 'STALE', 'HISTORICAL', 'WINDOW MISSED'].map((k) => <button key={k || 'all'} className={`sm-tab ${f === k ? 'on' : ''}`} aria-pressed={f === k} onClick={() => setF(k)}>{k || 'All'}{k && counts[k] ? ` (${counts[k]})` : ''}</button>)}
+            </div>
+            <button className="ghost-btn" onClick={() => mb.refresh()}><RefreshCw size={14} /> Reload</button>
+          </div>
+          {!rows.length && <div className="sm-none" data-testid="sm-monday-bmo-none">No Monday-BMO prediction matches this filter.</div>}
+          {rows.length > 0 && (
+            <div className="sm-table-wrap"><table className="sm-table sm-q-table" data-testid="sm-monday-bmo-table">
+              <thead><tr><th>Company</th><th>Symbol</th><th>Monday earnings</th><th>Prediction</th><th>Bull</th><th>Bear</th><th>Coverage</th><th>Predicted (ET)</th><th>Friday entry deadline (ET)</th><th>Outcome</th><th>Variant</th></tr></thead>
+              <tbody>{rows.map((r) => (
+                <tr key={r.symbol + r.monday_earnings_date} data-testid="sm-monday-bmo-row">
+                  <td>{r.company || '—'}</td>
+                  <td><b>{r.symbol}</b></td>
+                  <td>{r.monday_earnings_date}<div className="sm-q-muted">Before Open · reaction {r.reaction_session ?? '—'}</div></td>
+                  <td>{r.signal ? <CategoryBadge category={r.signal_code === 'NO_TRADE' ? 'NO_TRADE' : r.signal_code} /> : <span className="sm-q-badge amber">WINDOW MISSED</span>} <span className={`sm-q-badge ${r.label === 'LIVE' ? 'green' : r.label === 'STALE' ? 'amber' : 'gray'}`}>{r.label}</span><div className="sm-q-muted">{r.reason ?? ''}</div></td>
+                  <td>{r.bull ?? '—'}</td><td>{r.bear ?? '—'}</td><td>{r.coverage ?? '—'}<div className="sm-q-muted">liquidity {r.liquidity ?? '—'}</div></td>
+                  <td>{r.predicted_at_et ?? '—'}</td>
+                  <td>{r.friday_entry_deadline_et ?? '—'}{r.hours_to_deadline != null ? <div className="sm-q-muted">{r.hours_to_deadline} h left</div> : null}</td>
+                  <td>{r.outcome_status === 'GRADED' ? <>{pct(r.move_pct)} {r.outcome_class}{r.hit != null ? (r.hit ? ' · HIT' : ' · MISS') : ''}<div className="sm-q-muted">gap {pct(r.gap_pct)}</div></> : (r.outcome_status || 'pending Monday close')}</td>
+                  <td><span className="sm-q-badge blue">{r.variant}</span></td>
+                </tr>
+              ))}</tbody>
+            </table></div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Smart Money Move: the LIVE scanner (default), the 30-day event universe, the separate Monday-BMO Friday variant, and the frozen historical snapshot, as separate views. A historical snapshot is never shown as a live signal. */
 export default function SmartMoveEngine20Page({ ctx }: { ctx: PageContext }) {
   void ctx;
-  const [view, setView] = useState<'live' | 'universe' | 'snapshot'>('live');
+  const [view, setView] = useState<'live' | 'universe' | 'mondaybmo' | 'snapshot'>('live');
   return (
     <div>
       <div className="sm" style={{ paddingBottom: 0 }}>
         <div className="sm-tabs" role="tablist" aria-label="Smart Money Move view">
           <button role="tab" aria-selected={view === 'live'} className={`sm-tab ${view === 'live' ? 'on' : ''}`} data-testid="tab-live" onClick={() => setView('live')}>LIVE scanner</button>
           <button role="tab" aria-selected={view === 'universe'} className={`sm-tab ${view === 'universe' ? 'on' : ''}`} data-testid="tab-universe" onClick={() => setView('universe')}>Event universe (30 days)</button>
+          <button role="tab" aria-selected={view === 'mondaybmo'} className={`sm-tab ${view === 'mondaybmo' ? 'on' : ''}`} data-testid="tab-monday-bmo" onClick={() => setView('mondaybmo')}>Monday BMO (Friday window)</button>
           <button role="tab" aria-selected={view === 'snapshot'} className={`sm-tab ${view === 'snapshot' ? 'on' : ''}`} data-testid="tab-snapshot" onClick={() => setView('snapshot')}>Historical snapshot (20 stocks)</button>
         </div>
       </div>
-      {view === 'live' ? <LiveView /> : view === 'universe' ? <UniverseView /> : <SnapshotView />}
+      {view === 'live' ? <LiveView /> : view === 'universe' ? <UniverseView /> : view === 'mondaybmo' ? <MondayBmoView /> : <SnapshotView />}
     </div>
   );
 }
