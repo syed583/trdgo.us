@@ -5,7 +5,14 @@ and the latest change (new / rescheduled / missing / removed).
 READ-ONLY: it reads the saved calendar observations, the evidence store and the prediction ledger, and writes ONE derived file (universe.json) with an atomic replace. It sends no request, scores nothing, and never edits the ledger,
 the stores or any stored record. A DEFERRED event is never excluded: `excluded_by_proxy` is always False; the proxy only orders work, and the frozen ADV20 gate still decides from the price bars.
 
-collection_status: PREDICTED:<result> | WINDOW_CLOSED_NO_PREDICTION | REMOVED | NOT_ELIGIBLE | EVIDENCE_COMPLETE | QUEUED_THIS_RUN | DEFERRED | WAITING_WINDOW | CALENDAR_MISSING_UNCONFIRMED
+collection_status (each value means exactly one thing):
+  PREDICTED:<result> | EVIDENCE_COMPLETE      served: a prediction is in the ledger / the frozen engine has fresh F3, F5 and market evidence
+  QUEUED_THIS_RUN                              eligible and funded in the latest planned run
+  DEFERRED                                     eligible, but not funded because of the request budget: still eligible while its window is open
+  NOT_TRADABLE                                 permanently not tradable under the frozen order-deadline rule (the engine answers NO VALID PREDICTION whatever the evidence; no evidence is requested)
+  ELIGIBILITY_UNKNOWN                          session unknown / vendors in conflict / tradability cannot be established: never skipped, never called deferred
+  NOT_ELIGIBLE                                 the vendor-confirmation rules reject it (reasons listed)
+  WAITING_WINDOW | WINDOW_CLOSED_NO_PREDICTION | CALENDAR_MISSING_UNCONFIRMED | REMOVED
 """
 from __future__ import annotations
 
@@ -74,16 +81,18 @@ def build(svc, now, *, horizon_days: int, slot_state: dict, funded_symbols: Opti
     last_day = today + timedelta(days=max(1, min(int(horizon_days), CT.HORIZON_MAX)))
     rows = []
     for r in recs:
-        if not r["event_date"]:
+        seen_dates = sorted(r.get("vendor_dates_seen") or [])
+        date_str = r["event_date"] or (seen_dates[0] if seen_dates else None)             # vendors that disagree on the date leave no event date: the event is still listed, with the dates seen, never silently dropped
+        if not date_str:
             continue
-        ed = datetime.fromisoformat(r["event_date"]).date()
+        ed = datetime.fromisoformat(date_str).date()
         if ed < today - timedelta(days=2) or ed > last_day:
             continue
         sym, sess = r["symbol"], r["session"]
         m = meta.get(sym, {})
         ws, cu = (_dt(r["window_start_utc"]), _dt(r["cutoff_utc"])) if r.get("window_start_utc") else (None, None)
         window = "UNKNOWN" if ws is None else "CLOSED" if now > cu else "OPEN" if ws <= now else "NOT_YET_OPEN"
-        slot = CT.classify((ed, SIDE[sess]), now) if sess in SIDE else None
+        slot = CT.classify((ed, SIDE[sess]), now) if sess in SIDE and r["event_date"] else None
         slot_state_row = (slot_state.get("slots") or {}).get(slot["key"]) if slot else None
         cal_fresh = None if slot is None else ("NEVER_REFRESHED" if not slot_state_row else "FRESH" if CT.slot_is_fresh(slot_state, slot, now) else "STALE")
         etf = L.SECTOR_ETF.get(m.get("sector"))
@@ -94,19 +103,30 @@ def build(svc, now, *, horizon_days: int, slot_state: dict, funded_symbols: Opti
         else:
             ev = {"F5_price": "NOT_DUE", "F3_earnings_history": "NOT_DUE", "F8_market": "NOT_DUE", "F8_sector_etf": "NOT_DUE"}
         chg = change_index.get(sym) or {}
-        res = results.get((sym, r["event_date"]))
+        res = results.get((sym, date_str))
         needed = [ev["F5_price"], ev["F3_earnings_history"], ev["F8_market"]]
         deferred_reason = None
+        trad = E20.tradability({"kind": sess, "earnings_date": r["event_date"]}) if r["event_date"] else None                  # the frozen rule, from the event's own date and session (None = cannot be established)
+        status_note = None
         if chg.get("state") == "REMOVED":
             status = "REMOVED"
         elif res:
             status = "PREDICTED:" + res if res != "WINDOW_MISSED" else "WINDOW_CLOSED_NO_PREDICTION"
+        elif not r["event_date"]:
+            status = "ELIGIBILITY_UNKNOWN"
+            status_note = "the calendar vendors disagree on the event date (dates seen: %s): no window exists, so the event is neither skipped nor called deferred." % ", ".join(seen_dates)
+        elif trad is False:
+            status = "NOT_TRADABLE"
+            status_note = "not tradable under the frozen order-deadline rule: the entry would be a market-on-close order whose deadline passes before the prediction cutoff, so the engine answers NO VALID PREDICTION whatever the evidence. No evidence is requested."
         elif window == "CLOSED":
             status = "WINDOW_CLOSED_NO_PREDICTION"
         elif window == "NOT_YET_OPEN":
             status = "WAITING_WINDOW"
         elif chg.get("state") == "MISSING":
             status = "CALENDAR_MISSING_UNCONFIRMED"
+        elif sess not in SIDE or r["vendor_conflict"] or trad is None:
+            status = "ELIGIBILITY_UNKNOWN"
+            status_note = "eligibility cannot be established (%s): the event is neither skipped nor called deferred." % ("session not confirmed" if sess not in SIDE else "calendar vendors disagree" if r["vendor_conflict"] else "tradability cannot be computed")
         elif not r["prediction_eligible"]:
             status = "NOT_ELIGIBLE"
         elif all(x == "FRESH" for x in needed):
@@ -116,11 +136,11 @@ def build(svc, now, *, horizon_days: int, slot_state: dict, funded_symbols: Opti
         else:
             status = "DEFERRED"
             deferred_reason = ("selected but not funded: the run budget is used up" if sym in selected_symbols else "ranked below the run's slots by deadline and priority proxy") + "; still eligible while its window is open"
-        rows.append({"symbol": sym, "company": m.get("company"), "event_date": r["event_date"], "session": sess, "sector": m.get("sector"), "market_cap": m.get("marketcap"), "priority_proxy_tier": E20.cap_tier(m.get("marketcap")),
+        rows.append({"symbol": sym, "company": m.get("company"), "event_date": date_str, "date_confirmed": bool(r["event_date"]), "session": sess, "sector": m.get("sector"), "market_cap": m.get("marketcap"), "priority_proxy_tier": E20.cap_tier(m.get("marketcap")),
                      "excluded_by_proxy": False, "vendor_status": r["vendor_status"], "vendor_conflict": r["vendor_conflict"], "prediction_eligible": r["prediction_eligible"], "ineligible_reasons": r["ineligible_reasons"],
                      "window": window, "window_start": _times(ws) if ws else None, "cutoff": _times(cu) if cu else None, "hours_to_cutoff": round((cu - now).total_seconds() / 3600, 2) if cu else None,
                      "calendar_tier": slot["tier"] if slot else None, "calendar_slot": slot["key"] if slot else None, "calendar_slot_state": cal_fresh, "calendar_slot_observed_at": (slot_state_row or {}).get("observed_at"),
-                     "calendar_change": chg.get("state"), "evidence": ev, "collection_status": status, "deferred": status == "DEFERRED", "deferred_reason": deferred_reason, "latest_result": res})
+                     "calendar_change": chg.get("state"), "evidence": ev, "collection_status": status, "tradable": trad, "status_note": status_note, "deferred": status == "DEFERRED", "deferred_reason": deferred_reason, "latest_result": res})
     rows.sort(key=lambda x: (x["cutoff"]["utc"] if x["cutoff"] else "9", x["priority_proxy_tier"], x["symbol"]))
     by_day = {}
     for x in rows:

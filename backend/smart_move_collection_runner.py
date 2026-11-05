@@ -108,7 +108,9 @@ def tiered_refresh(svc, a, plan, st, cal_dir) -> dict:
         return out
     if stopped():
         return dict(out, ok=False, reason="PROVIDER_STOP")
-    budget = [min(plan["est_requests"], a.ceiling)]
+    per_request = 1 + int(getattr(svc.cfg, "max_retries", 0) or 0)                       # one calendar request can cost this many attempts when retries are on
+    att0 = E20.attempts_of(svc)
+    budget = [min(plan["est_requests"], a.ceiling) // per_request]                          # the hard per-run maximum is on ATTEMPTS: size the request budget so that even the worst case stays inside it
     done = svc.refresh_calendar(budget, dates=[(datetime.fromisoformat(c["date"]).date(), c["side"]) for c in plan["refresh"]])
     t = svc.clock.now()
     CT.record_refresh(st, svc.last_slot_log, t)
@@ -116,7 +118,7 @@ def tiered_refresh(svc, a, plan, st, cal_dir) -> dict:
     CC.append_changes(cal_dir, changes)
     CT.save_state(cal_dir, st)
     comp = CT.completeness(st, t, a.calendar_horizon_days)
-    out.update(requests=done, changes={k: sum(1 for c in changes if c["change"] == k) for k in ("NEW", "RESCHEDULED", "MISSING", "REMOVED", "REAPPEARED")}, t0_complete=comp["t0_complete"], t0_stale=comp["t0_open_stale"] + comp["t0_next_stale"], slots_fresh=comp["slots_fresh"], slots_total=comp["slots_total"])
+    out.update(requests=done, attempts=E20.attempts_of(svc) - att0, changes={k: sum(1 for c in changes if c["change"] == k) for k in ("NEW", "RESCHEDULED", "MISSING", "REMOVED", "REAPPEARED")}, t0_complete=comp["t0_complete"], t0_stale=comp["t0_open_stale"] + comp["t0_next_stale"], slots_fresh=comp["slots_fresh"], slots_total=comp["slots_total"])
     if stopped():
         out.update(ok=False, reason="PROVIDER_STOP_DURING_REFRESH")
     elif done == 0:
@@ -188,9 +190,10 @@ def engine20_profile(a, svc, now, live: bool) -> int:
     svc.gov.authorized_daily, svc.gov.enabled = (a.daily_limit or a.authorize_requests), True
     try:
         used = 0
+        att_start = E20.attempts_of(svc)
         if cal_needed:
             g = tiered_refresh(svc, a, cal_plan, slot_state, cal_dir) if tiered else G.ensure_fresh(svc, budget_left=a.ceiling, stopped=lambda: bool(svc.gov.stopped_until and svc.clock.now() < svc.gov.stopped_until), max_requests=cal_est, dates=(J.horizon_calendar_slots(svc.clock.now(), a.calendar_days_ahead) if a.calendar_days_ahead is not None else J.useful_calendar_slots(svc.clock.now())))
-            used = g.get("requests", 0)
+            used = max(g.get("requests", 0), E20.attempts_of(svc) - att_start)                 # attempts (successful, failed, retried), not only the successful ones: the evidence budget is what the hard maximum leaves
             summary["calendar_refresh"] = g
             if not g["ok"]:
                 (d / "engine20_plan.json").write_text(json.dumps(summary, indent=1, default=str), encoding="utf-8")
@@ -207,12 +210,12 @@ def engine20_profile(a, svc, now, live: bool) -> int:
         res = E20.run(svc, plan["funded"], now=svc.clock.now(), ceiling=a.ceiling - used, state_dir=d, stopped=lambda: bool(svc.gov.stopped_until and svc.clock.now() < svc.gov.stopped_until), max_consecutive_failures=3, abort_on_stale_bars=bool(a.abort_on_stale_bars or a.calendar_horizon_days))
         rep = E20.report(svc, selected, svc.clock.now())
         (d / "engine20_report.json").write_text(json.dumps(rep, indent=1, default=str), encoding="utf-8")
-        print(json.dumps({"requests_attempted": res["requests_attempted"] + used, "ok": res["ok"], "failed": res["failed"], "halted": res["halted"], "counts": rep["counts"]}, indent=1))
+        print(json.dumps({"requests_attempted": res["attempts"] + used, "ok": res["ok"], "failed": res["failed"], "halted": res["halted"], "counts": rep["counts"]}, indent=1))
         if a.publish_dir:
             import smart_move_live_publisher as PUB
             try:
                 st = PUB.publish(svc, svc.clock.now(), a.publish_dir, scan_id=d.name, mode="LIVE", scan_ok=(res["halted"] is None and res["failed"] == 0),
-                                 run={"started_at": now.isoformat(), "finished_at": svc.clock.now().isoformat(), "requests_attempted": res["requests_attempted"] + used, "ok": res["ok"], "failed": res["failed"], "halted": res["halted"]},
+                                 run={"started_at": now.isoformat(), "finished_at": svc.clock.now().isoformat(), "requests_attempted": res["attempts"] + used, "ok": res["ok"], "failed": res["failed"], "halted": res["halted"]},
                                  limits=limits, unfunded=len(summary["unfunded"]))
                 print(json.dumps({"published": st["events"]}, default=str))
                 if tiered:

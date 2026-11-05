@@ -72,7 +72,7 @@ def args(**kw):
 
 def svc_with_cal(tmp_path, prov, at=SAT):
     from test_live import make
-    svc, _, _ = make(tmp_path, start=at, fetcher=prov)
+    svc, _, _ = make(tmp_path, start=at, fetcher=prov, max_retries=0)                      # the engine20 profile never retries
     return svc
 
 

@@ -1,0 +1,50 @@
+{
+ "kit": "kit-v5-draft",
+ "all_or_nothing": true,
+ "files": [
+  {
+   "path": "backend/smart_move_collection_runner.py",
+   "role": "CHANGED",
+   "after_sha256": "f71c5856072e14593dcde323f7bc0b734e70e347c3d2ee2a4abaafe6d5562a74",
+   "before_sha256": "4e67bd9bb6d89368bae6f1517d8519248108ca75dad187d8f220b49043fbf6d2"
+  },
+  {
+   "path": "backend/smart_move_engine20.py",
+   "role": "CHANGED",
+   "after_sha256": "c6fab3f4c2e815bfb10b2664c7be30938e6b1302c65d2d8162ccfd2e528ea928",
+   "before_sha256": "2a907f41371b397e93745d773b39b9d5f3ebf41e2895d9d1b4acbdce30c4eec7"
+  },
+  {
+   "path": "backend/smart_move_live.py",
+   "role": "CHANGED",
+   "after_sha256": "506a56b805e50f9d6183ab8bf6aa1fab45468399993f54ed8a28be68459c2176",
+   "before_sha256": "e114d57d40a402b6e06a9877382f0284b854f87f940daf161050fce5ff6bf044"
+  },
+  {
+   "path": "backend/smart_move_calendar_tiers.py",
+   "role": "NEW",
+   "after_sha256": "c533ced46da5f5375862f2c5e9fb1591dce2d397579ea7a1399e451ce4119555"
+  },
+  {
+   "path": "backend/smart_move_calendar_changes.py",
+   "role": "NEW",
+   "after_sha256": "f7b6bda580e62c408e5a3befb96162e7907ec36222832ecf843b9136657dca2a"
+  },
+  {
+   "path": "backend/smart_move_universe.py",
+   "role": "NEW",
+   "after_sha256": "a02c902ba424d742374d5171c721cd1574bef96f5f94054236030c9973307971"
+  }
+ ],
+ "protected_unchanged": {
+  "backend/smart_move_live_publisher.py": "ff3afb96b488c74df56001f62711fd81da39d76888147d3b0ad834639372489c",
+  "backend/smart_move_calendar_guard.py": "b4d2994ef328a7a432d95f3561e65d5e8f225b7429fd7401f1c9e33002980ec0",
+  "backend/smart_move_collection_jobs.py": "81d8d2d4d7bbcca948c6ff0aaf1cdd941680e7996a26bb21d3172bc22a36e411",
+  "backend/smart_move_event_records.py": "e0e65f66c92e6e1c8b3e859da7240a9e2a1aecda08646338b48c711186e99c3c"
+ },
+ "frozen_pins_informational": {
+  "docs/smart_move/shadow_impl/smvshadow/scorer.py": "62e09aa0ed785e2a",
+  "backend/smart_move_v2.py": "de2d8f9612934338"
+ },
+ "note": "DRAFT. No installer exists yet; rollback readiness is NOT claimed until a local install and rollback rehearsal passes."
+}

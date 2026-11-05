@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 import smart_move_calendar_guard as G
 import smart_move_live as L
+from smvshadow import cutoff as co  # noqa: E402  (read only: the frozen window and order-deadline rules)
 from smvshadow import scorer as SC  # noqa: E402  (read only: the frozen liquidity floor)
 
 UTC = timezone.utc
@@ -32,6 +33,22 @@ def cap_tier(market_cap) -> str:
     except (TypeError, ValueError):
         return "D"
     return "A" if c >= 10e9 else "B" if c >= 2e9 else "C" if c >= 3e8 else "D"
+
+
+def tradability(row: dict) -> Optional[bool]:
+    """Whether the frozen order-deadline rule makes this event tradable: True / False, or None whenever that cannot be established. Computed from the event's own date and session with the SAME function the scorer uses
+    (`cutoff.plan_event`; the scorer's rows do not carry the flag, which is why an earlier version that read it from the row never fired). It answers None - never False - if the date or session is missing or unreadable, or
+    if the plan recomputed here does not match the row's own window (another input, such as a filing time, changed it): an uncertain event is never skipped."""
+    try:
+        if row.get("kind") not in ("BMO", "AMC"):
+            return None
+        p = co.plan_event(date.fromisoformat(str(row["earnings_date"])[:10]), row["kind"])
+        rp = row.get("plan") or {}
+        if rp.get("cutoff_utc") is not None and (_dt(rp["cutoff_utc"]) != p["cutoff_utc"] or _dt(rp["window_start_utc"]) != p["window_start_utc"]):
+            return None
+        return bool(p["tradable"])
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _dt(x) -> datetime:
@@ -59,7 +76,7 @@ def select_top(rows: list, market_caps: dict, now, *, n: int = 20, event_date: O
             if audit is not None and r.get("kind") in ("BMO", "AMC"):
                 note(r, "SKIPPED", "calendar not vendor-confirmed: %s" % ",".join(map(str, r["blocked_by"])) if r["blocked_by"] else "prediction window not open now")
             continue
-        if policy == "deadline_priority" and p.get("tradable") is False:        # the frozen scorer answers NO VALID PREDICTION (NOT_TRADABLE) for this event whatever evidence it gets: requesting evidence would only spend budget
+        if policy == "deadline_priority" and tradability(r) is False:           # the frozen scorer answers NO VALID PREDICTION (NOT_TRADABLE) for this event whatever evidence it gets: requesting evidence would only spend budget
             note(r, "SKIPPED", "not tradable under the frozen order-deadline rule: the engine answers NO VALID PREDICTION (NOT_TRADABLE) whatever the evidence, so none is requested")
             continue
         if event_date and r["earnings_date"] != event_date or session and r["kind"] != session:
@@ -131,6 +148,13 @@ def plan_tasks(svc, selected: list, now, *, budget: int, with_f7: bool = False) 
 
 
 # ------------------------------------------------------------------ execution (live only through the governed path)
+def attempts_of(svc) -> int:
+    """Every provider attempt the governor has granted today (successful, failed AND retried), the number a per-run hard maximum has to be measured on: tasks are not attempts when retries are on."""
+    used = getattr(getattr(svc, "gov", None), "used_day", None)
+    return int(sum(used.values())) if used else 0
+
+
+# ------------------------------------------------------------------ execution (live only through the governed path)
 def run(svc, tasks: list, *, now, ceiling: int, state_dir, stopped=lambda: False, max_consecutive_failures: int = 3, abort_on_stale_bars: bool = False) -> dict:
     """Sequential, one request in flight. Every task goes through svc._call (governor + InfraFetcher) and a successful body is appended to the store's append-only evidence file. Stops on a provider stop, the ceiling,
     the kill switch, or repeated failures. Never retries (the service is built with retries 0 by the runner).
@@ -140,8 +164,10 @@ def run(svc, tasks: list, *, now, ceiling: int, state_dir, stopped=lambda: False
     d.mkdir(parents=True, exist_ok=True)
     done, failed, consecutive, halted = [], [], 0, None
     stamp = _dt(now).strftime("%Y%m%dT%H%M%S")
+    attempts0 = attempts_of(svc)
+    worst_case = 1 + int(getattr(getattr(svc, "cfg", None), "max_retries", 0) or 0)           # one task can cost this many attempts
     for t in tasks:
-        if len(done) + len(failed) >= ceiling:
+        if len(done) + len(failed) >= ceiling or (attempts_of(svc) - attempts0) + worst_case > ceiling:      # HARD per-run maximum, measured in attempts: a task whose worst case would pass it is not started
             halted = "CEILING_REACHED"
             break
         if svc.kill_engaged:
@@ -165,7 +191,7 @@ def run(svc, tasks: list, *, now, ceiling: int, state_dir, stopped=lambda: False
         if abort_on_stale_bars and t["kind"] == "ohlc" and t["symbol"] == "SPY" and not L.rec_fresh(svc._latest("ohlc", "SPY", t["params"]), "ohlc", svc.clock.now(), svc.cfg):
             halted = "STALE_BARS"
             break
-    res = {"requests_attempted": len(done) + len(failed), "ok": len(done), "failed": len(failed), "failures": failed, "halted": halted, "done": done, "finished_at": svc.clock.now().isoformat()}
+    res = {"requests_attempted": len(done) + len(failed), "attempts": attempts_of(svc) - attempts0, "ok": len(done), "failed": len(failed), "failures": failed, "halted": halted, "done": done, "finished_at": svc.clock.now().isoformat()}
     (d / "engine20_state.json").write_text(json.dumps(res, indent=1, sort_keys=True, default=str), encoding="utf-8")
     return res
 
