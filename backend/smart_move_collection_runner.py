@@ -297,9 +297,9 @@ def main(argv=None) -> int:
     ap.add_argument("--require-rotated-from", default=None, help="8-hex fingerprint of the OLD token; a live run is BLOCKED while the active token still has this fingerprint")
     ap.add_argument("--shared-key-attestation", default=None, help="owner acknowledgement file (see smart_move_shared_key_gate); without a valid one a live run stays BLOCKED")
     a = ap.parse_args(argv)
-    if a.calendar_horizon_days and (a.profile != "engine20" or not 3 <= a.calendar_horizon_days <= CT.HORIZON_MAX or a.calendar_days_ahead is not None):
-        print("BLOCKED: --calendar-horizon-days is for the engine20 profile only, 3..%d, and cannot be combined with --calendar-days-ahead" % CT.HORIZON_MAX)
-        return 6
+    if a.calendar_horizon_days and (a.profile not in ("engine20", "monday_bmo_friday") or not 3 <= a.calendar_horizon_days <= CT.HORIZON_MAX or a.calendar_days_ahead is not None):
+        print("BLOCKED: --calendar-horizon-days is for the engine20 and monday_bmo_friday profiles only, 3..%d, and cannot be combined with --calendar-days-ahead" % CT.HORIZON_MAX)
+        return 6                                                      # the variant accepts the flag because the wrapper passes the shared settings file to every profile; it only turns on window-aware evidence there
     news_pages, retries, stage_caps, scope, max_fail = None, 1, None, "horizon", None
     PILOT_FAMILY = ("pilot50", "batch2", "engine20", "monday_bmo_friday")
     if a.profile not in PILOT_FAMILY:

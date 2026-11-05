@@ -264,6 +264,18 @@ def test_runner_profile_dry_run_cli(tmp_path):
     assert (tmp_path / "pub" / MB.SUBDIR / PUB.STATUS).exists() and not (tmp_path / "pub" / PUB.STATUS).exists()
 
 
+def test_runner_accepts_the_wrappers_exact_arguments_for_the_variant(tmp_path):
+    """The production wrapper passes the shared settings file to every profile: --select-policy deadline_priority --select-top 80 --calendar-horizon-days 30. The variant must accept them (found on the VPS: exit 6)."""
+    svc = svc_at(tmp_path, FriProv(), now=FRI)
+    add(svc, "AAA", MON.isoformat(), "BMO", at=FRI)
+    rc = RUNNER.main(["--profile", "monday_bmo_friday", "--store-dir", str(tmp_path / "store"), "--state-dir", str(tmp_path / "state"), "--publish-dir", str(tmp_path / "pub"), "--select-policy", "deadline_priority", "--select-top", "80",
+                      "--calendar-horizon-days", "30", "--as-of", FRI.isoformat()])
+    assert rc == 0
+    plan = json.loads((tmp_path / "state" / "monday_bmo_plan.json").read_text())
+    assert plan["profile"] == "monday_bmo_friday" and plan["provider_requests"] == 0 and [e[0] for e in plan["events_window_open"]] == ["AAA"]
+    assert RUNNER.main(["--profile", "monday_bmo_friday", "--store-dir", str(tmp_path / "store"), "--state-dir", str(tmp_path / "state2"), "--calendar-horizon-days", "30", "--calendar-days-ahead", "3", "--as-of", FRI.isoformat()]) == 6   # the conflict rule still applies
+
+
 def test_runner_live_gate_still_applies_to_the_variant(tmp_path, monkeypatch):
     monkeypatch.delenv("SMART_MOVE_COLLECTION_LIVE", raising=False)
     rc = RUNNER.main(["--profile", "monday_bmo_friday", "--store-dir", str(tmp_path / "store"), "--state-dir", str(tmp_path / "state"), "--mode", "live", "--arm", "--authorize-requests", "10"])
