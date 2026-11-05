@@ -119,6 +119,16 @@ $r = Wrap $c @('-SettingsFile', $sf, '-NowOverride', '2026-11-04T15:00:00Z'); $k
 $k = Calls (NewCase 'p1ceil'); $c = NewCase 'p1ceil2'; $r = Wrap $c @('-Authorize', '150', '-DailyLimit', '700', '-CalendarHorizonDays', '30'); $k = Calls $c; Check 'P1: the design ceilings are unchanged with the horizon option (150 / 700)' ($k[0].run_max -eq '150' -and $k[0].daily_max -eq '700')
 $c = NewCase 'p1over'; $r = Wrap $c @('-Authorize', '151', '-CalendarHorizonDays', '30'); Check 'P1: limits above the design are still refused with the horizon option' ($r.code -eq 2 -and @(Calls $c).Count -eq 0)
 
+# 10 profile switch: the default is the unchanged engine20 profile; -Profile monday_bmo_friday reaches the runner unchanged and is recorded in the run log
+$c = NewCase 'prof_default'; $r = Wrap $c; $k = Calls $c; $a = if (@($k).Count) { $k[0].args -join ' ' } else { '' }
+Check 'without -Profile the runner is called with --profile engine20 (unchanged behaviour)' ($r.code -eq 0 -and $a -match '--profile engine20' -and $a -notmatch 'monday_bmo')
+Check 'the engine20 run log lines carry no profile field (unchanged log format)' (@((Log $c) | Where-Object { $null -ne $_.PSObject.Properties['profile'] }).Count -eq 0)
+$c = NewCase 'prof_variant'; $r = Wrap $c @('-Profile', 'monday_bmo_friday', '-Authorize', '150', '-DailyLimit', '700'); $k = Calls $c; $a = if (@($k).Count) { $k[0].args -join ' ' } else { '' }
+Check '-Profile monday_bmo_friday: runner called with --profile monday_bmo_friday, same publish folder, same limits' ($r.code -eq 0 -and $a -match '--profile monday_bmo_friday' -and $a -match [regex]::Escape('--publish-dir ' + (Join-Path $c.state 'live')) -and $k[0].run_max -eq '150' -and $k[0].daily_max -eq '700')
+Check 'the variant run log lines say profile=monday_bmo_friday' (@((Log $c) | Where-Object { $_.profile -eq 'monday_bmo_friday' }).Count -ge 2)
+$pset = ((Get-Command $wrapper).Parameters['Profile'].Attributes | Where-Object { $_ -is [System.Management.Automation.ValidateSetAttribute] }).ValidValues
+Check 'the -Profile parameter accepts exactly engine20 and monday_bmo_friday (anything else is refused before the script starts)' ((@($pset) -join ',') -eq 'engine20,monday_bmo_friday')
+
 Write-Host ("RESULT: {0} passed, {1} failed" -f $pass, $fail)
 Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 if ($fail) { exit 1 }

@@ -35,7 +35,8 @@ param(
   [string]$PublishDir = '',
   [switch]$Live,
   [string]$NowOverride = '',
-  [string]$LogFile = ''
+  [string]$LogFile = '',
+  [ValidateSet('engine20', 'monday_bmo_friday')][string]$Profile = 'engine20'          # monday_bmo_friday = the SEPARATE Friday-window variant for Monday-BMO events (own ledger folder under PublishDir; frozen model untouched). Default unchanged.
 )
 $ErrorActionPreference = 'Stop'
 if ($SettingsFile) {
@@ -54,7 +55,7 @@ if (-not $LogFile) { $LogFile = Join-Path $PublishDir 'collection_runs.jsonl' }
 if (-not $KillFile) { $KillFile = Join-Path $StateRoot 'KILL' }
 $nowUtc = if ($NowOverride) { [DateTime]::Parse($NowOverride).ToUniversalTime() } else { [DateTime]::UtcNow }
 try { $et = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId($nowUtc, 'Eastern Standard Time') } catch { $et = $nowUtc.AddHours(-5) }
-function Log([hashtable]$o) { $o.at = (Get-Date).ToUniversalTime().ToString('o'); $o.mode = $(if ($Live) { 'LIVE' } else { 'DRY_RUN' }); $o.et = $et.ToString('yyyy-MM-dd HH:mm'); Add-Content -LiteralPath $LogFile -Value ($o | ConvertTo-Json -Compress) -Encoding ascii }
+function Log([hashtable]$o) { $o.at = (Get-Date).ToUniversalTime().ToString('o'); $o.mode = $(if ($Live) { 'LIVE' } else { 'DRY_RUN' }); $o.et = $et.ToString('yyyy-MM-dd HH:mm'); if ($Profile -ne 'engine20') { $o.profile = $Profile }; Add-Content -LiteralPath $LogFile -Value ($o | ConvertTo-Json -Compress) -Encoding ascii }
 function Skip([string]$why) { Log @{ event = 'SKIPPED'; reason = $why }; Write-Host "SKIPPED: $why"; exit 0 }
 # The design limits the owner approved (700 provider requests per New York day, 150 per run, one request at a time). A settings file cannot raise them; changing them means editing this script, i.e. a new approval.
 $MaxRun = 150; $MaxDaily = 700
@@ -87,7 +88,7 @@ $lockStream = Take-Lock
 if (-not $lockStream) { Skip 'another run took the lock at the same moment' }
 $run = Join-Path $StateRoot ('run_' + $nowUtc.ToString('yyyyMMdd_HHmmss'))
 New-Item -ItemType Directory -Force -Path $run | Out-Null
-$args2 = @($Runner, '--profile', 'engine20', '--store-dir', $StoreDir, '--state-dir', $run, '--select-top', $SelectTop, '--select-policy', $SelectPolicy, '--publish-dir', $PublishDir)
+$args2 = @($Runner, '--profile', $Profile, '--store-dir', $StoreDir, '--state-dir', $run, '--select-top', $SelectTop, '--select-policy', $SelectPolicy, '--publish-dir', $PublishDir)
 if ($CalendarHorizonDays -gt 0) { $args2 += @('--calendar-horizon-days', $CalendarHorizonDays) } else { $args2 += @('--calendar-days-ahead', $CalendarDaysAhead) }     # P1: tiered rolling horizon replaces the fixed-day refresh when set
 if ($WithF7) { $args2 += '--with-f7' }
 if ($Live) { $args2 += @('--mode', 'live', '--arm', '--authorize-requests', $Authorize, '--daily-limit', $DailyLimit, '--shared-key-attestation', $Attestation) } else { $args2 += @('--mode', 'dry-run') }

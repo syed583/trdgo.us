@@ -279,7 +279,7 @@ def main(argv=None) -> int:
     ap.add_argument("--as-of", default=None, help="dry-run only: evaluate the plan at this past instant")
     ap.add_argument("--preds-store", action="append", default=[])
     ap.add_argument("--tracking-dir", default=None)
-    ap.add_argument("--profile", choices=("standard", "pilot50", "batch2", "engine20"), default="standard", help="pilot50: hard 50-attempt ceiling, no retries, no news paging, 3-day calendar, calendar capped at 14 requests")
+    ap.add_argument("--profile", choices=("standard", "pilot50", "batch2", "engine20", "monday_bmo_friday"), default="standard", help="pilot50: hard 50-attempt ceiling, no retries, no news paging, 3-day calendar, calendar capped at 14 requests; monday_bmo_friday: the SEPARATE Friday-window variant for Monday-BMO events (own ledger folder under --publish-dir; frozen model untouched)")
     ap.add_argument("--calendar-days", type=int, default=None)
     ap.add_argument("--calendar-requests", type=int, default=None)
     ap.add_argument("--select-top", type=int, default=20, help="engine20 profile: how many stocks (vendor-confirmed, window open, ranked by market cap)")
@@ -301,12 +301,13 @@ def main(argv=None) -> int:
         print("BLOCKED: --calendar-horizon-days is for the engine20 profile only, 3..%d, and cannot be combined with --calendar-days-ahead" % CT.HORIZON_MAX)
         return 6
     news_pages, retries, stage_caps, scope, max_fail = None, 1, None, "horizon", None
-    if a.profile not in ("pilot50", "batch2", "engine20"):
+    PILOT_FAMILY = ("pilot50", "batch2", "engine20", "monday_bmo_friday")
+    if a.profile not in PILOT_FAMILY:
         a.ceiling = J.DEFAULT_CEILING if a.ceiling is None else a.ceiling
-    if a.daily_limit is not None and (a.profile not in ("pilot50", "batch2", "engine20") or a.daily_limit > DAILY_LIMIT_MAX or a.daily_limit < a.authorize_requests):
+    if a.daily_limit is not None and (a.profile not in PILOT_FAMILY or a.daily_limit > DAILY_LIMIT_MAX or a.daily_limit < a.authorize_requests):
         print("BLOCKED: --daily-limit is only for the pilot-family profiles, at most %d, and not below --authorize-requests" % DAILY_LIMIT_MAX)
         return 6
-    if a.profile in ("pilot50", "batch2", "engine20"):
+    if a.profile in PILOT_FAMILY:
         if a.authorize_requests > PILOT_MAX or (a.ceiling is not None and a.ceiling > PILOT_MAX):
             print("BLOCKED: the pilot profile never exceeds %d provider attempts" % PILOT_MAX)
             return 6
@@ -355,6 +356,9 @@ def main(argv=None) -> int:
         return 6
     if a.profile == "engine20":
         return engine20_profile(a, svc, now, live)
+    if a.profile == "monday_bmo_friday":
+        import smart_move_monday_bmo as MB                                    # the separate Friday-window variant: own ledger folder, frozen model untouched
+        return MB.profile(a, svc, now, live)
     job = execute(svc, now=now, state_dir=a.state_dir, live=live, authorized=a.daily_limit or a.authorize_requests, ceiling=a.ceiling, batch=a.batch, news_pages=news_pages, calendar_requests=a.calendar_requests, stage_caps=stage_caps, calendar_scope=scope, max_consecutive_failures=max_fail, outcome_events_fn=(lambda n: outcome_events(svc, n)) if a.profile == "batch2" else None, daily_limit=a.daily_limit)
     after = svc.clock.now() if live else now                                     # a live run reports AS OF ITS END: the start-of-run instant predates the refreshed calendar and everything the run saved (Batch #2 showed 0 events)
     ev_summary = record_events(svc, after, a.state_dir)
