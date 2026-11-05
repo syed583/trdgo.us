@@ -51,11 +51,16 @@ def _times(t) -> dict:
     return {"utc": t.isoformat(), "new_york": t.astimezone(co.ET).strftime("%Y-%m-%d %H:%M %Z"), "dubai": t.astimezone(DUBAI).strftime("%Y-%m-%d %H:%M")}
 
 
-def _ev_status(svc, kind: str, symbol: str, params: dict, now) -> str:
+def _ev_status(svc, kind: str, symbol: str, params: dict, now, after=None) -> str:
+    """FRESH / STALE / MISSING, and BEFORE_WINDOW when the stored copy is fresh by session but was retrieved before THIS event's prediction window opened (the frozen scorer does not count it)."""
     rec = svc._latest(kind, symbol, params)
     if rec is None:
         return "MISSING"
-    return "FRESH" if L.rec_fresh(rec, kind, now, svc.cfg) else "STALE"
+    if not L.rec_fresh(rec, kind, now, svc.cfg):
+        return "STALE"
+    if after is not None and rec["retrieved_at"] < after.isoformat():
+        return "BEFORE_WINDOW"
+    return "FRESH"
 
 
 def build(svc, now, *, horizon_days: int, slot_state: dict, funded_symbols: Optional[set] = None, selected_symbols: Optional[set] = None, ledger_path=None, change_index: Optional[dict] = None) -> dict:
@@ -76,7 +81,6 @@ def build(svc, now, *, horizon_days: int, slot_state: dict, funded_symbols: Opti
     for x in led["records"]:                                                           # newest record per event wins; the ledger itself is only read
         if x.get("record_type") in ("PREDICTION", "WINDOW_MISSED"):
             results[(x.get("symbol"), x.get("event_date"))] = x.get("result") if x.get("record_type") == "PREDICTION" else "WINDOW_MISSED"
-    spy = _ev_status(svc, "ohlc", "SPY", {"timeframe": "3Y"}, now)
     today = now.astimezone(co.ET).date()
     last_day = today + timedelta(days=max(1, min(int(horizon_days), CT.HORIZON_MAX)))
     rows = []
@@ -98,8 +102,8 @@ def build(svc, now, *, horizon_days: int, slot_state: dict, funded_symbols: Opti
         etf = L.SECTOR_ETF.get(m.get("sector"))
         ev = {}
         if window == "OPEN":
-            ev = {"F5_price": _ev_status(svc, "ohlc", sym, {"timeframe": "3Y"}, now), "F3_earnings_history": _ev_status(svc, "earnings", sym, {"limit": 24}, now),
-                  "F8_market": spy, "F8_sector_etf": _ev_status(svc, "ohlc", etf, {"timeframe": "3Y"}, now) if etf else "NO_SECTOR_ETF"}
+            ev = {"F5_price": _ev_status(svc, "ohlc", sym, {"timeframe": "3Y"}, now, ws), "F3_earnings_history": _ev_status(svc, "earnings", sym, {"limit": 24}, now, ws),
+                  "F8_market": _ev_status(svc, "ohlc", "SPY", {"timeframe": "3Y"}, now, ws), "F8_sector_etf": _ev_status(svc, "ohlc", etf, {"timeframe": "3Y"}, now, ws) if etf else "NO_SECTOR_ETF"}
         else:
             ev = {"F5_price": "NOT_DUE", "F3_earnings_history": "NOT_DUE", "F8_market": "NOT_DUE", "F8_sector_etf": "NOT_DUE"}
         chg = change_index.get(sym) or {}
@@ -136,6 +140,8 @@ def build(svc, now, *, horizon_days: int, slot_state: dict, funded_symbols: Opti
         else:
             status = "DEFERRED"
             deferred_reason = ("selected but not funded: the run budget is used up" if sym in selected_symbols else "ranked below the run's slots by deadline and priority proxy") + "; still eligible while its window is open"
+            if "BEFORE_WINDOW" in needed:
+                deferred_reason = "shared or own evidence was retrieved before this event's prediction window opened and has not been re-requested yet (not a valid prediction until it is); " + deferred_reason
         rows.append({"symbol": sym, "company": m.get("company"), "event_date": date_str, "date_confirmed": bool(r["event_date"]), "session": sess, "sector": m.get("sector"), "market_cap": m.get("marketcap"), "priority_proxy_tier": E20.cap_tier(m.get("marketcap")),
                      "excluded_by_proxy": False, "vendor_status": r["vendor_status"], "vendor_conflict": r["vendor_conflict"], "prediction_eligible": r["prediction_eligible"], "ineligible_reasons": r["ineligible_reasons"],
                      "window": window, "window_start": _times(ws) if ws else None, "cutoff": _times(cu) if cu else None, "hours_to_cutoff": round((cu - now).total_seconds() / 3600, 2) if cu else None,

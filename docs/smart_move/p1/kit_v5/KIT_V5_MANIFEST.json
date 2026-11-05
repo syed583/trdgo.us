@@ -5,7 +5,7 @@
   {
    "path": "backend/smart_move_collection_runner.py",
    "role": "CHANGED",
-   "after_sha256": "f71c5856072e14593dcde323f7bc0b734e70e347c3d2ee2a4abaafe6d5562a74",
+   "after_sha256": "d4719d8530fe579c092fa760f15651bc18c652503d78c4c1a5a04d43099ab7ec",
    "before_sha256": "4e67bd9bb6d89368bae6f1517d8519248108ca75dad187d8f220b49043fbf6d2"
   },
   {
@@ -17,7 +17,7 @@
   {
    "path": "backend/smart_move_live.py",
    "role": "CHANGED",
-   "after_sha256": "506a56b805e50f9d6183ab8bf6aa1fab45468399993f54ed8a28be68459c2176",
+   "after_sha256": "e2e3d54f3c9ee7a8c73f0f2f08d030cfbf37713bd97e95fbcf2e8af98c4f2f99",
    "before_sha256": "e114d57d40a402b6e06a9877382f0284b854f87f940daf161050fce5ff6bf044"
   },
   {
@@ -33,7 +33,7 @@
   {
    "path": "backend/smart_move_universe.py",
    "role": "NEW",
-   "after_sha256": "a02c902ba424d742374d5171c721cd1574bef96f5f94054236030c9973307971"
+   "after_sha256": "078e5c69fbca12ece2205ab407e530d4114aa9b3bc149105a82b8daf6872d9b9"
   }
  ],
  "protected_unchanged": {

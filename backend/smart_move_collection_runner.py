@@ -51,9 +51,9 @@ PILOT_MAX = int(os.environ.get("SMART_MOVE_RUN_MAX") or 50)             # intern
 DAILY_LIMIT_MAX = int(os.environ.get("SMART_MOVE_DAILY_MAX") or 100)
 
 
-def build_service(store_dir, *, live: bool, authorized: int, now=None, retries: int = 1, tracking_days: int = 14, attempts_path=None):
+def build_service(store_dir, *, live: bool, authorized: int, now=None, retries: int = 1, tracking_days: int = 14, attempts_path=None, window_aware: bool = False):
     cfg = L.LiveConfig(mode="LIVE" if live else "SIMULATION", store_dir=Path(store_dir), refresh_enabled=live, authorized_daily=authorized if live else 0, spacing_s=2.0 if live else 0.0,
-                       max_retries=retries, tracking_days_ahead=tracking_days)
+                       max_retries=retries, tracking_days_ahead=tracking_days, window_aware_evidence=window_aware)
     if live:
         clock = L.SystemClock()
         fetcher = L.InfraFetcher()
@@ -292,6 +292,7 @@ def main(argv=None) -> int:
     ap.add_argument("--calendar-horizon-days", type=int, default=0, help="engine20 profile (P1): rolling horizon of 3..30 days with a TIERED calendar refresh (open and next-opening windows every 5 h, far days daily with leftover budget, per slot) instead of --calendar-days-ahead; 0 = off (unchanged behaviour). Also turns on the stale-bar early abort")
     ap.add_argument("--calendar-state-dir", default=None, help="engine20 profile (P1): where calendar_slots.json and event_changes.jsonl persist between runs (default: --publish-dir, else --state-dir)")
     ap.add_argument("--abort-on-stale-bars", action="store_true", help="engine20 profile (P1): stop the run when the first (SPY) price payload is older than the last completed session instead of spending the budget on stale evidence")
+    ap.add_argument("--window-aware-evidence", action="store_true", help="engine20 profile (F7 fix): also re-request evidence that was retrieved before the event's prediction window opened (the frozen scorer rejects it). Implied by --calendar-horizon-days; off by default = the installed behaviour")
     ap.add_argument("--with-f7", action="store_true", help="engine20 profile: also request volatility context and IV rank (2 more requests per stock)")
     ap.add_argument("--require-rotated-from", default=None, help="8-hex fingerprint of the OLD token; a live run is BLOCKED while the active token still has this fingerprint")
     ap.add_argument("--shared-key-attestation", default=None, help="owner acknowledgement file (see smart_move_shared_key_gate); without a valid one a live run stays BLOCKED")
@@ -347,7 +348,7 @@ def main(argv=None) -> int:
         if not uw.configured():
             print("BLOCKED: provider credential missing")
             return 4
-    svc = build_service(a.store_dir, live=live, authorized=a.daily_limit or a.authorize_requests, now=now, retries=retries, tracking_days=a.calendar_days or 14, attempts_path=Path(a.state_dir) / "attempts.jsonl")
+    svc = build_service(a.store_dir, live=live, authorized=a.daily_limit or a.authorize_requests, now=now, retries=retries, tracking_days=a.calendar_days or 14, attempts_path=Path(a.state_dir) / "attempts.jsonl", window_aware=bool(getattr(a, "window_aware_evidence", False) or a.calendar_horizon_days))
     kill_was_engaged = svc.store.kill_file.exists()
     if live and not kill_was_engaged:
         print("BLOCKED: the kill-switch file must exist before a live run (it is released only while the run works)")

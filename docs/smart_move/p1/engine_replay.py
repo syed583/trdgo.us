@@ -42,10 +42,11 @@ class Provider(L.Fetcher):
     mode = "SIMULATION"
 
     def __init__(self, clock, volume_by_symbol):
-        self.clock, self.vol, self.calls = clock, volume_by_symbol, 0
+        self.clock, self.vol, self.calls, self.log = clock, volume_by_symbol, 0, []
 
     def fetch(self, kind, symbol, params):
         self.calls += 1
+        self.log.append((kind, symbol))
         if kind == "ohlc":                                                                                    # 3Y of weekday bars with a symbol-specific wave so reactions, trends and relative strength are real numbers
             last = L.expected_session(self.clock.now())
             vol = self.vol.get(symbol, 1_000_000)
@@ -69,9 +70,9 @@ class Provider(L.Fetcher):
         raise AssertionError(kind)
 
 
-def replay(universe: str, policy: str, runs=WEEKEND_HEAVY, per_run=50, per_day=100, adv_pass=("A", "B", "C"), week=("2026-11-09", "2026-11-13"), refresh_shared=False) -> dict:
-    """refresh_shared=False is the code as it stands (planner treats SPY / sector-ETF evidence as fresh by session only). refresh_shared=True is an ANALYSIS VARIANT (not implemented anywhere): the planner also re-requests the shared
-    evidence when it was retrieved before the latest open window began, which the frozen scorer requires (RETRIEVED_BEFORE_WINDOW)."""
+def replay(universe: str, policy: str, runs=WEEKEND_HEAVY, per_run=50, per_day=100, adv_pass=("A", "B", "C"), week=("2026-11-09", "2026-11-13"), window_aware=False) -> dict:
+    """window_aware=False is the installed planner (SPY / sector-ETF / own evidence counted fresh by session only). window_aware=True is the F7 fix in the real code (LiveConfig.window_aware_evidence): evidence retrieved before the
+    event's prediction window opened is re-requested, as the frozen scorer requires (RETRIEVED_BEFORE_WINDOW). Same synthetic assumptions for both."""
     tmp = Path(tempfile.mkdtemp())
     counts = {d: v for d, v in COUNTS.items() if week[0] <= d <= week[1]}
     events = CAP.events_from_counts(counts, universe)
@@ -79,7 +80,7 @@ def replay(universe: str, policy: str, runs=WEEKEND_HEAVY, per_run=50, per_day=1
     vol = {e["symbol"]: (1_000_000 if e["tier"] in adv_pass else 100_000) for e in events}              # ADV20 = 100M vs 10M USD against the frozen 20M floor
     clock = gv.FakeClock(runs[0])
     prov = Provider(clock, vol)
-    cfg = L.LiveConfig(mode="SIMULATION", store_dir=tmp / "store", refresh_enabled=True, authorized_daily=per_day, spacing_s=0.0, max_retries=0)
+    cfg = L.LiveConfig(mode="SIMULATION", store_dir=tmp / "store", refresh_enabled=True, authorized_daily=per_day, spacing_s=0.0, max_retries=0, window_aware_evidence=window_aware)
     svc = L.RefreshService(cfg, prov, clock)
     caps = {e["symbol"]: e["cap"] for e in events}
     last_result, window_of = {}, {}
@@ -104,21 +105,6 @@ def replay(universe: str, policy: str, runs=WEEKEND_HEAVY, per_run=50, per_day=1
                       {"source": "FINNHUB", "label": e["session"].lower(), "vendor_flag": None, "clock": None}):
                 svc.store.append("cal_obs", dict(r, symbol=e["symbol"], date=e["event_date"].isoformat(), mode="LIVE", observed_at=(t - timedelta(hours=1)).isoformat(), request_id="r", company=e["symbol"],
                                                  sector=sector[e["symbol"]], marketcap=str(int(e["cap"])), raw_sha256=r["source"][:1] + e["symbol"]))
-        if refresh_shared:
-            starts = [window_of[e["symbol"]][0] for e in open_ev]
-            etfs = sorted({L.SECTOR_ETF[sector[e["symbol"]]] for e in open_ev})
-            orig = L.RefreshService.plan_evidence
-
-            def wrapped(now_, _orig=orig, _svc=svc, _need=max(starts).isoformat(), _etfs=etfs):
-                tasks = _orig(_svc, now_)
-                have = {(x["kind"], x["symbol"]) for x in tasks}
-                extra = []
-                for sym in ["SPY"] + _etfs:
-                    rec = _svc._latest("ohlc", sym, {"timeframe": "3Y"})
-                    if ("ohlc", sym) not in have and (rec is None or rec["retrieved_at"] < _need):
-                        extra.append({"kind": "ohlc", "symbol": sym, "params": {"timeframe": "3Y"}, "why": "shared evidence retrieved before this window opened"})
-                return extra + tasks
-            svc.plan_evidence = wrapped
         rows = L.LiveScorer(svc).score_all(t)
         kinds = ("ohlc", "earnings")
         pending = {x["symbol"] for x in svc.plan_evidence(t) if x.get("symbol") and x["kind"] in kinds} if policy in ("deadline", "deadline_priority") else None
@@ -153,16 +139,18 @@ def replay(universe: str, policy: str, runs=WEEKEND_HEAVY, per_run=50, per_day=1
         else:
             why_not["never funded inside its window (budget)"] += 1
     per_day_used = dict(svc.gov.used_day)
-    return {"universe": universe, "policy": policy, "shared_refresh_variant": refresh_shared, "events": len(events), "not_tradable": len(events) - len(tradable), "tradable": len(tradable), "served": len(served & tset), "valid_predictions": len(valid),
+    return {"universe": universe, "policy": policy, "window_aware": window_aware, "events": len(events), "not_tradable": len(events) - len(tradable), "tradable": len(tradable), "served": len(served & tset), "valid_predictions": len(valid),
             "not_served": len(tradable) - len(served & tset), "why_no_valid_prediction": dict(why_not), "requests_by_ny_day": per_day_used, "max_attempts_in_a_run": max(r.get("attempts", 0) for r in run_log),
-            "examples": examples, "provider_calls_sent_to_stub": prov.calls, "skipped_events_that_were_funded": len([e for e in events if e["symbol"] not in tset and e["symbol"] in have])}
+            "examples": examples, "shared_evidence_attempts": sum(1 for k, s in prov.log if k == "ohlc" and (s == "SPY" or s in set(L.SECTOR_ETF.values()))), "own_evidence_attempts": sum(1 for k, s in prov.log if s in caps), "calendar_attempts_charged": sum(r.get("calendar_charged", 0) for r in run_log),
+            "total_attempts": sum(r.get("attempts", 0) for r in run_log), "pending_because_retrieved_before_window": sum(1 for s in served & tset if "RETRIEVED_BEFORE_WINDOW" in str(last_result.get(s, {}).get("reason", ""))),
+            "pending_before_window_by_window": dict(Counter("%s %s" % (e["event_date"], e["session"]) for e in tradable if e["symbol"] in served and "RETRIEVED_BEFORE_WINDOW" in str(last_result.get(e["symbol"], {}).get("reason", "")))),
+            "provider_calls_sent_to_stub": prov.calls, "skipped_events_that_were_funded": len([e for e in events if e["symbol"] not in tset and e["symbol"] in have])}
 
 
 if __name__ == "__main__":
     unis = sys.argv[1:] or ["optcap", "options", "price", "broad"]
     for u in unis:
-        for pol in ("deadline_priority", "deadline"):
-            for rs in (False, True):
-                r = replay(u, pol, refresh_shared=rs)
-                r.pop("examples", None)
-                print(json.dumps(r, default=str), flush=True)
+        for wa in (False, True):
+            r = replay(u, "deadline_priority", window_aware=wa)
+            r.pop("examples", None)
+            print(json.dumps(r, default=str), flush=True)

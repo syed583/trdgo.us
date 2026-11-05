@@ -56,6 +56,7 @@ class LiveConfig:
     history_max_age_days: int = 7
     vol_max_age_h: float = 24.0
     calendar_days_ahead: int = 3
+    window_aware_evidence: bool = False        # F7 (opt-in, default OFF = the installed behaviour): the planner also re-requests evidence that was retrieved BEFORE the event's own prediction window opened, which the frozen scorer rejects (RETRIEVED_BEFORE_WINDOW)
     calendar_max_pages: int = 5                # UW returns at most 100 rows per page; a side/day that still fills the last page is recorded as TRUNCATED (it used to stop silently after 2 pages)
     tracking_days_ahead: int = 14              # upcoming-earnings TRACKING horizon (analyst Snapshot A); scoring still needs the strict freshness rule
     finviz_tickers: int = 100
@@ -525,24 +526,36 @@ class RefreshService:
         events = self.eligible_events(now)
         exp = expected_session(now).isoformat()
         tasks, seen = [], set()
+        aware = bool(self.cfg.window_aware_evidence)
+        spy_after = max((e["plan"]["window_start_utc"] for e in events), default=None)                 # evidence shared by every open event must have been retrieved after the LATEST of their windows opened
+        etf_after = {}
+        for e in events:
+            if e["etf"]:
+                etf_after[e["etf"]] = max(etf_after.get(e["etf"], e["plan"]["window_start_utc"]), e["plan"]["window_start_utc"])
 
-        def add(kind, symbol, params, why):
+        def add(kind, symbol, params, why, after=None):
             key = _key(kind, symbol, params)
             if key in seen:
                 return
             seen.add(key)
-            if not rec_fresh(self._latest(kind, symbol, params), kind, now, self.cfg):
+            rec = self._latest(kind, symbol, params)
+            fresh = rec_fresh(rec, kind, now, self.cfg)
+            if fresh and aware and after is not None and rec["retrieved_at"] < after.isoformat():           # same comparison the scorer makes (`latest()` in score_all): earlier than the window start = does not count
+                fresh = False
+                why = why + " (re-request: the stored copy was retrieved before the prediction window opened)"
+            if not fresh:
                 tasks.append({"kind": kind, "symbol": symbol, "params": params, "why": why})
         if events:
-            add("ohlc", "SPY", {"timeframe": "3Y"}, "market")
+            add("ohlc", "SPY", {"timeframe": "3Y"}, "market", spy_after)
         for e in events:
             if e["etf"]:
-                add("ohlc", e["etf"], {"timeframe": "3Y"}, "sector of " + e["symbol"])
+                add("ohlc", e["etf"], {"timeframe": "3Y"}, "sector of " + e["symbol"], etf_after[e["etf"]])
         for e in events:
-            add("ohlc", e["symbol"], {"timeframe": "3Y"}, "price")
-            add("earnings", e["symbol"], {"limit": 24}, "history")
-            add("vol_context", e["symbol"], {"date": exp}, "F7 live capture")
-            add("iv_rank", e["symbol"], {"date": exp}, "F7 live capture")
+            ws = e["plan"]["window_start_utc"]
+            add("ohlc", e["symbol"], {"timeframe": "3Y"}, "price", ws)
+            add("earnings", e["symbol"], {"limit": 24}, "history", ws)
+            add("vol_context", e["symbol"], {"date": exp}, "F7 live capture", ws)
+            add("iv_rank", e["symbol"], {"date": exp}, "F7 live capture", ws)
         return tasks
 
     def refresh_evidence(self, budget: list) -> int:
