@@ -21,6 +21,19 @@ MODEL_VERSION = "score40-v1"
 GATES = ("OUT_OF_WINDOW", "UNKNOWN_TIMING", "TIMING_CONTRADICTED", "NOT_TRADABLE", "ILLIQUID_OR_UNKNOWN", "INSUFFICIENT_COVERAGE", "STALE_EVIDENCE", "SUSPECT_WINDOW")
 
 
+PRIORITY_URGENT_H = 4.0      # a cutoff this close is served strictly by deadline, whatever the proxy says
+
+
+def cap_tier(market_cap) -> str:
+    """PRIORITISATION proxy only (the one liquidity-related number the saved calendar carries). It orders work when the budget cannot cover every open event; it never excludes an event: the frozen ADV20 gate still decides
+    from the price bars, and a deferred event stays eligible for as long as its window is open."""
+    try:
+        c = float(market_cap)
+    except (TypeError, ValueError):
+        return "D"
+    return "A" if c >= 10e9 else "B" if c >= 2e9 else "C" if c >= 3e8 else "D"
+
+
 def _dt(x) -> datetime:
     d = x if isinstance(x, datetime) else datetime.fromisoformat(str(x).replace("Z", "+00:00"))
     return d if d.tzinfo else d.replace(tzinfo=UTC)
@@ -46,23 +59,31 @@ def select_top(rows: list, market_caps: dict, now, *, n: int = 20, event_date: O
             if audit is not None and r.get("kind") in ("BMO", "AMC"):
                 note(r, "SKIPPED", "calendar not vendor-confirmed: %s" % ",".join(map(str, r["blocked_by"])) if r["blocked_by"] else "prediction window not open now")
             continue
+        if policy == "deadline_priority" and p.get("tradable") is False:        # the frozen scorer answers NO VALID PREDICTION (NOT_TRADABLE) for this event whatever evidence it gets: requesting evidence would only spend budget
+            note(r, "SKIPPED", "not tradable under the frozen order-deadline rule: the engine answers NO VALID PREDICTION (NOT_TRADABLE) whatever the evidence, so none is requested")
+            continue
         if event_date and r["earnings_date"] != event_date or session and r["kind"] != session:
             note(r, "SKIPPED", "outside the --select-date/--select-session filter")
             continue
         if only is not None and r["symbol"] not in only:
             continue
-        if policy == "deadline" and pending is not None and r["symbol"] not in pending:
+        if policy in ("deadline", "deadline_priority") and pending is not None and r["symbol"] not in pending:
             note(r, "SKIPPED", "its evidence is already fresh: no request needed")        # an already-collected stock never occupies a selection slot
             continue
         ok.append(r)
     if only is not None:
         ok.sort(key=lambda r: (only.index(r["symbol"]), r["symbol"]))
+    elif policy == "deadline_priority":
+        urgent = lambda r: (_dt(r["plan"]["cutoff_utc"]) - now).total_seconds() <= PRIORITY_URGENT_H * 3600          # noqa: E731
+        ok.sort(key=lambda r: (0, _dt(r["plan"]["cutoff_utc"]), cap_tier(market_caps.get(r["symbol"])), r["symbol"]) if urgent(r)
+                else (1, cap_tier(market_caps.get(r["symbol"])), _dt(r["plan"]["cutoff_utc"]), -(market_caps.get(r["symbol"]) or 0), r["symbol"]))      # urgent cutoffs strictly by deadline; the rest by proxy tier, then deadline
     elif policy == "deadline":
         ok.sort(key=lambda r: (_dt(r["plan"]["cutoff_utc"]), -(market_caps.get(r["symbol"]) or 0), r["symbol"]))      # deterministic: closest cutoff first, then larger cap, then symbol
     else:
         ok.sort(key=lambda r: (-(market_caps.get(r["symbol"]) or 0), r["symbol"]))
     for i, r in enumerate(ok):
-        note(r, "SELECTED" if i < n else "NOT_SELECTED", ("rank %d of %d by %s" % (i + 1, len(ok), "closest prediction cutoff" if policy == "deadline" else "market capitalisation")) if i < n else "ranked %d, beyond the %d slots" % (i + 1, n))
+        note(r, "SELECTED" if i < n else "NOT_SELECTED", ("rank %d of %d by %s" % (i + 1, len(ok), "closest prediction cutoff" if policy == "deadline" else "urgent deadline, then proxy tier %s and deadline" % cap_tier(market_caps.get(r["symbol"])) if policy == "deadline_priority" else "market capitalisation")) if i < n
+             else ("DEFERRED by priority, still eligible while its window is open: ranked %d beyond the %d slots (proxy tier %s)" % (i + 1, n, cap_tier(market_caps.get(r["symbol"]))) if policy == "deadline_priority" else "ranked %d, beyond the %d slots" % (i + 1, n)))
     return [{"rank": i + 1, "symbol": r["symbol"], "company": r.get("company"), "event_date": r["earnings_date"], "session": r["kind"], "sector": r.get("sector"), "etf": L.SECTOR_ETF.get(r.get("sector")),
              "market_cap": market_caps.get(r["symbol"])} for i, r in enumerate(ok[:n])]
 
@@ -110,9 +131,11 @@ def plan_tasks(svc, selected: list, now, *, budget: int, with_f7: bool = False) 
 
 
 # ------------------------------------------------------------------ execution (live only through the governed path)
-def run(svc, tasks: list, *, now, ceiling: int, state_dir, stopped=lambda: False, max_consecutive_failures: int = 3) -> dict:
+def run(svc, tasks: list, *, now, ceiling: int, state_dir, stopped=lambda: False, max_consecutive_failures: int = 3, abort_on_stale_bars: bool = False) -> dict:
     """Sequential, one request in flight. Every task goes through svc._call (governor + InfraFetcher) and a successful body is appended to the store's append-only evidence file. Stops on a provider stop, the ceiling,
-    the kill switch, or repeated failures. Never retries (the service is built with retries 0 by the runner)."""
+    the kill switch, or repeated failures. Never retries (the service is built with retries 0 by the runner).
+    abort_on_stale_bars (P1, opt-in): the shared SPY price payload is fetched first; if the provider still returns a bar older than the last COMPLETED session (or one retrieved before that session ended), every stock payload
+    would be stale the same way, so the run stops with halted="STALE_BARS" instead of spending the rest of the budget on evidence the frozen freshness rule would reject."""
     d = Path(state_dir)
     d.mkdir(parents=True, exist_ok=True)
     done, failed, consecutive, halted = [], [], 0, None
@@ -139,6 +162,9 @@ def run(svc, tasks: list, *, now, ceiling: int, state_dir, stopped=lambda: False
         consecutive = 0
         svc._ingest_evidence(t["kind"], t["symbol"], t["params"], body, sha, at, rid)
         done.append({"kind": t["kind"], "symbol": t["symbol"], "retrieved_at": at.isoformat(), "raw_sha256": sha})
+        if abort_on_stale_bars and t["kind"] == "ohlc" and t["symbol"] == "SPY" and not L.rec_fresh(svc._latest("ohlc", "SPY", t["params"]), "ohlc", svc.clock.now(), svc.cfg):
+            halted = "STALE_BARS"
+            break
     res = {"requests_attempted": len(done) + len(failed), "ok": len(done), "failed": len(failed), "failures": failed, "halted": halted, "done": done, "finished_at": svc.clock.now().isoformat()}
     (d / "engine20_state.json").write_text(json.dumps(res, indent=1, sort_keys=True, default=str), encoding="utf-8")
     return res

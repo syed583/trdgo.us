@@ -28,6 +28,9 @@ import smart_move_live as L  # noqa: E402
 import smart_move_outcomes as O  # noqa: E402
 import smart_move_tracking as T  # noqa: E402
 import smart_move_calendar_guard as G  # noqa: E402
+import smart_move_calendar_tiers as CT  # noqa: E402
+import smart_move_calendar_changes as CC  # noqa: E402
+import smart_move_universe as UNI  # noqa: E402
 import smart_move_secret_check as SC  # noqa: E402
 import smart_move_shared_key_gate as SK  # noqa: E402
 from smvshadow import governor as gv  # noqa: E402
@@ -94,9 +97,39 @@ def outcome_events(svc, now) -> list:
             and r["event_date"] < now.date().isoformat()]
 
 
+def tiered_refresh(svc, a, plan, st, cal_dir) -> dict:
+    """P1 live step: refresh exactly the planned slots through the governed path (same request cap, spacing, 401/403/429 stop and kill switch as every calendar refresh), record each slot's result in calendar_slots.json,
+    append the changes it reveals (new / rescheduled / missing / removed) to event_changes.jsonl, and report. ok=False only when nothing could be refreshed or the provider stopped; slots the cap left stale are reported
+    as `deferred` and `t0_complete`, never treated as fresh."""
+    now = svc.clock.now()
+    out = {"checked_at": now.isoformat(), "tiered": True, "requests": 0, "ok": True, "reason": None, "slots": [c["key"] for c in plan["refresh"]], "deferred": [c["key"] for c in plan["deferred"]]}
+    stopped = lambda: bool(svc.gov.stopped_until and svc.clock.now() < svc.gov.stopped_until)  # noqa: E731
+    if not plan["refresh"]:
+        return out
+    if stopped():
+        return dict(out, ok=False, reason="PROVIDER_STOP")
+    budget = [min(plan["est_requests"], a.ceiling)]
+    done = svc.refresh_calendar(budget, dates=[(datetime.fromisoformat(c["date"]).date(), c["side"]) for c in plan["refresh"]])
+    t = svc.clock.now()
+    CT.record_refresh(st, svc.last_slot_log, t)
+    changes = CC.track(st, svc.last_slot_log, t)
+    CC.append_changes(cal_dir, changes)
+    CT.save_state(cal_dir, st)
+    comp = CT.completeness(st, t, a.calendar_horizon_days)
+    out.update(requests=done, changes={k: sum(1 for c in changes if c["change"] == k) for k in ("NEW", "RESCHEDULED", "MISSING", "REMOVED", "REAPPEARED")}, t0_complete=comp["t0_complete"], t0_stale=comp["t0_open_stale"] + comp["t0_next_stale"], slots_fresh=comp["slots_fresh"], slots_total=comp["slots_total"])
+    if stopped():
+        out.update(ok=False, reason="PROVIDER_STOP_DURING_REFRESH")
+    elif done == 0:
+        out.update(ok=False, reason="REFRESH_SENT_NOTHING_USEFUL")
+    return out
+
+
 def engine20_profile(a, svc, now, live: bool) -> int:
     """Collect the frozen engine's evidence for a selected set of stocks. Dry run: select, plan, print, write the plan; zero requests. Live (separately gated like every live run): the kill file is released only for the run
     and always re-engaged; a calendar refresh happens only if the calendar is older than 5 h and is counted in the same ceiling."""
+    for k, v in (("calendar_horizon_days", 0), ("calendar_state_dir", None), ("abort_on_stale_bars", False)):       # callers that build their own argument namespace (older tests, tools) keep working unchanged
+        if not hasattr(a, k):
+            setattr(a, k, v)
     d = Path(a.state_dir)
     d.mkdir(parents=True, exist_ok=True)
     caps = {}
@@ -112,19 +145,32 @@ def engine20_profile(a, svc, now, live: bool) -> int:
         """Selection at time t. Called again after a calendar refresh: the refresh changes which events are vendor-confirmed, so a selection made before it would be empty or stale."""
         audit.clear()
         rows = L.LiveScorer(svc).score_all(t)
-        pending = {x["symbol"] for x in svc.plan_evidence(t) if x.get("symbol") and x["kind"] in kinds} if a.select_policy == "deadline" else None
+        pending = {x["symbol"] for x in svc.plan_evidence(t) if x.get("symbol") and x["kind"] in kinds} if a.select_policy in ("deadline", "deadline_priority") else None
         selected = E20.select_top(rows, caps, t, policy=a.select_policy, pending=pending, audit=audit, n=a.select_top, event_date=a.select_date, session=a.select_session, only=[x.strip().upper() for x in a.select_symbols.split(",") if x.strip()] if a.select_symbols else None)
         return selected
 
     selected = choose(now)
-    cal_needed = G.needs_refresh(svc.store, now)
-    cal_slots = J.horizon_calendar_slots(now, a.calendar_days_ahead) if a.calendar_days_ahead is not None else J.useful_calendar_slots(now)
-    cal_est = (len(cal_slots) if a.calendar_days_ahead is not None else 4) if cal_needed else 0          # unchanged default: 4 requests for the open windows only
+    tiered = bool(a.calendar_horizon_days)
+    cal_dir = Path(a.calendar_state_dir or a.publish_dir or a.state_dir)
+    slot_state = CT.load_state(cal_dir) if tiered else None
+    cal_plan = None
+    if tiered:                                                              # P1: per-slot, tiered, budget-aware (the evidence this run needs is estimated first so far days only get what is left)
+        prelim = E20.plan_tasks(svc, selected, now, budget=a.ceiling, with_f7=a.with_f7)
+        cal_plan = CT.plan_refresh(now, slot_state, horizon_days=a.calendar_horizon_days, run_ceiling=a.ceiling, budget_left=a.ceiling, evidence_demand=prelim["attempts_planned"])
+        cal_needed, cal_est = cal_plan["needed"], cal_plan["est_requests"]
+    else:
+        cal_needed = G.needs_refresh(svc.store, now)
+        cal_slots = J.horizon_calendar_slots(now, a.calendar_days_ahead) if a.calendar_days_ahead is not None else J.useful_calendar_slots(now)
+        cal_est = (len(cal_slots) if a.calendar_days_ahead is not None else 4) if cal_needed else 0          # unchanged default: 4 requests for the open windows only
     plan = E20.plan_tasks(svc, selected, now, budget=a.ceiling - cal_est, with_f7=a.with_f7)
     summary = {"mode": "LIVE" if live else "DRY_RUN", "profile": "engine20", "as_of": now.isoformat(), "selected": selected, "calendar_refresh_needed": cal_needed, "calendar_attempts_reserved": cal_est,
                "attempts_planned_for_evidence": plan["attempts_planned"], "total_attempts_planned": plan["attempts_planned"] + cal_est, "ceiling": a.ceiling, "spare": plan["spare"],
                "stocks_fully_funded": plan["stocks_fully_funded"], "stocks_already_fresh": plan["already_fresh_stocks"], "unfunded": [(t["kind"], t["symbol"]) for t in plan["unfunded"]],
                "tasks": [(t["kind"], t["symbol"], t["why"]) for t in plan["funded"]], "provider_requests": 0}
+    if tiered:
+        summary["calendar_tiered"] = {"horizon_days": a.calendar_horizon_days, "state_dir": str(cal_dir), "refresh_slots": [(c["key"], c["tier"], c["why"], c["est_requests"]) for c in cal_plan["refresh"]],
+                                      "deferred_slots": [(c["key"], c["tier"], c["deferred_because"]) for c in cal_plan["deferred"]], "estimated_requests": cal_plan["est_requests"], "cap": cal_plan["cap"],
+                                      "completeness_before": CT.completeness(slot_state, now, a.calendar_horizon_days)}
     (d / "engine20_plan.json").write_text(json.dumps(summary, indent=1, default=str), encoding="utf-8")
     (d / "engine20_selection.json").write_text(json.dumps({"policy": a.select_policy, "slots": a.select_top, "as_of": now.isoformat(), "decisions": audit}, indent=1, default=str), encoding="utf-8")
     limits = {"run_limit": a.ceiling, "daily_limit": a.daily_limit or a.authorize_requests or DAILY_LIMIT_MAX}
@@ -133,6 +179,9 @@ def engine20_profile(a, svc, now, live: bool) -> int:
             import smart_move_live_publisher as PUB                                # a dry run shows itself on the dashboard (status only) and publishes NO prediction
             PUB.publish(svc, now, a.publish_dir, scan_id=d.name, mode="DRY_RUN", scan_ok=True, run={"started_at": now.isoformat(), "requests_attempted": 0, "planned": summary["total_attempts_planned"]},
                         limits=limits, unfunded=len(summary["unfunded"]))
+        if tiered and a.publish_dir:
+            UNI.write(a.publish_dir, UNI.build(svc, now, horizon_days=a.calendar_horizon_days, slot_state=slot_state, funded_symbols={t["symbol"] for t in plan["funded"]}, selected_symbols={x["symbol"] for x in selected},
+                                              ledger_path=Path(a.publish_dir) / UNI.PUB.LEDGER))
         print(json.dumps({k: v for k, v in summary.items() if k != "tasks"}, indent=1, default=str))
         return 0
     svc.store.kill_file.unlink()
@@ -140,7 +189,7 @@ def engine20_profile(a, svc, now, live: bool) -> int:
     try:
         used = 0
         if cal_needed:
-            g = G.ensure_fresh(svc, budget_left=a.ceiling, stopped=lambda: bool(svc.gov.stopped_until and svc.clock.now() < svc.gov.stopped_until), max_requests=cal_est, dates=(J.horizon_calendar_slots(svc.clock.now(), a.calendar_days_ahead) if a.calendar_days_ahead is not None else J.useful_calendar_slots(svc.clock.now())))
+            g = tiered_refresh(svc, a, cal_plan, slot_state, cal_dir) if tiered else G.ensure_fresh(svc, budget_left=a.ceiling, stopped=lambda: bool(svc.gov.stopped_until and svc.clock.now() < svc.gov.stopped_until), max_requests=cal_est, dates=(J.horizon_calendar_slots(svc.clock.now(), a.calendar_days_ahead) if a.calendar_days_ahead is not None else J.useful_calendar_slots(svc.clock.now())))
             used = g.get("requests", 0)
             summary["calendar_refresh"] = g
             if not g["ok"]:
@@ -155,7 +204,7 @@ def engine20_profile(a, svc, now, live: bool) -> int:
         summary.update(attempts_planned_for_evidence=plan["attempts_planned"], spare=plan["spare"], stocks_fully_funded=plan["stocks_fully_funded"], stocks_already_fresh=plan["already_fresh_stocks"],
                        unfunded=[(t["kind"], t["symbol"]) for t in plan["unfunded"]], tasks=[(t["kind"], t["symbol"], t["why"]) for t in plan["funded"]], total_attempts_planned=plan["attempts_planned"] + used)
         (d / "engine20_plan.json").write_text(json.dumps(summary, indent=1, default=str), encoding="utf-8")                  # the plan file describes what was actually run, after the refresh
-        res = E20.run(svc, plan["funded"], now=svc.clock.now(), ceiling=a.ceiling - used, state_dir=d, stopped=lambda: bool(svc.gov.stopped_until and svc.clock.now() < svc.gov.stopped_until), max_consecutive_failures=3)
+        res = E20.run(svc, plan["funded"], now=svc.clock.now(), ceiling=a.ceiling - used, state_dir=d, stopped=lambda: bool(svc.gov.stopped_until and svc.clock.now() < svc.gov.stopped_until), max_consecutive_failures=3, abort_on_stale_bars=bool(a.abort_on_stale_bars or a.calendar_horizon_days))
         rep = E20.report(svc, selected, svc.clock.now())
         (d / "engine20_report.json").write_text(json.dumps(rep, indent=1, default=str), encoding="utf-8")
         print(json.dumps({"requests_attempted": res["requests_attempted"] + used, "ok": res["ok"], "failed": res["failed"], "halted": res["halted"], "counts": rep["counts"]}, indent=1))
@@ -166,6 +215,9 @@ def engine20_profile(a, svc, now, live: bool) -> int:
                                  run={"started_at": now.isoformat(), "finished_at": svc.clock.now().isoformat(), "requests_attempted": res["requests_attempted"] + used, "ok": res["ok"], "failed": res["failed"], "halted": res["halted"]},
                                  limits=limits, unfunded=len(summary["unfunded"]))
                 print(json.dumps({"published": st["events"]}, default=str))
+                if tiered:
+                    UNI.write(a.publish_dir, UNI.build(svc, svc.clock.now(), horizon_days=a.calendar_horizon_days, slot_state=slot_state, funded_symbols={t["symbol"] for t in plan["funded"]}, selected_symbols={x["symbol"] for x in selected},
+                                                      ledger_path=Path(a.publish_dir) / UNI.PUB.LEDGER))
             except PUB.LedgerError as e:
                 print("PUBLISH BLOCKED: the prediction ledger failed its integrity check:", e)
                 return 8                                                       # 8 = ledger; 7 is the shared-key gate, 6 the live gates, 4 the token configuration
@@ -231,13 +283,19 @@ def main(argv=None) -> int:
     ap.add_argument("--select-symbols", default=None, help="engine20 profile: pin the owner-approved list (comma separated); each symbol must still pass the eligibility checks, none is substituted")
     ap.add_argument("--select-date", default=None, help="engine20 profile: only events on this date, e.g. 2026-11-04")
     ap.add_argument("--select-session", default=None, choices=("BMO", "AMC"), help="engine20 profile: only this announcement session")
-    ap.add_argument("--select-policy", choices=("cap", "deadline"), default="cap", help="engine20 profile: cap = the n largest market caps (default, unchanged); deadline = stocks that still NEED evidence, closest prediction cutoff first (already-collected stocks never take a slot)")
+    ap.add_argument("--select-policy", choices=("cap", "deadline", "deadline_priority"), default="cap", help="engine20 profile: cap = the n largest market caps (default, unchanged); deadline = stocks that still NEED evidence, closest prediction cutoff first (already-collected stocks never take a slot); deadline_priority = like deadline, but when the budget cannot cover every open event, cutoffs closer than 4 h go strictly by deadline and the rest by market-cap proxy tier then deadline (prioritisation only: deferred events are recorded and stay eligible)")
     ap.add_argument("--publish-dir", default=None, help="engine20 profile: folder for the live prediction ledger and status file read by the dashboard (append-only; a dry run writes status only)")
     ap.add_argument("--calendar-days-ahead", type=int, default=None, help="engine20 profile: keep the calendar this many days forward (both sessions of every trading day, 2 requests per day) instead of only the open windows")
+    ap.add_argument("--calendar-horizon-days", type=int, default=0, help="engine20 profile (P1): rolling horizon of 3..30 days with a TIERED calendar refresh (open and next-opening windows every 5 h, far days daily with leftover budget, per slot) instead of --calendar-days-ahead; 0 = off (unchanged behaviour). Also turns on the stale-bar early abort")
+    ap.add_argument("--calendar-state-dir", default=None, help="engine20 profile (P1): where calendar_slots.json and event_changes.jsonl persist between runs (default: --publish-dir, else --state-dir)")
+    ap.add_argument("--abort-on-stale-bars", action="store_true", help="engine20 profile (P1): stop the run when the first (SPY) price payload is older than the last completed session instead of spending the budget on stale evidence")
     ap.add_argument("--with-f7", action="store_true", help="engine20 profile: also request volatility context and IV rank (2 more requests per stock)")
     ap.add_argument("--require-rotated-from", default=None, help="8-hex fingerprint of the OLD token; a live run is BLOCKED while the active token still has this fingerprint")
     ap.add_argument("--shared-key-attestation", default=None, help="owner acknowledgement file (see smart_move_shared_key_gate); without a valid one a live run stays BLOCKED")
     a = ap.parse_args(argv)
+    if a.calendar_horizon_days and (a.profile != "engine20" or not 3 <= a.calendar_horizon_days <= CT.HORIZON_MAX or a.calendar_days_ahead is not None):
+        print("BLOCKED: --calendar-horizon-days is for the engine20 profile only, 3..%d, and cannot be combined with --calendar-days-ahead" % CT.HORIZON_MAX)
+        return 6
     news_pages, retries, stage_caps, scope, max_fail = None, 1, None, "horizon", None
     if a.profile not in ("pilot50", "batch2", "engine20"):
         a.ceiling = J.DEFAULT_CEILING if a.ceiling is None else a.ceiling

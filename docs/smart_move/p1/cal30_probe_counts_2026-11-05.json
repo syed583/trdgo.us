@@ -1,0 +1,26 @@
+{
+ "source": "owner-run read-only UW calendar probe cal30_probe.py, 2026-11-05 11:16 (44 requests, 0 failures); vendor calendar only, no second-vendor confirmation, no ADV20",
+ "fields": "bmo/amc = rows by report_time; us = US-listed rows; price = us rows with prior close >= 15 (or unknown); options = price rows with listed options; optcap = options rows with market cap >= 2B",
+ "counts": {
+  "2026-11-05": {"returned": 497, "us": 493, "price": 286, "options": 266, "optcap": 193, "bmo": 231, "amc": 266},
+  "2026-11-06": {"returned": 58, "us": 57, "price": 33, "options": 32, "optcap": 23, "bmo": 56, "amc": 2},
+  "2026-11-09": {"returned": 177, "us": 174, "price": 72, "options": 70, "optcap": 49, "bmo": 61, "amc": 116},
+  "2026-11-10": {"returned": 125, "us": 124, "price": 36, "options": 29, "optcap": 18, "bmo": 48, "amc": 77},
+  "2026-11-11": {"returned": 48, "us": 44, "price": 17, "options": 13, "optcap": 10, "bmo": 19, "amc": 29},
+  "2026-11-12": {"returned": 150, "us": 147, "price": 40, "options": 31, "optcap": 22, "bmo": 68, "amc": 82},
+  "2026-11-13": {"returned": 14, "us": 14, "price": 1, "options": 0, "optcap": 0, "bmo": 14, "amc": 0},
+  "2026-11-16": {"returned": 30, "us": 30, "price": 7, "options": 7, "optcap": 5, "bmo": 18, "amc": 12},
+  "2026-11-17": {"returned": 26, "us": 26, "price": 14, "options": 14, "optcap": 9, "bmo": 18, "amc": 8},
+  "2026-11-18": {"returned": 22, "us": 22, "price": 17, "options": 17, "optcap": 14, "bmo": 12, "amc": 10},
+  "2026-11-19": {"returned": 16, "us": 15, "price": 12, "options": 12, "optcap": 9, "bmo": 9, "amc": 7},
+  "2026-11-20": {"returned": 1, "us": 1, "price": 1, "options": 1, "optcap": 1, "bmo": 1, "amc": 0},
+  "2026-11-23": {"returned": 10, "us": 10, "price": 8, "options": 7, "optcap": 6, "bmo": 1, "amc": 9},
+  "2026-11-24": {"returned": 13, "us": 13, "price": 11, "options": 11, "optcap": 10, "bmo": 10, "amc": 3},
+  "2026-11-25": {"returned": 1, "us": 1, "price": 1, "options": 1, "optcap": 1, "bmo": 1, "amc": 0},
+  "2026-11-26": {"returned": 1, "us": 1, "price": 0, "options": 0, "optcap": 0, "bmo": 0, "amc": 1},
+  "2026-11-30": {"returned": 1, "us": 0, "price": 0, "options": 0, "optcap": 0, "bmo": 1, "amc": 0},
+  "2026-12-01": {"returned": 5, "us": 5, "price": 4, "options": 4, "optcap": 4, "bmo": 0, "amc": 5},
+  "2026-12-02": {"returned": 2, "us": 2, "price": 2, "options": 2, "optcap": 2, "bmo": 0, "amc": 2},
+  "2026-12-03": {"returned": 4, "us": 4, "price": 4, "options": 4, "optcap": 4, "bmo": 2, "amc": 2}
+ }
+}

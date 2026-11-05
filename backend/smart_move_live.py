@@ -399,6 +399,7 @@ class RefreshService:
         else:
             days = self._trading_days(now, days_ahead)
         uw_rows, done, truncated, incomplete = [], 0, [], []
+        self.last_slot_log = []                                          # record only (P1): what each slot actually returned, for the per-slot calendar state; nothing reads it to decide a request
         reserve = 2 if budget[0] > 2 else 0                              # the Finviz and Finnhub confirmations are kept: without a second vendor no event can become eligible
         stamp = now.strftime("%Y%m%dT%H%M%S")
         slots = [(d, side) for d in days for side in ("premarket", "afterhours") if side in side_only.get(d, ("premarket", "afterhours"))]
@@ -412,26 +413,34 @@ class RefreshService:
         for d, side in slots:
             page = 0
             fetched = 0
+            slot_syms, slot_truncated = [], False
             while budget[0] > reserve:
                 rid = "uwcal-%s-%s-%s-p%d" % (stamp, d, side, page)
                 body, sha, at = self._call("uw_calendar", None, {"date": str(d), "side": side, "page": page}, rid)
                 budget[0] -= 1
                 if body is None:
+                    self.last_slot_log.append({"date": str(d), "side": side, "pages_fetched": fetched, "symbols": slot_syms, "complete": False, "reason": "REQUEST_FAILED"})
                     return done
                 done += 1
                 fetched += 1
                 rows = parse_calendar("uw_calendar", body, at, sha, rid, self.fetcher.mode)
                 for r in rows:
                     self.store.append("cal_obs", r)
+                slot_syms += [r["symbol"] for r in rows]
                 uw_rows += rows
                 if len(rows) >= 100:
                     if page + 1 < self.cfg.calendar_max_pages:
                         page += 1
                         continue
                     truncated.append({"date": str(d), "side": side, "pages": page + 1})        # still full at the page cap: later rows were never seen
+                    slot_truncated = True
                 break
             else:                                                        # the request budget ran out inside or before this slot: say so (it used to look like a complete calendar)
                 incomplete.append({"date": str(d), "side": side, "pages_fetched": fetched, "reason": "BUDGET_EXHAUSTED_AFTER_FULL_PAGE" if fetched else "NOT_FETCHED_BUDGET_EXHAUSTED"})
+                if fetched:
+                    self.last_slot_log.append({"date": str(d), "side": side, "pages_fetched": fetched, "symbols": slot_syms, "complete": False, "reason": "BUDGET_EXHAUSTED_AFTER_FULL_PAGE"})
+                continue
+            self.last_slot_log.append({"date": str(d), "side": side, "pages_fetched": fetched, "symbols": slot_syms, "complete": not slot_truncated, "reason": "PAGE_CAP_REACHED" if slot_truncated else None})
         tickers = pick_tickers(uw_rows, self.cfg.finviz_tickers)
         if tickers and budget[0] > 0:
             rid = "fzcal-%s" % stamp

@@ -1,0 +1,23 @@
+# Collector settings: one KEY=VALUE per line, read by run_engine20_collection.ps1 on every run (so a change takes effect at the next hourly run, no task re-registration).
+# Copy this file to collector.settings.txt and edit the paths. The DEFAULT MODE IS DRY RUN: it plans and sends nothing, and publishes status only (no prediction).
+Mode=DRY_RUN
+Runner=C:\apps\us-stock-reader\backend\smart_move_collection_runner.py
+StoreDir=C:\apps\us-stock-reader\sm_evidence_store
+StateRoot=C:\apps\us-stock-reader\sm_collector_state
+# PublishDir is where the prediction ledger, the status file and the run log are written; the dashboard reads it through SMART_MOVE_LIVE_DIR (set to the same folder in the application's .env).
+PublishDir=C:\apps\us-stock-reader\sm_collector_state\live
+Python=C:\apps\us-stock-reader\backend\venv\Scripts\python.exe
+# Approved design: closest prediction deadline first, as many stocks as the per-run budget funds, calendar kept at least 3 days ahead.
+SelectPolicy=deadline
+SelectTop=80
+CalendarDaysAhead=3
+# Approved design limits (the wrapper refuses anything above them): 150 provider requests per run, 700 per New York day, one request at a time.
+Authorize=150
+DailyLimit=700
+Attestation=
+# To go live (each of these is YOUR separate decision): Mode=LIVE, Attestation=<path of the file you signed>, SMART_MOVE_COLLECTION_LIVE=1 set in the machine environment, written provider confirmation,
+# and the shared-token requirement in SMART_MOVE_LIVE_RUNBOOK.md satisfied (nothing else may use the token's three simultaneous-request slots beyond the application's own two).
+# 429 handling: the default stops everything for the rest of the New York day; SMART_MOVE_429_POLICY=backoff (machine environment) selects Retry-After + bounded backoff + circuit breaker instead.
+# P1 (development, not installed): rolling horizon with a tiered calendar refresh. 0 = off; 3..30 = days.
+# CalendarHorizonDays=30
+# SelectPolicy=deadline_priority
