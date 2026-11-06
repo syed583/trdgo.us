@@ -58,6 +58,7 @@ PUBLIC_PATHS = frozenset({
                            # login page -- no data, no leak.
     "/favicon.ico",
     "/health",
+    "/safety",             # release gate: flags + short commit, nothing secret (see main.safety_public)
 })
 
 # The one prefix that must stay a prefix: hashed build assets live under it

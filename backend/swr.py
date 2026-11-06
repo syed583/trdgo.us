@@ -90,7 +90,9 @@ def _refresh(key: str) -> None:
             with _lock:
                 _refreshing.discard(key)
 
-    threading.Thread(target=work, daemon=True, name=f"swr-{key}").start()
+    import contextvars
+    ctx = contextvars.copy_context()          # the refresh keeps the caller's API priority label
+    threading.Thread(target=lambda: ctx.run(work), daemon=True, name=f"swr-{key}").start()
 
 
 # Cache keys are built from request input, so the three dicts below must not

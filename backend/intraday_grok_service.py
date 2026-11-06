@@ -15,11 +15,14 @@ equity signals so the whole universe scores in one pass with no extra calls.
 """
 from __future__ import annotations
 
+import uw_priority as _uwp
+
 import tab_settings as _ts
 from datetime import date, datetime
 from typing import Optional
 
 import tab_settings as cfg
+import intraday_safety
 import claude_last_service as cl
 
 SOURCE = "Grok Intraday — Short-term Direction (10 signals)"
@@ -111,41 +114,65 @@ def _eq_cached(symbol: str) -> Optional[dict]:
     return swr.serve(f"earn:equity:{symbol}", lambda: eq_svc.get_analysis(symbol), _ts.EARN_CACHE_TTL)
 
 
+def _quote_snapshot(symbol: str) -> dict:
+    """The one quote every board shares for a name: price, bid, ask, spread and the provider's own quote time.
+    Cached 120 s under ONE key for all four boards (Grok, Meta, Kimi, Gemini), so the paper tracker and the
+    boards never pay for the same quote twice. The quote already carries bid and ask: no extra request."""
+    import swr
+    import unusualwhales_service as uw
+
+    def _q():
+        q = uw.get_quote(symbol) or {}
+        price = cl._f(q.get("price")) or cl._f(q.get("close"))
+        if price is None:
+            return {}
+        return {"price": price, "bid": q.get("bid"), "ask": q.get("ask"), "spread": q.get("spread"),
+                "spread_pct": q.get("spread_pct"), "quote_epoch": q.get("quote_epoch"), "quote_age_s": q.get("quote_age_s")}
+
+    # the key the safety gate reads the live-price age from (intraday_safety.price_age_s): unchanged on purpose
+    out = swr.serve(f"grokintra:px:{symbol}", _q, 120.0)
+    return out if isinstance(out, dict) else {}
+
+
 def _price_atr(symbol: str):
     """(price, atr14_daily) for entry/stop/target, lightly cached."""
     import swr
     import unusualwhales_service as uw
     import intraday_indicators as ind
 
-    def _px():
-        q = uw.get_quote(symbol) or {}
-        return cl._f(q.get("price")) or cl._f(q.get("close"))
-
     def _atr():
         return ind.atr14_daily(uw.get_daily_bars(symbol, "3 M") or [])
 
-    price = swr.serve(f"grokintra:px:{symbol}", _px, 120.0)
+    price = _quote_snapshot(symbol).get("price")
     atr = swr.serve(f"grokintra:atr:{symbol}", _atr, 6 * 3600.0)
     return price, atr
 
 
 def _levels(r: dict) -> None:
-    """Attach entry / now / tp / sl to a row (entry = price; +-0.5 ATR stop,
-    +-1.0 ATR target, 2:1), matching the Trdgo Stock board columns."""
+    """Attach entry / now / bid / ask / spread / tp / sl to a row (entry = price; +-0.5 ATR stop, +-1.0 ATR target,
+    2:1). Shared by the Grok, Meta, Kimi and Gemini boards. Bid / ask come from the quote already cached for the
+    price (a cache read, never a second request)."""
+    import swr
     try:
         price, atr = _price_atr(r["symbol"])
     except Exception:  # noqa: BLE001
         price = atr = None
     if price is None:
         return
+    q = swr.peek(f"grokintra:px:{r['symbol']}")
+    q = q if isinstance(q, dict) else {}
     r["entry"] = round(price, 2)
     r["now"] = round(price, 2)
+    r["bid"], r["ask"] = q.get("bid"), q.get("ask")
+    r["spread"], r["spread_pct"] = q.get("spread"), q.get("spread_pct")
+    r["quote_age_s"] = q.get("quote_age_s")
     if atr and r["signal"] in ("BUY", "SELL"):
         sgn = 1 if r["signal"] == "BUY" else -1
         r["sl"] = round(price - sgn * 0.5 * atr, 2)
         r["tp"] = round(price + sgn * 1.0 * atr, 2)
 
 
+@_uwp.tagged(_uwp.ESSENTIAL, "ai_boards")
 def board() -> dict:
     """Live board over the liquid universe (same ~38 names as Trdgo Stock), scored
     with the Grok 10-signal model. Top Buyers / Top Sellers / Neutral by score.
@@ -153,13 +180,22 @@ def board() -> dict:
     import ai_trade_service as ats
     from concurrent.futures import ThreadPoolExecutor
     syms = [s.upper() for s in getattr(ats, "UNIVERSE", [])]
+    try:
+        import intraday_indicators as _ind
+        phase = _ind.market_phase()
+    except Exception:  # noqa: BLE001
+        phase = None
 
     def _one(s: str):
         try:
             eq = _eq_cached(s)
             if eq and eq.get("params"):
+                eq, sig_age, src = intraday_safety.effective_eq(s, eq)
                 r = score_one(s, eq, None, {"symbol": s})
                 _levels(r)
+                intraday_safety.gate(r, phase=phase, signals_age_s=sig_age,
+                                     price_age=intraday_safety.price_age_s(s), inputs_source=src,
+                                     meta=eq.get("_meta"))
                 return r
         except Exception:  # noqa: BLE001
             return None
@@ -170,18 +206,7 @@ def board() -> dict:
         for r in ex.map(_one, syms):
             if r:
                 rows.append(r)
-    buyers = sorted([r for r in rows if r["signal"] == "BUY"], key=lambda r: r["score"], reverse=True)
-    sellers = sorted([r for r in rows if r["signal"] == "SELL"], key=lambda r: r["score"])
-    neutral = [r for r in rows if r["signal"] == "NEUTRAL"]
-    try:
-        import intraday_indicators as ind
-        phase = ind.market_phase()
-    except Exception:  # noqa: BLE001
-        phase = None
-    return {"status": "OK", "source": SOURCE, "phase": phase,
-            "buyers": buyers, "sellers": sellers, "neutral": neutral,
-            "counts": {"buy": len(buyers), "sell": len(sellers), "neutral": len(neutral)},
-            "universe": len(syms), "scored": len(rows)}
+    return intraday_safety.compose(rows, SOURCE, len(syms), phase)
 
 
 def scan(days: int = 15) -> dict:

@@ -107,8 +107,62 @@ def _no_access_gate(monkeypatch):
     yield
 
 
+@pytest.fixture(autouse=True)
+def _isolate_uw_client_state():
+    """Each test starts with an empty request memo, no in-flight requests and a fresh, unpersisted
+    budget controller -- the client reuses identical requests across modules (by design), and that
+    must never leak from one test into the next."""
+    try:
+        import unusualwhales_service as uw
+        import uw_budget
+        uw._memo.clear()
+        uw._memo_wide.clear()
+        uw._req_flights.clear()
+        uw_budget.reset_for_tests()
+    except Exception:  # noqa: BLE001
+        pass
+    yield
+
+
+_REAL_ENTRY_GATE_MODULES = ("intraday_15m", "release_check", "release_workflow", "entry_guard", "entry_lock")
+
+
+@pytest.fixture(autouse=True)
+def _entry_gate_is_real_only_in_its_own_tests(request, monkeypatch):
+    """The 15-minute entry gate has NO switch in the product, so tests about something else (freshness, budgets,
+    wiring) stand in for it with a permissive stub; only the modules whose subject IS the gate run the real one."""
+    if any(k in request.module.__name__ for k in _REAL_ENTRY_GATE_MODULES):
+        return
+    import intraday_15m
+
+    def allowed(symbol, side, phase=None, *, execution=False, now=None):
+        c = {"applies": True, "status": "CONFIRMED", "confirmed": True, "side": side, "timeframe": "15m",
+             "detail": "test stub"}
+        return {"allowed": side in ("BUY", "SELL"), "status": "CONFIRMED", "reason": "", "confirm15": c}
+
+    monkeypatch.setattr(intraday_15m, "entry_check", allowed)
+
+
 @pytest.fixture(autouse=True, scope="session")
 def _isolated_provider_ledger(tmp_path_factory):
-    """The provider ledger writes a small file; keep every test run's file out of the source tree."""
+    """The provider ledger (production A.x component) writes a small file; keep every test run's file out of the source tree."""
     os.environ.setdefault("PROVIDER_LEDGER_DIR", str(tmp_path_factory.mktemp("provider_ledger")))
     yield
+
+
+_EMBEDDED = ("market_calendar", "earnings_outcomes", "earnings_scoreboard")
+
+
+@pytest.fixture(autouse=True)
+def _restore_embedded_modules():
+    """The production diagnostic tools (backend/tools/outcome_*.py, phase2a_preview.py) load EMBEDDED copies of
+    market_calendar / earnings_outcomes / earnings_scoreboard into sys.modules while they run. Their tests must not
+    leave those copies behind for every later test (the intraday calendar has functions the embedded one lacks)."""
+    import sys
+    before = {k: sys.modules.get(k) for k in _EMBEDDED}
+    yield
+    for k, mod in before.items():
+        if mod is None:
+            sys.modules.pop(k, None) if sys.modules.get(k) is not None and getattr(sys.modules.get(k), "__file__", None) is None else None
+        elif sys.modules.get(k) is not mod:
+            sys.modules[k] = mod

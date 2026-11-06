@@ -52,6 +52,7 @@ FH_KEY = ENV.get("FINNHUB_API_KEY", "")
 
 # --------------------------------------------------------------------- HTTP --
 _last_fh = 0.0
+_slots = None
 
 
 def _http(provider: str, path: str, params: dict | None = None) -> dict:
@@ -73,7 +74,16 @@ def _http(provider: str, path: str, params: dict | None = None) -> dict:
     url = base + path + (("?" + q) if q else "")
     out = {"code": None, "data": None, "error": ""}
     for attempt in range(2):
+        slot = None
         try:
+            if provider == "UW":
+                # The provider allows three requests in flight per token. This script talks to it directly,
+                # so it takes one of the machine-wide slots the service uses -- it can never be the fourth.
+                import uw_slots
+                global _slots
+                if _slots is None:
+                    _slots = uw_slots.MachineSlots(3)
+                slot = _slots.acquire(120.0)
             with urllib.request.urlopen(urllib.request.Request(url, headers=hdr), timeout=30) as r:
                 out["code"] = r.status
                 body = r.read().decode("utf-8", "ignore") or "null"
@@ -97,6 +107,9 @@ def _http(provider: str, path: str, params: dict | None = None) -> dict:
                 time.sleep(1.0)
                 continue
             break
+        finally:
+            if slot is not None:
+                _slots.release(slot)
     if provider != "UW":
         _last_fh = time.time()
     else:

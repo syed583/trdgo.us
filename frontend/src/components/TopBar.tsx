@@ -18,7 +18,6 @@ import { applyTheme, resolveTheme, saveTheme, type Theme } from '../lib/theme';
  */
 const HEADER_NAV = [
   { to: '/ai-insights', label: 'Analysis' },
-  { to: '/ai-trade', label: 'AI Trade' },
   { to: '/options-flow', label: 'Options' },
   { to: '/market', label: 'Market' },
   { to: '/watchlist', label: 'Watchlist' },

@@ -602,13 +602,6 @@ export const api2 = {
     return request<any>(
       `/api/calls/latest/${encodeURIComponent(symbol)}${q ? `?${q}` : ''}`, s);
   },
-  aiTradeBoard: (horizon: string = 'SWING', s?: AbortSignal) =>
-    request<any>(`/api/ai-trade/board?horizon=${encodeURIComponent(horizon)}`, s),
-  aiTradeSignalLog: (horizon?: string, limit = 200, s?: AbortSignal) =>
-    request<any>(`/api/ai-trade/signal-log?limit=${limit}${horizon ? `&horizon=${encodeURIComponent(horizon)}` : ''}`, s),
-  aiTradePastDays: (days = 7, s?: AbortSignal) =>
-    request<any>(`/api/ai-trade/past-days?days=${days}`, s),
-  aiTradeSwing: (s?: AbortSignal) => request<any>('/api/ai-trade/swing', s),
   callScorecard: (horizon?: string, days = 30, symbol?: string, s?: AbortSignal) =>
     request<any>(
       `/api/calls/scorecard?days=${days}`
@@ -771,12 +764,8 @@ export const api2 = {
     request<any>('/api/grok-intraday/board', s),
   metaIntradayBoard: (s?: AbortSignal) =>
     request<any>('/api/meta-intraday/board', s),
-  chatgptIntradayBoard: (s?: AbortSignal) =>
-    request<any>('/api/chatgpt-intraday/board', s),
   allIntradayModelsScan: (s?: AbortSignal) =>
     request<any>('/api/all-intraday-models/scan', s),
-  chatgptIntradayDetail: (symbol: string, s?: AbortSignal) =>
-    request<any>(`/api/chatgpt-intraday/${encodeURIComponent(symbol)}`, s),
   geminiIntradayBoard: (s?: AbortSignal) =>
     request<any>('/api/gemini-intraday/board', s),
   geminiIntradayDetail: (symbol: string, s?: AbortSignal) =>
@@ -785,10 +774,6 @@ export const api2 = {
     request<any>('/api/kimi-intraday/board', s),
   kimiIntradayDetail: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/kimi-intraday/${encodeURIComponent(symbol)}`, s),
-  claudeProIntradayBoard: (s?: AbortSignal) =>
-    request<any>('/api/claude-pro-intraday/board', s),
-  claudeProIntradayDetail: (symbol: string, s?: AbortSignal) =>
-    request<any>(`/api/claude-pro-intraday/${encodeURIComponent(symbol)}`, s),
   metaIntradayDetail: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/meta-intraday/${encodeURIComponent(symbol)}`, s),
   grokIntradayDetail: (symbol: string, s?: AbortSignal) =>
@@ -995,7 +980,10 @@ export const api2 = {
     request<any>(`/api/institutional-intel/mapping?confidence=${encodeURIComponent(confidence)}`
       + `&limit=${limit}&offset=${offset}`, s),
 
-  // Strategy Trades -- demo 100-share paper trades from the intraday signals.
+  // SPY / QQQ / DIA live strip for the Strategy Trades page.
+  etfStrip: (s?: AbortSignal) => request<any>('/api/market/etf-strip', s),
+
+  // Strategy Trades -- demo $10,000-notional paper trades from the intraday signals.
   strategyTrades: (strategy = '', date = '', s?: AbortSignal) =>
     request<any>(`/api/strategy-trades?strategy=${encodeURIComponent(strategy)}`
       + (date ? `&date=${encodeURIComponent(date)}` : ''), s),

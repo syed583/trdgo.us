@@ -492,37 +492,6 @@ def all_intraday_models_scan() -> dict:
     return res
 
 
-@router.get("/chatgpt-intraday/board")
-def chatgpt_intraday_board() -> dict:
-    """ChatGPT Intraday LIVE board -- the TRDGO 18-parameter model."""
-    import chatgpt_intraday_service as cgi
-    import threading
-    res = swr.peek("cgptintra:board")
-
-    def _bg() -> None:
-        try:
-            swr.serve("cgptintra:board", lambda: cgi.board(), 60.0)
-        except Exception:  # noqa: BLE001
-            pass
-
-    threading.Thread(target=_bg, daemon=True).start()
-    if res is None:
-        return {"status": "WARMING", "source": cgi.SOURCE, "buyers": [], "sellers": [],
-                "neutral": [], "counts": {}}
-    return res
-
-
-@router.get("/chatgpt-intraday/{symbol}")
-def chatgpt_intraday_detail(symbol: str) -> dict:
-    """ChatGPT Intraday single-stock: 18-param score + breakdown + move size."""
-    import chatgpt_intraday_service as cgi
-    sym = symbol.upper()
-    r = cgi.score_one(sym, fetch=True)
-    if not r:
-        return {"status": "NO_DATA", "symbol": sym}
-    return {"status": "OK", **r}
-
-
 @router.get("/gemini-intraday/board")
 def gemini_intraday_board() -> dict:
     """Gemini Intraday LIVE board -- 80/20 execution model, equity signals."""
@@ -611,38 +580,6 @@ def kimi_intraday_detail(symbol: str) -> dict:
     return swr.serve(f"kimiintra:one:{sym}",
                      lambda: {"status": "OK", **kin.score_one(sym, eq, None, row)},
                      market.session_ttl(60, 900))
-
-
-@router.get("/claude-pro-intraday/board")
-def claude_pro_intraday_board() -> dict:
-    """Claude Pro Intraday LIVE board -- real intraday engine (5-min bars), the
-    7-block critique weighting. Non-blocking."""
-    import claude_pro_intraday_service as cpi
-    import threading
-    res = swr.peek("cprointra:board")
-
-    def _bg() -> None:
-        try:
-            swr.serve("cprointra:board", lambda: cpi.board(), 60.0)
-        except Exception:  # noqa: BLE001
-            pass
-
-    threading.Thread(target=_bg, daemon=True).start()
-    if res is None:
-        return {"status": "WARMING", "source": cpi.SOURCE, "buyers": [], "sellers": [],
-                "neutral": [], "counts": {}}
-    return res
-
-
-@router.get("/claude-pro-intraday/{symbol}")
-def claude_pro_intraday_detail(symbol: str) -> dict:
-    """Claude Pro Intraday single-stock: live 7-block score + breakdown + move size."""
-    import claude_pro_intraday_service as cpi
-    sym = symbol.upper()
-    r = cpi.score_one(sym, fetch=True)
-    if not r:
-        return {"status": "NO_DATA", "symbol": sym}
-    return {"status": "OK", **r}
 
 
 @router.get("/meta-intraday/board")
@@ -770,26 +707,57 @@ def all_models_scan(days: int = 15) -> dict:
 
 @router.get("/warm/progress")
 def warm_progress() -> dict:
-    """Progress of the budgeted cache warmer (this environment's own row): names done /
-    total, priority names, and Unusual Whales calls used against the daily cap."""
+    """Progress of the budgeted cache warmer (this environment's own row) and why it is running or
+    paused: names done / total, the warmer's own API calls against its budget, the quota state."""
     import local_warmer as lw
+    import uw_budget
     st = lw.load_state()
-    if st.get("day_id") == lw.day_id():
-        st["calls_today"] = st.get("calls_day", 0)
-    else:
-        st["calls_today"] = 0                      # a new counting day has begun
-    unlimited = bool(st.get("plan_unlimited", True))
-    st["calls_limit"] = None if unlimited else lw.DAILY_LIMIT      # no daily ceiling on the unlimited plan
-    st["reserve"] = None if unlimited else lw.RESERVE
-    st["counts"] = lw.summary(st)
-    st["in_live_hours"] = lw.in_live_hours()
-    st["eta_seconds"] = None
-    built = int(st.get("complete") or 0) - int(st.get("skipped_fresh") or 0)
-    started = st.get("started_at")
-    if st.get("status") == "WARMING" and started and built >= 10:    # only when it can be calculated reliably
-        per = (time.time() - float(started)) / built
-        st["eta_seconds"] = round(per * st["counts"]["pending"])
+    snap = uw_budget.get().snapshot()
+    st["calls_today"] = snap["budgets"]["warmer"]["used"]
+    st["calls_limit"] = snap["budgets"]["warmer"]["budget"]
+    st["quota_state"] = snap["quota_state"]
+    st["api_remaining"] = snap["remaining"]
+    st["warmer_gate"] = snap["warmer_gate"]
     return st
+
+
+@router.get("/safety/status")
+def safety_status() -> dict:
+    """What a deploy or rollback check reads from the RUNNING build: the mandatory 15-minute confirmation (it has
+    no switch), the entry lock and which commit is running. A build that predates it has no such route (404) --
+    treat that as NOT safe to serve trading signals."""
+    import entry_lock
+    import intraday_15m
+    import release_check
+    out = intraday_15m.status()
+    out["static_checks"] = release_check.check(release_check.read_tree())["ok"]
+    out["entry_lock"] = {**out.get("entry_lock", {}), **{k: v for k, v in entry_lock.status().items()
+                                                         if k in ("installed", "reason", "updated_at", "triggers",
+                                                                  "open_positions")}}
+    return out
+
+
+@router.get("/uw/health")
+def uw_health_status() -> dict:
+    """Read-only Unusual Whales health: OK / DEGRADED / CRITICAL with the reasons, latency (avg / p95 / p99),
+    queue waits, 429s (and concurrency 429s), 404s, timeouts, blocked state and the connection picture.
+    Makes no provider request."""
+    import uw_health
+    return uw_health.summary()
+
+
+@router.get("/uw/budget")
+def uw_budget_status() -> dict:
+    """The shared Unusual Whales budget: allowance, how usage is verified, usage per module and per
+    priority group, failures / 429s, queues, and why the warmer is or is not running."""
+    import uw_budget
+    import unusualwhales_service as uw
+    out = uw_budget.get().snapshot()
+    out["queues"] = uw._inflight.gate.queue_depth()
+    out["gate"] = {str(k): v for k, v in uw._inflight.gate.stats.items()}
+    out["reuse"] = {"memo_hits": uw._metrics.get("memo_hits", 0), "dedup_hits": uw._metrics.get("dedup_hits", 0),
+                    "network_calls": uw._metrics.get("net_calls", 0), "busy": uw._metrics.get("busy", 0)}
+    return out
 
 
 @router.get("/model-accuracy/scoreboard")
@@ -1697,148 +1665,6 @@ def calls_get(call_id: int) -> dict:
     row = calls_service.get(call_id)
     return ({"status": "OK", "call": row} if row
             else {"status": "NO_DATA", "call": None})
-
-
-@router.get("/ai-trade/signal-log")
-def ai_trade_signal_log(horizon: Optional[str] = None, limit: int = 200) -> dict:
-    """The recorded signal-change log (same events sent to the Google Sheet)."""
-    import sheet_logger
-    hz = (horizon or "").upper() or None
-    return {"status": "OK", "horizon": hz or "ALL",
-            "events": sheet_logger.recent(hz, limit)}
-
-
-@router.get("/ai-trade/past-days")
-def ai_trade_past_days(days: int = 7) -> dict:
-    """Each of the last N captured sessions' calls: which stocks were called UP
-    (Buy) and DOWN (Sell), read straight from the daily snapshots (no live
-    compute, so it is fast)."""
-    from datetime import date as _date, timedelta as _td
-    from collections import OrderedDict
-    from sqlalchemy import text
-    from database import SessionLocal
-
-    days = max(1, min(int(days or 7), 30))
-    out: "OrderedDict[str, dict]" = OrderedDict()
-    import swing_manager as _sm  # TP/SL from the entry via the swing fallback
-    try:
-        db = SessionLocal()
-        try:
-            rows = db.execute(text(
-                "SELECT symbol, snapshot_date, decision, direction_score, price "
-                "FROM score_snapshots "
-                "WHERE snapshot_date >= :since "
-                "ORDER BY snapshot_date DESC, symbol"),
-                {"since": _date.today() - _td(days=days + 2)}).all()
-        finally:
-            db.close()
-        for sym, d, dec, score, price in rows:
-            iso = d.isoformat()
-            day = out.setdefault(iso, {"date": iso, "up": [], "down": []})
-            dec_u = (dec or "").upper()
-            entry = round(price, 2) if price is not None else None
-            is_buy = "BUY" in dec_u
-            # Historical snapshots store no ATR, so TP/SL come from the swing
-            # percentage fallback off the entry -- the same levels the live
-            # engine would have shown when ATR is unknown.
-            tp = sl = None
-            if entry is not None:
-                bias = "LONG" if is_buy else "SHORT"
-                tp = _sm.target(bias, entry, None)
-                sl = _sm.initial_stop(bias, entry, None)
-            item = {"symbol": sym,
-                    "score": round(score, 0) if score is not None else None,
-                    "price": entry, "tp": tp, "sl": sl}
-            if is_buy:
-                day["up"].append(item)
-            elif "SELL" in dec_u:
-                day["down"].append(item)
-        sessions = [v for v in out.values() if v["up"] or v["down"]][:days]
-        return {"status": "OK", "days": sessions}
-    except Exception as exc:  # noqa: BLE001
-        return {"status": "ERROR", "detail": type(exc).__name__, "days": []}
-
-
-@router.get("/ai-trade/signal-audit")
-def ai_trade_signal_audit(horizon: Optional[str] = None, limit: int = 500) -> dict:
-    """Per-name intraday signal audit: every signal taken OR blocked, with the
-    scores, SPY/QQQ vs VWAP, which gates passed/failed, and the state."""
-    import signal_audit_log as audit
-    hz = (horizon or "").upper() or None
-    return {"status": "OK", "horizon": hz or "ALL",
-            "rows": audit.recent(hz, limit)}
-
-
-@router.get("/ai-trade/signal-audit.csv")
-def ai_trade_signal_audit_csv(horizon: Optional[str] = None):
-    """Download the intraday signal audit log as CSV."""
-    from fastapi.responses import StreamingResponse
-    import signal_audit_log as audit
-    hz = (horizon or "").upper() or None
-    csv_text = audit.to_csv(hz)
-    return StreamingResponse(
-        iter([csv_text]), media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=signal_audit_{hz or 'all'}.csv"})
-
-
-@router.get("/ai-trade/swing")
-def ai_trade_swing() -> dict:
-    """Open swing positions (ATR stop + trailing) and the recent alert feed."""
-    import ai_trade_service as board
-    return swr.serve("ai-trade:swing", board.swing_board, 20.0)
-
-
-@router.get("/ai-trade/board")
-def ai_trade_board(limit: int = 10, refresh: bool = False,
-                   horizon: Optional[str] = None) -> dict:
-    """Top buy- and sell-rated names, scored by the directional model."""
-    import ai_trade_service as board
-
-    # Never blocks. The ranking is composed from scores already in memory, so
-    # this is a sort, not a scan; `refresh` asks the background scanner to
-    # start another pass rather than making the caller sit through one.
-    if refresh:
-        board.prewarm()
-    hz = (horizon or "SWING").upper()
-    b = board.get_board(limit=limit, horizon=hz)
-
-    # Attach a lightweight exit target + stop to each shown Buy/Sell card, the
-    # same ATR maths the Trade Plan uses. Cached per name so this stays cheap.
-    try:
-        import trade_plan_service as tp
-        # Every shown row gets a price + a target/stop, including the NO-TRADE
-        # (held) ones -- a pinned card that has gone No Trade still shows its
-        # price. The level direction follows whichever score leans higher.
-        for side in ("buyers", "sellers", "held"):
-            for row in (b.get(side) or []):
-                sym = row.get("symbol")
-                if not sym:
-                    continue
-                im_side = row.get("im_side")
-                if im_side in ("buy", "sell"):
-                    is_buy = im_side == "buy"
-                else:
-                    is_buy = (row.get("buy_score") or 0) >= (row.get("sell_score") or 0)
-                dec = "BUY" if is_buy else "SELL"
-                lv = swr.serve(
-                    f"qlvl:{hz}:{sym}:{'B' if is_buy else 'S'}",
-                    lambda s=sym, d=dec: tp.quick_levels(s, hz, d),
-                    market.session_ttl(120, 1800))
-                if lv:
-                    row["target"] = lv.get("target")
-                    row["stop"] = lv.get("stop")
-                    row["spot"] = lv.get("spot")
-    except Exception:  # noqa: BLE001 - levels are a nicety, never break the board
-        pass
-
-    # Log any signal change (new BUY/SELL, or a BUY/SELL gone NO TRADE) to the
-    # Google Sheet, with the price it happened at. No-op unless the webhook is set.
-    try:
-        import sheet_logger
-        sheet_logger.process(hz, b)
-    except Exception:  # noqa: BLE001
-        pass
-    return b
 
 
 @router.get("/directional-model/weights")
@@ -3148,17 +2974,9 @@ def _dashboard_build(owner: Optional[str] = None) -> dict:
             "rating": (r.get("decision") or "").replace("_", " ").title() or None,
         }
 
+    # The v1 AI-Trade board was removed: setups come from the composite ranking only.
     bullish: list = []
     bearish: list = []
-    try:
-        import ai_trade_service as _board
-        b = _board.get_board(limit=10)  # cached; never triggers a fresh scan here
-        buyers = [r for r in (b.get("buyers") or []) if r.get("direction_score") is not None]
-        sellers = [r for r in (b.get("sellers") or []) if r.get("direction_score") is not None]
-        bullish = [_setup_from_board(r) for r in buyers[:5]]
-        bearish = [_setup_from_board(r) for r in sellers[:5]]
-    except Exception:  # noqa: BLE001 - fall back to the composite ranking
-        bullish, bearish = [], []
 
     setups_source = "directional" if (bullish or bearish) else "composite"
 
@@ -3549,12 +3367,51 @@ def institutional_mapping(confidence: str = "", limit: int = 100, offset: int = 
 
 @router.get("/strategy-trades")
 def strategy_trades(strategy: str = "", date: str = "") -> dict:
-    """Demo paper-trade blotter -- 100-share trades opened from the intraday
-    model signals, tracked live (entry/stop/target, live P&L, timed exit). The
-    throttled tick that opens/updates trades runs on each request. Paper only."""
+    """Demo paper-trade blotter -- $10,000-notional trades opened from the intraday model signals, tracked live
+    (entry/stop/target, breakeven trail, live P&L, 15:50 ET close). The throttled tick that opens/updates trades runs on
+    each request. Paper only. A failure is reported as status ERROR with its reason, never as an empty book."""
     import demo_trade_service as dts
     try:
         return dts.blotter(strategy, date)
     except Exception as e:  # noqa: BLE001
-        return {"status": "ERROR", "detail": str(e)[:200], "rows": [],
+        return {"status": "ERROR", "detail": f"{type(e).__name__}: {str(e)[:200]}", "rows": [],
                 "total_profit": 0, "count": 0}
+
+
+ETF_STRIP = ("SPY", "QQQ", "DIA")
+
+
+@router.get("/market/etf-strip")
+def market_etf_strip() -> dict:
+    """SPY / QQQ / DIA live boxes for the Strategy Trades page: last, change, % change, bid / ask and the time of the
+    quote. ETF quotes only (the cash indexes SPX / NDX / VIX have no provider quote and would 404). One shared 20 s cache
+    while the market is open, 10 min outside it; errors are reported, never hidden behind dashes."""
+    import unusualwhales_service as uw
+    from datetime import datetime as _dt, timezone as _tz
+
+    def _build() -> dict:
+        clock = market.market_clock() or {}
+        session = clock.get("session")
+        rows, errors = [], []
+        for sym in ETF_STRIP:
+            try:
+                q = uw.get_quote(sym)
+            except Exception as exc:  # noqa: BLE001
+                q, errors = None, errors + [f"{sym}: {type(exc).__name__}"]
+            if not q:
+                st = uw.last_status() if hasattr(uw, "last_status") else "NO_DATA"
+                rows.append({"symbol": sym, "price": None, "change": None, "change_percent": None, "bid": None,
+                             "ask": None, "updated_at": None, "age_s": None, "status": st or "NO_DATA"})
+                errors.append(f"{sym}: no quote ({st})")
+                continue
+            ep = q.get("quote_epoch")
+            rows.append({"symbol": sym, "price": q.get("price"), "change": q.get("change"),
+                         "change_percent": q.get("change_percent"), "bid": q.get("bid"), "ask": q.get("ask"),
+                         "updated_at": _dt.fromtimestamp(ep, _tz.utc).isoformat() if ep else None,
+                         "age_s": q.get("quote_age_s"), "status": "OK"})
+        return {"status": "ERROR" if errors and len(errors) == len(ETF_STRIP) else "OK",
+                "detail": "; ".join(errors) if errors else None,
+                "market_open": session == "OPEN", "session_label": clock.get("label") or session or "unknown",
+                "time_et": clock.get("time_et"), "rows": rows}
+
+    return swr.serve("market:etf-strip", _build, market.session_ttl(20.0, 600.0))

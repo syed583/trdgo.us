@@ -41,3 +41,6 @@ tools/
 .idea/
 .DS_Store
 Thumbs.db
+
+# rotating application logs (tracker.log, uw.log)
+backend/logs/

@@ -20,17 +20,14 @@ PINS = {
     "earnings_engine.py": "d2da225e84ecae07e3da3429639828e38fa7b87db033b067d45e22cdc1cd9039",
     "earnings_equity_service.py": "516f87dbdca1acf76e7cdeb08053295f17231f6fee85ee908054ac93527d23f3",
     "earnings_trade_service.py": "32e7db8f5a2ac1719764884f2390af9d9c0cb74500aa159de2fbfbad920cd931",
-    "tab_settings.py": "b45280fd7d4ff1226fdaee7db0459835d8baee98e8df332d93f0dcd1dd6cf4f9",
-    "chatgpt_intraday_service.py": "3d9ec4dd2f16c0b36571686fad49451302760e379f5898a717425ba5bfa32bf5",
-    "claude_pro_intraday_service.py": "14b76e081b4beaff3095413bec5a16d3054ab9ee5b60b10ff936a97f1ef7e0d0",
-    "gemini_intraday_service.py": "53ebd1c0e7183b84087e2858e730720ad2d64c5ef75a2eef681ffdb24ca874d1",
-    "intraday_grok_service.py": "fe3bbaeed69ffc7364e73562b192912c459faf4f4fdb31dad205912f5d5fb2a9",
-    "kimi_intraday_service.py": "3323173a08432aec2bdc27b605b379a9e72f4094daae6deaaba62e0177be5baa",
-    "meta_intraday_service.py": "907cb26865e76d5027cb43438558e67ad3ab692cd1047ddac0edb2a41546b064",
-    "intraday_model.py": "a27a8f5cc0d98128ff21cdae5b1fb0148d005a3f3677e7054e978c64c5438058",
+    "tab_settings.py": "759fe7dd0d54795f14d78f2139af92a23933cf49c56523a7960aabdfa44fc05e",
+    "gemini_intraday_service.py": "5b0ba43b68b60ef58de116123e4497924046e5639e0ddaced1685566b84cac20",
+    "intraday_grok_service.py": "f23e8626543a3764bba25a56e5b988792b6b96c4ee6391fda463764f604ae6dc",
+    "kimi_intraday_service.py": "03ad3db52a75e7fb193a9226b68ceba06c41926391ad830387b21a56fc4a2e90",
+    "meta_intraday_service.py": "afae7e3c83b62de3324f58eb48feaed900ed71bf08e6906e82e5feb362833740",
+    "intraday_model.py": "4b5cf66d5b691405b42250b7129dd65cca86d91751ebba5306b72d890a31f77a",
     "intraday_model_service.py": "0890228c60dccf7accdbcec66b83f2ab497c89c6564156551a44195bb413e92c",
-    "intraday_signal_engine.py": "1b46f1830206f75d455b86ce8be91d1274d56e7088dc1285a01619d71f0bed87",
-    "intraday_signal_v2.py": "2fd9899816d31fba09b4695c78aeca4aa0d65e3c358fbdd43f354575b7ffd41d",
+    "intraday_signal_v2.py": "dfc6065ef70176ed5219d70b9f09063f8081fadfaa9541f68ff36a05a2337492",
     "intraday_indicators.py": "91c40a7ed0097dd2c26983dc56025367949d170fe28bef2387403b42c2a70fc8",
     "intraday_inputs.py": "50c6c2c693b0474a9ca71f5a59edc18aae3402b5c66689e56bb534dfbcf0952b",
     "intraday_enrich.py": "a759943c8f6c2876f1158ae990cd119134f5a81a66702526e2dda1b49c068d9d",
@@ -38,7 +35,7 @@ PINS = {
     "directional_model.py": "b0401ad55658a7cf04f78a57f86a5b6cc2d8f2eb5d72ea1b7c40f36f95bacdc6",
     "directional_signals.py": "8e2d2399f2f0c5e6bc47612740d22ed68a48860a3203ad98029e08e7d18cd3cb",
     "directional_score_service.py": "5451619653cdeb6d52c808a64d7f6b5df093c43d1040c39323773ffc7d2f374d",
-    "signal_verification.py": "13496b90d59567138ac87c098ad5ab0d478d834093eceda8e65674346ab567ed",
+    "signal_verification.py": "500780848ded88fb7455b6a1e1af2ddd89af24c89cee04705ea7c4c8c06495fd",
 }
 
 BACKEND = pathlib.Path(__file__).resolve().parent.parent
@@ -56,7 +53,7 @@ def test_no_scoring_module_differs_from_the_production_base():
 def test_eight_earnings_models_and_intraday_models_are_all_covered():
     earnings = {"claude_last_service.py", "claude_pro_service.py", "gemini_service.py", "grok_service.py",
                 "chatgpt_service.py", "meta_service.py", "kimi_service.py", "pre_earnings_direction_service.py"}
-    intraday = {"chatgpt_intraday_service.py", "claude_pro_intraday_service.py", "gemini_intraday_service.py",
-                "intraday_grok_service.py", "kimi_intraday_service.py", "meta_intraday_service.py"}
+    # the ChatGPT and Claude Pro intraday boards were retired (2026-11-06): four intraday boards remain
+    intraday = {"gemini_intraday_service.py", "intraday_grok_service.py", "kimi_intraday_service.py", "meta_intraday_service.py"}
     assert earnings <= set(PINS) and intraday <= set(PINS) and "tab_settings.py" in PINS
-    assert len(PINS) == 30
+    assert len(PINS) == 27

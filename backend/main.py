@@ -59,6 +59,15 @@ def _startup(fn):
     return fn
 
 
+@_startup
+def _enforce_fifteen_minute_confirmation() -> None:
+    """The 15-minute confirmation has no switch; report loudly if anyone tries to configure around it."""
+    import intraday_15m
+    intraday_15m.assert_enforced()
+    intraday_15m.boot_self_check()              # a partly deployed build refuses every entry until it is fixed
+    intraday_15m.status()                       # remember which commit THIS process started with
+
+
 def _bg(fn):
     """
     Register a background warmer/scanner startup task -- unless DISABLE_WARMERS
@@ -450,14 +459,16 @@ def _warm_earnings_universe() -> None:
     import time
 
     # Production only: the budgeted warmer (local_warmer) refreshes the top-1000 liquid
-    # names reporting in the next 10 trading days once a day, within 13,000 Unusual
-    # Whales calls/day. It replaces the old unbounded "re-warm every 30 minutes" loop.
+    # names reporting in the next 10 trading days once a day, with background-work
+    # limits (market-hours caps, runaway guards). It replaces the old unbounded "re-warm every 30 minutes" loop.
     # Development machines never start it automatically (warm by hand if wanted).
     import os
     if (os.environ.get("APP_ENV") or "").strip().lower() == "production":
         def start() -> None:
             time.sleep(25)
+            import intraday_feed
             import local_warmer
+            intraday_feed.start_background()        # fresh time-sensitive inputs for the six AI boards
             local_warmer.start_background()
         threading.Thread(target=start, name="warmer-boot", daemon=True).start()
 
@@ -475,6 +486,8 @@ def _capture_earnings_signals() -> None:
     def loop() -> None:
         import boot_guard
         time.sleep(120)
+        import uw_priority
+        uw_priority.set_thread_default(uw_priority.WARMER, "earnings_capture")
         boot_guard.wait_until_due("earnings-capture", 12 * 3600)
         while True:
             try:
@@ -542,13 +555,18 @@ def _start_demo_trade_tracker() -> None:
 
     def loop() -> None:
         import demo_trade_service as dts
+        import uw_priority
+        uw_priority.set_thread_default(uw_priority.ESSENTIAL, "paper_trade_tracker")   # priority 2
         while True:
             try:
                 if dts.should_tick():
                     dts.tick(force=True)
             except Exception:  # noqa: BLE001
                 pass
-            _t.sleep(60)
+            try:
+                _t.sleep(dts.sleep_seconds())       # 60 s; wakes at the official close when that is sooner (workflow v2)
+            except Exception:  # noqa: BLE001
+                _t.sleep(60)
 
     threading.Thread(target=loop, name="demo-trade-tracker", daemon=True).start()
 
@@ -593,6 +611,8 @@ def _start_snapshot_loop() -> None:
         import time
         import boot_guard
 
+        import uw_priority
+        uw_priority.set_thread_default(uw_priority.WARMER, "snapshots")
         boot_guard.wait_until_due("snapshots", 6 * 3600)
         while True:
             try:
@@ -655,6 +675,8 @@ def _start_calendar_sync() -> None:
         from datetime import date, timedelta
         import boot_guard
 
+        import uw_priority
+        uw_priority.set_thread_default(uw_priority.WARMER, "calendar_sync")
         boot_guard.wait_until_due("calendar-sync", 24 * 3600)
         while True:
             try:
@@ -707,6 +729,8 @@ def _start_call_scorecard() -> None:
         import time
         import boot_guard
 
+        import uw_priority
+        uw_priority.set_thread_default(uw_priority.WARMER, "call_scorecard")
         boot_guard.wait_until_due("call-scorecard", 1800)
         while True:
             try:
@@ -738,6 +762,8 @@ def _start_market_pulse_warmer() -> None:
         import time
         import boot_guard
 
+        import uw_priority
+        uw_priority.set_thread_default(uw_priority.DASHBOARD, "market_pulse")
         boot_guard.wait_until_due("market-pulse", 600)
         while True:
             try:
@@ -754,60 +780,6 @@ def _start_market_pulse_warmer() -> None:
 
     threading.Timer(10.0, lambda: threading.Thread(
         target=loop, daemon=True, name="market-pulse-warm").start()).start()
-
-
-@_bg
-def _start_ai_trade_board() -> None:
-    """
-    Keep the AI Trade board scoring, continuously.
-
-    The page polls once a minute, which is only worth doing if something has
-    changed in between -- so the scan runs back to back rather than on a long
-    timer. Each pass picks up where the last stopped, so every name in the
-    universe is rescored on a rolling basis and the ranking moves as the scan
-    reaches each one.
-
-    A pass is bounded, and the pause between passes is short but real: it
-    keeps a failing provider from being hammered in a tight loop.
-    """
-    import threading
-
-    def loop() -> None:
-        import time
-
-        try:
-            import ai_trade_service as board
-
-            # Pick up where the last run of the server left off, so a restart
-            # does not show an empty board for the ten minutes it takes the
-            # rolling scan to fill one.
-            board._load_rows()
-        except Exception:  # noqa: BLE001
-            pass
-
-        import boot_guard
-
-        boot_guard.wait_until_due("ai-trade-board", 600)      # rows were just reloaded from the DB
-        while True:
-            try:
-                import ai_trade_service as board
-
-                board.get_board(refresh=True)
-                boot_guard.mark("ai-trade-board")
-                # The scanner asks the service how long to wait: the rule
-                # depends on the market session and belongs with the scan,
-                # not here.
-                pause = board.next_pause()
-            except Exception:  # noqa: BLE001 - never take down the server
-                # Back off on failure rather than spinning on a provider that
-                # is refusing every call.
-                pause = 120.0
-            time.sleep(pause)
-
-    # Started early on purpose: the first pass is the slow one, and doing it
-    # before anyone opens the tab is the whole point of having a warmer.
-    threading.Timer(20.0, lambda: threading.Thread(
-        target=loop, daemon=True, name="ai-trade-board").start()).start()
 
 
 # ---------------------------------------------------------
@@ -850,6 +822,23 @@ def api_root():
 # ---------------------------------------------------------
 # HEALTH CHECK
 # ---------------------------------------------------------
+
+@app.get("/safety")
+def safety_public() -> dict:
+    """Public, minimal, read-only: what the release tooling needs to confirm that the RUNNING build keeps the
+    mandatory 15-minute confirmation (it has no switch) before entries are unlocked. No credential, no host, no
+    data -- flags and a short commit only; the detailed view is /api/safety/status (signed-in users)."""
+    import intraday_15m
+    import release_check
+    st = intraday_15m.status()
+    build = st.get("build") or {}
+    return {"confirm15_required": st["confirm15_required"], "can_be_disabled": st["can_be_disabled"],
+            "static_checks": release_check.check(release_check.read_tree())["ok"],
+            "unsafe_build": st.get("unsafe_build"), "entry_locked": (st.get("entry_lock") or {}).get("locked"),
+            "commit": (build.get("commit") or "")[:12] or None, "uncommitted_changes": build.get("uncommitted_changes"),
+            "running_matches_tree": st.get("running_matches_tree"), "environment": st.get("environment"),
+            "database_dialect": (st.get("database") or {}).get("dialect")}
+
 
 @app.get("/health")
 def health_check():

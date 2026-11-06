@@ -18,6 +18,8 @@ signal engine layer (intraday_signal_v2) which wraps this scorer with state.
 """
 from __future__ import annotations
 
+import uw_priority as _uwp
+
 from typing import Optional
 
 import intraday_indicators as ind
@@ -129,6 +131,14 @@ def bars_meta(symbol: str, critical: bool = False) -> tuple[list, bool]:
 
     res = swr.serve(f"im2:bars:{symbol}", _build, 30.0) or {}
     return res.get("bars") or [], bool(res.get("stale"))
+
+
+def newest_bar_age_s(bars: list) -> Optional[float]:
+    """Seconds since the start of the newest candle (None if there is none)."""
+    norm = ind._norm(bars)
+    if not norm:
+        return None
+    return max(0.0, (ind.now_et() - norm[-1]["dt"]).total_seconds())
 
 
 def _bars(symbol: str, critical: bool = False) -> list:
@@ -627,6 +637,7 @@ def _liquidity_from_candles(candles, spot, today, min_price, min_avgvol) -> Opti
     return avg >= min_avgvol
 
 
+@_uwp.tagged(_uwp.LIVE, "intraday_engine")
 def score(symbol: str) -> dict:
     """The one shared v2 scorer. Pure function of (symbol, now ET); cached ~45s
     so both screens read the same numbers in the same minute."""
@@ -640,6 +651,16 @@ def _compute(symbol: str) -> dict:
     spy_bars, spy_stale = bars_meta("SPY", critical=True)
     bars_meta("QQQ", critical=True)       # warm QQQ (shared cache) up front
     bars, _stock_stale = bars_meta(symbol, critical=False)
+    # Fresh data is judged by the CANDLE's own time, not by when it was fetched: in the regular session
+    # the newest 5-minute candle must have started within one bucket plus the price/volume limit.
+    if ind.market_phase() == "rth":
+        lim = 300.0 + float(cfg.INTRADAY_FRESHNESS["price_volume"][1])
+        a = newest_bar_age_s(bars)
+        if bars and (a is None or a > lim):
+            _stock_stale = True
+        a = newest_bar_age_s(spy_bars)
+        if spy_bars and (a is None or a > lim):
+            spy_stale = True
     spot = ind.last_price(bars)
     spy_sess = ind.session_bars(spy_bars)
     spy_chg = ind.pct_change_today(spy_bars)
@@ -730,6 +751,8 @@ def _compute(symbol: str) -> dict:
 
     if market_stale and status == "OK":
         status = "MARKET_STALE"               # don't silently show NO EDGE
+    elif _stock_stale and status == "OK":
+        status = "STOCK_STALE"                # the stock's own 5-min bars are reused last-good data
 
     return {
         "symbol": symbol, "model": MODEL,
@@ -739,6 +762,7 @@ def _compute(symbol: str) -> dict:
         "gates": gates, "spy_above_vwap": spy_above,
         "vwap": round(vw, 2) if vw is not None else None,
         "atr": atr(symbol),
-        "market_stale": market_stale, "spy_status": spy_status, "bars_ok": bars_ok,
+        "market_stale": market_stale, "stock_stale": _stock_stale,
+        "spy_status": spy_status, "bars_ok": bars_ok,
         "params": ordered,
     }

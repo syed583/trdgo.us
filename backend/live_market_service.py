@@ -112,6 +112,12 @@ class _TTLCache:
             return None
         return value
 
+    def age(self, key: str):
+        """Seconds since ``key`` was written, or None."""
+        with self._lock:
+            hit = self._data.get(key)
+        return None if not hit else max(0.0, time.time() - hit[0])
+
     def put(self, key: str, value: Any) -> None:
         with self._lock:
             self._data[key] = (time.time(), value)

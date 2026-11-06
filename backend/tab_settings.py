@@ -348,23 +348,210 @@ TIMING_MULT: dict[str, float] = {"bmo": 1.0, "amc": 1.0, "tue_thu": 1.0, "mon_fr
 EARN_CACHE_TTL: float = 48 * 3600.0
 
 
-# Signal verification (signal_verification.py): independently re-derives each BUY / SELL's score from its parameters, weights and the
-# existing formula and judges the data behind it. "off" | "audit", set by the environment variable INTRADAY_VERIFICATION_MODE
-# (default off). AUDIT ONLY: it records the outcome after the paper-trade tick has committed and never blocks, delays or changes a
-# trade; there is deliberately no enforcing mode.
+# Intraday data-safety gate (intraday_safety.py): the six AI intraday boards show WAIT / LOW DATA
+# instead of a signal when their inputs are older than this for the current session phase, the
+# live price is stale, or too little of the model's weight has data. Symmetric for BUY and SELL.
+INTRADAY_SAFETY: dict = {
+    # Per-signal limits live in INTRADAY_FRESHNESS; only the live price limit is generic.
+    "max_price_age_s": 300.0,
+    # Coverage is judged against the weight the model can actually have on that path (some models
+    # have parameters with no data source at all), not against 100%.
+    "min_coverage_ratio": 0.75,
+    "min_coverage_floor_pct": 30.0,
+}
+
+
+# ---------------------------------------------------------------------------------------------
+# Unusual Whales API budget and priority (uw_budget.py / uw_priority.py)
+# ---------------------------------------------------------------------------------------------
+# Every number here is a CONFIGURATION, not a measurement. Verify the real allowance on the
+# provider dashboard and record the day's usage with `python uw_budget_cli.py usage N`; until a
+# reading (or provider headers) verifies the quota the historical warmer stays paused.
+UW_BUDGET: dict = {
+    # The plan has UNLIMITED daily requests (dashboard + provider support, 2026-10-23); the provider's only
+    # limit is 3 simultaneous requests per token. So these are SAFETY RAILS against a runaway loop, sized
+    # from measured need (full 38-name intraday coverage ~22k/day), not quotas. Starting values: calibrate
+    # against /api/uw/budget and the provider's 429 count after deployment.
+    "plan_unlimited": True,        # the plan has no daily cap (dashboard + support): no quota to verify, no warmer pause
+    "daily_limit": 1_000_000,      # a RUNAWAY ceiling far above any observed day (the busiest day seen: ~410k)
+    "yield_wait_s": 2.0,           # background work stands aside while live/essential requests wait this long (p95)
+    "yield_window_s": 60.0,        # ... measured over the last minute
+    "yield_min_samples": 5,
+    "module_hourly_runaway": 12000,   # no single dashboard / warmer module may make more than this in one hour
+    "emergency_reserve": 1000,     # the last calls belong to the live intraday engine only
+    "intraday_budget": 44000,      # priorities 1+2 together: live share + essential_budget
+    "essential_budget": 15000,     # priority 2 alone (needs ~6.5k): the rest of intraday_budget is the live engine's
+    "feed_hourly_cap": 2500,       # the six boards' shared feed (module "ai_boards") per clock hour (needs ~850)
+    "live_hard_cap": 30000,        # priority 1 HARD LIMIT per provider day = live share + reserve (needs ~12.6k)
+    "live_hourly_cap": 4000,       # priority 1 per clock hour (needs ~1.95k)
+    "candles15_hourly_cap": 400,   # the 15-minute candle refresh (module "candles_15m") per clock hour (needs ~160)
+    "other_budget": 100000,        # priority 3: everything else a page asks for
+    "other_session_hourly_cap": 6000,   # ...and at most this per hour while the market is open
+    "warmer_budget": 60000,        # priority 4: historical warming, per provider day
+    "warmer_hourly_cap": 400,      # ...at most this per hour while the market is open (live trading owns the connections)
+    "warmer_offsession_hourly_cap": 6000,   # ...and this per hour outside the session
+    "reset_hour_et": 20,           # the provider day resets at 8 pm US Eastern (confirmed by the dashboard)
+    "dashboard_reading_max_age_s": 6 * 3600,   # how long a typed-in dashboard reading is trusted
+    "provider_headers_max_age_s": 600,
+    "cooldown_429_s": {3: 120, 4: 900},        # after a RATE 429: dashboards wait 2 min, the warmer 15 min
+    "cooldown_429c_s": {3: 15, 4: 60},         # after "too many at once": a short, transient pause
+}
+
+# One request answered for every module: identical requests inside these windows (seconds) share one
+# provider call, whoever asks. Live prices are barely reused; slow data is held long on purpose.
+UW_MEMO_TTL_S: dict = {
+    "quote": 10.0, "bars_intraday": 20.0, "bars_daily": 600.0,
+    "options_flow": 30.0, "options_volume": 60.0, "options_positioning": 120.0,
+    "earnings_fundamentals": 6 * 3600.0, "ownership_insider": 12 * 3600.0, "news": 300.0,
+}
+
+# Freshness the intraday boards need, BY KIND OF DATA: (live seconds, maximum seconds for a new entry).
+# "live" = fresh enough to call the data LIVE; beyond "max" the input is STALE and may not support an
+# entry. Slow data (earnings, ownership) is deliberately NOT held to a 10-minute rule.
+INTRADAY_FRESHNESS: dict = {
+    "price_volume": (120.0, 300.0),
+    "engine_score": (180.0, 360.0),      # the live 5-minute engine's per-name score (rescanned every ~3 min)
+    "options_flow": (600.0, 1200.0),
+    "market_breadth": (600.0, 1200.0),
+    "options_positioning": (1800.0, 3600.0),
+    "price_action_daily": (900.0, 1800.0),
+    "daily_oi": (6 * 3600.0, 12 * 3600.0),
+    "earnings_fundamentals": (24 * 3600.0, 48 * 3600.0),
+    "ownership_insider": (3 * 86400.0, 7 * 86400.0),
+}
+
+# Tiered live scanning (intraday_tiers.py). All names stay visible; the live engine's API budget goes to
+# the names closest to an actionable BUY / SELL first. Periods are how often a tier is rescored.
+INTRADAY_TIERS: dict = {
+    "enabled": True,
+    "hot_period_s": 180.0,          # open positions and pending confirmations only
+    "warm_period_s": 300.0,         # every other name the budget affords, strongest first (inside the 360 s engine-score limit)
+    "cold_period_s": 900.0,         # near-neutral names: they cannot be actionable without moving first
+    "cold_max_period_s": 1800.0,    # ...stretched to this, no further, when the budget cannot afford 15 minutes
+    "budget_safety": 0.9,           # plan for 90% of the hourly live budget, never all of it
+    "default_cost_per_pass": 6.0,   # live requests per rescore until the engine has measured its own
+    "min_hours_left": 0.5,
+}
+
+# Simulated execution of the paper trades (paper_fills.py). This is the ACCOUNTING of a simulated fill; it never
+# changes a signal, a score or the condition that closes a trade -- only the price a close is booked at.
+PAPER_EXECUTION: dict = {
+    "fill_model": "observed",         # STOP / TARGET are booked at the price that actually crossed the level (gap-aware);
+                                      # "gap_aware" = at the level inside a session, observed only across a closed period;
+                                      # "level" = always at the level (the old convention), kept for comparison
+    "max_price_age_s": 300.0,         # a board price older than this is not an executable price (exits)
+    "max_unpriced_trading_days": 5,   # a due close with no reliable price this long is closed as NO_PRICE (no fill invented)
+    # --- the paper tracker's entry rules (pure intraday) ---
+    "notional_usd": 10_000.0,         # every trade = this much at entry: shares = floor(notional / entry price)
+    "quote_max_age_s": 60.0,          # the live quote an ENTRY is priced at must be younger than this (else no entry)
+    "entry_start": "10:00",           # new entries only from here (ET) ...
+    "entry_end": "15:00",             # ... until here, and never later than close - 60 min (early-close days)
+    "eod_minutes_before_close": 10,   # every open position is closed this long before the official close (15:50 / 12:50)
+    "breakeven_at": 0.5,              # stop moves to the entry once profit reaches this share of the target distance
+}
+
+# Life of a live signal row (intraday_signal_v2.py). A signal is a same-day idea; one that is still open from an earlier
+# session is "carried" and keeps being managed, but only for this many trading days back. An older open row is STALE:
+# it is never managed or closed automatically (no price a week later is a fair exit), it never blocks a new signal for
+# its symbol, it is reported as unresolved, and an operator can expire it on purpose (no P&L) -- see expire_stale().
+INTRADAY_LIFECYCLE: dict = {
+    "max_carry_trading_days": 1,      # today and the previous trading day are managed; older open rows are stale
+}
+
+# 15-minute candle confirmation (intraday_15m.py). It never changes a score: it decides whether a
+# BUY / SELL that already passed every other gate may be shown as actionable.
+INTRADAY_15M: dict = {
+    "bar_minutes": 15,
+    "history_bars": 100,            # candles requested (~4 sessions): EMA / RSI warm-up
+    "min_bars": 22,                 # validated RTH closed bars needed for EMA21 (and RSI14)
+    "min_session_bars": 2,          # closed bars of TODAY's session needed (VWAP); the first bar closes 09:45 ET
+    "max_close_lag_s": 1200.0,      # the newest CLOSED bar may have ended at most this long ago (15 min + grace)
+    "recheck_after_close_s": 25.0,  # refetch this long after a bar boundary (the provider needs a moment)
+    "rsi_bull": 52.0, "rsi_bear": 48.0,
+    "ema_fast": 9, "ema_slow": 21, "rsi_period": 14,
+    "contiguous_bars": 6,           # the newest N closed bars of today must have no hole in them
+}
+
+# The shared feed (intraday_feed.py) refreshes each KIND of data on its own schedule: options flow and
+# live price action on every cycle, dealer positioning / IV history / disparity inputs only when they
+# are about to pass their own (longer) freshness limit, daily open-interest change even more rarely.
+# Every signal carries the timestamp of ITS data, never the time of the last feed cycle.
+INTRADAY_FEED: dict = {
+    "split": True,                   # False => every cycle refetches everything (the old behaviour)
+    "slow_refresh_fraction": 0.7,    # a slow group is refetched at this share of its "live" limit
+    "flow_upstream_cache_s": 60.0,   # the tape cache under the flow fetchers (TTL_TAPE): its worst-case age
+    "slow_upstream_cache_s": 120.0,  # the request memo under the positioning / OI fetchers: its worst-case age
+}
+
+# Which kind of data each directional signal rests on.
+SIGNAL_DATA_TYPE: dict = {
+    "options_flow": "options_flow", "unusual_activity": "options_flow", "volume_pcr": "options_flow",
+    "flow_by_expiry": "options_flow",
+    "key_levels": "options_positioning", "oi_positioning": "options_positioning",
+    "implied_volatility": "options_positioning", "expected_move": "options_positioning",
+    "disparity": "options_positioning",
+    "daily_oi_change": "daily_oi",
+    "ema_trend": "price_action_daily", "rsi": "price_action_daily", "price_action": "price_action_daily",
+    "event_radar": "earnings_fundamentals", "earnings_results": "earnings_fundamentals",
+    "dividend_trend": "earnings_fundamentals", "merger_activity": "earnings_fundamentals",
+    "funding_activity": "earnings_fundamentals",
+    "insider_activity": "ownership_insider", "fund_flows": "ownership_insider",
+}
+
+
+# ---------------------------------------------------------------------------------------------
+# Intraday paper-trade WORKFLOW v2 (intraday_workflow.py / intraday_execution.py)
+# ---------------------------------------------------------------------------------------------
+# The six strategies' scores, weights, formulas and the BUY >= 55 / SELL <= 45 cutoffs are NOT touched by anything here. This
+# is the trade-PERMISSION layer: sessions, data validation, confirmation, duplicate protection, risk limits, evidence and the
+# end-of-day close.
+#
+# ``mode``:  "legacy" = the behaviour of release 277f30f (unchanged code path, kept for comparison and rollback);
+#            "shadow" = Legacy stays the ONLY workflow that opens paper trades; V2 evaluates the same boards and writes only to its
+#                       own shadow tables (virtual book, decision log). Needs the owner's approval to switch on anywhere.
+#            "v2"     = the session workflow. Switching it on in production needs the owner's explicit approval.
+INTRADAY_WORKFLOW: dict = {"mode": "legacy"}
+
+# Signal verification (signal_verification.py): independently re-derives each BUY / SELL's score from its parameters, weights
+# and the existing formula and judges the data behind it. "off" | "audit". AUDIT ONLY: it records the outcome and never blocks,
+# delays or changes a trade; there is deliberately no enforcing mode (adding one needs the owner's explicit approval).
 import os as _os
 INTRADAY_VERIFICATION: dict = {"mode": (_os.getenv("INTRADAY_VERIFICATION_MODE") or "off").strip().lower(), "score_tolerance": 0.05,
                                "max_seconds": 5.0}
 
-
-# Unusual Whales plan policy for the cache warmer. The subscription (Whale Bundle Advanced) has UNLIMITED daily
-# requests; the provider's only limit is 3 simultaneous in-flight REST requests per token across every process
-# that uses it (enforced in unusualwhales_service). Set unlimited_daily False only if the account ever gets a quota.
-UW_PLAN: dict = {
-    "unlimited_daily": True,
-    "daily_limit_if_capped": 13000,    # used ONLY when unlimited_daily is False
-    "hourly_cap_live_hours": 400,      # warming requests per clock hour, weekdays 04:00-20:00 ET (live trading owns the connections)
-    "hourly_cap_off_hours": 6000,      # ... and outside those hours
-    "max_tries_per_symbol": 3,         # then the symbol ends as PARTIAL_DATA / failed for the day
-    "retry_delay_s": 600,              # base delay between a symbol's tries (x the try number)
+# EVERY value below is a PROPOSED starting value, NOT a tested or approved production value. Where an existing system constant
+# already says the same thing it is reused and named. The workflow records the evidence needed to calibrate the rest (every
+# candidate signal, its quote, spread and coverage, accepted or rejected, is stored), so these can be tuned from data.
+INTRADAY_EXEC: dict = {
+    "status": "PROPOSED - not approved for production",
+    # -- the regular-session opening rule (OFF until approved; with it off the behaviour is exactly the tested V2 default) --
+    #    enabled: no NEW V2 entry from no_entry_start up to no_entry_end (existing positions keep being managed), and from
+    #    no_entry_end on BOTH the 5-minute and the 15-minute readings must exist, be fresh and agree (a 15-minute warm-up,
+    #    a missing or an invalid reading refuses -- "subject to actual data availability" means: no data, no entry).
+    "opening_rule": {"enabled": False, "no_entry_start": "09:30", "no_entry_end": "10:00", "require_both_after_end": True},
+    # -- coverage (judged on the parameters ELIGIBLE for this strategy in this session, not on 100) --
+    "min_eligible_coverage_pct": MIN_COVERAGE_PCT,          # existing constant (70), also the live engine's COVERAGE_MIN
+    "min_agreement": V3_CONFIDENCE["min_agreement"],       # existing constant (0.55): share of covered weight on the signal's side
+    # -- persistence: the same side seen on this many DISTINCT evidence snapshots, at least this far apart --
+    "min_observations": 2,
+    "min_span_s": 120.0,
+    # -- executable quote --
+    "quote_max_age_s": {"PREMARKET": 120.0, "REGULAR": 300.0},   # existing INTRADAY_FRESHNESS["price_volume"] live / maximum
+    "max_spread_pct": {"PREMARKET": 0.10, "REGULAR": 0.20},      # PROPOSED; pre-market is held to the tighter limit on purpose
+    "require_bid_ask": {"PREMARKET": True, "REGULAR": False},    # pre-market needs a two-sided quote; regular uses it when present
+    "max_price_discrepancy_pct": 0.50,                           # PROPOSED: fresh quote vs the board price the signal was priced at
+    "min_price": 10.0,                                           # existing live-engine liquidity floor (LIQ_MIN_PRICE)
+    "min_avg_daily_volume": 1_000_000,                           # existing live-engine liquidity floor (LIQ_MIN_AVGVOL)
+    # -- risk (paper capital; sizing never exceeds the existing 100-share convention) --
+    "quantity": 100,                                             # existing fixed size
+    "paper_capital_usd": 1_000_000.0,                            # PROPOSED
+    "max_open_total": 60, "max_open_per_strategy": 15,           # PROPOSED
+    "max_exposure_total_usd": 1_000_000.0,                       # PROPOSED (gross, long + short)
+    "max_exposure_per_strategy_usd": 250_000.0,                  # PROPOSED
+    "max_exposure_per_symbol_usd": 60_000.0,                     # PROPOSED (gross, all six strategies)
+    "max_strategies_same_symbol_side": 3,                        # PROPOSED: correlated duplicates across the six strategies
+    "daily_loss_limit_per_strategy_usd": 5_000.0,                # PROPOSED (realized + unrealized, new entries stop; exits continue)
+    "daily_loss_limit_total_usd": 15_000.0,                      # PROPOSED
+    # -- end of day --
+    "close_grace_s": 300.0,                                      # PROPOSED: a close price observed this soon after the bell is still "the close"
 }

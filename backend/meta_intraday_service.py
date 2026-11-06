@@ -13,10 +13,13 @@ signals; reuses Grok Intraday's board plumbing (cache + entry/TP/SL levels).
 """
 from __future__ import annotations
 
+import uw_priority as _uwp
+
 from datetime import date, datetime
 from typing import Optional
 
 import tab_settings as cfg
+import intraday_safety
 import claude_last_service as cl
 import intraday_grok_service as ig   # reuse _eq_cached / _price_atr / _levels
 
@@ -93,18 +96,28 @@ def score_one(symbol: str, eq: dict, trade: Optional[dict] = None,
             "low_confidence": low_conf}
 
 
+@_uwp.tagged(_uwp.ESSENTIAL, "ai_boards")
 def board() -> dict:
     """Live board over the liquid universe, scored with the 7-signal model."""
     import ai_trade_service as ats
     from concurrent.futures import ThreadPoolExecutor
     syms = [s.upper() for s in getattr(ats, "UNIVERSE", [])]
+    try:
+        import intraday_indicators as _ind
+        phase = _ind.market_phase()
+    except Exception:  # noqa: BLE001
+        phase = None
 
     def _one(s: str):
         try:
             eq = ig._eq_cached(s)
             if eq and eq.get("params"):
+                eq, sig_age, src = intraday_safety.effective_eq(s, eq)
                 r = score_one(s, eq, None, {"symbol": s})
                 ig._levels(r)
+                intraday_safety.gate(r, phase=phase, signals_age_s=sig_age,
+                                     price_age=intraday_safety.price_age_s(s), inputs_source=src,
+                                     meta=eq.get("_meta"))
                 return r
         except Exception:  # noqa: BLE001
             return None
@@ -115,15 +128,4 @@ def board() -> dict:
         for r in ex.map(_one, syms):
             if r:
                 rows.append(r)
-    buyers = sorted([r for r in rows if r["signal"] == "BUY"], key=lambda r: r["score"], reverse=True)
-    sellers = sorted([r for r in rows if r["signal"] == "SELL"], key=lambda r: r["score"])
-    neutral = [r for r in rows if r["signal"] == "NEUTRAL"]
-    try:
-        import intraday_indicators as ind
-        phase = ind.market_phase()
-    except Exception:  # noqa: BLE001
-        phase = None
-    return {"status": "OK", "source": SOURCE, "phase": phase,
-            "buyers": buyers, "sellers": sellers, "neutral": neutral,
-            "counts": {"buy": len(buyers), "sell": len(sellers), "neutral": len(neutral)},
-            "universe": len(syms), "scored": len(rows)}
+    return intraday_safety.compose(rows, SOURCE, len(syms), phase)
