@@ -9,7 +9,7 @@ import './all-models.css';
 // All Intraday Models -- every intraday board's call per universe name, one sheet.
 
 const tier = (sig?: string) =>
-  sig === 'BUY' ? 'b' : sig === 'SELL' ? 's' : sig === 'NEUTRAL' ? 'n' : 'x';
+  sig === 'BUY' ? 'b' : sig === 'SELL' ? 's' : sig === 'NEUTRAL' ? 'n' : sig === 'WAIT' ? 'w' : 'x';
 const letter = (sig?: string) =>
   sig === 'BUY' ? 'B' : sig === 'SELL' ? 'S' : sig === 'NEUTRAL' ? '–' : sig === 'WAIT' ? 'W' : '·';
 
@@ -80,7 +80,7 @@ export default function AllIntradayModelsPage({ ctx }: { ctx: PageContext }) {
           Changed only
         </label>
         <span className="am-legend">
-          <i className="b" /> Buy <i className="s" /> Sell <i className="n" /> Neutral
+          <i className="b" /> Buy <i className="s" /> Sell <i className="n" /> Neutral <i className="w" /> Wait
         </span>
         <span className="at-chip">{view.length}</span>
       </div>
@@ -88,7 +88,11 @@ export default function AllIntradayModelsPage({ ctx }: { ctx: PageContext }) {
       {warming ? (
         <div className="es-empty"><Loader2 size={18} className="spin" /> Scoring every intraday model…</div>
       ) : !view.length ? (
-        <div className="es-empty">{query ? `No matches for “${query}”.` : 'No live scores yet — open Trdgo Stock to warm the engine.'}</div>
+        resp.error || resp.data?.status === 'ERROR' ? (
+          <div className="es-empty am-error">Could not load the scan: {resp.error || resp.data?.detail || resp.data?.error || 'backend error'}</div>
+        ) : (
+          <div className="es-empty">{query ? `No matches for “${query}”.` : 'No live scores yet — the engine is still warming.'}</div>
+        )
       ) : (
         <div className="am-wrap">
           <table className="am-tbl">
@@ -107,7 +111,7 @@ export default function AllIntradayModelsPage({ ctx }: { ctx: PageContext }) {
                 const t = tally(r);
                 return (
                   <tr key={r.symbol}>
-                    <td className="am-sticky am-sym" onClick={() => navigate(`/claude-pro-intraday/${r.symbol}`)}>
+                    <td className="am-sticky am-sym" onClick={() => navigate(`/grok-intraday/${r.symbol}`)}>
                       <b>{r.symbol}</b>
                       {r.spot != null && <span className="am-co">${Number(r.spot).toFixed(2)}</span>}
                     </td>

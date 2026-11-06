@@ -283,18 +283,6 @@ def stream_analysis(symbol: str, refresh: bool = False,
             except Exception:  # noqa: BLE001 - extras must never break analysis
                 pass
 
-            # A run the reader just watched is the freshest score there is, so
-            # the AI Trade board takes it rather than waiting for its own scan
-            # to come round again. Otherwise the two screens show different
-            # numbers for the same name and neither is wrong, which is the
-            # most confusing kind of disagreement.
-            try:
-                import ai_trade_service as board
-
-                board.record_score(symbol, result, horizon=horizon)
-            except Exception:  # noqa: BLE001 - the analysis stands alone
-                pass
-
             # Write the call down with its working, so what the screen shows
             # can be explained later and checked against what happened.
             try:

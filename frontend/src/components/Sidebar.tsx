@@ -33,13 +33,10 @@ interface NavGroup {
 const NAV_GROUPS: NavGroup[] = [
   { heading: 'Analysis', items: [
     { to: '/ai-insights', label: 'Analysis', icon: <Brain size={S} /> },
-    { to: '/ai-trade', label: 'Trdgo Stock', icon: <Sparkles size={S} /> },
     { to: '/grok-intraday', label: 'Grok Intraday', icon: <Zap size={S} /> },
     { to: '/meta-intraday', label: 'Meta Intraday', icon: <Layers size={S} /> },
-    { to: '/claude-pro-intraday', label: 'Claude Pro Intraday', icon: <Star size={S} /> },
     { to: '/kimi-intraday', label: 'Kimi Intraday', icon: <Compass size={S} /> },
     { to: '/gemini-intraday', label: 'Gemini Intraday', icon: <Waypoints size={S} /> },
-    { to: '/chatgpt-intraday', label: 'ChatGPT Intraday', icon: <Brain size={S} /> },
     { to: '/all-intraday-models', label: 'All Intraday', icon: <ListOrdered size={S} /> },
     { to: '/strategy-trades', label: 'Strategy Trades', icon: <Receipt size={S} /> },
     { to: '/tradgo-call', label: 'Tradgo Call', icon: <Gauge size={S} /> },

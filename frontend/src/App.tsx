@@ -35,7 +35,7 @@ const AllModelsPage = lazy(() => import('./pages/AllModelsPage'));
 const ModelAccuracyPage = lazy(() => import('./pages/ModelAccuracyPage'));
 const GrokIntradayPage = lazy(() => import('./pages/GrokIntradayPage'));
 const AllIntradayModelsPage = lazy(() => import('./pages/AllIntradayModelsPage'));
-import { META_INTRADAY_CFG, CLAUDE_PRO_INTRADAY_CFG, KIMI_INTRADAY_CFG, GEMINI_INTRADAY_CFG, CHATGPT_INTRADAY_CFG } from './pages/GrokIntradayPage';
+import { META_INTRADAY_CFG, KIMI_INTRADAY_CFG, GEMINI_INTRADAY_CFG } from './pages/GrokIntradayPage';
 const META_INTRADAY_DETAIL = { base: '/meta-intraday', title: 'Meta Intraday', detail: (s: string, sig?: AbortSignal) => api2.metaIntradayDetail(s, sig) };
 const GROK_INTRADAY_DETAIL = { base: '/grok-intraday', title: 'Grok Intraday', detail: (s: string, sig?: AbortSignal) => api2.grokIntradayDetail(s, sig) };
 const GEMINI_DETAIL = { base: '/gemini', title: 'Gemini', detail: (s: string, sig?: AbortSignal) => api2.geminiDetail(s, sig) };
@@ -69,7 +69,6 @@ const WatchlistBoardPage = lazy(() => import('./pages/WatchlistBoardPage'));
 const MarketPulsePage = lazy(() => import('./pages/MarketPulsePage'));
 const NewsPage = lazy(() => import('./pages/NewsPage'));
 const NewsDeskPage = lazy(() => import('./pages/NewsDeskPage'));
-const AiTradePage = lazy(() => import('./pages/AiTradePage'));
 const InsightsPage = lazy(() => import('./pages/InsightsPage'));
 const BacktestPage = lazy(() => import('./pages/BacktestPage'));
 const workspace = () => import('./pages/WorkspacePages');
@@ -95,7 +94,7 @@ const DEFAULT_SYMBOL = 'NVDA';
 if (typeof window !== 'undefined') {
   window.setTimeout(() => {
     const pages = [
-      () => import('./pages/AiTradePage'), () => import('./pages/InsightsPage'),
+      () => import('./pages/InsightsPage'),
       () => import('./pages/DashboardPage'), () => import('./pages/OptionsFlowPage'),
       () => import('./pages/MarketPulsePage'), () => import('./pages/WatchlistBoardPage'),
       () => import('./pages/NewsDeskPage'), () => import('./pages/NewsPage'),
@@ -114,7 +113,7 @@ const OPTIONS_ROUTES = [
 
 /** Sections that carry a symbol in the URL. */
 const SYMBOL_SECTIONS =
-  /^\/(earnings|earnings-trade|earnings-claude|claude-last|claude-new-pz|grok|meta|chatgpt|kimi|gemini|claude-pro|grok-intraday|meta-intraday|claude-pro-intraday|kimi-intraday|gemini-intraday|chatgpt-intraday|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)(\/|$)/;
+  /^\/(earnings|earnings-trade|earnings-claude|claude-last|claude-new-pz|grok|meta|chatgpt|kimi|gemini|claude-pro|grok-intraday|meta-intraday|kimi-intraday|gemini-intraday|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)(\/|$)/;
 
 /**
  * The same sections, capturing the ticker itself.
@@ -126,7 +125,7 @@ const SYMBOL_SECTIONS =
  * ticker card changed the address bar while every panel kept showing NVDA.
  */
 const SYMBOL_IN_PATH =
-  /^\/(?:earnings|earnings-trade|earnings-claude|claude-last|claude-new-pz|grok|meta|chatgpt|kimi|gemini|claude-pro|grok-intraday|meta-intraday|claude-pro-intraday|kimi-intraday|gemini-intraday|chatgpt-intraday|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)\/([A-Za-z0-9.\-]+)/;
+  /^\/(?:earnings|earnings-trade|earnings-claude|claude-last|claude-new-pz|grok|meta|chatgpt|kimi|gemini|claude-pro|grok-intraday|meta-intraday|kimi-intraday|gemini-intraday|tradgo-call|earnings-equity|earnings-options|options-flow|options-chain|oi-buildup|trade-plan|volatility|news|ai-insights|peers|dark-pool|model-performance|dashboard)\/([A-Za-z0-9.\-]+)/;
 
 export interface PageContext {
   symbol: string;
@@ -391,14 +390,10 @@ function Shell() {
           <Route path="/grok-intraday/:symbol" element={<ClaudeLastDetail ctx={ctx} model={GROK_INTRADAY_DETAIL} />} />
           <Route path="/meta-intraday" element={<GrokIntradayPage ctx={ctx} cfg={META_INTRADAY_CFG} />} />
           <Route path="/meta-intraday/:symbol" element={<ClaudeLastDetail ctx={ctx} model={META_INTRADAY_DETAIL} />} />
-          <Route path="/claude-pro-intraday" element={<GrokIntradayPage ctx={ctx} cfg={CLAUDE_PRO_INTRADAY_CFG} />} />
-          <Route path="/claude-pro-intraday/:symbol" element={<ClaudeLastDetail ctx={ctx} model={{ base: '/claude-pro-intraday', title: 'Claude Pro Intraday', detail: (s: string, sig?: AbortSignal) => api2.claudeProIntradayDetail(s, sig) }} />} />
           <Route path="/kimi-intraday" element={<GrokIntradayPage ctx={ctx} cfg={KIMI_INTRADAY_CFG} />} />
           <Route path="/kimi-intraday/:symbol" element={<ClaudeLastDetail ctx={ctx} model={{ base: '/kimi-intraday', title: 'Kimi Intraday', detail: (s: string, sig?: AbortSignal) => api2.kimiIntradayDetail(s, sig) }} />} />
           <Route path="/gemini-intraday" element={<GrokIntradayPage ctx={ctx} cfg={GEMINI_INTRADAY_CFG} />} />
           <Route path="/gemini-intraday/:symbol" element={<ClaudeLastDetail ctx={ctx} model={{ base: '/gemini-intraday', title: 'Gemini Intraday', detail: (s: string, sig?: AbortSignal) => api2.geminiIntradayDetail(s, sig) }} />} />
-          <Route path="/chatgpt-intraday" element={<GrokIntradayPage ctx={ctx} cfg={CHATGPT_INTRADAY_CFG} />} />
-          <Route path="/chatgpt-intraday/:symbol" element={<ClaudeLastDetail ctx={ctx} model={{ base: '/chatgpt-intraday', title: 'ChatGPT Intraday', detail: (s: string, sig?: AbortSignal) => api2.chatgptIntradayDetail(s, sig) }} />} />
           <Route path="/all-intraday-models" element={<AllIntradayModelsPage ctx={ctx} />} />
           <Route path="/option-scanner" element={<OptionScannerPage ctx={ctx} />} />
           <Route path="/unusual-activity" element={<UnusualActivityPage ctx={ctx} />} />
@@ -425,7 +420,6 @@ function Shell() {
           <Route path="/news" element={<NewsDeskPage ctx={ctx} />} />
           <Route path="/news/:symbol" element={<NewsPage ctx={ctx} />} />
 
-          <Route path="/ai-trade" element={<AiTradePage ctx={ctx} />} />
           <Route path="/ai-insights" element={<Navigate to={`/ai-insights/${DEFAULT_SYMBOL}${location.search}`} replace />} />
           <Route path="/ai-insights/:symbol" element={<InsightsPage ctx={ctx} />} />
 

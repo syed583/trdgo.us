@@ -42,7 +42,7 @@ WAIT_OPENING = "WAIT - OPENING WINDOW"
 ALL_CODES = (WAIT_STALE, WAIT_INSUFFICIENT, WAIT_UNCONFIRMED, WAIT_PRICE, WAIT_LIQUIDITY, WAIT_LIMIT, WAIT_DUPLICATE,
              WAIT_SESSION, WAIT_LOCKED, WAIT_INSTRUMENT, WAIT_LOSS, WAIT_OPENING)
 
-STRATEGIES = ("chatgpt", "grok", "meta", "kimi", "gemini", "claude_pro")
+STRATEGIES = ("grok", "meta", "kimi", "gemini")       # chatgpt and claude_pro were retired (boards removed)
 PREMARKET, REGULAR = "PREMARKET", "REGULAR"
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -53,8 +53,6 @@ PREMARKET, REGULAR = "PREMARKET", "REGULAR"
 UNIMPLEMENTED = "UNIMPLEMENTED"          # the strategy declares a weight but no data source exists in the code
 NOT_APPLICABLE = "NOT_APPLICABLE"        # no source on this data path (e.g. an engine-only parameter before the open)
 
-_UNIMPL_CHATGPT = ("market_structure", "liquidity_sweeps", "absorption", "volume_profile", "supply_demand",
-                   "breakout_quality", "volatility")
 _GROK_EQ = {
     "options_flow": ["options_flow"], "trend_price": ["ema_trend", "price_action"], "unusual_activity": ["unusual_activity"],
     "volume_pcr": ["volume_pcr"], "key_levels": ["key_levels"], "oi_change_expiry": ["daily_oi_change", "flow_by_expiry"],
@@ -75,27 +73,6 @@ REGISTRY: dict = {
         "rsi_price": ["rsi", "price_action"], "insider_ownership": ["insider_activity", "short_insider"],
         "earnings_catalyst": ["earnings_results", "merger_activity", "funding_activity"],
         "dividends_event": ["dividend_trend", "event_radar"]}},
-    "chatgpt": {
-        "equity": {
-            "options_flow": ["options_flow"], "order_flow": ["disparity"], "vwap_ema": ["ema_trend"], "rvol": ["volume_pcr"],
-            "gamma": ["key_levels"], "unusual": ["unusual_activity"], "momentum": ["rsi"], "catalyst": ["event_radar"],
-            "oi_change": ["daily_oi_change"], "breadth_mtf": ["@breadth"],
-            "rel_strength": NOT_APPLICABLE, "orb": NOT_APPLICABLE, "intermarket": NOT_APPLICABLE,
-            **{k: UNIMPLEMENTED for k in _UNIMPL_CHATGPT}},
-        "live": {
-            "options_flow": ["@engine"], "order_flow": NOT_APPLICABLE,        # per-name net premium exists on the detail view only
-            "vwap_ema": ["@engine"], "rvol": ["@engine"], "rel_strength": ["@engine"], "gamma": ["@engine"], "orb": ["@engine"],
-            "unusual": ["@engine"], "momentum": ["@engine"], "catalyst": ["@engine"], "oi_change": ["daily_oi_change"],
-            "intermarket": ["@engine"], "breadth_mtf": ["@breadth"], **{k: UNIMPLEMENTED for k in _UNIMPL_CHATGPT}}},
-    "claude_pro": {
-        "equity": {
-            "options_flow": ["options_flow"], "price_structure": ["ema_trend"], "gamma_levels": ["key_levels"],
-            "volume_pc": ["volume_pcr"], "market_context": ["@breadth"], "unusual_activity": ["unusual_activity"],
-            "momentum": ["rsi"], "premarket_bias": NOT_APPLICABLE},
-        "live": {
-            "options_flow": ["@engine"], "price_structure": ["@engine"], "gamma_levels": ["@engine"], "volume_pc": ["@engine"],
-            "market_context": ["@engine", "@breadth"], "unusual_activity": ["@engine"], "momentum": ["@engine"],
-            "premarket_bias": ["@engine"]}},       # the engine's `gap` only: the second member (`coi`) does not exist
 }
 
 # data classes (from the existing SIGNAL_DATA_TYPE in tab_settings; listed options are NOT traded before 09:30 ET)

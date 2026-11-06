@@ -6,7 +6,7 @@ import './intraday-v2.css';
 // Intraday Model v2 -- single-ticker panel for the Analysis page. Shown only when
 // the backend has INTRADAY_MODEL=v2 (the endpoint returns DISABLED otherwise, and
 // this renders nothing, leaving the existing page untouched). Reads the SAME
-// score function as the Trdgo Stock Today view, so the two screens match.
+// score function as the intraday boards, so the screens match.
 
 const GROUPS: Array<[string, string[]]> = [
   ['Market context', ['market', 'sector']],

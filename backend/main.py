@@ -768,62 +768,6 @@ def _start_market_pulse_warmer() -> None:
         target=loop, daemon=True, name="market-pulse-warm").start()).start()
 
 
-@_bg
-def _start_ai_trade_board() -> None:
-    """
-    Keep the AI Trade board scoring, continuously.
-
-    The page polls once a minute, which is only worth doing if something has
-    changed in between -- so the scan runs back to back rather than on a long
-    timer. Each pass picks up where the last stopped, so every name in the
-    universe is rescored on a rolling basis and the ranking moves as the scan
-    reaches each one.
-
-    A pass is bounded, and the pause between passes is short but real: it
-    keeps a failing provider from being hammered in a tight loop.
-    """
-    import threading
-
-    def loop() -> None:
-        import time
-
-        try:
-            import ai_trade_service as board
-
-            # Pick up where the last run of the server left off, so a restart
-            # does not show an empty board for the ten minutes it takes the
-            # rolling scan to fill one.
-            board._load_rows()
-        except Exception:  # noqa: BLE001
-            pass
-
-        import boot_guard
-        import uw_priority
-        uw_priority.set_thread_default(uw_priority.LIVE, "intraday_engine")   # priority 1
-
-        boot_guard.wait_until_due("ai-trade-board", 600)      # rows were just reloaded from the DB
-        while True:
-            try:
-                import ai_trade_service as board
-
-                board.get_board(refresh=True)
-                boot_guard.mark("ai-trade-board")
-                # The scanner asks the service how long to wait: the rule
-                # depends on the market session and belongs with the scan,
-                # not here.
-                pause = board.next_pause()
-            except Exception:  # noqa: BLE001 - never take down the server
-                # Back off on failure rather than spinning on a provider that
-                # is refusing every call.
-                pause = 120.0
-            time.sleep(pause)
-
-    # Started early on purpose: the first pass is the slow one, and doing it
-    # before anyone opens the tab is the whole point of having a warmer.
-    threading.Timer(20.0, lambda: threading.Thread(
-        target=loop, daemon=True, name="ai-trade-board").start()).start()
-
-
 # ---------------------------------------------------------
 # ROOT
 # ---------------------------------------------------------

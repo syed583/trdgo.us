@@ -944,7 +944,7 @@ function ResultScreen({
 
       <StoredWhy symbol={symbol} horizon={horizon} result={result} />
 
-      {/* Intraday Model v2 -- same shared scorer as the Trdgo Stock Today board,
+      {/* Intraday Model v2 -- the shared intraday scorer (/api/intraday/*),
           shown for the TODAY horizon when the backend flag is on (self-hides
           otherwise). Read-only; does not change the existing score above. */}
       {horizon === 'TODAY' && <IntradayV2Panel symbol={symbol} />}

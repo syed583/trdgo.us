@@ -149,20 +149,13 @@ def configured_weights(strategy: str) -> dict:
         return dict(cfg.META_INTRADAY_WEIGHTS)
     if strategy == "gemini":
         return dict(cfg.GEMINI_INTRADAY_WEIGHTS)
-    if strategy == "chatgpt":
-        import chatgpt_intraday_service as m
-        return {k: w for k, _l, w, _s in m.PARAMS}
-    if strategy == "claude_pro":
-        import claude_pro_intraday_service as m
-        return {k: v[1] for k, v in m.BLOCKS.items()}
-    return {}
+    return {}          # retired strategies (chatgpt, claude_pro) have no configuration any more: nothing to verify
 
 
 # Parameters that have NO data source in any path of the strategy (declared with a weight, never fed): they are scored neutral by the
-# strategy and can never be evidence. Mirrors intraday_execution.REGISTRY (a test keeps the two equal); kept here so a build without the
-# V2 modules can still tell "no source exists" from "the source is missing right now".
-NO_SOURCE = {"chatgpt": frozenset({"absorption", "breakout_quality", "liquidity_sweeps", "market_structure", "supply_demand", "volatility",
-                                   "volume_profile"})}
+# strategy and can never be evidence. Mirrors intraday_execution.REGISTRY (a test keeps the two equal). Empty since the ChatGPT board
+# (the only strategy with sourceless parameters) was retired.
+NO_SOURCE: dict = {}
 
 
 def _check(name: str, ok: bool, detail: str = "") -> dict:
