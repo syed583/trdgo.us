@@ -154,6 +154,31 @@ def attempts_of(svc) -> int:
     return int(sum(used.values())) if used else 0
 
 
+def hourly_allowance_of(svc) -> int:
+    """The governor's remaining allowance for this hour (our own rail), or a large number when the governor does not expose one."""
+    fn = getattr(getattr(svc, "gov", None), "hourly_allowance", None)
+    if not callable(fn):
+        return 1 << 30
+    try:
+        return int(fn())
+    except (TypeError, ValueError):
+        return 1 << 30
+
+
+def last_denial_reason(svc):
+    """The reason the service recorded for its last not-done request (RefreshService._call stores it in the store state), or None."""
+    try:
+        return ((svc.store.state() or {}).get("last_error") or {}).get("reason")
+    except (AttributeError, OSError, ValueError):
+        return None
+
+
+def scan_ok_of(res: dict) -> bool:
+    """The publisher's scan_ok rule: a pass is successful when NO provider request failed and it either finished or stopped at our own hourly rail (HOURLY_CAP, a pause: the untouched events stay
+    PENDING_REFRESH for the next pass). Any other halt, or any provider failure, makes the pass unsuccessful."""
+    return int(res.get("failed") or 0) == 0 and res.get("halted") in (None, "HOURLY_CAP")
+
+
 # ------------------------------------------------------------------ execution (live only through the governed path)
 def run(svc, tasks: list, *, now, ceiling: int, state_dir, stopped=lambda: False, max_consecutive_failures: int = 3, abort_on_stale_bars: bool = False) -> dict:
     """Sequential, one request in flight. Every task goes through svc._call (governor + InfraFetcher) and a successful body is appended to the store's append-only evidence file. Stops on a provider stop, the ceiling,
@@ -176,9 +201,15 @@ def run(svc, tasks: list, *, now, ceiling: int, state_dir, stopped=lambda: False
         if stopped():
             halted = "PROVIDER_STOPPED"
             break
+        if hourly_allowance_of(svc) < 1:                                                           # our OWN hourly rail is used up: pause here, no attempt is made (not a provider failure)
+            halted = "HOURLY_CAP"
+            break
         rid = "%s-%s-%s" % (t["kind"], t["symbol"], stamp)
         body, sha, at = svc._call(t["kind"], t["symbol"], t["params"], rid)
         if body is None:
+            if last_denial_reason(svc) == "HOURLY_SHARED_CAP":                                      # the governor denied at our own hourly rail (ledger DENIED_HOURLY_SHARED_CAP): a pause, not a provider failure
+                halted = "HOURLY_CAP"
+                break
             failed.append({"kind": t["kind"], "symbol": t["symbol"]})
             consecutive += 1
             if consecutive >= max_consecutive_failures:
@@ -192,6 +223,8 @@ def run(svc, tasks: list, *, now, ceiling: int, state_dir, stopped=lambda: False
             halted = "STALE_BARS"
             break
     res = {"requests_attempted": len(done) + len(failed), "attempts": attempts_of(svc) - attempts0, "ok": len(done), "failed": len(failed), "failures": failed, "halted": halted, "done": done, "finished_at": svc.clock.now().isoformat()}
+    if halted == "HOURLY_CAP":
+        res["paused"] = "HOURLY_CAP"
     (d / "engine20_state.json").write_text(json.dumps(res, indent=1, sort_keys=True, default=str), encoding="utf-8")
     return res
 

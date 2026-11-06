@@ -526,7 +526,7 @@ def profile(a, svc, now: datetime, live: bool) -> int:
         (d / "monday_bmo_report.json").write_text(json.dumps({"as_of": t.isoformat(), "rows": rep}, indent=1, default=str), encoding="utf-8")
         attempts = E20.attempts_of(svc) - att0
         try:
-            st = publish(rows, t, out, scan_id=d.name, mode="LIVE", scan_ok=(res["halted"] is None and res["failed"] == 0), run={"started_at": now.isoformat(), "finished_at": t.isoformat(), "requests_attempted": attempts, "ok": res["ok"], "failed": res["failed"], "halted": res["halted"], "calendar": cal},
+            st = publish(rows, t, out, scan_id=d.name, mode="LIVE", scan_ok=E20.scan_ok_of(res), run={"started_at": now.isoformat(), "finished_at": t.isoformat(), "requests_attempted": attempts, "ok": res["ok"], "failed": res["failed"], "halted": res["halted"], "calendar": cal},
                          limits=limits, requests_today=PUB._requests_today(svc.store, t), unfunded=len(plan["unfunded"]))
             left = max(0, a.ceiling - (E20.attempts_of(svc) - att0))
             gr = grade(svc, out, svc.clock.now(), live=True, budget=left) if (out / PUB.LEDGER).exists() else None

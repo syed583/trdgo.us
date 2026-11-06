@@ -214,7 +214,7 @@ def engine20_profile(a, svc, now, live: bool) -> int:
         if a.publish_dir:
             import smart_move_live_publisher as PUB
             try:
-                st = PUB.publish(svc, svc.clock.now(), a.publish_dir, scan_id=d.name, mode="LIVE", scan_ok=(res["halted"] is None and res["failed"] == 0),
+                st = PUB.publish(svc, svc.clock.now(), a.publish_dir, scan_id=d.name, mode="LIVE", scan_ok=E20.scan_ok_of(res),
                                  run={"started_at": now.isoformat(), "finished_at": svc.clock.now().isoformat(), "requests_attempted": res["attempts"] + used, "ok": res["ok"], "failed": res["failed"], "halted": res["halted"]},
                                  limits=limits, unfunded=len(summary["unfunded"]))
                 print(json.dumps({"published": st["events"]}, default=str))
