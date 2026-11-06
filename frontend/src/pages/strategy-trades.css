@@ -110,3 +110,36 @@
   .st-alert, .st-take.takenow { animation: none; }
 }
 .st-note { color: var(--muted, #9ca3af); font-size: 11.5px; margin-top: 12px; }
+
+/* Date filter next to the strategy filter. */
+.st-filter input.st-date {
+  padding: 5px 8px; border: 1px solid var(--border, #e5e7eb); border-radius: 8px;
+  font-size: 13px; background: var(--card, #fff); color: inherit;
+}
+/* Visible request / backend error (never silently "no trades"). */
+.st-error {
+  margin: 0 0 12px; padding: 10px 14px; border-radius: 10px; font-size: 13px; font-weight: 600;
+  border: 1px solid rgba(229,72,77,.5); background: rgba(229,72,77,.08); color: #e5484d;
+}
+.st-error-inline { margin: 0; padding: 4px 8px; font-size: 12px; }
+/* Bid/ask spread wider than 0.3% of price. */
+.st-wide { color: #e5484d; font-weight: 600; }
+/* SPY / QQQ / DIA live strip. */
+.st-etf { display: flex; align-items: stretch; gap: 10px; flex-wrap: wrap; margin: 0 0 14px; }
+.st-etf-box {
+  min-width: 150px; padding: 8px 12px; border-radius: 10px; line-height: 1.3;
+  background: var(--card, #fff); border: 1px solid var(--border, #e5e7eb);
+}
+.st-etf-box.pos { border-color: rgba(22,163,74,.4); } .st-etf-box.neg { border-color: rgba(220,38,38,.4); }
+.st-etf-sym { font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--muted, #6b7280); }
+.st-etf-px { font-size: 18px; font-weight: 800; }
+.st-etf-chg { font-size: 13px; font-weight: 600; }
+.st-etf-chg.pos { color: #15803d; } .st-etf-chg.neg { color: #b91c1c; }
+.st-etf-ba, .st-etf-upd { font-size: 11px; }
+.st-etf-meta { display: flex; flex-direction: column; justify-content: center; gap: 4px; font-size: 12px; }
+.st-etf-closed {
+  font-size: 11.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+  background: rgba(100,116,139,.16); color: #475569;
+}
+.st-stat.CLEANUP, .st-stat.EOD_CLOSE, .st-stat.MARKET_CLOSE { background: rgba(100,116,139,.16); color: #475569; }
+.st-stat.NO_PRICE { background: rgba(100,116,139,.16); color: #475569; }

@@ -33,5 +33,5 @@ def test_A_premarket_buy_opens_a_long_with_full_evidence(book):
     assert events[0].trade_id == t.id and events[0].validation_status == "PASS"
     snap = [s for s in book.snapshots() if s.id == t.snapshot_id][0]
     params = json.loads(snap.params)
-    assert {p["name"] for p in params} == set(wf.__dict__["ex"].REGISTRY["chatgpt"]["equity"])
+    assert {p["name"] for p in params} == set(wf.__dict__["ex"].REGISTRY["grok"]["equity"])
     assert all("category" in p and "points" in p for p in params)

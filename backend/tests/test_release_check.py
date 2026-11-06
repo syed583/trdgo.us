@@ -84,12 +84,19 @@ def test_a_missing_15_minute_module_is_detected():
      "the signal recovery validator exists"),
     ("backend/intraday_signal_v2.py", lambda t: t.replace("def expire_stale(apply: bool = False", "def expire_old(apply: bool = False"),
      "stale open signals are never closed automatically"),
+    # ----------------------------------------------- the pure-intraday paper tracker
     ("backend/demo_trade_service.py", lambda t: t.replace('filter_by(status="OPEN").order_by', 'filter_by(session_date=today, status="OPEN").order_by'),
-     "paper positions are carried across dates"),
-    ("backend/demo_trade_service.py", lambda t: t.replace("    if not market_calendar.is_trading_day(n.date()) or n < market_calendar.close_datetime(n.date()):",
-                                                       "    if t.session_date < n.date():\n        return True\n"
-                                                       "    if not market_calendar.is_trading_day(n.date()) or n < market_calendar.close_datetime(n.date()):"),
-     "a position is never closed merely because the date changed"),
+     "every open paper position is loaded, whatever date opened it"),
+    ("backend/demo_trade_service.py", lambda t: t.replace('reason = "CLEANUP"', 'reason = None'),
+     "a prior-day leftover is closed as CLEANUP, never carried"),
+    ("backend/demo_trade_service.py", lambda t: t.replace('return "EOD_CLOSE"', 'return None'),
+     "every position is closed before the bell (EOD_CLOSE)"),
+    ("backend/demo_trade_service.py", lambda t: t.replace("def entry_window(", "def any_time("),
+     "new entries only inside the 10:00-15:00 ET window of a trading day"),
+    ("backend/demo_trade_service.py", lambda t: t.replace("def _fresh_quote(", "def _any_quote("),
+     "an entry needs a fresh live quote (age-limited)"),
+    ("backend/demo_trade_service.py", lambda t: t.replace("shares = shares_for(entry)", "shares = 100").replace("shares=shares,", "shares=100,"),
+     "size is notional / price, not a fixed share count"),
     ("backend/demo_trade_service.py", lambda t: t.replace('DemoTrade.status == "OPEN")', 'True)'),
      "paper exits are guarded against a double close"),
     ("backend/intraday_signal_v2.py", lambda t: t.replace("WHERE symbol=:s AND is_open=TRUE AND session_date>=:c ORDER BY id ASC",
@@ -209,8 +216,22 @@ def test_a_build_without_the_workflow_is_judged_by_the_safety_floor_only():
     assert not any("V2" in c["check"] or "shadow" in c["check"] for c in r["checks"]) and r["ok"]
 
 
-def test_the_released_277f30f_remains_a_valid_rollback_target():
+PURE_INTRADAY_ROWS = {
+    "a prior-day leftover is closed as CLEANUP, never carried",
+    "every position is closed before the bell (EOD_CLOSE)",
+    "new entries only inside the 10:00-15:00 ET window of a trading day",
+    "an entry needs a fresh live quote (age-limited)",
+    "size is notional / price, not a fixed share count",
+}
+
+
+def test_the_released_277f30f_is_no_longer_a_valid_rollback_target():
+    """277f30f predates the pure-intraday tracker (it carries positions across dates, sizes a fixed 100 shares and has no
+    entry window / fresh-quote rule). It passes every OTHER row of the safety floor, but the release check must refuse it
+    as a rollback target, naming exactly the pure-intraday rules it lacks."""
     out = subprocess.run(["git", "cat-file", "-t", "277f30f"], capture_output=True, text=True, cwd=rc.ROOT)
     if out.returncode != 0:
         pytest.skip("277f30f is not in this clone")
-    assert rc.check(rc.read_rev("277f30f"))["ok"]
+    r = rc.check(rc.read_rev("277f30f"))
+    assert not r["ok"]
+    assert {c["check"] for c in r["checks"] if not c["ok"]} == PURE_INTRADAY_ROWS

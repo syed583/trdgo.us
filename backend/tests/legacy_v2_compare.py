@@ -212,6 +212,11 @@ def run_engine(name: str, mkt: Market, exec_overrides: dict | None = None) -> di
     clock = {"now": None}
     legacy_reasons = defaultdict(Counter)
     mp.setitem(cfg.INTRADAY_WORKFLOW, "mode", name)
+    # The simulated market holds ONE day of bars, so the real 22-bar warm-up of the 15-minute reading would only be
+    # satisfied at 15:00 ET -- after the pure-intraday tracker's entry window (10:00-15:00) has shut. Production reads
+    # ~4 sessions of candles. Relax the warm-up for BOTH engines equally; the comparison is about the two engines, not
+    # about the warm-up rule (pinned in test_intraday_15m).
+    mp.setitem(cfg.INTRADAY_15M, "min_bars", 4)
     for k, v in (exec_overrides or {}).items():
         mp.setitem(cfg.INTRADAY_EXEC, k, v)
     mp.setattr(wf, "get_boards", lambda models: feed.boards())
@@ -224,6 +229,15 @@ def run_engine(name: str, mkt: Market, exec_overrides: dict | None = None) -> di
     mp.setattr(dts, "MODELS", {k: (k, k) for k in STRATEGIES})
     mp.setattr(dts, "_board", lambda spec: _legacy_board(feed.boards()[spec]) if spec in feed.boards() else None)
     mp.setattr(dts, "_quote_price", lambda sym: (feed.quote(sym) or {}).get("price"))
+    if hasattr(dts, "_fresh_quote"):                  # the pure-intraday tracker's live-quote gate, fed from the same recorded quotes
+
+        def fresh_quote(sym, now=None):
+            q = feed.quote(sym) or {}
+            if q.get("price") is None:
+                return None, "no live quote"
+            return {"price": q["price"], "bid": q.get("bid"), "ask": q.get("ask"), "spread": None, "spread_pct": None,
+                    "quote_age_s": float(q.get("age_s") or 0.0), "quote_epoch": 1.0}, ""
+        mp.setattr(dts, "_fresh_quote", fresh_quote)
 
     def legacy_tradable(r):
         sym, sig, now = r.get("symbol"), r.get("signal"), clock["now"]

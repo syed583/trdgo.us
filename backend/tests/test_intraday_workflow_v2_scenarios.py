@@ -29,11 +29,11 @@ def test_C_a_premarket_position_is_not_closed_at_the_open_and_closes_at_the_bell
     now, t = open_via_premarket(book, et(*TUE, 7, 15))
     for hh, mm, px in [(9, 29, 100.4), (9, 30, 100.6), (9, 31, 100.5), (12, 0, 100.9), (15, 59, 101.2)]:
         n = et(*TUE, hh, mm)
-        book.set_board("chatgpt", row("chatgpt", "NVDA", n, signal="NEUTRAL", price=px, score=60.0))
+        book.set_board("grok", row("grok", "NVDA", n, signal="NEUTRAL", price=px, score=60.0))
         book.tick(n)
         assert book.trades()[0].status == "OPEN", f"closed too early at {hh}:{mm}"
     n = et(*TUE, 16, 0, 20)
-    book.set_board("chatgpt", row("chatgpt", "NVDA", n, signal="NEUTRAL", price=101.3, score=60.0))
+    book.set_board("grok", row("grok", "NVDA", n, signal="NEUTRAL", price=101.3, score=60.0))
     book.tick(n)
     t = book.trades()[0]
     assert t.status == "MARKET_CLOSE" and t.exit_price == 101.3 and t.exit_price_source == "board"
@@ -45,7 +45,7 @@ def test_C_a_premarket_position_is_not_closed_at_the_open_and_closes_at_the_bell
 def test_D_a_regular_signal_does_not_close_overwrite_or_double_the_premarket_position(book):
     now, t0 = open_via_premarket(book, et(*TUE, 7, 15))
     n = et(*TUE, 9, 45)
-    book.set_board("chatgpt", row("chatgpt", "NVDA", n, signal="BUY", price=101.0))
+    book.set_board("grok", row("grok", "NVDA", n, signal="BUY", price=101.0))
     book.tick(n)
     trades = book.trades()
     assert len(trades) == 1 and trades[0].id == t0.id and trades[0].status == "OPEN"
@@ -59,11 +59,11 @@ def test_E_the_same_signal_read_again_never_opens_a_second_position(book):
     now, t = open_via_premarket(book, et(*TUE, 7, 15))
     for k in range(1, 6):
         n = now + timedelta(minutes=k)
-        book.set_board("chatgpt", row("chatgpt", "NVDA", n, signal="BUY", price=100.0))
+        book.set_board("grok", row("grok", "NVDA", n, signal="BUY", price=100.0))
         book.tick(n)
     assert len(book.trades()) == 1
     with book.Session() as s:                                           # and the database itself refuses a second OPEN row
-        s.add(m.DemoTrade(strategy="chatgpt", symbol="NVDA", side="LONG", shares=100, session_date=et(*TUE).date(), entry_price=1.0,
+        s.add(m.DemoTrade(strategy="grok", symbol="NVDA", side="LONG", shares=100, session_date=et(*TUE).date(), entry_price=1.0,
                           status="OPEN", entry_session="REGULAR"))
         with pytest.raises(IntegrityError):
             s.commit()
@@ -72,7 +72,7 @@ def test_E_the_same_signal_read_again_never_opens_a_second_position(book):
 def test_F_an_opposite_regular_signal_does_not_flip_or_close_the_position(book):
     now, t0 = open_via_premarket(book, et(*TUE, 7, 15))
     n = et(*TUE, 9, 50)
-    book.set_board("chatgpt", row("chatgpt", "NVDA", n, signal="SELL", price=100.0, score=45.0))
+    book.set_board("grok", row("grok", "NVDA", n, signal="SELL", price=100.0, score=45.0))
     book.tick(n)
     t = book.trades()
     assert len(t) == 1 and t[0].side == "LONG" and t[0].status == "OPEN"
@@ -81,7 +81,7 @@ def test_F_an_opposite_regular_signal_does_not_flip_or_close_the_position(book):
 
 
 # ================================================================ G / H / I / J  entry validation ====================
-def _rejection(book, strategy="chatgpt", symbol="NVDA", **row_kw):
+def _rejection(book, strategy="grok", symbol="NVDA", **row_kw):
     now0 = et(*TUE, 7, 15)
     for k in range(2):
         n = now0 + timedelta(minutes=3 * k)
@@ -110,7 +110,7 @@ def test_H_missing_options_data_does_not_block_the_premarket_but_does_block_the_
     holes = {"options_flow": None, "gamma": None, "unusual": None, "rvol": None}
     for k in range(2):
         n = n0 + timedelta(minutes=3 * k)
-        book.set_board("chatgpt", row("chatgpt", "AMD", n, signal="BUY", price=100.0, overrides=holes))
+        book.set_board("grok", row("grok", "AMD", n, signal="BUY", price=100.0, overrides=holes))
         book.tick(n)
     amd = book.events(symbol="AMD")[0]
     assert not book.trades(symbol="AMD") and amd.validation_status == ex.WAIT_INSUFFICIENT
@@ -121,7 +121,7 @@ def test_I_a_missing_or_invalid_price_is_refused(book):
     assert not book.trades() and ev.validation_status == ex.WAIT_PRICE
     book.quotes["NVDA"] = {"price": 0.0, "bid": 0.0, "ask": 0.0, "age_s": 5.0}
     n = et(*TUE, 7, 21)
-    book.set_board("chatgpt", row("chatgpt", "NVDA", n))
+    book.set_board("grok", row("grok", "NVDA", n))
     book.tick(n)
     assert not book.trades() and book.events()[0].validation_status == ex.WAIT_PRICE
 
@@ -134,7 +134,7 @@ def test_J_low_liquidity_and_a_wide_premarket_spread_are_refused(book):
     book.avgvol["NVDA"] = 9_000_000.0
     book.quotes["NVDA"] = quote(100.0, spread_pct=0.30)                               # the pre-market limit is 0.10%
     n = et(*TUE, 7, 21)
-    book.set_board("chatgpt", row("chatgpt", "NVDA", n))
+    book.set_board("grok", row("grok", "NVDA", n))
     book.tick(n)
     ev = book.events()[0]
     assert not book.trades() and ev.validation_status == ex.WAIT_PRICE
@@ -146,7 +146,7 @@ def test_an_unchanged_cached_snapshot_read_again_is_not_new_evidence(book):
     t0 = et(*TUE, 7, 15)
     for k in range(5):
         n = t0 + timedelta(minutes=k)
-        book.set_board("chatgpt", row("chatgpt", "NVDA", n, gate_age=60.0 * k, meta_age=120.0))   # the board never rebuilt: only the clock moves
+        book.set_board("grok", row("grok", "NVDA", n, gate_age=60.0 * k, meta_age=120.0))   # the board never rebuilt: only the clock moves
         book.tick(n)
     ev = book.events()[0]
     assert not book.trades() and ev.validation_status == ex.WAIT_UNCONFIRMED
@@ -154,12 +154,13 @@ def test_an_unchanged_cached_snapshot_read_again_is_not_new_evidence(book):
 
 
 # =================================================================================== K / L / M  exits ===============
+# fills are booked at the OBSERVED crossing price (PAPER_EXECUTION fill_model "observed"), never at the level
 @pytest.mark.parametrize("price, score, status, exit_px", [
-    (98.9, 70.0, "STOP", 99.0), (102.4, 70.0, "TARGET", 102.0), (100.5, 40.0, "SCORE_EXIT", 100.5)])
+    (98.9, 70.0, "STOP", 98.9), (102.4, 70.0, "TARGET", 102.4), (100.5, 40.0, "SCORE_EXIT", 100.5)])
 def test_KLM_the_existing_stop_target_and_score_exits_still_work(book, price, score, status, exit_px):
     now, t = open_via_premarket(book, et(*TUE, 7, 15))
     n = now + timedelta(minutes=5)
-    book.set_board("chatgpt", row("chatgpt", "NVDA", n, signal="NEUTRAL", price=price, score=score))
+    book.set_board("grok", row("grok", "NVDA", n, signal="NEUTRAL", price=price, score=score))
     book.tick(n)
     t = book.trades()[0]
     assert t.status == status and t.exit_price == pytest.approx(exit_px)
@@ -171,8 +172,8 @@ def test_N_every_position_closes_at_the_bell_winners_and_losers_alike(book):
     for sym, px in (("NVDA", 100.0), ("AMD", 50.0)):
         open_via_premarket(book, et(*TUE, 7, 15), symbol=sym, price=px)
     n = et(*TUE, 16, 0, 30)
-    book.set_board("chatgpt", row("chatgpt", "NVDA", n, signal="NEUTRAL", price=100.6, score=60.0),
-                   row("chatgpt", "AMD", n, signal="NEUTRAL", price=49.6, score=60.0))
+    book.set_board("grok", row("grok", "NVDA", n, signal="NEUTRAL", price=100.6, score=60.0),
+                   row("grok", "AMD", n, signal="NEUTRAL", price=49.6, score=60.0))
     book.tick(n)
     t = {x.symbol: x for x in book.trades()}
     assert t["NVDA"].status == t["AMD"].status == "MARKET_CLOSE"
@@ -182,7 +183,7 @@ def test_N_every_position_closes_at_the_bell_winners_and_losers_alike(book):
 
 def test_a_position_inside_the_grace_window_waits_for_a_price_then_uses_the_final_candle(book):
     now, t = open_via_premarket(book, et(*TUE, 7, 15))
-    book.boards["chatgpt"].clear()                                                     # no board price at all
+    book.boards["grok"].clear()                                                     # no board price at all
     book.quotes.clear()
     book.tick(et(*TUE, 16, 1))
     assert book.trades()[0].status == "OPEN"                                          # inside the grace window: wait
@@ -196,7 +197,7 @@ def test_a_position_inside_the_grace_window_waits_for_a_price_then_uses_the_fina
 
 def test_a_missing_closing_price_is_recorded_never_invented(book):
     now, t = open_via_premarket(book, et(*TUE, 7, 15))
-    book.boards["chatgpt"].clear()
+    book.boards["grok"].clear()
     book.quotes.clear()
     book.tick(et(*TUE, 16, 6))
     t = book.trades()[0]
@@ -220,11 +221,11 @@ def test_O_on_an_early_close_day_entries_stop_and_positions_close_at_one_oclock(
     assert mc.entries_allowed(et(*EARLY, 12, 59, 59)) and not mc.entries_allowed(et(*EARLY, 13, 0))
     now, t = open_via_premarket(book, et(*EARLY, 7, 15))
     assert t.status == "OPEN"
-    book.set_board("chatgpt", row("chatgpt", "NVDA", et(*EARLY, 12, 59), signal="NEUTRAL", price=100.4, score=60.0))
+    book.set_board("grok", row("grok", "NVDA", et(*EARLY, 12, 59), signal="NEUTRAL", price=100.4, score=60.0))
     book.tick(et(*EARLY, 12, 59))
     assert book.trades()[0].status == "OPEN"
     n = et(*EARLY, 13, 0, 30)
-    book.set_board("chatgpt", row("chatgpt", "NVDA", n, signal="NEUTRAL", price=100.5, score=60.0))
+    book.set_board("grok", row("grok", "NVDA", n, signal="NEUTRAL", price=100.5, score=60.0))
     book.tick(n)
     assert book.trades()[0].status == "MARKET_CLOSE"
 
@@ -241,7 +242,7 @@ def test_P_the_bell_follows_new_york_time_across_daylight_saving(day, close_utc_
 def test_P_a_premarket_position_closes_at_the_est_bell_after_the_november_change(book):
     now, t = open_via_premarket(book, et(2026, 11, 2, 7, 15))
     n = et(2026, 11, 2, 16, 0, 30)
-    book.set_board("chatgpt", row("chatgpt", "NVDA", n, signal="NEUTRAL", price=100.5, score=60.0))
+    book.set_board("grok", row("grok", "NVDA", n, signal="NEUTRAL", price=100.5, score=60.0))
     book.tick(n)
     t = book.trades()[0]
     assert t.status == "MARKET_CLOSE" and t.exit_time.replace(tzinfo=UTC).hour == 21
@@ -283,7 +284,7 @@ def test_R_a_database_failure_during_the_close_loses_nothing_and_the_next_tick_c
     now, t = open_via_premarket(book, et(*TUE, 7, 15))
     monkeypatch.setattr(database, "SessionLocal", sessionmaker(bind=book.engine, class_=Flaky))
     n = et(*TUE, 16, 0, 30)
-    book.set_board("chatgpt", row("chatgpt", "NVDA", n, signal="NEUTRAL", price=100.5, score=60.0))
+    book.set_board("grok", row("grok", "NVDA", n, signal="NEUTRAL", price=100.5, score=60.0))
     with pytest.raises(OperationalError):
         book.tick(n)
     assert book.trades()[0].status == "OPEN" and book.trades()[0].exit_price is None            # nothing half-written
@@ -294,7 +295,7 @@ def test_R_a_database_failure_during_the_close_loses_nothing_and_the_next_tick_c
 # =========================================================================== S  several strategies, one symbol ======
 def test_S_each_strategy_trades_independently_but_the_same_symbol_side_is_capped(book):
     book.quotes["NVDA"] = quote()
-    order = ("chatgpt", "grok", "meta", "kimi")
+    order = ("gemini", "grok", "meta", "kimi")
     for k in range(2):
         n = et(*TUE, 7, 15) + timedelta(minutes=3 * k)
         for s in order:
@@ -302,7 +303,7 @@ def test_S_each_strategy_trades_independently_but_the_same_symbol_side_is_capped
         book.tick(n)
     t = book.trades()
     assert len(t) == int(cfg.INTRADAY_EXEC["max_strategies_same_symbol_side"]) == 3
-    assert {x.strategy for x in t} == {"chatgpt", "grok", "meta"}                      # independent rows per strategy
+    assert {x.strategy for x in t} == {"gemini", "grok", "meta"}                    # independent rows per strategy
     kimi = book.events(strategy="kimi")[0]
     assert kimi.eligibility_status == "REJECTED" and kimi.validation_status == ex.WAIT_LIMIT
 
@@ -317,7 +318,7 @@ def test_T_nothing_is_open_after_the_bell_and_nothing_opens_after_it(book):
     book.tick(n)
     book.tick(n + timedelta(minutes=10))
     for later in (et(*TUE, 16, 30), et(*TUE, 19, 59), et(*TUE, 23, 59), et(2026, 10, 28, 3, 59)):
-        book.set_board("chatgpt", row("chatgpt", "MSFT", later, signal="BUY", price=100.0, session="REGULAR"))
+        book.set_board("grok", row("grok", "MSFT", later, signal="BUY", price=100.0, session="REGULAR"))
         book.quotes["MSFT"] = quote()
         book.tick(later)
     assert not [x for x in book.trades() if x.status == "OPEN"]

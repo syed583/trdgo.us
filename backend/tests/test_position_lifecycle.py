@@ -1,10 +1,12 @@
-"""Open paper positions are carried across midnight, weekends and holidays until a RULE closes them.
+"""The pure-intraday paper tracker's position lifecycle.
 
-Nothing is closed merely because the date changed; every close happens exactly once; the entry lock blocks new entries
-and never position monitoring; a restart recovers every open position of any date. Mocked: no API calls, no production
-data (SQLite databases built here)."""
+Every open position is closed before the bell (EOD_CLOSE at close - 10 min: 15:50 ET, 12:50 on an early-close day);
+a position still OPEN from an earlier date is a leftover and is closed as CLEANUP at the first reliable price, never
+carried and never managed; STOP / TARGET / SCORE_EXIT are booked at the OBSERVED price; every close happens exactly
+once; a DB failure mid-tick loses nothing; the entry lock blocks new entries and never monitoring or exits; a restart
+recovers every open position of any date. Mocked: no API calls, no production data (SQLite databases built here)."""
 import types
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -15,6 +17,7 @@ import demo_trade_service as dts
 import entry_lock
 import intraday_signal_v2 as eng
 import market_calendar as mc
+import paper_fills as pf
 import release_tool as rt
 from models_demo_trades import DemoTrade
 
@@ -27,6 +30,12 @@ def et(y, m, d, hh=10, mm=0):
 
 MON, TUE = (2026, 10, 19), (2026, 10, 20)           # Monday, Tuesday
 FRI, SAT, NEXT_MON = (2026, 10, 23), (2026, 10, 24), (2026, 10, 26)
+BLACK_FRI = (2026, 11, 27)                           # the day after Thanksgiving: 13:00 close
+
+
+def _utc(v):
+    """SQLite hands back naive datetimes; they were stored as UTC."""
+    return v.replace(tzinfo=timezone.utc) if isinstance(v, datetime) and v.tzinfo is None else v
 
 
 # ======================================================================= calendar ===
@@ -42,35 +51,42 @@ def test_the_market_calendar_knows_weekends_and_exchange_holidays():
     assert mc.first_close_after(et(2026, 10, 23, 17)) == et(2026, 10, 26, 16)      # Friday evening -> Monday close
 
 
-# ================================================================ the timed exit ===
+# ================================================================ the EOD cutoff ===
 def trade(entry, **kw):
     return types.SimpleNamespace(entry_time=entry.astimezone(timezone.utc) if entry else None,
                                  session_date=entry.date() if entry else None, **kw)
 
 
 @pytest.mark.parametrize("entered, now, expect", [
-    (et(*MON, 10), et(*MON, 15, 59), False),                  # the original rule: not before the close
-    (et(*MON, 10), et(*MON, 16, 0), True),                    # ...at the close
-    (et(*MON, 5), et(*MON, 16, 5), True),                     # a pre-market entry exits at that day's close
-    (et(*MON, 10), et(*TUE, 10), False),                      # THE DATE CHANGED: nothing closes by itself
-    (et(*MON, 10), et(*TUE, 15, 59), False),
-    (et(*MON, 10), et(*TUE, 16, 0), True),                    # a missed close fires at the next close
-    (et(*MON, 17), et(*MON, 18), False),                      # an after-hours entry is not closed the same evening
-    (et(*MON, 17), et(*TUE, 10), False),
-    (et(*MON, 17), et(*TUE, 16, 0), True),                    # ...it exits at the next trading day's close
-    (et(*FRI, 10), et(*SAT, 16, 30), False),                  # a Saturday close does not exist
-    (et(*FRI, 17), et(2026, 10, 25, 16, 30), False),          # nor a Sunday one
-    (et(*FRI, 10), et(*NEXT_MON, 15, 0), False),
-    (et(*FRI, 10), et(*NEXT_MON, 16, 0), True),               # the first close after the weekend
-    (et(2026, 11, 25, 10), et(2026, 11, 26, 16, 0), False),   # Thanksgiving: the exchange is shut
-    (et(2026, 11, 25, 10), et(2026, 11, 27, 16, 0), True),    # the next trading day's close
-    (None, et(*MON, 16, 5), False),
+    (et(*TUE, 10), et(*TUE, 15, 49), False),                  # not before close - 10 min
+    (et(*TUE, 10), et(*TUE, 15, 50), True),                   # ...from 15:50
+    (et(*TUE, 10), et(*TUE, 16, 0), True),
+    (et(*TUE, 10), et(*TUE, 16, 30), True),
+    (et(*MON, 10), et(*TUE, 9, 31), True),                    # a leftover from an EARLIER date is always due
+    (et(*MON, 10), et(*TUE, 10), True),
+    (et(*FRI, 10), et(*SAT, 10), True),                       # ...even on a Saturday (it is cleaned up, not carried)
+    (et(2026, 11, 25, 10), et(2026, 11, 26, 10), True),       # ...even on Thanksgiving
+    (et(*BLACK_FRI, 10), et(*BLACK_FRI, 12, 49), False),      # early close 13:00: the cutoff is 12:50
+    (et(*BLACK_FRI, 10), et(*BLACK_FRI, 12, 50), True),
+    (et(2026, 12, 24, 10), et(2026, 12, 24, 12, 50), True),   # Christmas Eve: 13:00 close
+    (et(*TUE, 10), et(*TUE, 12, 50), False),                  # a regular day is not an early-close day
+    (None, et(*TUE, 16, 5), False),                           # no session date: nothing to be due
 ])
-def test_the_timed_exit_fires_at_a_close_never_because_the_date_changed(entered, now, expect):
-    assert dts._exit_timed(trade(entered), now) is expect
+def test_the_eod_close_is_due_ten_minutes_before_the_sessions_close_and_a_leftover_is_always_due(entered, now, expect):
+    assert dts._eod_due(trade(entered), now) is expect
+    assert dts._exit_timed(trade(entered), now) is expect                  # the older name is the same rule
+
+
+def test_the_eod_cutoff_follows_the_calendar():
+    assert dts.eod_cutoff(date(*TUE)) == et(*TUE, 15, 50)
+    assert dts.eod_cutoff(date(*BLACK_FRI)) == et(*BLACK_FRI, 12, 50)
+    assert dts.eod_cutoff(date(*SAT)) is None and dts.eod_cutoff(date(2026, 11, 26)) is None
 
 
 # ============================================================ the paper tracker ===
+FRESH_Q = {"price": 100.0, "bid": 99.98, "ask": 100.02, "spread": 0.04, "spread_pct": 0.04, "quote_age_s": 2.0, "quote_epoch": 1.0}
+
+
 @pytest.fixture
 def book(monkeypatch):
     engine = create_engine("sqlite://")
@@ -81,28 +97,34 @@ def book(monkeypatch):
     monkeypatch.setattr(dts, "ensure_schema", lambda: None)
     monkeypatch.setattr(dts, "MODELS", {"grok": ("Grok Intraday", "x:y")})
     monkeypatch.setattr(dts, "_quote_price", lambda sym: None)
+    monkeypatch.setattr(dts, "_fresh_quote", lambda sym, now=None: (None, "no live quote"))
     monkeypatch.setattr(dts, "_last_tick", 0.0)
-    monkeypatch.setattr(dts, "_entry_allowed", lambda *a, **k: False)       # these tests are about EXITS and carry-over
+    monkeypatch.setattr(dts, "_entry_allowed", lambda *a, **k: False)       # these tests are about EXITS and cleanup
     return types.SimpleNamespace(engine=engine, Session=Session, board={})
 
 
 def put(book, symbol="AAA", side="LONG", entered=None, entry=100.0, stop=99.0, target=102.0, score=70.0, strategy="grok",
-        last=None):
-    entered = entered or et(*MON, 14)
+        last=None, status="OPEN"):
+    """A position in the book. Default: opened TODAY (Tuesday 10:00); pass ``entered`` on an earlier date for a leftover."""
+    entered = entered or et(*TUE, 10)
     with book.Session() as s:
         t = DemoTrade(strategy=strategy, symbol=symbol, side=side, shares=100, session_date=entered.date(),
                       entry_time=entered.astimezone(timezone.utc), entry_price=entry, stop=stop, target=target,
-                      score_at_entry=score, last_price=last, status="OPEN")
+                      score_at_entry=score, last_price=last, status=status)
         s.add(t)
         s.commit()
         return t.id
+
+
+def brow(symbol, price, score=68, age=5):
+    return {"symbol": symbol, "signal": "NEUTRAL", "score": score, "now": price, "data": {"ok": True, "price_age_s": age}}
 
 
 def run(book, monkeypatch, now, price=None, score=None, symbol="AAA", extra=None):
     """One tracker tick at ``now`` (ET) with the boards showing ``price`` / ``score`` for ``symbol``."""
     rows = []
     if price is not None:
-        rows.append({"symbol": symbol, "signal": "NEUTRAL", "score": score, "now": price, "data": {"ok": True, "price_age_s": 5}})
+        rows.append(brow(symbol, price, score))
     rows += list(extra or [])
     monkeypatch.setattr(dts, "_et_now", lambda: now)
     monkeypatch.setattr(dts, "_board", lambda spec: {"neutral": rows})
@@ -113,116 +135,93 @@ def row(book, tid):
     with book.Session() as s:
         t = s.get(DemoTrade, tid)
         return types.SimpleNamespace(status=t.status, exit_price=t.exit_price, last=t.last_price, profit=t.profit,
-                                     exit_time=t.exit_time, session=t.session_date)
+                                     exit_time=_utc(t.exit_time), session=t.session_date, stop=t.stop, target=t.target,
+                                     be_moved=bool(t.be_moved))
 
 
-def test_a_position_is_still_monitored_after_midnight_and_not_closed_by_the_date(book, monkeypatch):
-    tid = put(book)                                                     # opened Monday 14:00, still open
-    run(book, monkeypatch, et(*TUE, 10, 0), price=100.5, score=68)
-    r = row(book, tid)
-    assert r.status == "OPEN" and r.last == 100.5 and r.profit == 50.0 and r.exit_time is None
+def count(book, **flt):
+    with book.Session() as s:
+        return s.query(DemoTrade).filter_by(**flt).count()
 
 
-def test_a_stop_or_target_hit_the_next_day_closes_it_once_at_the_level(book, monkeypatch):
-    stopped, won = put(book, "AAA"), put(book, "BBB")
-    run(book, monkeypatch, et(*TUE, 10), price=98.5, score=68, extra=[
-        {"symbol": "BBB", "signal": "NEUTRAL", "score": 68, "now": 103.0, "data": {"ok": True, "price_age_s": 5}}])
-    a, b = row(book, stopped), row(book, won)
-    assert (a.status, a.exit_price, a.profit) == ("STOP", 99.0, -100.0)            # clean fill AT the stop
-    assert (b.status, b.exit_price, b.profit) == ("TARGET", 102.0, 200.0)
-    first = a.exit_time
-    run(book, monkeypatch, et(*TUE, 10, 5), price=95.0, score=40)                  # later ticks never touch a closed trade
-    again = row(book, stopped)
-    assert (again.status, again.exit_price, again.profit, again.exit_time) == ("STOP", 99.0, -100.0, first)
+# ------------------------------------------------------------------ the EOD close ---
+def test_every_open_position_is_closed_at_15_50_at_the_observed_price_and_not_a_minute_earlier(book, monkeypatch):
+    long_, short = put(book, "AAA", "LONG"), put(book, "BBB", "SHORT", stop=101.0, target=98.0)
+    run(book, monkeypatch, et(*TUE, 15, 49), price=100.6, score=69, extra=[brow("BBB", 99.6)])
+    assert row(book, long_).status == "OPEN" and row(book, short).status == "OPEN"
+    run(book, monkeypatch, et(*TUE, 15, 50), price=100.8, score=69, extra=[brow("BBB", 99.5)])
+    a, b = row(book, long_), row(book, short)
+    assert (a.status, a.exit_price, a.profit) == ("EOD_CLOSE", 100.8, 80.0)
+    assert (b.status, b.exit_price, b.profit) == ("EOD_CLOSE", 99.5, 50.0)
+    assert a.exit_time.astimezone(ET) == et(*TUE, 15, 50)
+    assert count(book, status="OPEN") == 0
 
 
-def test_a_missed_close_fires_the_timed_exit_at_the_next_close_not_at_restart(book, monkeypatch):
-    tid = put(book, entered=et(*MON, 10))
-    run(book, monkeypatch, et(*TUE, 9, 45), price=100.4, score=69)                 # restart the next morning
+def test_nothing_happens_at_16_00_to_a_position_already_closed_at_15_50(book, monkeypatch):
+    tid = put(book)
+    run(book, monkeypatch, et(*TUE, 15, 50), price=100.8, score=69)
+    first = row(book, tid)
+    assert first.status == "EOD_CLOSE"
+    for hh, mm in ((16, 0), (16, 1), (16, 30)):
+        run(book, monkeypatch, et(*TUE, hh, mm), price=95.0, score=40)           # the bell / after hours: a closed row is never touched
+        r = row(book, tid)
+        assert (r.status, r.exit_price, r.profit, r.exit_time, r.last) == \
+            ("EOD_CLOSE", 100.8, 80.0, first.exit_time, 100.8)
+    assert count(book, status="TIMED_EXIT") == 0 and count(book, status="MARKET_CLOSE") == 0
+
+
+def test_an_early_close_day_closes_at_12_50(book, monkeypatch):
+    tid = put(book, entered=et(*BLACK_FRI, 10))
+    run(book, monkeypatch, et(*BLACK_FRI, 12, 49), price=100.5, score=69)
     assert row(book, tid).status == "OPEN"
-    run(book, monkeypatch, et(*TUE, 16, 1), price=100.8, score=69)
+    run(book, monkeypatch, et(*BLACK_FRI, 12, 50), price=100.6, score=69)
     r = row(book, tid)
-    assert (r.status, r.exit_price) == ("TIMED_EXIT", 100.8)
+    assert (r.status, r.exit_price) == ("EOD_CLOSE", 100.6)
+    assert r.exit_time.astimezone(ET) == et(*BLACK_FRI, 12, 50)
 
 
-@pytest.mark.parametrize("side, entry, stop, target, up, down", [
-    ("LONG", 100.0, 99.0, 102.0, 98.5, 103.0),
-    ("SHORT", 100.0, 101.0, 98.0, 101.5, 97.0),                                    # the mirror image
-])
-def test_buy_and_sell_positions_carry_and_exit_symmetrically(book, monkeypatch, side, entry, stop, target, up, down):
-    adverse, favourable = put(book, "AAA", side, entry=entry, stop=stop, target=target), \
-        put(book, "BBB", side, entry=entry, stop=stop, target=target)
-    run(book, monkeypatch, et(*TUE, 11), price=up, score=None, extra=[
-        {"symbol": "BBB", "signal": "NEUTRAL", "score": None, "now": down, "data": {"ok": True, "price_age_s": 5}}])
-    assert row(book, adverse).status == "STOP" and row(book, adverse).profit == -100.0
-    assert row(book, favourable).status == "TARGET" and row(book, favourable).profit == 200.0
+def test_a_stop_takes_precedence_over_the_eod_close_at_the_cutoff(book, monkeypatch):
+    tid = put(book, stop=99.0)
+    run(book, monkeypatch, et(*TUE, 15, 50), price=98.7, score=69)
+    r = row(book, tid)
+    assert (r.status, r.exit_price) == ("STOP", 98.7)
 
 
-@pytest.mark.parametrize("side, now_score, expect", [
-    ("LONG", 54.0, "SCORE_EXIT"), ("LONG", 60.0, "OPEN"), ("SHORT", 86.0, "SCORE_EXIT"), ("SHORT", 80.0, "OPEN")])
-def test_the_score_exit_still_applies_to_a_carried_position(book, monkeypatch, side, now_score, expect):
-    tid = put(book, side=side, score=70.0, entry=100.0, stop=90.0 if side == "LONG" else 110.0,
-              target=110.0 if side == "LONG" else 90.0)
-    run(book, monkeypatch, et(*TUE, 11), price=100.0, score=now_score)
-    assert row(book, tid).status == expect
+# ------------------------------------------------------------- prior-day leftovers ---
+def test_a_prior_day_open_row_is_closed_as_cleanup_at_the_first_tick_with_a_reliable_price(book, monkeypatch):
+    tid = put(book, entered=et(*MON, 14))                                          # opened Monday, still OPEN on Tuesday
+    run(book, monkeypatch, et(*TUE, 9, 31), price=97.3, score=68)                  # the very first tick, even before 10:00
+    r = row(book, tid)
+    assert (r.status, r.exit_price, r.profit) == ("CLEANUP", 97.3, -270.0)
+    assert r.exit_time.astimezone(ET) == et(*TUE, 9, 31) and r.session == date(*MON)
 
 
-def test_a_restart_recovers_every_open_position_of_every_date_exactly_once(book, monkeypatch):
-    ids = [put(book, "AAA", entered=et(*MON, 14)), put(book, "BBB", entered=et(*TUE, 11)),
-           put(book, "CCC", entered=et(2026, 10, 21, 9, 45))]
-    with book.Session() as s:
-        before = s.query(DemoTrade).count()
-    boards_extra = [{"symbol": sym, "signal": "NEUTRAL", "score": 69, "now": 100.7, "data": {"ok": True, "price_age_s": 5}}
-                    for sym in ("BBB", "CCC")]
-    monkeypatch.setattr(dts, "_last_tick", 0.0)                                    # a fresh process
-    run(book, monkeypatch, et(2026, 10, 21, 10, 30), price=100.7, score=69, extra=boards_extra)
-    for i in ids:
-        r = row(book, i)
-        assert r.status == "OPEN" and r.last == 100.7                              # every one picked up, none closed
-    with book.Session() as s:
-        assert s.query(DemoTrade).count() == before                                # no duplicated position
-    run(book, monkeypatch, et(2026, 10, 21, 10, 31), price=100.7, score=69, extra=boards_extra)   # a second restart
-    with book.Session() as s:
-        assert s.query(DemoTrade).count() == before and s.query(DemoTrade).filter_by(status="OPEN").count() == 3
+def test_a_leftover_is_cleanup_even_when_its_levels_are_breached_and_is_never_managed(book, monkeypatch):
+    breached, trailing = put(book, "AAA", entered=et(*MON, 14), stop=99.0), put(book, "BBB", entered=et(*MON, 14), stop=99.0, target=102.0)
+    run(book, monkeypatch, et(*TUE, 11), price=94.0, score=30, extra=[brow("BBB", 101.5)])
+    a, b = row(book, breached), row(book, trailing)
+    assert (a.status, a.exit_price, a.profit) == ("CLEANUP", 94.0, -600.0)         # not STOP, not SCORE_EXIT: a leftover is cleaned up
+    assert (b.status, b.exit_price, b.profit, b.be_moved, b.stop) == ("CLEANUP", 101.5, 150.0, False, 99.0)   # no breakeven trail on a leftover
 
 
-def test_a_new_signal_never_doubles_a_position_that_is_still_open_from_an_earlier_date(book, monkeypatch):
-    put(book, "AAA", entered=et(*MON, 14))
-    monkeypatch.setattr(dts, "_entry_allowed", lambda *a, **k: True)               # the gate would allow it
-    monkeypatch.setattr(dts, "_can_open", lambda n=None: True)
-    sig = {"symbol": "AAA", "signal": "BUY", "score": 72.0, "entry": 100.2, "now": 100.2, "sl": 99.0, "tp": 102.0,
-           "tradable": True, "data": {"ok": True, "price_age_s": 5}}
-    monkeypatch.setattr(dts, "_et_now", lambda: et(*TUE, 11))
-    monkeypatch.setattr(dts, "_board", lambda spec: {"buyers": [sig]})
-    monkeypatch.setattr(dts.intraday_safety if hasattr(dts, "intraday_safety") else __import__("intraday_safety"),
-                        "tradable", lambda r: True)
-    dts.tick(force=True)
-    with book.Session() as s:
-        assert s.query(DemoTrade).filter_by(symbol="AAA").count() == 1
-    put(book, "ZZZ", entered=et(*MON, 14))                                         # but a different symbol may open
-    sig2 = dict(sig, symbol="YYY")
-    monkeypatch.setattr(dts, "_board", lambda spec: {"buyers": [sig2]})
-    dts.tick(force=True)
-    with book.Session() as s:
-        assert s.query(DemoTrade).filter_by(symbol="YYY").count() == 1
-
-
-def test_missing_price_data_changes_nothing_and_never_invents_a_fill(book, monkeypatch):
-    tid = put(book, last=None)
+def test_a_leftover_with_no_reliable_price_stays_open_and_no_fill_is_invented(book, monkeypatch):
+    tid = put(book, entered=et(*MON, 14), last=None)
     run(book, monkeypatch, et(*TUE, 11))                                           # no board row, no quote at all
     r = row(book, tid)
     assert r.status == "OPEN" and r.exit_price is None and r.last is None          # not even a refresh from the entry price
-    run(book, monkeypatch, et(*TUE, 16, 30))                                       # the close is due and STILL no price:
+    run(book, monkeypatch, et(*TUE, 16, 30))                                       # the day ends and STILL no price
     r = row(book, tid)
-    assert r.status == "OPEN" and r.exit_price is None                             # deferred, never closed at an invented price
-    run(book, monkeypatch, et(*TUE, 16, 45), price=100.8, score=69)                # a reliable price arrives: it closes at it
+    assert r.status == "OPEN" and r.exit_price is None
+    run(book, monkeypatch, et(*TUE, 16, 45), price=100.8, score=69)                # a reliable price arrives: cleaned up at it
     r = row(book, tid)
-    assert (r.status, r.exit_price) == ("TIMED_EXIT", 100.8)
+    assert (r.status, r.exit_price) == ("CLEANUP", 100.8)
 
 
-def test_a_close_with_no_reliable_price_for_days_ends_as_no_price_without_pnl(book, monkeypatch):
+def test_a_leftover_with_no_reliable_price_for_the_configured_trading_days_ends_as_no_price_without_pnl(book, monkeypatch):
+    import tab_settings
+    assert tab_settings.PAPER_EXECUTION["max_unpriced_trading_days"] == 5
     tid = put(book, entered=et(*MON, 10), last=100.2)
-    run(book, monkeypatch, et(2026, 10, 23, 16, 30))                               # the 4th trading day after the Monday close
+    run(book, monkeypatch, et(2026, 10, 23, 16, 30))                               # the 4th trading day after the Monday
     assert row(book, tid).status == "OPEN"
     run(book, monkeypatch, et(*NEXT_MON, 16, 30))                                  # the 5th: given up
     r = row(book, tid)
@@ -232,9 +231,144 @@ def test_a_close_with_no_reliable_price_for_days_ends_as_no_price_without_pnl(bo
         assert t.profit is None and t.profit_pct is None and t.exit_time is not None
 
 
+def test_a_weekend_or_holiday_tick_cleans_up_a_leftover_rather_than_carrying_it(book, monkeypatch):
+    fri = put(book, entered=et(*FRI, 10))
+    run(book, monkeypatch, et(*SAT, 10, 30), price=100.3, score=69)                # Saturday: a reliable price, nothing to carry
+    r = row(book, fri)
+    assert (r.status, r.exit_price) == ("CLEANUP", 100.3)
+    wed = put(book, "HHH", entered=et(2026, 11, 25, 10))
+    run(book, monkeypatch, et(2026, 11, 26, 10, 30), price=100.3, score=69, symbol="HHH")   # Thanksgiving
+    assert row(book, wed).status == "CLEANUP"
+
+
+# ---------------------------------------------------------------- observed fills ---
+@pytest.mark.parametrize("side, entry, stop, target, adverse, favourable, lose, win", [
+    ("LONG", 100.0, 99.0, 102.0, 98.5, 103.0, -150.0, 300.0),
+    ("SHORT", 100.0, 101.0, 98.0, 101.5, 97.0, -150.0, 300.0),                     # the mirror image
+])
+def test_a_stop_or_target_is_booked_at_the_observed_crossing_price_symmetrically(book, monkeypatch, side, entry, stop, target,
+                                                                                 adverse, favourable, lose, win):
+    stopped, won = put(book, "AAA", side, entry=entry, stop=stop, target=target), put(book, "BBB", side, entry=entry, stop=stop, target=target)
+    run(book, monkeypatch, et(*TUE, 11), price=adverse, score=None, extra=[brow("BBB", favourable)])
+    a, b = row(book, stopped), row(book, won)
+    assert (a.status, a.exit_price, a.profit) == ("STOP", adverse, lose)           # the price that crossed, not the level
+    assert (b.status, b.exit_price, b.profit) == ("TARGET", favourable, win)
+    first = a.exit_time
+    run(book, monkeypatch, et(*TUE, 11, 5), price=95.0 if side == "LONG" else 105.0, score=40)   # later ticks never touch a closed trade
+    again = row(book, stopped)
+    assert (again.status, again.exit_price, again.profit, again.exit_time) == ("STOP", adverse, lose, first)
+
+
+def test_the_explicit_level_model_still_books_at_the_level_for_comparison(book, monkeypatch):
+    import tab_settings
+    monkeypatch.setitem(tab_settings.PAPER_EXECUTION, "fill_model", "level")
+    tid = put(book, stop=99.0)
+    run(book, monkeypatch, et(*TUE, 11), price=94.0, score=68)
+    r = row(book, tid)
+    assert (r.status, r.exit_price, r.profit) == ("STOP", 99.0, -100.0)
+
+
+@pytest.mark.parametrize("model, gap, booked", [
+    ("observed", False, 94.0), ("observed", True, 94.0),
+    ("level", False, 99.0), ("level", True, 99.0),
+    ("gap_aware", False, 99.0), ("gap_aware", True, 94.0),
+])
+def test_the_three_fill_models_are_distinct_and_the_shipped_one_is_observed(model, gap, booked):
+    import tab_settings
+    assert tab_settings.PAPER_EXECUTION["fill_model"] == "observed"
+    assert pf.fill_price("LONG", "STOP", 99.0, 102.0, 94.0, gap, model=model) == booked
+    assert pf.fill_price("LONG", "EOD_CLOSE", 99.0, 102.0, 94.0, gap, model=model) == 94.0   # a non-level exit: always observed
+
+
+@pytest.mark.parametrize("last_seen, now, gap", [
+    (et(*MON, 15, 55), et(*TUE, 9, 35), True),
+    (et(*FRI, 15, 55), et(*NEXT_MON, 9, 35), True),
+    (et(*MON, 10, 0), et(*MON, 13, 0), False),
+    (et(*MON, 16, 5), et(*MON, 17, 0), False),
+])
+def test_a_gap_is_a_closed_period_between_two_observations(last_seen, now, gap):
+    assert pf.observation_gap(last_seen, now) is gap
+
+
+@pytest.mark.parametrize("side, now_score, expect", [
+    ("LONG", 54.0, "SCORE_EXIT"), ("LONG", 60.0, "OPEN"), ("SHORT", 86.0, "SCORE_EXIT"), ("SHORT", 80.0, "OPEN")])
+def test_a_score_exit_fires_on_a_15_point_drop_and_is_booked_at_the_observed_price(book, monkeypatch, side, now_score, expect):
+    tid = put(book, side=side, score=70.0, entry=100.0, stop=90.0 if side == "LONG" else 110.0,
+              target=110.0 if side == "LONG" else 90.0)
+    run(book, monkeypatch, et(*TUE, 11), price=96.0, score=now_score)
+    r = row(book, tid)
+    assert r.status == expect
+    assert r.exit_price == (96.0 if expect == "SCORE_EXIT" else None)
+
+
+# ------------------------------------------------------------- restart / recovery ---
+def test_a_restart_recovers_every_open_position_of_every_date_and_closes_leftovers_exactly_once(book, monkeypatch):
+    old, older, today = put(book, "AAA", entered=et(*MON, 14)), put(book, "CCC", entered=et(2026, 10, 16, 11)), put(book, "BBB", entered=et(*TUE, 10))
+    before = count(book)
+    extra = [brow("BBB", 100.7), brow("CCC", 100.7)]
+    monkeypatch.setattr(dts, "_last_tick", 0.0)                                    # a fresh process
+    run(book, monkeypatch, et(*TUE, 10, 30), price=100.7, score=69, extra=extra)
+    a, c, b = row(book, old), row(book, older), row(book, today)
+    assert (a.status, a.exit_price) == ("CLEANUP", 100.7) and (c.status, c.exit_price) == ("CLEANUP", 100.7)
+    assert b.status == "OPEN" and b.last == 100.7 and b.profit == 70.0             # today's: picked up and managed, not closed
+    assert count(book) == before                                                   # no duplicated position
+    first_a = a.exit_time
+    monkeypatch.setattr(dts, "_last_tick", 0.0)                                    # a second restart
+    run(book, monkeypatch, et(*TUE, 10, 31), price=99.1, score=69, extra=[brow("BBB", 100.9), brow("CCC", 99.1)])
+    a2, b2 = row(book, old), row(book, today)
+    assert (a2.status, a2.exit_price, a2.exit_time) == ("CLEANUP", 100.7, first_a)  # the leftover's close is not redone
+    assert b2.status == "OPEN" and b2.last == 100.9
+    assert count(book) == before and count(book, status="OPEN") == 1
+
+
+def test_a_new_signal_never_doubles_a_position_already_open_or_traded_today(book, monkeypatch):
+    put(book, "AAA", entered=et(*TUE, 10))                                         # open today
+    put(book, "DDD", entered=et(*TUE, 10), status="STOP")                          # already traded (and closed) today
+    monkeypatch.setattr(dts, "_entry_allowed", lambda *a, **k: True)               # the gate would allow it
+    monkeypatch.setattr(dts, "_fresh_quote", lambda sym, now=None: (dict(FRESH_Q), ""))
+    import intraday_safety
+    monkeypatch.setattr(intraday_safety, "tradable", lambda r: True)
+
+    def sig(sym):
+        return {"symbol": sym, "signal": "BUY", "score": 72.0, "entry": 100.2, "now": 100.2, "sl": 99.0, "tp": 102.0,
+                "tradable": True, "data": {"ok": True, "price_age_s": 5}}
+    monkeypatch.setattr(dts, "_et_now", lambda: et(*TUE, 11))
+    monkeypatch.setattr(dts, "_board", lambda spec: {"buyers": [sig("AAA"), sig("DDD"), sig("YYY")]})
+    dts.tick(force=True)
+    assert count(book, symbol="AAA") == 1 and count(book, symbol="DDD") == 1       # one per strategy + symbol + day
+    assert count(book, symbol="YYY", status="OPEN") == 1                           # but a new symbol may open
+    with book.Session() as s:
+        y = s.query(DemoTrade).filter_by(symbol="YYY").one()
+        assert y.entry_price == 100.0 and y.shares == 100 and y.session_date == date(*TUE)        # priced at the quote, $10k
+        assert _utc(y.entry_time).astimezone(ET) == et(*TUE, 11)                   # stamped from the tracker's own clock
+    dts.tick(force=True)                                                           # the same tick again: still one each
+    assert count(book, symbol="YYY") == 1 and count(book, symbol="AAA") == 1
+
+
+def test_a_leftover_is_cleaned_up_and_never_blocks_or_doubles_todays_entry_for_the_same_symbol(book, monkeypatch):
+    tid = put(book, "AAA", entered=et(*MON, 14))
+    monkeypatch.setattr(dts, "_entry_allowed", lambda *a, **k: True)
+    monkeypatch.setattr(dts, "_fresh_quote", lambda sym, now=None: (dict(FRESH_Q), ""))
+    import intraday_safety
+    monkeypatch.setattr(intraday_safety, "tradable", lambda r: True)
+    sig = {"symbol": "AAA", "signal": "BUY", "score": 72.0, "entry": 100.2, "now": 100.2, "sl": 99.0, "tp": 102.0,
+           "tradable": True, "data": {"ok": True, "price_age_s": 5}}
+    monkeypatch.setattr(dts, "_et_now", lambda: et(*TUE, 11))
+    monkeypatch.setattr(dts, "_board", lambda spec: {"buyers": [sig]})
+    dts.tick(force=True)
+    l = row(book, tid)
+    assert (l.status, l.exit_price) == ("CLEANUP", 100.2)                          # the leftover is closed (the cleanup is written first)...
+    assert count(book, symbol="AAA") == 2 and count(book, symbol="AAA", status="OPEN") == 1   # ...and today's entry opens: never two OPEN
+    first = l.exit_time
+    dts.tick(force=True)                                                           # again: nothing doubles, the cleanup is not redone
+    assert count(book, symbol="AAA") == 2 and count(book, symbol="AAA", status="OPEN") == 1
+    assert row(book, tid).exit_time == first
+
+
+# -------------------------------------------------------------- executable prices ---
 def test_a_stale_board_price_or_a_wait_row_is_not_an_executable_price(book, monkeypatch):
     tid = put(book)
-    stale = {"symbol": "AAA", "signal": "NEUTRAL", "score": 68, "now": 98.0, "data": {"ok": True, "price_age_s": 900}}
+    stale = brow("AAA", 98.0, age=900)
     wait = {"symbol": "AAA", "signal": "WAIT", "score": None, "score_raw": 68, "now": 98.0, "wait": True,
             "data": {"ok": False, "price_age_s": 5}}
     for bad in (stale, wait):
@@ -242,18 +376,39 @@ def test_a_stale_board_price_or_a_wait_row_is_not_an_executable_price(book, monk
         r = row(book, tid)
         assert r.status == "OPEN" and r.exit_price is None                         # a breached stop at a stale price: no fill
     run(book, monkeypatch, et(*TUE, 11, 2), price=98.0, score=68)                  # the same price, fresh: now it executes
-    assert row(book, tid).status == "STOP"
+    r = row(book, tid)
+    assert (r.status, r.exit_price) == ("STOP", 98.0)
 
 
 def test_a_live_quote_is_an_executable_price_when_no_board_has_one(book, monkeypatch):
     tid = put(book)
     monkeypatch.setattr(dts, "_quote_price", lambda sym: 98.0)
     run(book, monkeypatch, et(*TUE, 11))
-    assert row(book, tid).status == "STOP"
+    r = row(book, tid)
+    assert (r.status, r.exit_price) == ("STOP", 98.0)
 
 
+def test_todays_position_with_no_price_at_the_cutoff_waits_and_is_closed_at_the_first_reliable_price(book, monkeypatch):
+    tid = put(book, last=None)
+    run(book, monkeypatch, et(*TUE, 15, 50))                                       # the close is due and there is no price
+    r = row(book, tid)
+    assert r.status == "OPEN" and r.exit_price is None and r.last is None
+    run(book, monkeypatch, et(*TUE, 16, 10), price=100.8, score=69)                # a reliable price arrives: closed at it
+    r = row(book, tid)
+    assert (r.status, r.exit_price) == ("EOD_CLOSE", 100.8)
+
+
+def test_an_unexpected_closure_the_calendar_does_not_know_never_invents_a_fill(book, monkeypatch):
+    tid = put(book, stop=99.0, entered=et(*MON, 14))
+    stale = brow("AAA", 94.0, age=61000)
+    for hh, mm in ((9, 35), (12, 0), (16, 5)):
+        run(book, monkeypatch, et(*TUE, hh, mm), extra=[stale])
+        assert row(book, tid).status == "OPEN"
+
+
+# -------------------------------------------------------------- exactly-once closes ---
 def test_a_database_failure_during_the_tick_loses_nothing_and_the_next_tick_closes_once(book, monkeypatch):
-    tid = put(book)
+    tid, left = put(book), put(book, "OLD", entered=et(*MON, 14))
     real = book.Session
     calls = {"n": 0}
 
@@ -271,11 +426,13 @@ def test_a_database_failure_during_the_tick_loses_nothing_and_the_next_tick_clos
             return s
     import database
     monkeypatch.setattr(database, "SessionLocal", Flaky())
-    run(book, monkeypatch, et(*TUE, 11), price=98.0, score=68)                     # the commit fails: nothing persisted
-    assert row(book, tid).status == "OPEN"
-    run(book, monkeypatch, et(*TUE, 11, 1), price=98.0, score=68)                  # recovered: closed exactly once
-    r = row(book, tid)
-    assert (r.status, r.exit_price, r.profit) == ("STOP", 99.0, -100.0)
+    run(book, monkeypatch, et(*TUE, 11), price=98.0, score=68, extra=[brow("OLD", 97.0)])   # the commit fails: nothing persisted
+    assert row(book, tid).status == "OPEN" and row(book, left).status == "OPEN"
+    run(book, monkeypatch, et(*TUE, 11, 1), price=98.0, score=68, extra=[brow("OLD", 97.0)])  # recovered: closed exactly once
+    r, l = row(book, tid), row(book, left)
+    assert (r.status, r.exit_price, r.profit) == ("STOP", 98.0, -200.0)
+    assert (l.status, l.exit_price, l.profit) == ("CLEANUP", 97.0, -300.0)
+    assert count(book) == 2
 
 
 def test_a_competing_close_is_never_overwritten_or_duplicated(book, monkeypatch):
@@ -288,9 +445,24 @@ def test_a_competing_close_is_never_overwritten_or_duplicated(book, monkeypatch)
                            "profit=200.0, profit_pct=2.0 WHERE id = :i AND status = 'OPEN'"), {"i": tid})
         return real_reason(t, last, score, after_close)
     monkeypatch.setattr(dts, "_exit_reason", competing)
-    run(book, monkeypatch, et(*TUE, 11), price=98.0, score=68)                     # this tick wants a STOP at 99
+    run(book, monkeypatch, et(*TUE, 11), price=98.0, score=68)                     # this tick wants a STOP at 98
     r = row(book, tid)
     assert (r.status, r.exit_price, r.profit) == ("TARGET", 102.0, 200.0)          # the first close stands
+
+
+def test_a_competing_close_of_a_leftover_is_never_overwritten_by_the_cleanup(book, monkeypatch):
+    tid = put(book, entered=et(*MON, 14))
+    real_pnl = dts._pnl
+
+    def competing(side, entry, last, shares):
+        with book.engine.begin() as c:
+            c.execute(text("UPDATE demo_trades SET status='STOP', exit_price=99.0, last_price=99.0, profit=-100.0 "
+                           "WHERE id = :i AND status = 'OPEN'"), {"i": tid})
+        return real_pnl(side, entry, last, shares)
+    monkeypatch.setattr(dts, "_pnl", competing)
+    run(book, monkeypatch, et(*TUE, 11), price=97.0, score=68)                     # this tick wants CLEANUP at 97
+    r = row(book, tid)
+    assert (r.status, r.exit_price, r.profit) == ("STOP", 99.0, -100.0)
 
 
 def test_a_closed_trades_pnl_is_never_refreshed_by_a_stale_snapshot(book, monkeypatch):
@@ -303,45 +475,7 @@ def test_a_closed_trades_pnl_is_never_refreshed_by_a_stale_snapshot(book, monkey
     assert (r.status, r.exit_price, r.last, r.profit) == ("STOP", 99.0, 99.0, -100.0)
 
 
-def test_weekends_and_holidays_keep_the_position_open_and_unharmed(book, monkeypatch):
-    tid = put(book, entered=et(*FRI, 10))
-    run(book, monkeypatch, et(*SAT, 16, 30), price=100.3, score=69)                # Saturday after "the close"
-    assert row(book, tid).status == "OPEN"
-    run(book, monkeypatch, et(2026, 10, 25, 17, 0), price=100.3, score=69)         # Sunday evening
-    assert row(book, tid).status == "OPEN"
-    thanks = put(book, "HHH", entered=et(2026, 11, 25, 10))
-    run(book, monkeypatch, et(2026, 11, 26, 16, 30), price=100.3, score=69, symbol="HHH")   # Thanksgiving
-    assert row(book, thanks).status == "OPEN"
-    run(book, monkeypatch, et(2026, 11, 27, 16, 1), price=100.9, score=69, symbol="HHH")    # the next trading close
-    assert row(book, thanks).status == "TIMED_EXIT"
-
-
 # ----------------------------------------------------- entry lock, reporting, rollback ---
-def test_the_entry_lock_blocks_new_entries_but_never_monitoring_or_exits(book, monkeypatch):
-    entry_lock.install(book.engine)
-    entry_lock.set_locked(True, "release", book.engine)
-    tid = put_unlocked(book)
-    assert entry_lock.is_locked(book.engine, fresh=True) is True                  # (read once: an in-memory SQLite shares ONE connection)
-    monkeypatch.setattr(dts, "_entry_allowed", lambda *a, **k: False)             # what the real gate answers while locked
-    monkeypatch.setattr(dts, "_can_open", lambda n=None: True)
-    sig = {"symbol": "NEW", "signal": "BUY", "score": 72.0, "entry": 50.0, "now": 50.0, "tradable": True,
-           "data": {"ok": True, "price_age_s": 5}}
-    monkeypatch.setattr(dts, "_et_now", lambda: et(*TUE, 11))
-    monkeypatch.setattr(dts, "_board", lambda spec: {"buyers": [sig], "neutral": [
-        {"symbol": "AAA", "signal": "NEUTRAL", "score": 68, "now": 98.0, "data": {"ok": True, "price_age_s": 5}}]})
-    import intraday_safety
-    monkeypatch.setattr(intraday_safety, "tradable", lambda r: True)
-    dts.tick(force=True)
-    r = row(book, tid)
-    assert (r.status, r.exit_price) == ("STOP", 99.0)                              # the exit went through the triggers
-    with book.Session() as s:
-        assert s.query(DemoTrade).filter_by(symbol="NEW").count() == 0             # and the entry did not happen
-    with book.engine.begin() as c:                                                 # the trigger itself, for any build
-        with pytest.raises(Exception):
-            c.execute(text("INSERT INTO demo_trades (strategy, symbol, side, shares, session_date, entry_price, status) "
-                           "VALUES ('grok','X','LONG',100,'2026-10-20',1.0,'OPEN')"))
-
-
 def put_unlocked(book, **kw):
     """A position that exists from before the lock (inserted with the lock briefly off)."""
     entry_lock.set_locked(False, "seed", book.engine)
@@ -350,24 +484,48 @@ def put_unlocked(book, **kw):
     return tid
 
 
-def test_a_rollback_is_refused_while_a_carried_position_is_open_and_allowed_when_flat(book, monkeypatch):
+def test_the_entry_lock_blocks_new_entries_but_never_monitoring_or_exits(book, monkeypatch):
+    entry_lock.install(book.engine)
+    entry_lock.set_locked(True, "release", book.engine)
+    tid, left = put_unlocked(book), put_unlocked(book, symbol="OLD", entered=et(*MON, 14))
+    assert entry_lock.is_locked(book.engine, fresh=True) is True                  # (read once: an in-memory SQLite shares ONE connection)
+    monkeypatch.setattr(dts, "_entry_allowed", lambda *a, **k: False)             # what the real gate answers while locked
+    monkeypatch.setattr(dts, "_fresh_quote", lambda sym, now=None: (dict(FRESH_Q), ""))   # the quote alone would allow it
+    sig = {"symbol": "NEW", "signal": "BUY", "score": 72.0, "entry": 50.0, "now": 50.0, "tradable": True,
+           "data": {"ok": True, "price_age_s": 5}}
+    monkeypatch.setattr(dts, "_et_now", lambda: et(*TUE, 11))                     # inside the entry window
+    monkeypatch.setattr(dts, "_board", lambda spec: {"buyers": [sig], "neutral": [brow("AAA", 98.0), brow("OLD", 97.0)]})
+    import intraday_safety
+    monkeypatch.setattr(intraday_safety, "tradable", lambda r: True)
+    dts.tick(force=True)
+    r, l = row(book, tid), row(book, left)
+    assert (r.status, r.exit_price) == ("STOP", 98.0)                              # the exit went through the triggers
+    assert (l.status, l.exit_price) == ("CLEANUP", 97.0)                           # and so did the cleanup
+    assert count(book, symbol="NEW") == 0                                          # and the entry did not happen
+    with book.engine.begin() as c:                                                 # the trigger itself, for any build
+        with pytest.raises(Exception):
+            c.execute(text("INSERT INTO demo_trades (strategy, symbol, side, shares, session_date, entry_price, status) "
+                           "VALUES ('grok','X','LONG',100,'2026-10-20',1.0,'OPEN')"))
+
+
+def test_a_rollback_is_refused_while_any_position_is_open_and_allowed_when_flat(book, monkeypatch):
     entry_lock.install(book.engine)
     entry_lock.set_locked(False, "live", book.engine)
-    tid = put(book, entered=et(*MON, 14))                                          # opened on an EARLIER date
-    assert entry_lock.open_positions(book.engine)["demo_trades"] == 1              # counted whatever its date
+    left, tid = put(book, "OLD", entered=et(*MON, 14)), put(book, "AAA")           # a leftover and today's position
+    assert entry_lock.open_positions(book.engine)["demo_trades"] == 2              # counted whatever their dates
     refused = rt.rollback_prepare(engine=book.engine)
-    assert refused["ok"] is False and refused["open_positions"]["demo_trades"] == 1
-    monkeypatch.setattr(dts, "_et_now", lambda: et(*TUE, 11))
+    assert refused["ok"] is False and refused["open_positions"]["demo_trades"] == 2
     entry_lock.set_locked(True, "release", book.engine)
-    monkeypatch.setattr(dts, "_board", lambda spec: {"neutral": [
-        {"symbol": "AAA", "signal": "NEUTRAL", "score": 68, "now": 98.0, "data": {"ok": True, "price_age_s": 5}}]})
-    dts.tick(force=True)                                                           # monitoring continues while locked
-    assert row(book, tid).status == "STOP"
-    assert rt.rollback_prepare(engine=book.engine)["ok"] is True
+    run(book, monkeypatch, et(*TUE, 11), price=100.5, score=69, extra=[brow("OLD", 97.0)])   # monitoring continues while locked
+    assert row(book, left).status == "CLEANUP" and row(book, tid).status == "OPEN"
+    assert rt.rollback_prepare(engine=book.engine)["ok"] is False                  # today's position still blocks it
+    run(book, monkeypatch, et(*TUE, 15, 50), price=100.5, score=69)
+    assert row(book, tid).status == "EOD_CLOSE"
+    assert rt.rollback_prepare(engine=book.engine)["ok"] is True                   # flat after the bell: allowed
 
 
-def test_the_blotter_lists_carried_positions_without_touching_todays_totals(book, monkeypatch):
-    put(book, "AAA", entered=et(*MON, 14))                                         # carried
+def test_the_blotter_lists_leftovers_apart_from_todays_rows_and_totals(book, monkeypatch):
+    put(book, "AAA", entered=et(*MON, 14))                                         # a leftover, not yet cleaned up
     put(book, "TDY", entered=et(*TUE, 10), last=101.0)                             # today's
     with book.engine.begin() as c:
         c.execute(text("UPDATE demo_trades SET profit = 100.0 WHERE symbol = 'TDY'"))
@@ -378,8 +536,39 @@ def test_the_blotter_lists_carried_positions_without_touching_todays_totals(book
     assert [r["symbol"] for r in out["rows"]] == ["TDY"] and out["total_profit"] == 100.0 and out["open"] == 1
     assert out["carried_open_count"] == 1 and out["carried_open"][0]["symbol"] == "AAA"
     assert out["carried_open"][0]["opened_on"] == "2026-10-19"
+    assert out["rules"]["eod_close_et"] == "15:50" and out["rules"]["entry_window_et"] == ["10:00", "15:00"]
     past = dts.blotter(date="2026-10-19")                                          # a past date's blotter is its own day
     assert [r["symbol"] for r in past["rows"]] == ["AAA"] and past["carried_open"] == []
+
+
+def test_the_gap_effect_and_realized_pnl_are_reported_without_distorting_the_entry_date_view(book, monkeypatch):
+    left = put(book, "AAA", stop=99.0, entered=et(*MON, 14))
+    put(book, "TDY", entered=et(*TUE, 10), stop=99.0, last=100.0)
+    run(book, monkeypatch, et(*TUE, 10, 5), price=97.0, score=68, extra=[brow("TDY", 94.0)])
+    assert row(book, left).status == "CLEANUP"
+    monkeypatch.setattr(dts, "tick", lambda force=False: None)
+    tue = dts.blotter(date="2026-10-20")
+    assert [r["symbol"] for r in tue["rows"]] == ["TDY"]
+    r = tue["rows"][0]
+    assert (r["status"], r["exit_price"], r["exit_basis"], r["gap_effect"]) == ("STOP", 94.0, "GAP", -500.0)   # 94 vs the 99 level
+    assert tue["total_profit"] == -600.0 and tue["gap_effect_total"] == -500.0
+    assert tue["realized_on_date"] == -900.0 and tue["closed_on_date"] == 2       # both closed today (the cleanup included)
+    mon = dts.blotter(date="2026-10-19")
+    assert [r["symbol"] for r in mon["rows"]] == ["AAA"] and mon["total_profit"] == -300.0
+    assert (mon["rows"][0]["exit_basis"], mon["rows"][0]["exit_date"], mon["rows"][0]["exit_reason_label"]) == \
+        (None, "2026-10-20", "Cleanup (prior-day leftover)")
+    assert mon["gap_effect_total"] == 0.0
+
+
+def test_a_no_price_close_is_in_no_total_win_rate_or_realized_pnl(book, monkeypatch):
+    tid = put(book, entered=et(*MON, 10), last=100.2)
+    run(book, monkeypatch, et(*NEXT_MON, 16, 30))
+    assert row(book, tid).status == "NO_PRICE"
+    monkeypatch.setattr(dts, "tick", lambda force=False: None)
+    out = dts.blotter(date="2026-10-19")
+    assert out["total_profit"] == 0 and out["wins"] == 0
+    assert out["rows"][0]["profit"] is None and out["rows"][0]["exit_basis"] is None
+    assert dts.blotter(date="2026-10-26")["realized_on_date"] == 0.0
 
 
 # ====================================================================== live engine ===
@@ -499,159 +688,6 @@ def test_the_log_and_the_summary_show_carried_signals_without_changing_a_past_se
     assert eng.log_rows("2026-10-19")[0]["carried"] is False                        # its own session: not "carried"
 
 
-# ============================================================ overnight gaps (the fill accounting) ===
-def touch(book, tid, when):
-    """Make the position's LAST OBSERVATION happen at ``when`` (ET)."""
-    with book.engine.begin() as c:
-        c.execute(text("UPDATE demo_trades SET updated_at = :t WHERE id = :i"),
-                  {"t": when.astimezone(timezone.utc).replace(tzinfo=None), "i": tid})
-
-
-@pytest.mark.parametrize("side, stop, target, open_px, status, filled, profit", [
-    ("LONG", 99.0, 102.0, 94.0, "STOP", 94.0, -600.0),      # gaps DOWN through a long stop: filled at the open, not at 99
-    ("LONG", 99.0, 102.0, 105.0, "TARGET", 105.0, 500.0),   # gaps UP through the target: the better open price
-    ("SHORT", 101.0, 98.0, 106.0, "STOP", 106.0, -600.0),   # the mirror image: gaps UP through a short stop
-    ("SHORT", 101.0, 98.0, 95.0, "TARGET", 95.0, 500.0),
-])
-def test_an_overnight_gap_through_a_level_is_booked_at_the_first_executable_price(
-        book, monkeypatch, side, stop, target, open_px, status, filled, profit):
-    tid = put(book, side=side, stop=stop, target=target, entered=et(*MON, 14))
-    touch(book, tid, et(*MON, 15, 55))
-    run(book, monkeypatch, et(*TUE, 9, 35), price=open_px, score=68)
-    r = row(book, tid)
-    assert (r.status, r.exit_price, r.profit) == (status, filled, profit)
-
-
-def test_inside_a_continuous_session_a_level_is_still_booked_at_the_level(book, monkeypatch):
-    tid = put(book, stop=99.0)
-    touch(book, tid, et(*TUE, 10, 0))
-    run(book, monkeypatch, et(*TUE, 10, 1), price=98.4, score=68)
-    r = row(book, tid)
-    assert (r.status, r.exit_price, r.profit) == ("STOP", 99.0, -100.0)
-
-
-def test_downtime_inside_one_session_is_not_a_gap(book, monkeypatch):
-    tid = put(book, stop=99.0)
-    touch(book, tid, et(*TUE, 10, 0))
-    run(book, monkeypatch, et(*TUE, 13, 0), price=94.0, score=68)
-    assert row(book, tid).exit_price == 99.0
-
-
-@pytest.mark.parametrize("last_seen, now, gap", [
-    (et(*MON, 15, 55), et(*TUE, 9, 35), True),
-    (et(*FRI, 15, 55), et(*NEXT_MON, 9, 35), True),
-    (et(2026, 11, 25, 15, 55), et(2026, 11, 27, 9, 35), True),
-    (et(*MON, 10, 0), et(*MON, 13, 0), False),
-    (et(*MON, 19, 0), et(*MON, 19, 30), False),
-    (et(*MON, 19, 30), et(*TUE, 4, 5), True),
-    (et(*MON, 16, 5), et(*MON, 17, 0), False),
-])
-def test_a_gap_is_a_closed_period_between_two_observations(last_seen, now, gap):
-    import paper_fills as pf
-    assert pf.observation_gap(last_seen, now) is gap
-
-
-def test_a_breach_found_without_an_executable_price_waits_and_is_then_booked_at_the_gap_price(book, monkeypatch):
-    tid = put(book, stop=99.0)
-    touch(book, tid, et(*MON, 15, 55))
-    stale = {"symbol": "AAA", "signal": "NEUTRAL", "score": 68, "now": 94.0, "data": {"ok": True, "price_age_s": 4000}}
-    run(book, monkeypatch, et(*TUE, 9, 31), extra=[stale])
-    assert row(book, tid).status == "OPEN"
-    touch(book, tid, et(*MON, 15, 55))                       # a deferred tick never refreshes the last observation
-    run(book, monkeypatch, et(*TUE, 9, 40), price=93.0, score=68)
-    r = row(book, tid)
-    assert (r.status, r.exit_price, r.profit) == ("STOP", 93.0, -700.0)
-
-
-def test_the_old_level_convention_is_still_available_for_comparison(book, monkeypatch):
-    import tab_settings
-    monkeypatch.setitem(tab_settings.PAPER_EXECUTION, "fill_model", "level")
-    tid = put(book, stop=99.0)
-    touch(book, tid, et(*MON, 15, 55))
-    run(book, monkeypatch, et(*TUE, 9, 35), price=94.0, score=68)
-    assert row(book, tid).exit_price == 99.0
-
-
-def test_score_exits_are_booked_at_the_observed_price_not_a_level(book, monkeypatch):
-    sc = put(book, "AAA", score=70.0, stop=90.0, target=110.0)
-    touch(book, sc, et(*MON, 15, 55))
-    run(book, monkeypatch, et(*TUE, 9, 35), price=96.0, score=50.0)
-    r = row(book, sc)
-    assert r.status == "SCORE_EXIT" and r.exit_price == 96.0
-
-
-def test_the_gap_effect_and_realized_pnl_are_reported_without_distorting_the_entry_date_view(book, monkeypatch):
-    tid = put(book, stop=99.0, entered=et(*MON, 14))
-    touch(book, tid, et(*MON, 15, 55))
-    put(book, "TDY", entered=et(*TUE, 9, 40), last=100.0)
-    run(book, monkeypatch, et(*TUE, 9, 45), price=94.0, score=68, extra=[
-        {"symbol": "TDY", "signal": "NEUTRAL", "score": 68, "now": 101.0, "data": {"ok": True, "price_age_s": 5}}])
-    monkeypatch.setattr(dts, "tick", lambda force=False: None)
-    tue = dts.blotter(date="2026-10-20")
-    assert [r["symbol"] for r in tue["rows"]] == ["TDY"]
-    assert tue["realized_on_date"] == -600.0 and tue["closed_on_date"] == 1
-    mon = dts.blotter(date="2026-10-19")
-    assert [r["symbol"] for r in mon["rows"]] == ["AAA"] and mon["total_profit"] == -600.0
-    r = mon["rows"][0]
-    assert (r["exit_basis"], r["gap_effect"], r["exit_date"]) == ("GAP", -500.0, "2026-10-20")
-    assert mon["gap_effect_total"] == -500.0 and tue["gap_effect_total"] == 0.0
-
-
-def test_a_no_price_close_is_in_no_total_win_rate_or_realized_pnl(book, monkeypatch):
-    tid = put(book, entered=et(*MON, 10), last=100.2)
-    run(book, monkeypatch, et(*NEXT_MON, 16, 30))
-    assert row(book, tid).status == "NO_PRICE"
-    monkeypatch.setattr(dts, "tick", lambda force=False: None)
-    out = dts.blotter(date="2026-10-19")
-    assert out["total_profit"] == 0 and out["wins"] == 0
-    assert out["rows"][0]["profit"] is None and out["rows"][0]["exit_basis"] is None
-    assert dts.blotter(date="2026-10-26")["realized_on_date"] == 0.0
-
-
-# ============================================================================== early closes ===
-def test_the_calendar_knows_early_closes_and_operator_closures(monkeypatch):
-    assert mc.is_early_close(date(2026, 11, 27)) and mc.is_early_close(date(2026, 12, 24))
-    assert mc.is_early_close(date(2025, 7, 3)) and mc.is_early_close(date(2024, 7, 3))
-    assert not mc.is_early_close(date(2026, 7, 3)) and not mc.is_early_close(date(2026, 10, 23))
-    assert not mc.is_early_close(date(2027, 12, 24))
-    assert str(mc.close_time(date(2026, 11, 27))) == "13:00:00" and str(mc.close_time(date(2026, 10, 23))) == "16:00:00"
-    assert str(mc.eod_time(date(2026, 11, 27))) == "12:55:00" and str(mc.eod_time(date(2026, 10, 23))) == "15:55:00"
-    monkeypatch.setenv("MARKET_EXTRA_CLOSURES", "2027-01-09, not-a-date, 2026-10-22")
-    assert not mc.is_trading_day(date(2026, 10, 22)) and mc.is_trading_day(date(2026, 10, 21))
-    monkeypatch.setenv("MARKET_EXTRA_EARLY_CLOSES", "2026-10-23")
-    assert mc.is_early_close(date(2026, 10, 23))
-
-
-@pytest.mark.parametrize("entered, now, expect", [
-    (et(2026, 11, 27, 10), et(2026, 11, 27, 12, 59), False),
-    (et(2026, 11, 27, 10), et(2026, 11, 27, 13, 0), True),
-    (et(2026, 11, 27, 14), et(2026, 11, 27, 16, 0), False),
-    (et(2026, 11, 27, 14), et(2026, 11, 30, 16, 0), True),
-    (et(2026, 12, 24, 10), et(2026, 12, 24, 13, 0), True),
-    (et(*TUE, 10), et(*TUE, 13, 0), False),
-])
-def test_the_timed_exit_follows_the_sessions_real_close(entered, now, expect):
-    assert dts._exit_timed(trade(entered), now) is expect
-
-
-def test_a_carried_position_exits_at_the_early_close_not_at_four(book, monkeypatch):
-    tid = put(book, entered=et(2026, 11, 25, 10))
-    run(book, monkeypatch, et(2026, 11, 27, 12, 30), price=100.5, score=69)
-    assert row(book, tid).status == "OPEN"
-    run(book, monkeypatch, et(2026, 11, 27, 13, 1), price=100.6, score=69)
-    r = row(book, tid)
-    assert (r.status, r.exit_price) == ("TIMED_EXIT", 100.6)
-
-
-def test_an_unexpected_closure_the_calendar_does_not_know_never_invents_a_fill(book, monkeypatch):
-    tid = put(book, stop=99.0, entered=et(*MON, 14))
-    touch(book, tid, et(*MON, 15, 55))
-    stale = {"symbol": "AAA", "signal": "NEUTRAL", "score": 68, "now": 94.0, "data": {"ok": True, "price_age_s": 61000}}
-    for hh, mm in ((9, 35), (12, 0), (16, 5)):
-        run(book, monkeypatch, et(*TUE, hh, mm), extra=[stale])
-        assert row(book, tid).status == "OPEN"
-
-
 def test_the_engine_ends_the_day_five_minutes_before_an_early_close(sigdb):
     sig_row(sigdb, "AAA", session="2026-11-27")
     assert step(sigdb, "AAA", et(2026, 11, 27, 12, 54), 100.5)["is_open"] is True
@@ -668,9 +704,21 @@ def test_the_engine_books_no_exit_at_a_stale_price(sigdb, stale):
     assert (out["exit_reason"] == "SL") is (not stale)
 
 
+# ============================================================================== early closes ===
+def test_the_calendar_knows_early_closes_and_operator_closures(monkeypatch):
+    assert mc.is_early_close(date(2026, 11, 27)) and mc.is_early_close(date(2026, 12, 24))
+    assert mc.is_early_close(date(2025, 7, 3)) and mc.is_early_close(date(2024, 7, 3))
+    assert not mc.is_early_close(date(2026, 7, 3)) and not mc.is_early_close(date(2026, 10, 23))
+    assert not mc.is_early_close(date(2027, 12, 24))
+    assert str(mc.close_time(date(2026, 11, 27))) == "13:00:00" and str(mc.close_time(date(2026, 10, 23))) == "16:00:00"
+    assert str(mc.eod_time(date(2026, 11, 27))) == "12:55:00" and str(mc.eod_time(date(2026, 10, 23))) == "15:55:00"
+    monkeypatch.setenv("MARKET_EXTRA_CLOSURES", "2027-01-09, not-a-date, 2026-10-22")
+    assert not mc.is_trading_day(date(2026, 10, 22)) and mc.is_trading_day(date(2026, 10, 21))
+    monkeypatch.setenv("MARKET_EXTRA_EARLY_CLOSES", "2026-10-23")
+    assert mc.is_early_close(date(2026, 10, 23))
+
+
 # ================================================================================ instruments ===
 def test_only_stocks_and_etfs_are_modelled():
     got = [mc.instrument_kind(x) for x in ("AAPL", "SPY", "QQQ", "BRK.B", "ES", "/ES", "ES=F", "SPX", "^VIX", "VIX", "")]
     assert got == ["equity", "equity", "equity", "equity", "equity", "future", "future", "index", "index", "index", "unknown"]
-
-

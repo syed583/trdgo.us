@@ -1,4 +1,4 @@
-"""Replay invariants (one simulated trading day, six strategies, identical snapshots). Prices are SIMULATED."""
+"""Replay invariants (one simulated trading day, four strategies, identical snapshots). Prices are SIMULATED."""
 from collections import Counter
 from datetime import date
 

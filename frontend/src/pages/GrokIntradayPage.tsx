@@ -6,11 +6,15 @@ import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import '../components/intraday-v2.css';
 
-// Grok Intraday -- a LIVE board over the liquid universe, same UI as Trdgo Stock
-// (Intraday Model v2 board) but scored with the Grok 10-signal short-term model.
+// Grok Intraday -- a LIVE board over the liquid universe (38 names), shared by
+// the Meta / Kimi / Gemini boards via `cfg`, each scored with its own model.
 
 const money = (v: any) => (v == null ? '—' : `$${Number(v).toFixed(2)}`);
 const callClass = (c: string) => (c === 'BUY' ? 'im2-buy' : c === 'SELL' ? 'im2-sell' : 'im2-noedge');
+// Spread cell: "$0.03 (0.04%)"; red (im2-wide) when the spread is over 0.3% of price.
+const spreadText = (r: any) =>
+  r.spread == null ? '—' : `$${Number(r.spread).toFixed(2)}${r.spread_pct != null ? ` (${Number(r.spread_pct).toFixed(2)}%)` : ''}`;
+const wideCls = (pct: any) => (pct != null && Number(pct) > 0.3 ? ' im2-wide' : '');
 
 const ageText = (sec?: number | null) => {
   if (sec == null) return '—';
@@ -44,8 +48,12 @@ function DataChip({ h }: { h?: any }) {
   );
 }
 
-function SignalTable({ rows, side, base }: { rows: any[]; side: 'BUY' | 'SELL'; base: string }) {
+function SignalTable({ rows, side, base, error }:
+  { rows: any[]; side: 'BUY' | 'SELL'; base: string; error?: string | null }) {
   const nav = useNavigate();
+  if (error && !rows.length) {
+    return <p className="im2-note im2-error">Could not load the board: {error}</p>;
+  }
   if (!rows.length) {
     return <p className="im2-note">No {side === 'BUY' ? 'buy' : 'sell'} signals right now.</p>;
   }
@@ -58,7 +66,8 @@ function SignalTable({ rows, side, base }: { rows: any[]; side: 'BUY' | 'SELL'; 
         <thead>
           <tr>
             <th>Symbol</th><th>Call</th><th className="n">Score</th><th className="n">Entry</th>
-            <th className="n">Now</th><th className="n">TP</th><th className="n">SL</th><th>Data</th>
+            <th className="n">Now</th><th className="n">Bid</th><th className="n">Ask</th><th className="n">Spread</th>
+            <th className="n">TP</th><th className="n">SL</th><th>Data</th>
           </tr>
         </thead>
         <tbody>
@@ -69,6 +78,9 @@ function SignalTable({ rows, side, base }: { rows: any[]; side: 'BUY' | 'SELL'; 
               <td className="n">{r.score ?? '—'}</td>
               <td className="n">{money(r.entry)}</td>
               <td className="n">{money(r.now)}</td>
+              <td className="n">{money(r.bid)}</td>
+              <td className="n">{money(r.ask)}</td>
+              <td className={`n${wideCls(r.spread_pct)}`}>{spreadText(r)}</td>
               <td className="n">{money(r.tp)}</td>
               <td className="n">{money(r.sl)}</td>
               <td><DataChip h={r.health} /></td>
@@ -92,10 +104,6 @@ export const META_INTRADAY_CFG: IntradayCfg = {
   title: 'Meta Intraday', subtitle: 'Live Board · Meta 8-signal model',
   base: '/meta-intraday', board: (s) => api2.metaIntradayBoard(s),
 };
-export const CLAUDE_PRO_INTRADAY_CFG: IntradayCfg = {
-  title: 'Claude Pro Intraday', subtitle: 'Live Board · real 5-min engine · V2 8-factor model',
-  base: '/claude-pro-intraday', board: (s) => api2.claudeProIntradayBoard(s),
-};
 export const KIMI_INTRADAY_CFG: IntradayCfg = {
   title: 'Kimi Intraday', subtitle: 'Live Board · Kimi 10-signal model',
   base: '/kimi-intraday', board: (s) => api2.kimiIntradayBoard(s),
@@ -103,10 +111,6 @@ export const KIMI_INTRADAY_CFG: IntradayCfg = {
 export const GEMINI_INTRADAY_CFG: IntradayCfg = {
   title: 'Gemini Intraday', subtitle: 'Live Board · 80/20 execution & flow model',
   base: '/gemini-intraday', board: (s) => api2.geminiIntradayBoard(s),
-};
-export const CHATGPT_INTRADAY_CFG: IntradayCfg = {
-  title: 'ChatGPT Intraday', subtitle: 'Live Board · 20-param institutional model · coverage %',
-  base: '/chatgpt-intraday', board: (s) => api2.chatgptIntradayBoard(s),
 };
 
 export default function GrokIntradayPage({ ctx, cfg = GROK_CFG }:
@@ -121,6 +125,8 @@ export default function GrokIntradayPage({ ctx, cfg = GROK_CFG }:
   const neutral = [...(d?.neutral || [])].sort((a: any, b: any) =>
     String(a.symbol).localeCompare(String(b.symbol)));
   const wait: any[] = d?.wait || [];
+  // Request failure or an ERROR payload: shown in place of "no signals", never hidden.
+  const boardError: string | null = b.error || (d?.status === 'ERROR' ? (d.detail || d.error || 'backend error') : null);
 
   const Stat = ({ icon, label, n, cls }: any) => (
     <div className={`im2-stat ${cls}`}>{icon}<div><div className="im2-stat-n">{n ?? '—'}</div>
@@ -139,7 +145,7 @@ export default function GrokIntradayPage({ ctx, cfg = GROK_CFG }:
       <div className="im2-board">
         <div className="im2-health">
           <span>Scored <b>{d?.scored ?? '—'}/{d?.universe ?? '—'}</b> this scan</span>
-          <span className="ok">Liquid universe · same names as Trdgo Stock</span>
+          <span className="ok">Liquid universe (38 names)</span>
         </div>
 
         <div className="im2-stats">
@@ -154,9 +160,9 @@ export default function GrokIntradayPage({ ctx, cfg = GROK_CFG }:
         ) : (
           <>
             <h3 className="im2-h">Buyers</h3>
-            <SignalTable rows={d?.buyers || []} side="BUY" base={cfg.base} />
+            <SignalTable rows={d?.buyers || []} side="BUY" base={cfg.base} error={boardError} />
             <h3 className="im2-h">Sellers</h3>
-            <SignalTable rows={d?.sellers || []} side="SELL" base={cfg.base} />
+            <SignalTable rows={d?.sellers || []} side="SELL" base={cfg.base} error={boardError} />
             <h3 className="im2-h">NEUTRAL</h3>
             <div className="im2-chips">
               {neutral.length ? neutral.map((r: any) =>

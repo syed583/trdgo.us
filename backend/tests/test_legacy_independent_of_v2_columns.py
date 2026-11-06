@@ -10,6 +10,21 @@ import models_demo_trades as m
 
 V2_COLUMNS = ("entry_session", "signal_event_id", "snapshot_id", "entry_quote", "risk_checks", "validation", "exit_price_source",
               "fill_assumption")
+# The tracker's own nullable evidence columns (mapped by the LEGACY mapper): production adds them to a release-shaped table with
+# ensure_tracker_columns at ensure_schema, so these tests do the same. They are NOT the V2 columns, which stay absent.
+TRACKER_COLUMNS = ("entry_bid", "entry_ask", "entry_spread_pct", "entry_quote_age_s", "be_moved", "entry_evidence")
+FRESH_QUOTE = {"bid": None, "ask": None, "spread": None, "spread_pct": None, "quote_age_s": 2.0, "quote_epoch": 1.0}
+
+
+def release_table_plus_tracker_columns(e):
+    """A demo_trades in the shape of release 277f30f, then the tracker's migration (and proof it added exactly its own columns)."""
+    with e.begin() as c:
+        c.execute(text(RELEASE_DDL))
+    added = m.ensure_tracker_columns(e)
+    assert set(added) == set(TRACKER_COLUMNS) and m.ensure_tracker_columns(e) == []               # exactly those, idempotent
+    from sqlalchemy import inspect
+    cols = {c["name"] for c in inspect(e).get_columns("demo_trades")}
+    assert set(TRACKER_COLUMNS) <= cols and not (set(V2_COLUMNS) & cols)                            # V2 columns still absent
 RELEASE_DDL = """CREATE TABLE demo_trades (id INTEGER PRIMARY KEY, strategy VARCHAR(24) NOT NULL, symbol VARCHAR(16) NOT NULL,
     side VARCHAR(5) NOT NULL, shares INTEGER NOT NULL, session_date DATE NOT NULL, entry_time DATETIME NOT NULL, entry_price FLOAT NOT NULL,
     stop FLOAT, target FLOAT, score_at_entry FLOAT, last_price FLOAT, profit FLOAT, profit_pct FLOAT, status VARCHAR(16) NOT NULL,
@@ -19,8 +34,7 @@ RELEASE_DDL = """CREATE TABLE demo_trades (id INTEGER PRIMARY KEY, strategy VARC
 @pytest.fixture
 def release_db():
     e = create_engine("sqlite://")
-    with e.begin() as c:
-        c.execute(text(RELEASE_DDL))
+    release_table_plus_tracker_columns(e)
     stmts = []
     event.listen(e, "before_cursor_execute", lambda conn, cur, st, p, ctx, many: stmts.append(st))
     return e, sessionmaker(bind=e), stmts
@@ -39,7 +53,8 @@ def test_orm_reads_inserts_and_updates_work_on_a_release_shaped_table(release_db
     s.query(m.DemoTrade.strategy, m.DemoTrade.symbol).filter_by(session_date=date(2026, 10, 27)).all()
     s.query(m.DemoTrade).filter(m.DemoTrade.status != "OPEN", m.DemoTrade.profit.isnot(None)).all()
     s.close()
-    touched = [st for st in stmts if any(c in st for c in V2_COLUMNS)]
+    import re
+    touched = [st for st in stmts if any(re.search(rf"\b{c}\b", st) for c in V2_COLUMNS)]   # whole names: entry_quote_age_s is a tracker column
     assert not touched, touched[:2]                                                  # not one statement mentions a V2 column
 
 
@@ -56,8 +71,7 @@ def test_the_legacy_tracker_runs_on_a_release_shaped_table(monkeypatch):
     import tab_settings as cfg
     from wf_harness import TUE, et, quote, row, rising_bars, falling_bars  # noqa: F401
     e = create_engine("sqlite://")
-    with e.begin() as c:
-        c.execute(text(RELEASE_DDL))
+    release_table_plus_tracker_columns(e)
     S = sessionmaker(bind=e)
     import database
     now = {"t": et(*TUE, 11, 0)}
@@ -65,17 +79,18 @@ def test_the_legacy_tracker_runs_on_a_release_shaped_table(monkeypatch):
     monkeypatch.setitem(cfg.INTRADAY_WORKFLOW, "mode", "legacy")
     monkeypatch.setitem(cfg.INTRADAY_VERIFICATION, "mode", "off")
     monkeypatch.setattr(dts, "ensure_schema", lambda: None)
-    monkeypatch.setattr(dts, "MODELS", {"chatgpt": ("chatgpt", "chatgpt")})
+    monkeypatch.setattr(dts, "MODELS", {"grok": ("grok", "grok")})
     monkeypatch.setattr(dts, "_et_now", lambda: now["t"])
     monkeypatch.setattr(dts, "_quote_price", lambda sym: 50.0)
-    r = row("chatgpt", "AMD", now["t"], signal="BUY", session="REGULAR", price=50.0, score=56.0)
+    monkeypatch.setattr(dts, "_fresh_quote", lambda sym, now=None: (dict(FRESH_QUOTE, price=50.0), ""))   # the live-quote gate: not under test
+    r = row("grok", "AMD", now["t"], signal="BUY", session="REGULAR", price=50.0, score=56.0)
     monkeypatch.setattr(dts, "_board", lambda spec: {"buyers": [r], "sellers": [], "neutral": [], "wait": []})
     monkeypatch.setattr(intraday_safety, "tradable", lambda row_: True)
     monkeypatch.setattr(dts, "_entry_allowed", lambda *a: True)
     dts.tick(force=True)
     with e.connect() as c:
         got = c.execute(text("SELECT strategy, symbol, side, entry_price, status FROM demo_trades")).fetchall()
-    assert [tuple(x) for x in got] == [("chatgpt", "AMD", "LONG", 50.0, "OPEN")]
+    assert [tuple(x) for x in got] == [("grok", "AMD", "LONG", 50.0, "OPEN")]
 
 
 def test_audit_mode_creates_only_its_own_table_and_never_touches_demo_trades():

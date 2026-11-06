@@ -107,7 +107,10 @@ class _Sess:
         pass
 
 
-def _tick(monkeypatch, bias, *, locked=False):
+FRESH_Q = {"price": 100.0, "bid": 99.98, "ask": 100.02, "spread": 0.04, "spread_pct": 0.04, "quote_age_s": 2.0, "quote_epoch": 1.0}
+
+
+def _tick(monkeypatch, bias, *, locked=False, quote=(dict(FRESH_Q), "")):
     seed(bias=bias)
     s = _Sess()
     import database
@@ -120,6 +123,7 @@ def _tick(monkeypatch, bias, *, locked=False):
                                                                   "data": {"ok": True}}]})
     monkeypatch.setattr(dts, "MODELS", {"grok": ("Grok", "x:y")})
     monkeypatch.setattr(dts, "_live_price", lambda *a, **k: 100.0)
+    monkeypatch.setattr(dts, "_fresh_quote", lambda sym, now=None: quote)         # the quote gate is proven elsewhere: only the 15-minute gate is under test
     monkeypatch.setattr(safety, "tradable", lambda r: True)                      # prove the LAST gate stands on its own
     monkeypatch.setattr(entry_lock, "is_locked", lambda *a, **k: locked)
     dts.tick(force=True)
@@ -131,6 +135,11 @@ def test_the_tracker_opens_only_on_a_confirmed_reading_at_the_moment_of_opening(
     assert _tick(monkeypatch, -1).added == []                                     # conflicting: it does not
     assert _tick(monkeypatch, 0).added == []                                      # mixed: it does not
     assert _tick(monkeypatch, +1, locked=True).added == []                        # locked: it does not
+
+
+def test_a_confirmed_reading_without_a_fresh_quote_opens_nothing(monkeypatch):
+    s = _tick(monkeypatch, +1, quote=(None, "stale"))                             # the gate says yes, the quote gate says no
+    assert s.added == [] and s.committed is True
 
 
 def test_the_tracker_still_commits_exits_when_entries_are_blocked(monkeypatch):
@@ -195,7 +204,8 @@ def test_exits_never_consult_the_entry_gate():
     import intraday_signal_v2 as eng
     assert "entry_check" not in eng._manage_open.__code__.co_names
     assert "entry_check" not in dts._exit_reason.__code__.co_names
-    assert "entry_check" not in dts._exit_timed.__code__.co_names
+    assert "entry_check" not in dts._eod_due.__code__.co_names
+    assert "entry_check" not in dts._exit_timed.__code__.co_names               # the older name (an alias of _eod_due)
 
 
 # ------------------------------------------------------------------ the entry lock ---

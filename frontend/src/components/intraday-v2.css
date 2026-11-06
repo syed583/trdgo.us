@@ -107,3 +107,7 @@
   :root:not([data-theme="light"]) .im2-data.stale { color: #f87171; }
   :root:not([data-theme="light"]) .im2-data.missing { color: #94a3b8; }
 }
+
+/* Spread wider than 0.3% of price (intraday boards + Strategy Trades): red. */
+.im2-wide, .st-wide { color: #e5484d; font-weight: 600; }
+.im2-error { color: #e5484d; }

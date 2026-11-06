@@ -10,8 +10,6 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import chatgpt_intraday_service as chatgpt
-import claude_pro_intraday_service as claude_pro
 import demo_trade_service as dts
 import intraday_execution as ex
 import intraday_workflow as wf
@@ -20,11 +18,11 @@ import models_demo_trades as m
 import tab_settings as cfg
 
 ET = ZoneInfo("America/New_York")
-STRATEGIES = ("chatgpt", "grok", "meta", "kimi", "gemini", "claude_pro")
+# The ChatGPT and Claude Pro intraday boards were retired (modules removed): the four remaining strategies are the universe.
+STRATEGIES = ("grok", "meta", "kimi", "gemini")
 WEIGHTS = {
     "grok": dict(cfg.INTRADAY_GROK_WEIGHTS), "kimi": dict(cfg.INTRADAY_KIMI_WEIGHTS), "meta": dict(cfg.META_INTRADAY_WEIGHTS),
     "gemini": dict(cfg.GEMINI_INTRADAY_WEIGHTS),
-    "chatgpt": {k: w for k, _l, w, _s in chatgpt.PARAMS}, "claude_pro": {k: v[1] for k, v in claude_pro.BLOCKS.items()},
 }
 
 
@@ -236,6 +234,14 @@ def make_book(monkeypatch) -> Book:
         return bool(r15 and r15.get("status") == "OK" and r15.get("bias") == (1 if sig == "BUY" else -1))
     mp_.setattr(intraday_safety, "tradable", legacy_tradable)
     mp_.setattr(dts, "_entry_allowed", lambda sym, sig, et_: legacy_tradable({"symbol": sym, "signal": sig}))
+    if hasattr(dts, "_fresh_quote"):                  # the pure-intraday tracker's live-quote gate, fed from this book's quotes
+        def fresh_quote(sym, now=None):
+            q = b.quotes.get(sym)
+            if not q or q.get("price") is None:
+                return None, "no live quote"
+            return {"price": q["price"], "bid": q.get("bid"), "ask": q.get("ask"), "spread": None, "spread_pct": None,
+                    "quote_age_s": float(q.get("age_s") or 0.0), "quote_epoch": 1.0}, ""
+        mp_.setattr(dts, "_fresh_quote", fresh_quote)
     return b
 
 
@@ -258,7 +264,7 @@ def book(monkeypatch):
     return make_book(monkeypatch)
 
 
-def open_via_premarket(book, now0=None, strategy="chatgpt", symbol="NVDA", signal="BUY", price=100.0, score=None):
+def open_via_premarket(book, now0=None, strategy="grok", symbol="NVDA", signal="BUY", price=100.0, score=None):
     """Drive two distinct observations 3 minutes apart so the pre-market entry opens. Returns (now_of_entry, trade).
     The entry score defaults to just past the cutoff (56 BUY / 44 SELL), as real entries are."""
     now0 = now0 or et(*TUE, 7, 15)

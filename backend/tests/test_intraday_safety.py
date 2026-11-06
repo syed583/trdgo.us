@@ -1,7 +1,6 @@
 """Intraday data safety (Phase 1): stale / missing / invalid data can never produce or confirm an
-entry on the six AI intraday boards or the live 5-minute engine. All inputs are mocked: no API
+entry on the four AI intraday boards or the live 5-minute engine. All inputs are mocked: no API
 calls, no production database."""
-import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -145,6 +144,9 @@ def _prep(monkeypatch, age, bias, phase="rth", price=(100.0, 2.0), price_age=Non
     for mod in (ig, kin):
         monkeypatch.setattr(mod, "_eq_cached", lambda s, e=e: e)
         monkeypatch.setattr(mod, "_price_atr", lambda s: price)
+    # the boards now price their rows from the shared quote snapshot (no network under test; no price -> no levels)
+    monkeypatch.setattr(ig, "_quote_snapshot", lambda s: {"price": price[0], "bid": None, "ask": None, "spread": None, "spread_pct": None,
+                                                          "quote_age_s": 2.0, "quote_epoch": 1.0} if price[0] is not None else {})
 
 
 def _boards():
@@ -195,45 +197,9 @@ def test_equity_boards_missing_price_or_signals_give_wait(monkeypatch, name_idx)
     assert any("critical input" in " ".join(r["wait_reasons"]) for r in out["wait"])     # what is missing is named
 
 
-def _im2(status="OK", bias=+1.0):
-    def P(mx=10.0, val=None):
-        return {"value": (bias * mx) if val is None else val, "max": mx, "has_data": True}
-    names = ["market", "sector", "vwap_pos", "ema_trend", "orb", "rsi", "rvol", "rel_strength",
-             "flow", "unusual", "pc_ratio", "levels", "disparity", "gap", "news"]
-    return {"symbol": "AAA", "status": status, "spot": 100.0, "atr": 2.0, "score": 70.0,
-            "params": [dict(P(), name=n) for n in names], "spy_above_vwap": True}
-
-
-@pytest.mark.parametrize("module", ["chatgpt_intraday_service", "claude_pro_intraday_service"])
-def test_live_path_boards_gate_on_engine_age_and_status(monkeypatch, module):
-    import importlib
-    mod = importlib.import_module(module)
-    for bias in (+1.0, -1.0):
-        for age, status, expect_wait in ((FRESH, "OK", False), (STALE, "OK", True),
-                                         (FRESH, "MARKET_STALE", True), (FRESH, "STOCK_STALE", True)):
-            _prep(monkeypatch, age, +0.9, phase="rth")
-            for sym in ("AAA", "BBB"):
-                swr._values[f"im2:{sym}"] = (time.time(), dict(_im2(status, bias), symbol=sym))
-            out = mod.board()
-            assert (out["counts"]["wait"] == 2) is expect_wait, (module, bias, age, status)
-            if expect_wait:
-                assert out["counts"]["buy"] == out["counts"]["sell"] == 0
-    swr.clear()
-
-
-@pytest.mark.parametrize("module", ["chatgpt_intraday_service", "claude_pro_intraday_service"])
-def test_closed_market_equity_path_is_gated_too(monkeypatch, module):
-    import importlib
-    import intraday_grok_service as ig
-    mod = importlib.import_module(module)
-    _prep(monkeypatch, STALE, +0.9, phase="closed")
-    monkeypatch.setattr(ig, "_eq_cached", lambda s: eq(+0.9))
-    stale = mod.board()
-    assert stale["counts"]["buy"] == stale["counts"]["sell"] == 0 and stale["counts"]["wait"] == 2
-    _prep(monkeypatch, 3600.0, +0.9, phase="closed", price_age=FRESH)    # 1 h-old signals are fine overnight
-    monkeypatch.setattr(ig, "_eq_cached", lambda s: eq(+0.9))
-    fresh = mod.board()
-    assert fresh["counts"]["wait"] == 0 and fresh["counts"]["buy"] + fresh["counts"]["neutral"] == 2
+# test_live_path_boards_gate_on_engine_age_and_status and test_closed_market_equity_path_is_gated_too (parametrized over
+# chatgpt_intraday_service / claude_pro_intraday_service) were deleted: they pinned the im2 live-engine gating of the two retired
+# boards, whose modules no longer exist. The four remaining equity boards are covered by the tests above.
 
 
 # ------------------------------------------------- paper-trade entry safety ----
@@ -269,7 +235,9 @@ def test_tick_opens_trades_only_from_fresh_rows_both_sides(monkeypatch):
     board = {"buyers": [fresh_buy], "sellers": [fresh_sell], "neutral": [], "wait": [old_buy, old_sell]}
     monkeypatch.setattr(dts, "MODELS", {"grok": ("Grok", "x:y")})
     monkeypatch.setattr(dts, "_board", lambda spec: board)
-    monkeypatch.setattr(dts, "_can_open", lambda *a, **k: True)
+    monkeypatch.setattr(dts, "_can_open", lambda n=None: True)                       # the entry window is not under test here
+    monkeypatch.setattr(dts, "_fresh_quote", lambda sym, now=None: (                 # nor the live-quote gate: only the row freshness is
+        {"price": 100.0, "bid": None, "ask": None, "spread": None, "spread_pct": None, "quote_age_s": 2.0, "quote_epoch": 1.0}, ""))
     dts.tick(force=True)
     db = database.SessionLocal()
     try:

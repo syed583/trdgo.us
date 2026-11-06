@@ -6,9 +6,9 @@ import './model-accuracy.css';
 import './strategy-trades.css';
 
 /**
- * Strategy Trades -- demo (paper) 100-share trades opened from the intraday
- * model signals, tracked live until stop / target / score-drop / timed exit.
- * Paper only; no real orders. Live P&L refreshes every ~15s.
+ * Strategy Trades -- demo (paper) $10,000-notional trades opened from the
+ * intraday model signals, tracked live until stop / target / score-drop /
+ * the 15:50 ET close. Paper only; no real orders. Live P&L refreshes every ~15s.
  */
 
 const money = (n: number | null | undefined) =>
@@ -17,11 +17,73 @@ const signed = (n: number | null | undefined, suffix = '') =>
   n == null ? '—' : `${n > 0 ? '+' : ''}${n}${suffix}`;
 const px = (n: number | null | undefined) =>
   n == null ? '—' : Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const pct = (n: number | null | undefined, digits = 2) =>
+  n == null ? '—' : `${n > 0 ? '+' : ''}${Number(n).toFixed(digits)}%`;
+// "$0.03 (0.04%)"; "—" when the quote has no spread.
+const spreadText = (r: any) =>
+  r.spread == null ? '—' : `$${Number(r.spread).toFixed(2)}${r.spread_pct != null ? ` (${Number(r.spread_pct).toFixed(2)}%)` : ''}`;
+const wideCls = (p: any) => (p != null && Number(p) > 0.3 ? ' st-wide' : '');
+// Today's date in the user's local calendar, as YYYY-MM-DD for <input type="date">.
+function localToday(): string {
+  const d = new Date();
+  const z = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
+}
+// "HH:MM:SS" in the browser's local time from an ISO timestamp; "—" if unparsable.
+function localClock(iso: any): string {
+  if (!iso) return '—';
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return '—';
+  const z = (n: number) => String(n).padStart(2, '0');
+  return `${z(t.getHours())}:${z(t.getMinutes())}:${z(t.getSeconds())}`;
+}
+const ageText = (s: any) => (s == null ? '' : s < 90 ? `${Math.round(s)}s ago` : `${Math.round(s / 60)} min ago`);
+
+/** SPY / QQQ / DIA live strip from GET /api/market/etf-strip. */
+function EtfStrip() {
+  const [open, setOpen] = useState(true);
+  // 20 s while the market is open, 120 s otherwise (the refresh period follows the last answer).
+  const strip = useApi<any>((s) => api2.etfStrip(s), [], { refreshMs: open ? 20_000 : 120_000 });
+  const d = strip.data;
+  useEffect(() => { if (d && typeof d.market_open === 'boolean') setOpen(d.market_open); }, [d]);
+  const err = strip.error || (d?.status === 'ERROR' ? (d.detail || 'backend error') : null);
+  const rows: any[] = Array.isArray(d?.rows) ? d.rows : [];
+  const order = ['SPY', 'QQQ', 'DIA'];
+  const bySym = new Map(rows.map((r) => [String(r.symbol).toUpperCase(), r]));
+  return (
+    <div className="st-etf">
+      {order.map((sym) => {
+        const r = bySym.get(sym);
+        const ch = r?.change;
+        const cls = ch == null ? '' : ch > 0 ? 'pos' : ch < 0 ? 'neg' : '';
+        return (
+          <div className={`st-etf-box ${cls}`} key={sym} data-testid={`etf-${sym}`}>
+            <div className="st-etf-sym">{sym}</div>
+            <div className="st-etf-px">{r?.price == null ? '—' : px(r.price)}</div>
+            <div className={`st-etf-chg ${cls}`}>
+              {ch == null ? '—' : `${ch > 0 ? '+' : ''}${Number(ch).toFixed(2)}`}
+              {' '}({pct(r?.change_percent)})
+            </div>
+            <div className="st-etf-ba ma-n">bid {r?.bid == null ? '—' : px(r.bid)} · ask {r?.ask == null ? '—' : px(r.ask)}</div>
+            <div className="st-etf-upd ma-n">last update {localClock(r?.updated_at)}{r?.age_s != null ? ` · ${ageText(r.age_s)}` : ''}</div>
+          </div>
+        );
+      })}
+      <div className="st-etf-meta">
+        {d && d.market_open === false && <span className="st-etf-closed">Market closed{d.session_label ? ` · ${d.session_label}` : ''}</span>}
+        {d && d.market_open === true && d.session_label && <span className="ma-n">{d.session_label}</span>}
+        {err && <span className="st-error st-error-inline">ETF strip: {err}</span>}
+        {!d && !err && strip.initialLoading && <span className="ma-n"><Loader2 size={12} className="spin" /> loading…</span>}
+      </div>
+    </div>
+  );
+}
 
 const STATUS_LABEL: Record<string, string> = {
   OPEN: 'Open', STOP: 'Stopped', TARGET: 'Target', TIMED_EXIT: 'Timed Exit', SCORE_EXIT: 'Score Exit', NO_PRICE: 'No price (closed unpriced)',
+  CLEANUP: 'Cleanup (closed prior-day leftover)', EOD_CLOSE: 'Closed 15:50 ET', MARKET_CLOSE: 'Closed at the bell',
 };
-const CLOSED = new Set(['STOP', 'TARGET', 'TIMED_EXIT', 'SCORE_EXIT', 'NO_PRICE']);
+const CLOSED = new Set(['STOP', 'TARGET', 'TIMED_EXIT', 'SCORE_EXIT', 'NO_PRICE', 'CLEANUP', 'EOD_CLOSE', 'MARKET_CLOSE']);
 const FLASH_MS = 180_000;   // 3 min: how long an entry / target / stop stays pinned on top & blinking
 
 // --- page-only audio alerts (voice + a short beep). Built lazily on first
@@ -71,12 +133,14 @@ function entryWindow(r: any): { label: string; cls: string; tip: string } | null
 
 export default function StrategyTradesPage() {
   const [strategy, setStrategy] = useState('all');
+  const [date, setDate] = useState(() => localToday());
   const [symQ, setSymQ] = useState('');
   const [sound, setSound] = useState(() => {
     try { return localStorage.getItem('st-sound') === '1'; } catch { return false; }
   });
-  const q = useApi<any>((s) => api2.strategyTrades(strategy, '', s), [strategy], { refreshMs: 15_000 });
+  const q = useApi<any>((s) => api2.strategyTrades(strategy, date, s), [strategy, date], { refreshMs: 15_000 });
   const d = q.data;
+  const loadError: string | null = q.error || (d?.status === 'ERROR' ? (d.detail || d.error || 'backend error') : null);
   const allRows: any[] = d?.rows || [];
   const needle = symQ.trim().toUpperCase();
   const rows: any[] = needle ? allRows.filter((r) => (r.symbol || '').toUpperCase().includes(needle)) : allRows;
@@ -91,6 +155,12 @@ export default function StrategyTradesPage() {
     }
     return { p, l };
   }, [allRows]);
+  // Total % = total profit / sum of entry notional; "—" when no row carries a notional.
+  const totalPct = useMemo(() => {
+    let n = 0; let any = false;
+    for (const r of allRows) if (r.notional != null) { n += Number(r.notional) || 0; any = true; }
+    return any && n > 0 ? (Number(total) / n) * 100 : null;
+  }, [allRows, total]);
 
   // Track what we've seen so we can detect NEW entries and OPEN->closed exits.
   const seenRef = useRef<Map<number, string>>(new Map());
@@ -164,15 +234,23 @@ export default function StrategyTradesPage() {
     <div className="page st-wrap">
       <div className="ts-head">
         <h1><Receipt size={20} /> Strategy Trades</h1>
-        <p>Demo 100-share paper trades opened from the intraday model signals, tracked live until
-          stop / target / score-drop / timed exit. Paper only — no real orders.</p>
+        <p>Demo $10,000-notional paper trades opened from the intraday model signals, tracked live until
+          stop / target / score-drop / the 15:50 ET close. Paper only — no real orders.</p>
       </div>
+
+      <EtfStrip />
 
       <div className="st-bar">
         <span className="st-total pos"><span className="st-total-l">Profit</span><b>{money(gross.p)}</b></span>
         <span className="st-total neg"><span className="st-total-l">Loss</span><b>{money(gross.l)}</b></span>
         <span className={`st-total st-net ${total > 0 ? 'pos' : total < 0 ? 'neg' : ''}`}>
           <span className="st-total-l">Total</span><b>{money(total)}</b></span>
+        <span className={`st-total ${totalPct != null && totalPct > 0 ? 'pos' : totalPct != null && totalPct < 0 ? 'neg' : ''}`}>
+          <span className="st-total-l">Total %</span><b>{pct(totalPct)}</b></span>
+        <label className="st-filter">Date
+          <input type="date" className="st-date" value={date} max={localToday()}
+            onChange={(e) => { if (e.target.value) setDate(e.target.value); }} />
+        </label>
         <label className="st-filter">Strategy
           <select value={strategy} onChange={(e) => setStrategy(e.target.value)}>
             <option value="all">All Strategies</option>
@@ -252,11 +330,14 @@ export default function StrategyTradesPage() {
         </div>
       )}
 
-      {q.initialLoading ? (
+      {loadError && (
+        <div className="st-error" role="alert">Could not load trades: {loadError}</div>
+      )}
+      {q.initialLoading && !loadError ? (
         <div className="es-empty"><Loader2 size={18} className="spin" /> Loading trades…</div>
-      ) : rows.length === 0 ? (
-        <div className="ma-note">No demo trades yet today. Trades open automatically when an intraday
-          model signals BUY or SELL during market hours.</div>
+      ) : loadError && rows.length === 0 ? null : rows.length === 0 ? (
+        <div className="ma-note">{needle ? `No trades match “${needle}” on ${date}.`
+          : `No demo trades for ${date}. Trades open automatically when an intraday model signals BUY or SELL between 10:00 and 15:00 ET on a trading day.`}</div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <table className="ma-tbl st-tbl">
@@ -264,6 +345,7 @@ export default function StrategyTradesPage() {
               <tr>
                 <th className="l">Entry Time</th><th className="l">L/S</th><th className="l">Symbol</th>
                 <th className="l">Strategy</th><th>Shares</th><th>Entry</th><th>Chg $</th><th>Last</th>
+                <th>Bid</th><th>Ask</th><th>Spread</th>
                 <th>Profit</th><th>Profit %</th><th>Stop</th><th>Target</th>
                 <th className="l">Take Now?</th><th className="l">Status</th>
               </tr>
@@ -288,6 +370,10 @@ export default function StrategyTradesPage() {
                     <td>{px(r.entry_price)}</td>
                     <td className={r.chg > 0 ? 'pos' : r.chg < 0 ? 'neg' : ''}>{signed(r.chg)}</td>
                     <td>{px(r.last_price)}</td>
+                    <td className="ma-n">{px(r.bid)}</td>
+                    <td className="ma-n">{px(r.ask)}</td>
+                    <td className={`ma-n${wideCls(r.spread_pct)}`}
+                      title={r.quote_age_s != null ? `quote ${ageText(r.quote_age_s)}` : undefined}>{spreadText(r)}</td>
                     <td className={win ? 'pos' : loss ? 'neg' : ''}><b>{money(r.profit)}</b></td>
                     <td className={win ? 'pos' : loss ? 'neg' : ''}>{signed(r.profit_pct, '%')}</td>
                     <td className="ma-n">{px(r.stop)}</td>
@@ -297,7 +383,7 @@ export default function StrategyTradesPage() {
                       : ew
                         ? <span className={`st-take ${ew.cls}`} title={ew.tip}>{ew.label}</span>
                         : <span className="ma-n">—</span>}</td>
-                    <td className="l"><span className={`st-stat ${r.status}`}>{STATUS_LABEL[r.status] || r.status}</span></td>
+                    <td className="l"><span className={`st-stat ${r.status}`} title={r.exit_reason_label || undefined}>{STATUS_LABEL[r.status] || r.exit_reason_label || r.status}</span></td>
                   </tr>
                 );
               })}
@@ -306,9 +392,12 @@ export default function StrategyTradesPage() {
         </div>
       )}
       <div className="st-note">Live P&amp;L updates every ~15s. One trade per symbol per strategy per day,
-        no re-entry. Entry/stop/target come from each model's ATR levels; a position closes on stop,
-        target, a 15‑point score drop, or the first 4:00pm ET close of a trading day after it opened (Timed Exit).
-        An open position is never closed just because the date changed.
+        no re-entry. Every trade is $10,000 notional (shares = floor(10,000 / entry)). Entries are taken
+        only between 10:00 and 15:00 ET on regular trading days. Entry/stop/target come from each model's
+        ATR levels; the stop moves to breakeven (entry) once price has covered 50% of the distance to the
+        target. A position closes on stop, target, a 15‑point score drop, or at 15:50 ET (10 min before an
+        early close). Fills are gap-aware: a stop or target jumped over at the open fills at the open print,
+        not the level.
         <br /><b>Take Now?</b> tells you whether an OPEN signal is still worth entering mid‑move:
         <span className="st-take good">Good entry</span> = price still at/near entry (best);
         <span className="st-take ok">Still OK</span> = part of the move gone, reward still beats risk;

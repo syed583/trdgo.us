@@ -26,12 +26,12 @@ def regular_board(book, sym, now, signal="BUY", price=100.0, score=56.0, **kw):
     book.quotes[sym] = quote(price)
     book.bars5[sym] = rising_bars(now, 24, warmup=True) if signal == "BUY" else falling_bars(now, 24, warmup=True)
     book.r15[sym] = {"status": "OK", "bias": 1 if signal == "BUY" else -1, "last_bar_end_epoch": now.timestamp() - 60, "detail": "15m"}
-    book.set_board("chatgpt", row("chatgpt", sym, now, signal=signal, session="REGULAR", price=price, score=score, **kw))
+    book.set_board("grok", row("grok", sym, now, signal=signal, session="REGULAR", price=price, score=score, **kw))
 
 
 def premarket_board(book, sym, now, price=100.0, score=56.0):
     book.quotes[sym] = quote(price)
-    book.set_board("chatgpt", row("chatgpt", sym, now, signal="BUY", price=price, score=score))
+    book.set_board("grok", row("grok", sym, now, signal="BUY", price=price, score=score))
 
 
 # ---------------------------------------------------------------------------------------------------- the invariants --
@@ -157,7 +157,7 @@ def test_no_new_entry_inside_the_window_but_open_positions_are_still_managed(boo
     for k in range(3):                                                                            # a perfectly valid new regular signal at 09:41
         n = et(*TUE, 9, 41) + timedelta(minutes=3 * k)
         regular_board(book, "AMD", n, price=50.0)
-        book.set_board("chatgpt", row("chatgpt", "NVDA", n, signal="NEUTRAL", price=98.9, score=60.0))   # NVDA breaks its stop
+        book.set_board("grok", row("grok", "NVDA", n, signal="NEUTRAL", price=98.9, score=60.0))   # NVDA breaks its stop
         book.tick(n)
     assert [t.symbol for t in book.trades()] == ["NVDA"] and book.trades()[0].status == "STOP"       # position managed
     ev = book.events(symbol="AMD")[0]
@@ -297,13 +297,13 @@ def test_every_index_name_contains_its_table_name_so_the_development_twin_rewrit
 def test_a_shadow_tick_outside_the_entry_hours_still_commits_legacy_exits(shadow, monkeypatch):
     """Regression (found by the replay): the shadow log call must work when Legacy's entry window is closed (21:00 ET)."""
     n0 = et(*TUE, 15, 0)
-    shadow.set_board("chatgpt", row("chatgpt", "AMD", n0, signal="BUY", session="REGULAR", price=50.0, score=56.0))
+    shadow.set_board("grok", row("grok", "AMD", n0, signal="BUY", session="REGULAR", price=50.0, score=56.0))
     with shadow.Session() as s:
-        s.add(m.DemoTrade(strategy="chatgpt", symbol="AMD", side="LONG", shares=100, session_date=date(*TUE), entry_price=50.0, stop=49.0,
+        s.add(m.DemoTrade(strategy="grok", symbol="AMD", side="LONG", shares=100, session_date=date(*TUE), entry_price=50.0, stop=49.0,
                           target=52.0, status="OPEN", entry_time=n0.astimezone(__import__("datetime").timezone.utc)))
         s.commit()
     n = et(*TUE, 21, 0)
-    shadow.set_board("chatgpt", row("chatgpt", "AMD", n, signal="NEUTRAL", session="REGULAR", price=48.0, score=60.0))
+    shadow.set_board("grok", row("grok", "AMD", n, signal="NEUTRAL", session="REGULAR", price=48.0, score=60.0))
     shadow.quotes["AMD"] = quote(48.0)
     shadow.full_tick(n)
     assert shadow.trades()[0].status == "STOP"                                                       # Legacy's exit was committed
@@ -325,7 +325,7 @@ def test_shadow_decision_logging_cannot_roll_back_a_legacy_trade(shadow, monkeyp
     for k in range(2):
         n = et(*TUE, 11, 0) + timedelta(minutes=3 * k)
         regular_board(shadow, "AMD", n, price=50.0)                                  # Legacy opens this one (15m agrees)
-        shadow.set_board("chatgpt", row("chatgpt", "NVDA", n, signal="BUY", session="REGULAR", price=100.0, score=56.0))   # no 15m: refused
+        shadow.set_board("grok", row("grok", "NVDA", n, signal="BUY", session="REGULAR", price=100.0, score=56.0))   # no 15m: refused
         shadow.r15.pop("NVDA", None)
         shadow.full_tick(n)
     assert [t.symbol for t in shadow.trades()] == ["AMD"]

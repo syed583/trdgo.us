@@ -1,4 +1,4 @@
-"""The trade-permission rules (intraday_execution.py), one rule at a time, plus the guards that keep the six strategies untouched."""
+"""The trade-permission rules (intraday_execution.py), one rule at a time, plus the guards that keep the four strategies untouched."""
 import json
 import subprocess
 from datetime import datetime, timedelta, timezone
@@ -6,8 +6,6 @@ from pathlib import Path
 
 import pytest
 
-import chatgpt_intraday_service as chatgpt
-import claude_pro_intraday_service as claude_pro
 import intraday_execution as ex
 import intraday_safety
 import market_calendar as mc
@@ -24,31 +22,46 @@ def test_the_original_cutoffs_and_every_weight_table_are_unchanged():
     for name, w in WEIGHTS.items():
         assert sum(w.values()) == 100, name
     assert WEIGHTS["grok"]["options_flow"] == 34 and WEIGHTS["kimi"]["options_flow"] == 28 and WEIGHTS["meta"]["options_flow"] == 25
-    assert WEIGHTS["gemini"]["options_flow"] == 13 and WEIGHTS["chatgpt"]["options_flow"] == 10 and WEIGHTS["claude_pro"]["options_flow"] == 25
+    assert WEIGHTS["gemini"]["options_flow"] == 13
+    assert set(WEIGHTS) == set(STRATEGIES) == {"grok", "meta", "kimi", "gemini"}       # chatgpt / claude_pro are retired, not configured
 
 
 def test_the_registry_names_exactly_the_parameters_each_strategy_declares():
     """If a strategy gains, loses or renames a parameter this fails: the classification table cannot drift silently."""
-    for s in ("grok", "kimi", "meta", "gemini"):
+    assert set(ex.REGISTRY) == set(ex.STRATEGIES) == set(STRATEGIES)                  # no registry entry for a retired board
+    for s in STRATEGIES:
         assert set(ex.REGISTRY[s]["equity"]) == set(WEIGHTS[s]), s
-    assert set(ex.REGISTRY["chatgpt"]["equity"]) == set(ex.REGISTRY["chatgpt"]["live"]) == {k for k, *_ in chatgpt.PARAMS}
-    assert set(ex.REGISTRY["claude_pro"]["equity"]) == set(ex.REGISTRY["claude_pro"]["live"]) == set(claude_pro.BLOCKS)
-    unimpl = {k for k, _l, _w, src in chatgpt.PARAMS if src is None}
-    assert {k for k, v in ex.REGISTRY["chatgpt"]["equity"].items() if v == ex.UNIMPLEMENTED} == unimpl
+        for path, reg in ex.REGISTRY[s].items():                                       # every remaining parameter has a real data source
+            assert not [k for k, v in reg.items() if v in (ex.UNIMPLEMENTED, ex.NOT_APPLICABLE)], (s, path)
 
 
-def test_the_six_strategy_modules_are_byte_identical_to_the_release_they_started_from():
+def _scoring_text(src: str) -> str:
+    """The scoring code of a strategy module: ``score_one`` (and ``score_from_model`` where it exists) -- the parts that
+    decide a BUY / SELL. The level / quote helpers (``_price_atr`` / ``_levels``) are shared plumbing and may change."""
+    import re
+    blocks = re.findall(r"^def (?:score_one|score_from_model)\(.*?(?=^(?:def |@|[A-Z_]+ *=))", src, flags=re.S | re.M)
+    assert blocks, "no scoring function found"
+    return "\n".join(blocks)
+
+
+def test_the_four_strategy_scorers_are_byte_identical_to_the_release_they_started_from():
+    """The SCORING of grok / meta / kimi / gemini (and the shared claude_last quantiser) is unchanged since the release
+    277f30f. Only the shared entry-level helper (bid / ask / spread on the boards) differs, and that never touches a score."""
     root = Path(__file__).resolve().parents[2]
-    files = ["chatgpt_intraday_service", "intraday_grok_service", "meta_intraday_service", "kimi_intraday_service",
-             "gemini_intraday_service", "claude_pro_intraday_service", "claude_last_service"]
-    try:
-        out = subprocess.run(["git", "-C", str(root), "diff", "--stat", "277f30f", "--"] + [f"backend/{f}.py" for f in files],
-                             capture_output=True, text=True, timeout=30)
-    except Exception:
-        pytest.skip("git unavailable")
-    if out.returncode != 0:
-        pytest.skip("the release commit is not in this checkout")
-    assert out.stdout.strip() == "", out.stdout
+    files = ["intraday_grok_service", "meta_intraday_service", "kimi_intraday_service", "gemini_intraday_service"]
+    for f in files + ["claude_last_service"]:
+        try:
+            out = subprocess.run(["git", "-C", str(root), "show", f"277f30f:backend/{f}.py"], capture_output=True, text=True,
+                                 timeout=30, encoding="utf-8", errors="ignore")
+        except Exception:
+            pytest.skip("git unavailable")
+        if out.returncode != 0:
+            pytest.skip("the release commit is not in this checkout")
+        now = (root / "backend" / f"{f}.py").read_text(encoding="utf-8")
+        if f == "claude_last_service":
+            assert now.replace("\r\n", "\n") == out.stdout.replace("\r\n", "\n"), f
+        else:
+            assert _scoring_text(now) == _scoring_text(out.stdout), f
 
 
 # ------------------------------------------------------------------------------------------ classification -----------
@@ -65,11 +78,9 @@ def cats(classified):
     return {r["name"]: r["category"] for r in classified}
 
 
-def test_unimplemented_parameters_are_not_treated_as_provider_failures():
-    c = cats(classify("chatgpt", "REGULAR", et(*TUE, 11, 0)))
-    for name in ("market_structure", "liquidity_sweeps", "absorption", "volume_profile", "supply_demand", "breakout_quality", "volatility"):
-        assert c[name] == ex.UNIMPLEMENTED
-    assert c["order_flow"] == ex.NOT_APPLICABLE and c["options_flow"] == ex.AVAILABLE
+# test_unimplemented_parameters_are_not_treated_as_provider_failures was deleted: it pinned the ChatGPT board's seven sourceless
+# (UNIMPLEMENTED) parameters and its engine-only order_flow; that board is retired and no remaining strategy declares such a parameter
+# (test_the_registry_names_exactly_the_parameters_each_strategy_declares now asserts that).
 
 
 def test_options_tape_parameters_are_unavailable_before_the_open_and_excluded_from_eligibility():
@@ -113,14 +124,14 @@ def test_agreement_counts_only_valid_covered_weight():
 
 def test_evaluate_data_passes_a_clean_premarket_row_and_names_every_failure():
     now = et(*TUE, 7, 15)
-    r = row("chatgpt", "X", now, signal="BUY", session="PREMARKET")
-    ok = ex.evaluate_data("chatgpt", "BUY", "PREMARKET", r, now=now, bounds=BOUNDS, prev_close=PREV_CLOSE)
+    r = row("grok", "X", now, signal="BUY", session="PREMARKET")
+    ok = ex.evaluate_data("grok", "BUY", "PREMARKET", r, now=now, bounds=BOUNDS, prev_close=PREV_CLOSE)
     assert ok["ok"] and ok["agreement"] == 1.0 and ok["coverage"]["eligible_pct"] == 100.0
-    bad = ex.evaluate_data("chatgpt", "BUY", "PREMARKET", row("chatgpt", "X", now, session="PREMARKET", bias=1.0,
-                           overrides={"vwap_ema": None, "order_flow": None, "gamma": None}),
+    bad = ex.evaluate_data("grok", "BUY", "PREMARKET", row("grok", "X", now, session="PREMARKET", bias=1.0,
+                           overrides={"trend_price": None, "key_levels": None}),          # 32 of the 42 eligible points missing
                            now=now, bounds=BOUNDS, prev_close=PREV_CLOSE)
     assert not bad["ok"] and bad["code"] == ex.WAIT_INSUFFICIENT
-    against = ex.evaluate_data("chatgpt", "BUY", "PREMARKET", row("chatgpt", "X", now, session="PREMARKET", bias=-1.0), now=now,
+    against = ex.evaluate_data("grok", "BUY", "PREMARKET", row("grok", "X", now, session="PREMARKET", bias=-1.0), now=now,
                                bounds=BOUNDS, prev_close=PREV_CLOSE)
     assert not against["ok"] and "agrees" in against["reasons"][0]
 

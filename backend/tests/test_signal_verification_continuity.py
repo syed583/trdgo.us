@@ -53,6 +53,7 @@ class Rig:
         self.e = create_engine(self.url)
         with self.e.begin() as c:
             c.execute(text(DDL))
+        m.ensure_tracker_columns(self.e)                  # the tracker's own nullable columns, as ensure_schema adds them in production
         if with_audit_table:
             m.IntradaySignalAudit.__table__.create(bind=self.e)
         self.S = sessionmaker(bind=self.e)
@@ -67,6 +68,9 @@ class Rig:
             import intraday_safety
             monkeypatch.setattr(intraday_safety, "tradable", lambda r: True)
             monkeypatch.setattr(dts, "_entry_allowed", lambda *a: True)
+            if hasattr(dts, "_fresh_quote"):              # the pure-intraday tracker's live-quote gate: not what this rig tests
+                monkeypatch.setattr(dts, "_fresh_quote", lambda sym, now=None: (
+                    {"price": 100.0, "bid": None, "ask": None, "spread": None, "spread_pct": None, "quote_age_s": 2.0, "quote_epoch": 1.0}, ""))
         except ImportError:
             pass
         self.rows = {"grok": signal_rows(grok.score_one, "G"), "kimi": signal_rows(kimi.score_one, "K", seed=2)}

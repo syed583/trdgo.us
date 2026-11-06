@@ -26,13 +26,13 @@ def regular_candidate(book, now, symbol="NVDA", signal="BUY", **kw):
     book.quotes[symbol] = quote(100.0, 0.04)
     book.bars5[symbol] = kw.pop("bars", rising_bars(now, 24, warmup=True) if signal == "BUY" else falling_bars(now, 24, warmup=True))
     book.r15[symbol] = kw.pop("r15", {"status": "OK", "bias": 1 if signal == "BUY" else -1, "last_bar_end_epoch": now.timestamp() - 60, "detail": "15m"})
-    return row("chatgpt", symbol, now, signal=signal, session="REGULAR", price=100.0, score=kw.pop("score", 56.0 if signal == "BUY" else 44.0), **kw)
+    return row("grok", symbol, now, signal=signal, session="REGULAR", price=100.0, score=kw.pop("score", 56.0 if signal == "BUY" else 44.0), **kw)
 
 
 def test_a_regular_session_buy_opens_after_the_candles_confirm(book):
     for k in range(2):
         n = et(*TUE, 11, 0) + timedelta(minutes=3 * k)
-        book.set_board("chatgpt", regular_candidate(book, n))
+        book.set_board("grok", regular_candidate(book, n))
         book.tick(n)
     t = book.trades()
     assert len(t) == 1 and t[0].entry_session == "REGULAR" and t[0].side == "LONG"
@@ -43,7 +43,7 @@ def test_a_regular_session_buy_opens_after_the_candles_confirm(book):
 def test_candles_that_disagree_with_the_signal_block_the_entry(book):
     for k in range(2):
         n = et(*TUE, 11, 0) + timedelta(minutes=3 * k)
-        book.set_board("chatgpt", regular_candidate(book, n, bars=falling_bars(n, 24, warmup=True), r15={"status": "OK", "bias": -1, "last_bar_end_epoch": n.timestamp() - 60, "detail": "15m bearish"}))
+        book.set_board("grok", regular_candidate(book, n, bars=falling_bars(n, 24, warmup=True), r15={"status": "OK", "bias": -1, "last_bar_end_epoch": n.timestamp() - 60, "detail": "15m bearish"}))
         book.tick(n)
     ev = book.events()[0]
     assert not book.trades() and ev.validation_status == ex.WAIT_UNCONFIRMED
@@ -60,7 +60,7 @@ def test_in_the_first_half_hour_the_five_minute_candles_alone_decide(book):
         today = [bar(et(*TUE, 9, 30), top, top + 0.3, top - 0.05, top + 0.2), bar(et(*TUE, 9, 35), top + 0.2, top + 0.5, top + 0.15, top + 0.45)]
         book.bars5[sym] = prior + today
         book.r15[sym] = None                                                           # the first 15-minute candles have not closed
-        book.set_board("chatgpt", row("chatgpt", sym, n, signal="BUY", session="REGULAR", price=100.0, score=56.0))
+        book.set_board("grok", row("grok", sym, n, signal="BUY", session="REGULAR", price=100.0, score=56.0))
         book.tick(n)
     t = book.trades()
     assert len(t) == 1 and json.loads(t[0].validation)["confirmation"]["fifteen"]["status"] == "WARMUP"
@@ -69,7 +69,7 @@ def test_in_the_first_half_hour_the_five_minute_candles_alone_decide(book):
 def test_a_stale_fifteen_minute_reading_after_warmup_blocks_the_entry(book):
     for k in range(2):
         n = et(*TUE, 11, 0) + timedelta(minutes=3 * k)
-        book.set_board("chatgpt", regular_candidate(book, n, r15={"status": "OK", "bias": 1, "last_bar_end_epoch": n.timestamp() - 7200, "detail": "old"}))
+        book.set_board("grok", regular_candidate(book, n, r15={"status": "OK", "bias": 1, "last_bar_end_epoch": n.timestamp() - 7200, "detail": "old"}))
         book.tick(n)
     assert not book.trades() and book.events()[0].validation_status == ex.WAIT_UNCONFIRMED
 
@@ -78,12 +78,12 @@ def test_a_stale_fifteen_minute_reading_after_warmup_blocks_the_entry(book):
 def test_a_new_regular_session_signal_may_open_a_second_position_once_the_first_has_exited(book):
     now, t0 = open_via_premarket(book, et(*TUE, 7, 15))
     n = et(*TUE, 7, 30)
-    book.set_board("chatgpt", row("chatgpt", "NVDA", n, signal="NEUTRAL", price=98.9, score=60.0))
+    book.set_board("grok", row("grok", "NVDA", n, signal="NEUTRAL", price=98.9, score=60.0))
     book.tick(n)
     assert book.trades()[0].status == "STOP"
     for k in range(2):
         n = et(*TUE, 11, 30) + timedelta(minutes=3 * k)
-        book.set_board("chatgpt", regular_candidate(book, n))
+        book.set_board("grok", regular_candidate(book, n))
         book.tick(n)
     t = book.trades()
     assert [x.entry_session for x in t] == ["PREMARKET", "REGULAR"] and t[1].status == "OPEN"
@@ -94,11 +94,11 @@ def test_a_new_regular_session_signal_may_open_a_second_position_once_the_first_
 
 def test_a_stopped_out_premarket_signal_does_not_re_enter_the_same_session(book):
     now, t0 = open_via_premarket(book, et(*TUE, 7, 15))
-    book.set_board("chatgpt", row("chatgpt", "NVDA", et(*TUE, 7, 30), signal="NEUTRAL", price=98.9, score=60.0))
+    book.set_board("grok", row("grok", "NVDA", et(*TUE, 7, 30), signal="NEUTRAL", price=98.9, score=60.0))
     book.tick(et(*TUE, 7, 30))
     for k in range(6):
         n = et(*TUE, 7, 40) + timedelta(minutes=3 * k)
-        book.set_board("chatgpt", row("chatgpt", "NVDA", n, signal="BUY", price=100.0, score=57.0))
+        book.set_board("grok", row("grok", "NVDA", n, signal="BUY", price=100.0, score=57.0))
         book.tick(n)
     assert len(book.trades()) == 1
 
@@ -110,8 +110,8 @@ def test_the_entry_lock_blocks_new_entries_but_never_the_exits(book):
     book.quotes["AMD"] = quote(50.0)
     for k in range(2):
         n = now + timedelta(minutes=3 * (k + 1))
-        book.set_board("chatgpt", row("chatgpt", "AMD", n, signal="BUY", price=50.0, score=57.0),
-                       row("chatgpt", "NVDA", n, signal="NEUTRAL", price=98.8, score=60.0))
+        book.set_board("grok", row("grok", "AMD", n, signal="BUY", price=50.0, score=57.0),
+                       row("grok", "NVDA", n, signal="NEUTRAL", price=98.8, score=60.0))
         book.tick(n)
     assert [x.symbol for x in book.trades()] == ["NVDA"] and book.trades()[0].status == "STOP"       # the exit still ran
     assert book.events(symbol="AMD")[0].validation_status == ex.WAIT_LOCKED
@@ -120,7 +120,7 @@ def test_the_entry_lock_blocks_new_entries_but_never_the_exits(book):
 def test_an_index_or_future_is_never_a_candidate(book):
     for k in range(2):
         n = et(*TUE, 7, 15) + timedelta(minutes=3 * k)
-        book.set_board("chatgpt", row("chatgpt", "SPX", n, signal="BUY", price=100.0))
+        book.set_board("grok", row("grok", "SPX", n, signal="BUY", price=100.0))
         book.tick(n)
     assert not book.trades() and book.events()[0].validation_status == ex.WAIT_INSTRUMENT
 
@@ -131,7 +131,7 @@ def test_no_entry_is_considered_outside_the_two_sessions(book, when):
     book.quotes["NVDA"] = quote()
     for k in range(2):
         n = when + timedelta(minutes=3 * k)
-        book.set_board("chatgpt", row("chatgpt", "NVDA", n, signal="BUY", price=100.0, session="REGULAR"))
+        book.set_board("grok", row("grok", "NVDA", n, signal="BUY", price=100.0, session="REGULAR"))
         book.tick(n)
     assert not book.trades() and not book.events()
 
@@ -159,9 +159,9 @@ def test_every_snapshot_keeps_each_parameters_reading_contribution_and_category(
     assert len(snaps) == 2                                                             # two distinct pieces of evidence were kept
     s = [x for x in snaps if x.id == t.snapshot_id][0]
     params = {p["name"]: p for p in json.loads(s.params)}
-    assert params["vwap_ema"]["category"] == ex.AVAILABLE and params["vwap_ema"]["points"] == 9.0
-    assert params["options_flow"]["category"] == ex.UNAVAILABLE_PREMARKET and params["market_structure"]["category"] == ex.UNIMPLEMENTED
-    assert s.coverage_eligible_pct == 100.0 and s.coverage_total_pct < 40.0 and s.agreement_pct == 100.0
+    assert params["trend_price"]["category"] == ex.AVAILABLE and params["trend_price"]["points"] == 24.0     # grok: 24 x (0.5 + 0.5 x 1)
+    assert params["options_flow"]["category"] == ex.UNAVAILABLE_PREMARKET and params["volatility_em"]["category"] == ex.ZERO_WEIGHT
+    assert s.coverage_eligible_pct == 100.0 and s.coverage_total_pct == pytest.approx(42.0) and s.agreement_pct == 100.0   # 24+8+5+3+2 of 100
     assert json.loads(s.sources)["ema_trend"]["age_s"] >= 120.0 and s.fingerprint
 
 

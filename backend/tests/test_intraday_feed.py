@@ -197,6 +197,8 @@ def _prep(monkeypatch, bias, snapshot_age, with_feed, phase="rth"):
     for mod in (ig, kin):
         monkeypatch.setattr(mod, "_eq_cached", lambda s, e=e: e)
         monkeypatch.setattr(mod, "_price_atr", lambda s: (100.0, 2.0))
+    monkeypatch.setattr(ig, "_quote_snapshot", lambda s: {"price": 100.0, "bid": None, "ask": None, "spread": None, "spread_pct": None,
+                                                          "quote_age_s": 2.0, "quote_epoch": 1.0})   # the shared quote: no network under test
     if with_feed:
         real = time.time()
         for s in ("AAA", "BBB"):
@@ -230,33 +232,27 @@ def test_without_a_fresh_feed_the_same_stale_snapshot_gives_wait(monkeypatch, id
         assert w["health"]["eligible_for_new_entries"] is False and w["health"]["missing_critical"]
 
 
-def test_six_boards_share_one_feed_and_make_no_api_calls_themselves(monkeypatch):
-    """Before: each model had to refresh its own inputs. Now one cycle serves all six."""
-    import chatgpt_intraday_service as cg
-    import claude_pro_intraday_service as cp
+def test_four_boards_share_one_feed_and_make_no_api_calls_themselves(monkeypatch):
+    """Before: each model had to refresh its own inputs. Now one cycle serves all four (the ChatGPT / Claude Pro boards are retired)."""
     import intraday_grok_service as ig
     _prep(monkeypatch, +0.9, 40 * 3600.0, with_feed=True, phase="closed")
-    import intraday_signal_v2 as eng
-    monkeypatch.setattr(eng, "scan_once", lambda *a, **k: {})      # the live-path boards kick it in a thread: not under test
     monkeypatch.setattr(ig, "_eq_cached", ig._eq_cached)
     fetches = []
     import unusualwhales_service as uw
     monkeypatch.setattr(uw, "get", lambda *a, **k: fetches.append(a) or {"status": "OK", "data": []})
     for _name, board in _boards():
         board()
-    cg.board()
-    cp.board()
     # The boards read the feed (a cache read): no per-symbol request at all. The only requests are the
     # market-wide breadth reads (one tape for every symbol and every board, shared by the memo).
     assert all("/api/stock/" not in f[0] and "AAA" not in str(f) and "BBB" not in str(f) for f in fetches), fetches
-    assert len(fetches) <= 6
+    assert len(fetches) <= 4
     computed = []
     put = lambda s: computed.append(s) or {"symbol": s, "signals": dict(FAST_ALL), "ts": time.time()}  # noqa: E731
     for s in ("AAA", "BBB"):
         swr._values.pop(feed.KEY.format(s), None)
     bud.reset_for_tests(bud.Controller(persist=False))
     feed.feed_cycle(["AAA", "BBB"], "rth", compute=put)
-    assert sorted(computed) == ["AAA", "BBB"]                               # one refresh per symbol, not six
+    assert sorted(computed) == ["AAA", "BBB"]                               # one refresh per symbol, not four
 
 
 # ------------------------------------------------------------- dashboard health ---

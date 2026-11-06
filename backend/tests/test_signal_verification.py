@@ -7,8 +7,6 @@ from pathlib import Path
 
 import pytest
 
-import chatgpt_intraday_service as chatgpt
-import claude_pro_intraday_service as claude_pro
 import demo_trade_service as dts
 import gemini_intraday_service as gemini
 import intraday_enrich
@@ -36,9 +34,7 @@ REAL = {
     "kimi": lambda sym, eq: kimi.score_one(sym, eq),
     "meta": lambda sym, eq: meta.score_one(sym, eq),
     "gemini": lambda sym, eq: gemini.score_one(sym, eq),
-    "chatgpt": lambda sym, eq: chatgpt._score_equity(sym, eq),
-    "claude_pro": lambda sym, eq: claude_pro._score_equity(sym, eq),
-}
+}                                                   # chatgpt / claude_pro retired: no scoring code left to agree with
 
 
 def with_entry(r):
@@ -65,7 +61,7 @@ def test_the_verifier_agrees_with_the_real_scoring_code_on_random_inputs(strateg
 
 
 # ---------------------------------------------------------------------------------------------------- tampering -------
-def good_row(strategy="chatgpt", signal="BUY", price=100.0):
+def good_row(strategy="grok", signal="BUY", price=100.0):
     return row(strategy, "NVDA", NOW, signal=signal, session="REGULAR", price=price, score=None)
 
 
@@ -86,32 +82,32 @@ def test_a_clean_row_passes_every_integrity_check():
 def test_a_changed_weight_is_detected():
     r = good_row()
     r["params"][0] = dict(r["params"][0], max=r["params"][0]["max"] + 1)
-    assert "each weight equals the configured weight" in failed(verdict("chatgpt", r))
+    assert "each weight equals the configured weight" in failed(verdict("grok", r))
 
 
 def test_an_off_scale_bias_a_wrong_contribution_and_a_wrong_total_are_detected():
     r = good_row()
     r["params"][1] = dict(r["params"][1], bias=0.3)
-    assert "biases are on the 5-step scale" in failed(verdict("chatgpt", r))
+    assert "biases are on the 5-step scale" in failed(verdict("grok", r))
     r = good_row()
     r["params"][2] = dict(r["params"][2], points=r["params"][2]["points"] + 1.0)
-    assert "each contribution = weight x (0.5 + 0.5 x bias)" in failed(verdict("chatgpt", r))
+    assert "each contribution = weight x (0.5 + 0.5 x bias)" in failed(verdict("grok", r))
     r = good_row()
     r["score"] = round(r["score"] - 3, 1)
-    f = failed(verdict("chatgpt", r))
+    f = failed(verdict("grok", r))
     assert "final score = sum of the weighted contributions" in f and "final score = sum of the reported contributions" in f
 
 
 def test_a_missing_extra_or_duplicated_parameter_is_detected():
     r = good_row()
     r["params"] = r["params"][1:]
-    assert "parameter set matches the configuration" in failed(verdict("chatgpt", r))
+    assert "parameter set matches the configuration" in failed(verdict("grok", r))
     r = good_row()
     r["params"] = r["params"] + [{"name": "invented", "max": 5, "bias": 1.0, "points": 5.0}]
-    assert "parameter set matches the configuration" in failed(verdict("chatgpt", r))
+    assert "parameter set matches the configuration" in failed(verdict("grok", r))
     r = good_row()
     r["params"] = r["params"] + [dict(r["params"][0])]
-    assert "parameter set matches the configuration" in failed(verdict("chatgpt", r))
+    assert "parameter set matches the configuration" in failed(verdict("grok", r))
 
 
 @pytest.mark.parametrize("score,signal,ok", [(55.0, "BUY", True), (54.9, "BUY", False), (45.0, "SELL", True), (45.1, "SELL", False),
@@ -119,39 +115,39 @@ def test_a_missing_extra_or_duplicated_parameter_is_detected():
 def test_the_existing_thresholds_are_applied_exactly(score, signal, ok):
     r = good_row()
     r.update(score=score, signal=signal)
-    assert ("signal matches BUY >= 55 / SELL <= 45" not in failed(verdict("chatgpt", r))) is ok
+    assert ("signal matches BUY >= 55 / SELL <= 45" not in failed(verdict("grok", r))) is ok
     assert cfg.V3_CUTOFFS["buy"] == 55 and cfg.V3_CUTOFFS["sell"] == 45                       # the thresholds themselves are untouched
 
 
 def test_entry_price_must_exist_and_sit_inside_its_own_bracket():
     f = "entry price present and inside its own stop / target bracket"
     r = good_row()
-    assert f not in failed(verdict("chatgpt", r))
+    assert f not in failed(verdict("grok", r))
     r["entry"] = None
-    assert f in failed(verdict("chatgpt", r))
+    assert f in failed(verdict("grok", r))
     r = good_row()
     r["sl"], r["tp"] = r["entry"] + 1, r["entry"] + 2                                          # a BUY whose stop is above the entry
-    assert f in failed(verdict("chatgpt", r))
+    assert f in failed(verdict("grok", r))
     r = good_row()
     r["entry"], r["raw_levels"] = None, {"entry": 100.0, "sl": 99.0, "tp": 102.0}              # a withheld row keeps the strategy's own levels
-    assert f not in failed(verdict("chatgpt", r))
+    assert f not in failed(verdict("grok", r))
 
 
 # ------------------------------------------------------------------------------------------------ data verdict -------
 def test_missing_stale_and_unverifiable_data_are_not_verified_evidence():
-    ok = verdict("chatgpt", good_row())
+    ok = verdict("grok", good_row())
     assert ok["data_status"] == "DATA_OK" and ok["data"]["eligible_coverage_pct"] == 100.0
     stale = verdict("grok", row("grok", "NVDA", NOW, signal="BUY", session="REGULAR", score=None, meta_age=9000.0))
     assert stale["data_status"] == "DATA_THIN" and stale["verdict"] == "PASS"                   # a clean score on stale data: flagged, not "verified"
-    old_engine = verdict("chatgpt", row("chatgpt", "NVDA", NOW, signal="BUY", session="REGULAR", score=None, engine_age=900.0))
+    old_engine = verdict("grok", row("grok", "NVDA", NOW, signal="BUY", session="REGULAR", score=None, engine_age=900.0))
     assert old_engine["data_status"] == "DATA_THIN" and old_engine["verdict"] == "PASS"
-    thin = row("chatgpt", "NVDA", NOW, signal="BUY", session="REGULAR", score=56.0,
-               overrides={n: None for i, n in enumerate(sv.configured_weights("chatgpt")) if i % 4})
-    t = verdict("chatgpt", thin)
+    thin = row("grok", "NVDA", NOW, signal="BUY", session="REGULAR", score=56.0,
+               overrides={n: None for i, n in enumerate(sv.configured_weights("grok")) if i % 4})
+    t = verdict("grok", thin)
     assert t["data_status"] == "DATA_THIN" and t["data"]["eligible_coverage_pct"] < 70
     bare = good_row()
     bare["signal_meta"] = {}
-    assert verdict("chatgpt", bare)["data_status"] == "DATA_UNVERIFIED"                        # no timestamps -> cannot be verified
+    assert verdict("grok", bare)["data_status"] == "DATA_UNVERIFIED"                        # no timestamps -> cannot be verified
 
 
 # ------------------------------------------------------------------------------- audit hook never changes trading -----
@@ -174,7 +170,7 @@ def legacy_day(book):
             book.quotes[sym] = quote(px)
             book.bars5[sym] = rising_bars(n, 24, warmup=True) if sig == "BUY" else falling_bars(n, 24, warmup=True)
             book.r15[sym] = {"status": "OK", "bias": 1 if sig == "BUY" else -1, "last_bar_end_epoch": n.timestamp() - 60, "detail": "15m"}
-            book.set_board("chatgpt", consistent_row("chatgpt", sym, n, sig, px))
+            book.set_board("grok", consistent_row("grok", sym, n, sig, px))
         book.full_tick(n)
     return [(t.strategy, t.symbol, t.side, t.entry_price, t.status, t.exit_price, t.profit, t.stop, t.target) for t in book.trades()]
 
@@ -200,13 +196,13 @@ def test_audit_mode_records_every_signal_and_leaves_the_trades_identical(book, m
     monkeypatch.setitem(cfg.INTRADAY_VERIFICATION, "mode", "audit")
     assert legacy_day(book) == baseline                                                         # identical to the cent
     rows = audit_rows(book)
-    assert rows and {r.strategy for r in rows} == {"chatgpt"} and all(r.verdict == "PASS" for r in rows)
+    assert rows and {r.strategy for r in rows} == {"grok"} and all(r.verdict == "PASS" for r in rows)
     opened = [r for r in rows if r.legacy_opened]
     assert {r.symbol for r in opened} == {"AMD", "AAPL"} and all(r.trade_id for r in opened)
     held = [r for r in rows if r.legacy_held]
     assert held                                                                                 # later ticks: "already in the book"
     first = json.loads(rows[0].breakdown)
-    assert len(first) == len(sv.configured_weights("chatgpt")) and {"weight", "bias", "points", "expected_points"} <= set(first[0])
+    assert len(first) == len(sv.configured_weights("grok")) and {"weight", "bias", "points", "expected_points"} <= set(first[0])
     assert rows[0].entry_price and rows[0].score == rows[0].recomputed_score
 
 
@@ -232,9 +228,9 @@ def test_a_failing_signal_is_recorded_but_still_trades_exactly_as_before(book, m
     book.quotes["AMD"] = quote(50.0)
     book.bars5["AMD"] = rising_bars(n, 24, warmup=True)
     book.r15["AMD"] = {"status": "OK", "bias": 1, "last_bar_end_epoch": n.timestamp() - 60, "detail": "15m"}
-    r = consistent_row("chatgpt", "AMD", n, "BUY", 50.0)
+    r = consistent_row("grok", "AMD", n, "BUY", 50.0)
     r["params"][0] = dict(r["params"][0], max=r["params"][0]["max"] + 1)                       # tampered weight; the board still says BUY
-    book.set_board("chatgpt", r)
+    book.set_board("grok", r)
     book.full_tick(n)
     assert [t.symbol for t in book.trades()] == ["AMD"]
     a = audit_rows(book)
@@ -271,7 +267,7 @@ def test_the_report_counts_passes_and_failures_and_explains_why(book, monkeypatc
     legacy_day(book)
     from datetime import date
     rep = sv.report(book.Session, date(*TUE))
-    assert rep["total"]["signals"] >= 2 and rep["total"]["integrity_fail"] == 0 and rep["per_strategy"]["chatgpt"]["signals"] >= 2
+    assert rep["total"]["signals"] >= 2 and rep["total"]["integrity_fail"] == 0 and rep["per_strategy"]["grok"]["signals"] >= 2
 
 
 def test_history_report_rechecks_existing_trades_read_only(book):
@@ -279,7 +275,7 @@ def test_history_report_rechecks_existing_trades_read_only(book):
     from datetime import date
     d = date(*TUE)
     rows = [  # strategy, side, score, entry, stop, target, shares
-        ("chatgpt", "LONG", 56.0, 100.0, 99.5, 101.0, 100), ("chatgpt", "SHORT", 44.0, 100.0, 100.5, 99.0, 100),
+        ("chatgpt", "LONG", 56.0, 100.0, 99.5, 101.0, 100), ("chatgpt", "SHORT", 44.0, 100.0, 100.5, 99.0, 100),   # retired board's history
         ("grok", "LONG", 52.0, 100.0, 99.5, 101.0, 100),                    # below the BUY cutoff
         ("grok", "SHORT", 48.0, 100.0, 100.5, 99.0, 100),                   # above the SELL cutoff
         ("meta", "LONG", 60.0, 100.0, 101.0, 102.0, 100),                   # stop above entry
@@ -295,27 +291,32 @@ def test_history_report_rechecks_existing_trades_read_only(book):
     rep = sv.history_report(book.Session, d)
     assert rep["trades"] == 8 and rep["pass"] == 2 and rep["fail"] == 6
     assert rep["per_strategy"]["chatgpt"]["pass"] == 2 and rep["per_strategy"]["grok"]["fail"] == 2
+    # the retired boards' historical rows stay in the book under their own key and are labelled as retired, never re-scored
+    assert dts.strategy_label("chatgpt") == "ChatGPT Intraday (retired)" and dts.strategy_label("claude_pro") == "Claude Pro Intraday (retired)"
+    assert sv.configured_weights("chatgpt") == sv.configured_weights("claude_pro") == {}
     with book.Session() as s:
         assert s.query(m.DemoTrade).count() == 8 and all(t.status == "OPEN" for t in s.query(m.DemoTrade).all())
 
 
 def test_the_builtin_no_source_table_equals_the_execution_registry():
     import intraday_execution as ex
+    assert set(ex.REGISTRY) == set(ex.STRATEGIES) == {"grok", "kimi", "meta", "gemini"}
     for st, paths in ex.REGISTRY.items():
         sets = [{k for k, v in reg.items() if v in (ex.UNIMPLEMENTED, ex.NOT_APPLICABLE)} for reg in paths.values()]
-        assert set(sv.NO_SOURCE.get(st, ())) == set.intersection(*sets), st
+        assert set(sv.NO_SOURCE.get(st, ())) == set.intersection(*sets) == set(), st     # every remaining parameter has a source
+    assert sv.NO_SOURCE == {} and not (set(sv.NO_SOURCE) - set(ex.REGISTRY))             # nothing sourceless is left (chatgpt is retired)
 
 
 def test_without_timestamps_missing_evidence_is_still_reported():
-    thin = row("chatgpt", "NVDA", NOW, signal="BUY", session="REGULAR", score=56.0,
-               overrides={n: None for i, n in enumerate(sv.configured_weights("chatgpt")) if i % 4})
+    thin = row("grok", "NVDA", NOW, signal="BUY", session="REGULAR", score=56.0,
+               overrides={n: None for i, n in enumerate(sv.configured_weights("grok")) if i % 4})
     thin["signal_meta"] = None
-    v = verdict("chatgpt", thin)
-    assert v["data_status"] == "DATA_THIN" and v["data"]["eligible_coverage_pct"] < 70 and v["data"]["no_source_weight"] == 36
+    v = verdict("grok", thin)
+    assert v["data_status"] == "DATA_THIN" and v["data"]["eligible_coverage_pct"] < 70 and v["data"]["no_source_weight"] == 0   # grok: every parameter sourced
     full = good_row()
     full["signal_meta"] = None
-    f = verdict("chatgpt", full)
-    assert f["data_status"] == "DATA_UNVERIFIED" and f["data"]["eligible_coverage_pct"] > 80      # never-sourced parameters are not "missing"
+    f = verdict("grok", full)
+    assert f["data_status"] == "DATA_UNVERIFIED" and f["data"]["eligible_coverage_pct"] > 80      # present readings are not "missing" without timestamps
 
 
 def test_the_audits_own_health_is_counted_without_the_database(book, monkeypatch):
