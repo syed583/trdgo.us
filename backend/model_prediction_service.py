@@ -24,7 +24,7 @@ Safety rules honoured here (owner's spec):
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 SOURCE = "Earnings Model Accuracy Scoreboard"
@@ -92,11 +92,18 @@ def backfill_claude_pm() -> int:
 
 
 def backfill_ped() -> int:
-    """Seed model_predictions from the real stored Pre-Earnings Direction history
-    (ped_scores: symbol, snapshot_date, signal, score, earnings_date). This is
-    genuine recorded history -- not fabricated -- and is the only model with a
-    pre-existing track record. INSERT ... DO NOTHING preserves anything already
-    captured. Returns rows added."""
+    """Seed model_predictions from the stored Pre-Earnings Direction daily log
+    (ped_scores: symbol, snapshot_date, signal, score, earnings_date).
+
+    ped_scores keeps a DATE only, so these rows are date-only history: predicted_at is the
+    midnight-UTC stamp of the snapshot date and report_timing is NULL, which the verified
+    scoreboard classifies RETROSPECTIVE (never eligible: the time of day is unknown, so it cannot
+    be shown that the call preceded the announcement). Genuine PED predictions come from
+    capture(), which stores the real UTC capture time and the report timing.
+
+    Only snapshot dates BEFORE today are copied -- today's call belongs to capture(), so this
+    backfill can never pre-empt it with a date-only record. INSERT ... DO NOTHING means an existing
+    row (genuine or old) is never overwritten. Returns rows added."""
     if not _ensure_table():
         return 0
     from sqlalchemy import text
@@ -111,8 +118,9 @@ def backfill_ped() -> int:
             "       snapshot_date::timestamptz, signal, score "
             "FROM ped_scores "
             "WHERE signal IN ('BUY','SELL','NEUTRAL') AND earnings_date IS NOT NULL "
+            "  AND snapshot_date < :today "
             "ON CONFLICT (model, symbol, earnings_date, snapshot_date) DO NOTHING"
-        )).rowcount or 0
+        ), {"today": date.today()}).rowcount or 0
         db.commit()
         return n
     except Exception:  # noqa: BLE001
@@ -186,6 +194,15 @@ def _direction(move_pct) -> Optional[str]:
 _STORED_ID = {"claude": "claude_new"}
 
 
+def capture_timestamp() -> datetime:
+    """The genuine UTC capture time stored as predicted_at. Never exactly 00:00:00.000000 UTC: that value is the
+    marker of a date-only (retrospective) record, so a real capture at that instant is nudged by one microsecond."""
+    now = datetime.now(timezone.utc)
+    if (now.hour, now.minute, now.second, now.microsecond) == (0, 0, 0, 0):
+        now = now.replace(microsecond=1)
+    return now
+
+
 def capture(days: int = 15) -> int:
     """Record today's BUY/SELL/NEUTRAL + score for every one of the 10 models,
     for each upcoming earnings name. Reads the warmed caches via all_models.
@@ -199,6 +216,7 @@ def capture(days: int = 15) -> int:
         return 0
     rows = (res or {}).get("rows") or []
     today = date.today()
+    captured_at = capture_timestamp()
 
     payload: list[dict] = []
     for r in rows:
@@ -219,7 +237,7 @@ def capture(days: int = 15) -> int:
             # The sheet's "claude" column is the stored history's "claude_new" model.
             model = _STORED_ID.get(model, model)
             payload.append({"model": model, "symbol": sym, "edate": edate,
-                            "timing": timing, "snap": today,
+                            "timing": timing, "snap": today, "at": captured_at,
                             "signal": sig, "score": (cell or {}).get("score")})
     if not payload:
         return 0
@@ -231,8 +249,8 @@ def capture(days: int = 15) -> int:
         n = 0
         stmt = text(
             "INSERT INTO model_predictions "
-            "(model, symbol, earnings_date, report_timing, snapshot_date, signal, score) "
-            "VALUES (:model, :symbol, :edate, :timing, :snap, :signal, :score) "
+            "(model, symbol, earnings_date, report_timing, snapshot_date, predicted_at, signal, score) "
+            "VALUES (:model, :symbol, :edate, :timing, :snap, :at, :signal, :score) "
             "ON CONFLICT (model, symbol, earnings_date, snapshot_date) DO NOTHING")
         for p in payload:
             res = db.execute(stmt, p)
@@ -249,80 +267,39 @@ def capture(days: int = 15) -> int:
 # --------------------------------------------------------------------------- #
 # Grading                                                                      #
 # --------------------------------------------------------------------------- #
-def grade(max_symbols: int = 120) -> int:
-    """Fill the outcome for predictions whose earnings have reported.
+LEGACY_OUTCOMES_NOTE = (
+    "LEGACY outcome data: actual_move_pct / actual_direction / correct on model_predictions were computed by the "
+    "old grader, which read pre-market / after-hours candle rows instead of regular-session closes. In the "
+    "2026-10-29 audit sample 28 of 33 stored values differed from the verified move and 14 changed the "
+    "BUY/SELL/NEUTRAL class. Do not use them for verified performance reporting; use /model-accuracy/scoreboard.")
 
-    One live post-earnings-move lookup per symbol (not per row), capped so a run
-    stays well inside the API budget. Returns rows graded."""
+
+def legacy_sync_enabled() -> bool:
+    """Writing verified outcomes into the legacy columns is OFF unless EARNINGS_LEGACY_SYNC is explicitly truthy."""
+    import os
+    return os.environ.get("EARNINGS_LEGACY_SYNC", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def grade(max_symbols: int = 120) -> int:
+    """Grade reported earnings events and return how many were newly graded.
+
+    Phase 2A lifecycle (earnings_outcomes): an event is graded only after its reaction session has
+    closed (Before Open: the earnings-day session; After Close: the next valid trading session; US
+    holidays, early closes and daylight saving respected) and both closing prices exist. Until then it
+    stays pending and is retried on a back-off schedule that never stops -- an outcome that is simply
+    not available yet is never recorded as permanently unverifiable. Outcomes live in
+    `earnings_event_outcomes`. The legacy columns of model_predictions are NOT written unless
+    EARNINGS_LEGACY_SYNC is explicitly enabled (and even then only for never-evaluated rows)."""
     if not _ensure_table():
         return 0
-    from sqlalchemy import text
+    import earnings_outcomes as eo
     from database import SessionLocal
     db = SessionLocal()
     try:
-        today = date.today()
-        syms = [r[0] for r in db.execute(text(
-            "SELECT DISTINCT symbol FROM model_predictions "
-            "WHERE evaluated_at IS NULL AND earnings_date IS NOT NULL "
-            "AND earnings_date < :t ORDER BY symbol LIMIT :lim"),
-            {"t": today, "lim": max_symbols}).all()]
-        if not syms:
-            return 0
-
-        import earnings_trade_service as ets
-        graded = 0
-        for sym in syms:
-            try:
-                moves = ets._historical_moves(sym) or []
-            except Exception:  # noqa: BLE001
-                moves = []
-            by_date = {str(m.get("date"))[:10]: m.get("move_pct")
-                       for m in moves if m.get("date") is not None}
-            # Every reported, not-yet-attempted row for this symbol. We attempt
-            # each one; if no real post-earnings move can be matched it is marked
-            # UNVERIFIABLE (evaluated_at set, correct left NULL) -- distinct from
-            # PENDING (earnings not yet reported, evaluated_at still NULL).
-            prows = db.execute(text(
-                "SELECT id, earnings_date, signal FROM model_predictions "
-                "WHERE symbol = :s AND evaluated_at IS NULL "
-                "AND earnings_date IS NOT NULL AND earnings_date < :t"),
-                {"s": sym, "t": today}).all()
-            for pid, edate, sig in prows:
-                key = str(edate)[:10]
-                mv = by_date.get(key)
-                if mv is None and by_date:
-                    # No exact report-date match: take the REAL report closest to
-                    # the predicted earnings date, within +/-5 days (the UW report
-                    # date and the calendar's earnings_date often differ by a day,
-                    # and an AMC reaction lands on the next session).
-                    best_d, best_gap = None, 6
-                    for dd in by_date:
-                        try:
-                            gap = abs((date.fromisoformat(dd) - edate).days)
-                        except Exception:  # noqa: BLE001
-                            continue
-                        if gap <= 5 and gap < best_gap:
-                            best_d, best_gap = dd, gap
-                    if best_d is not None:
-                        mv = by_date[best_d]
-                if mv is None:
-                    # Reported but no usable outcome -> UNVERIFIABLE (never 0%).
-                    db.execute(text(
-                        "UPDATE model_predictions SET evaluated_at = now() "
-                        "WHERE id = :id"), {"id": pid})
-                    continue
-                adir = _direction(mv)
-                correct = 1 if (adir is not None and sig == adir) else 0
-                db.execute(text(
-                    "UPDATE model_predictions SET actual_move_pct = :mv, "
-                    "actual_direction = :adir, correct = :c, evaluated_at = now() "
-                    "WHERE id = :id"),
-                    {"mv": float(mv), "adir": adir, "c": correct, "id": pid})
-                graded += 1
-            # Commit per symbol so a long run holds no lock and partial progress
-            # survives an interruption.
-            db.commit()
-        return graded
+        summary = eo.run(max_symbols=max_symbols, db=db)
+        if legacy_sync_enabled():
+            eo.sync_legacy_columns(db)
+        return int(summary.get("graded_new", 0))
     except Exception:  # noqa: BLE001
         db.rollback()
         return 0
@@ -346,8 +323,10 @@ def _latest_per_event_sql() -> str:
         "ORDER BY model, symbol, earnings_date, snapshot_date DESC")
 
 
-def scoreboard() -> dict:
-    """Per-model accuracy over graded events, with 7/30/90-day cuts, BUY/SELL
+def scoreboard_legacy() -> dict:
+    """LEGACY scoreboard (kept for comparison, not shown by default): every snapshot class, the
+    latest snapshot on/before the earnings date, and legacy outcomes that may be unverifiable.
+    Per-model accuracy over graded events, with 7/30/90-day cuts, BUY/SELL
     splits, average move, direction-aware return, confidence buckets, consensus
     accuracy -- every figure with its sample size. Read-only."""
     if not _ensure_table():
@@ -531,6 +510,16 @@ def scoreboard() -> dict:
                      "added recently have little or no evaluated history yet.")}
 
 
+def scoreboard(definition: str = "last") -> dict:
+    """Verified earnings accuracy scoreboard (read-only, provisional): one eligible pre-release prediction
+    per stock / earnings event / model, graded outcomes only, BUY / SELL / NEUTRAL separate. See
+    earnings_scoreboard for the exact definition."""
+    import earnings_scoreboard as sb
+    models = dict(_model_labels())
+    # only the live earnings models are scored; retired ids stay in the table untouched
+    return sb.scoreboard(models, definition=definition)
+
+
 def history(model: Optional[str] = None, symbol: Optional[str] = None,
             limit: int = 500) -> dict:
     """Flat list of graded predictions for the verification table (read-only)."""
@@ -577,7 +566,8 @@ def history(model: Optional[str] = None, symbol: Optional[str] = None,
                     "signal": r.signal, "score": r.score,
                     "actual_move_pct": r.actual_move_pct,
                     "actual_direction": r.actual_direction, "result": result})
-    return {"status": "OK", "source": SOURCE, "rows": out, "count": len(out)}
+    return {"status": "OK", "source": SOURCE, "rows": out, "count": len(out),
+            "legacy_outcomes_invalid": True, "legacy_note": LEGACY_OUTCOMES_NOTE}
 
 
 def overlay(symbols: list[str]) -> dict:
@@ -592,7 +582,8 @@ def overlay(symbols: list[str]) -> dict:
     All read from the stored graded predictions -- no extra API calls, no model
     recomputation. Missing history is simply absent (never shown as 0%)."""
     syms = [s.upper() for s in (symbols or []) if s]
-    out = {"model_stats": {}, "prev": {}, "last_move": {}}
+    out = {"model_stats": {}, "prev": {}, "last_move": {},
+           "legacy_outcomes_invalid": True, "legacy_note": LEGACY_OUTCOMES_NOTE}
     # Per-model stats straight from the scoreboard (directional headline).
     try:
         sb = scoreboard()

@@ -30,7 +30,7 @@ const mdd = (iso: any) => {
   } catch { return String(iso); }
 };
 const sigClass = (s: string) =>
-  s === 'BUY' ? 'ped-buy' : s === 'SELL' ? 'ped-sell' : s === 'PENDING' ? 'ped-pend' : 'ped-neu';
+  s === 'BUY' ? 'ped-buy' : s === 'SELL' ? 'ped-sell' : (s === 'PENDING' || s === 'LOW_DATA') ? 'ped-pend' : 'ped-neu';
 // Colour a parameter cell by how far its bias leans from neutral.
 const biasClass = (b: any) => {
   if (b == null) return 'ped-mute';
@@ -115,7 +115,7 @@ export default function PreEarningsDirectionPage({ ctx }: { ctx: PageContext }) 
                         <td className="ts-date">{mdd(r.date)}{r.time_label ? ` ${r.time_label}` : ''}</td>
                         <td className="ts-num">{r.days_to ?? '—'}</td>
                         <td className="ts-num"><b>{pending ? '…' : r.score}</b></td>
-                        <td><span className={`ped-sig ${sigClass(r.signal)}`}>{r.signal}</span></td>
+                        <td><span className={`ped-sig ${sigClass(r.signal)}`}>{r.signal === 'LOW_DATA' ? 'LOW DATA' : r.signal}</span></td>
                         {PARAMS.map(([k]) => {
                           const p = pOf(r, k);
                           return (

@@ -1,0 +1,62 @@
+diff --git a/backend/earnings_outcomes.py b/backend/earnings_outcomes.py
+index b4b79a92..9212cd29 100644
+--- a/backend/earnings_outcomes.py
++++ b/backend/earnings_outcomes.py
+@@ -230,17 +230,48 @@ def events_to_review(db, today: date) -> dict:
+     return {k: (v[0] or None) for k, v in best.items()}
+ 
+ 
++def _volume(row: dict) -> float:
++    for k in ("total_volume", "volume"):
++        try:
++            return float(row.get(k))
++        except (TypeError, ValueError):
++            continue
++    return 0.0
++
++
++def regular_session_closes(rows) -> dict:
++    """date -> REGULAR-session close from raw daily rows.
++
++    The provider's daily feed can send more than one row for the same date -- pre-market ('pr'), regular ('r')
++    and post-market ('po') -- and the app's own overview code keeps the regular one. An earnings reaction is
++    measured close to close, so a pre- or post-market row must never stand in for the close: after an After
++    Close report the post-market row already contains the earnings reaction and would corrupt the base price.
++    Rules per date: a regular row wins; a date whose rows carry no market_time at all (one bar per date) uses
++    its highest-volume row; a date with only pre-/post-market rows has NO regular close yet and is left out
++    (the event then stays pending and is retried)."""
++    by_date: dict = {}
++    for r in rows or []:
++        raw_day = r.get("date") or r.get("start_time")
++        try:
++            d = date.fromisoformat(str(raw_day)[:10])
++            c = float(r.get("close"))
++        except (TypeError, ValueError):
++            continue
++        by_date.setdefault(d, []).append((r, c))
++    out: dict = {}
++    for d, items in by_date.items():
++        regular = [c for r, c in items if str(r.get("market_time") or "").strip().lower() == "r"]
++        if regular:
++            out[d] = regular[-1]
++        elif all(not r.get("market_time") for r, _ in items):
++            out[d] = max(items, key=lambda x: _volume(x[0]))[1]
++    return out
++
++
+ def default_bars_fetcher(symbol: str) -> dict:
+-    """Daily closes from the same price source the earnings history already uses."""
++    """Regular-session daily closes from the same price source the earnings history already uses."""
+     import unusualwhales_service as uw
+-    out = {}
+-    for r in uw._rows(uw.candles(symbol, "1d", limit=400)):
+-        if r.get("date") and r.get("close") not in (None, ""):
+-            try:
+-                out[date.fromisoformat(str(r["date"])[:10])] = float(r["close"])
+-            except (TypeError, ValueError):
+-                continue
+-    return out
++    return regular_session_closes(uw._rows(uw.candles(symbol, "1d", limit=400)))
+ 
+ 
+ def run(now: Optional[datetime] = None, fetcher: Optional[Callable[[str], dict]] = None,

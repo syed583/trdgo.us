@@ -124,7 +124,7 @@ Base = declarative_base()
 # reads and writes its own copy and can never touch production history. Fail-closed:
 # forgetting APP_ENV isolates, it never shares.
 ISOLATED_TABLES = (
-    "model_predictions", "model_backtests", "earnings_signal_snapshots", "score_snapshots",
+    "model_predictions", "earnings_event_outcomes", "model_backtests", "earnings_signal_snapshots", "score_snapshots",
     "ped_scores", "pe_events", "pe_predictions", "pe_grades", "pe_scheduler_state",
     "pe_pilot_state", "pe_pilot_daily", "intraday_sig_v2", "straddle_snap_v2",
     # paper trades and trade-call/plan records (ORM-managed; twins made by ensure_local_orm_tables)
