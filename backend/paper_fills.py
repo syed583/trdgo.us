@@ -15,7 +15,10 @@ with the stock opening at 105 is not filled at 102 either (a resting limit order
   * STOP / TARGET inside a continuous session: booked at the level (unchanged: there is no tick data to do better);
   * SCORE_EXIT / TIMED_EXIT: booked at the observed reliable price (unchanged).
 
-``level``: the old convention, kept so the two can be compared.
+``observed`` (the default since the pure-intraday tracker): a STOP / TARGET is booked at the observed reliable price that
+crossed the level -- never at the level itself -- so a gap through the stop costs what it really cost.
+
+``level``: the old convention, kept so the three can be compared.
 
 Nothing is invented. A close needs a RELIABLE price: a board price that passed the freshness gate (not older than
 ``max_price_age_s``), or a live quote served from the short cache. The last known price and the entry price are NOT
@@ -70,6 +73,8 @@ def fill_price(side: str, reason: str, stop: Optional[float], target: Optional[f
     model = model or _p()["fill_model"]
     if reason in ("STOP", "TARGET"):
         level = stop if reason == "STOP" else target
+        if model == "observed":
+            return float(observed)                      # the price that actually crossed the level, whichever side it is on
         if model == "gap_aware" and gap and level is not None:
             return float(observed)                      # the first executable price after the gap, either side of the level
         return float(level if level is not None else observed)

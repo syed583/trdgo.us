@@ -114,38 +114,15 @@ def _eq_cached(symbol: str) -> Optional[dict]:
 
 
 def _price_atr(symbol: str):
-    """(price, atr14_daily) for entry/stop/target, lightly cached."""
-    import swr
-    import unusualwhales_service as uw
-    import intraday_indicators as ind
-
-    def _px():
-        q = uw.get_quote(symbol) or {}
-        return cl._f(q.get("price")) or cl._f(q.get("close"))
-
-    def _atr():
-        return ind.atr14_daily(uw.get_daily_bars(symbol, "3 M") or [])
-
-    price = swr.serve(f"kimiintra:px:{symbol}", _px, 120.0)
-    atr = swr.serve(f"kimiintra:atr:{symbol}", _atr, 6 * 3600.0)
-    return price, atr
+    """(price, atr14_daily): the same cached quote + ATR the Grok board uses (one quote per name for all boards)."""
+    import intraday_grok_service as ig
+    return ig._price_atr(symbol)
 
 
 def _levels(r: dict) -> None:
-    """Attach entry / now / tp / sl to a row (entry = price; +-0.5 ATR stop,
-    +-1.0 ATR target, 2:1), matching the Trdgo Stock board columns."""
-    try:
-        price, atr = _price_atr(r["symbol"])
-    except Exception:  # noqa: BLE001
-        price = atr = None
-    if price is None:
-        return
-    r["entry"] = round(price, 2)
-    r["now"] = round(price, 2)
-    if atr and r["signal"] in ("BUY", "SELL"):
-        sgn = 1 if r["signal"] == "BUY" else -1
-        r["sl"] = round(price - sgn * 0.5 * atr, 2)
-        r["tp"] = round(price + sgn * 1.0 * atr, 2)
+    """Entry / now / bid / ask / spread / tp / sl -- the shared helper, so Kimi never fetches its own copy of a quote."""
+    import intraday_grok_service as ig
+    ig._levels(r)
 
 
 @_uwp.tagged(_uwp.ESSENTIAL, "ai_boards")

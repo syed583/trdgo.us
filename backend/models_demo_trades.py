@@ -38,11 +38,44 @@ class _TradeColumns:
     profit = Column(Float, nullable=True)              # $ for the 100 shares
     profit_pct = Column(Float, nullable=True)
 
-    # OPEN / STOP / TARGET / SCORE_EXIT / TIMED_EXIT (legacy) / MARKET_CLOSE / PENDING_RECON (workflow v2)
+    # OPEN / STOP / TARGET / SCORE_EXIT / EOD_CLOSE / CLEANUP / NO_PRICE / TIMED_EXIT (older rows) / MARKET_CLOSE /
+    # PENDING_RECON (workflow v2)
     status = Column(String(16), nullable=False, default="OPEN")
     exit_time = Column(DateTime(timezone=True), nullable=True)
     exit_price = Column(Float, nullable=True)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+    # Entry evidence of the pure-intraday tracker (all nullable: rows written before it keep NULL, nothing is invented).
+    entry_bid = Column(Float, nullable=True)
+    entry_ask = Column(Float, nullable=True)
+    entry_spread_pct = Column(Float, nullable=True)
+    entry_quote_age_s = Column(Float, nullable=True)
+    be_moved = Column(Boolean, nullable=True)              # the breakeven trail moved the stop to the entry
+    entry_evidence = Column(Text, nullable=True)           # JSON: every parameter reading, coverage %, score, quote, sizing
+
+
+TRACKER_COLUMNS: dict[str, str] = {
+    "entry_bid": "FLOAT", "entry_ask": "FLOAT", "entry_spread_pct": "FLOAT", "entry_quote_age_s": "FLOAT",
+    "be_moved": "BOOLEAN", "entry_evidence": "TEXT",
+}
+
+
+def ensure_tracker_columns(engine, table: str = "demo_trades") -> list[str]:
+    """Add the tracker's evidence columns to an EXISTING table (``create(checkfirst=True)`` never alters one). Nullable
+    columns only: an older build ignores them, so this is safe to run before a deploy and harmless on rollback. Returns the
+    columns added."""
+    from sqlalchemy import inspect, text
+    insp = inspect(engine)
+    if table not in insp.get_table_names():
+        return []
+    have = {c["name"] for c in insp.get_columns(table)}
+    added = []
+    with engine.begin() as conn:
+        for col, typ in TRACKER_COLUMNS.items():
+            if col not in have:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {typ}"))
+                added.append(col)
+    return added
 
 
 class _EvidenceColumns:

@@ -658,10 +658,12 @@ def _get_impl(path: str, params: Optional[dict] = None) -> dict:
                     if exc.code == 404:
                         _metrics["no_data"] += 1
                         _note_404(path)
+                        _flog.info("404 %s (module %s)", path, module)
                     else:
                         _metrics["net_errors"] += 1
                         _metrics["err_times"].append(time.time())
                         _metrics["last_error"] = f"{path} → HTTP {exc.code}"
+                        _flog.warning("HTTP %s %s (module %s, prio %s)", exc.code, path, module, prio)
                     return _http_error(exc, raw)
             except Exception as exc:  # noqa: BLE001
                 _uwb.get().record_call(
@@ -674,6 +676,7 @@ def _get_impl(path: str, params: Optional[dict] = None) -> dict:
                 _metrics["net_errors"] += 1
                 _metrics["err_times"].append(time.time())
                 _metrics["last_error"] = f"{path} → {type(exc).__name__}"
+                _flog.warning("%s %s (module %s, prio %s)", type(exc).__name__, path, module, prio)
                 _last_status = "PROVIDER_OFFLINE"
                 return {"status": "PROVIDER_OFFLINE", "data": None,
                         "detail": type(exc).__name__, "source": SOURCE}
@@ -829,6 +832,13 @@ def _http_error(exc, raw: Optional[bytes] = None) -> dict:
             "source": SOURCE}
 
 
+try:                                   # provider errors also go to a rotating file (logs/uw.log), never only to stdout
+    import app_logging as _al
+    _flog = _al.file_logger("uw")
+except Exception:  # noqa: BLE001
+    import logging as _logging
+    _flog = _logging.getLogger("uw")
+
 _cache_cap: contextvars.ContextVar = contextvars.ContextVar("uw_cache_cap", default=None)
 # Daily history does not change intraday and is not what the feed's timestamps claim to be fresh about
 # (the live candle comes from the quote), so the cap does not apply to it -- otherwise every helper that
@@ -900,11 +910,48 @@ def _f(value) -> Optional[float]:
 # ---------------------------------------------------------------------------
 
 
+def _index_symbol(symbol: str) -> bool:
+    """A cash index (SPX, NDX, VIX, ...): the provider has no stock quote for it and answers 404 every time. Asking
+    again on every rebuild was ~2,000 guaranteed failures a day, so the quote path refuses them locally."""
+    try:
+        import market_calendar
+        return market_calendar.instrument_kind(symbol) == "index"
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def quote(symbol: str) -> dict:
     """The current bid, ask and last for one symbol."""
     symbol = (symbol or "").upper().strip()
+    if _index_symbol(symbol):
+        _metrics["index_quote_skipped"] = _metrics.get("index_quote_skipped", 0) + 1
+        return {"status": "NO_DATA", "data": None, "source": SOURCE,
+                "detail": f"{symbol} is a cash index: the provider has no stock quote for it (not requested)"}
     return _cached(f"uw:quote:{symbol}", f"/api/stock/{symbol}/quote",
                    ttl=TTL_QUOTE)
+
+
+def _quote_epoch(trade: dict, data: dict) -> Optional[float]:
+    """The provider's own time of the last trade, as epoch seconds (ms epochs and ISO strings both appear)."""
+    for v in (trade.get("time"), trade.get("timestamp"), data.get("time"), data.get("timestamp")):
+        if v in (None, ""):
+            continue
+        try:
+            f = float(v)
+            return f / 1000.0 if f > 1e11 else f
+        except (TypeError, ValueError):
+            pass
+        try:
+            from datetime import datetime as _dt
+            s = str(v).replace("Z", "+00:00")
+            d = _dt.fromisoformat(s)
+            if d.tzinfo is None:
+                from datetime import timezone as _tz
+                d = d.replace(tzinfo=_tz.utc)
+            return d.timestamp()
+        except (TypeError, ValueError):
+            continue
+    return None
 
 
 def _market_clock() -> dict:
@@ -962,6 +1009,14 @@ def get_quote(symbol: str) -> Optional[dict]:
     if prev_close:
         change = round(price - prev_close, 2)
         change_pct = round((price - prev_close) / prev_close * 100, 2)
+    bid = _f((book.get("bid") or {}).get("price"))
+    ask = _f((book.get("ask") or {}).get("price"))
+    spread = spread_pct = None
+    if bid is not None and ask is not None and ask >= bid and bid > 0:
+        spread = round(ask - bid, 4)
+        spread_pct = round(spread / ((ask + bid) / 2.0) * 100.0, 4)
+    epoch = _quote_epoch(trade, data)
+    quote_age = round(max(0.0, time.time() - epoch), 1) if epoch is not None else None
 
     return {
         "symbol": symbol,
@@ -973,8 +1028,13 @@ def get_quote(symbol: str) -> Optional[dict]:
         "change": change,
         "change_percent": change_pct,
         "previous_close": round(prev_close, 2) if prev_close else None,
-        "bid": _f((book.get("bid") or {}).get("price")),
-        "ask": _f((book.get("ask") or {}).get("price")),
+        "bid": bid,
+        "ask": ask,
+        "spread": spread,
+        "spread_pct": spread_pct,
+        # the provider's own last-trade time; None when the payload carries none (callers must treat that as unverifiable)
+        "quote_epoch": epoch,
+        "quote_age_s": quote_age,
         "open": _f(day.get("open")),
         "high": _f(day.get("high")),
         "low": _f(day.get("low")),

@@ -436,9 +436,18 @@ INTRADAY_TIERS: dict = {
 # Simulated execution of the paper trades (paper_fills.py). This is the ACCOUNTING of a simulated fill; it never
 # changes a signal, a score or the condition that closes a trade -- only the price a close is booked at.
 PAPER_EXECUTION: dict = {
-    "fill_model": "gap_aware",        # "level" = the old convention (always at the stop / target level), for comparison
-    "max_price_age_s": 300.0,         # a board price older than this is not an executable price
+    "fill_model": "observed",         # STOP / TARGET are booked at the price that actually crossed the level (gap-aware);
+                                      # "gap_aware" = at the level inside a session, observed only across a closed period;
+                                      # "level" = always at the level (the old convention), kept for comparison
+    "max_price_age_s": 300.0,         # a board price older than this is not an executable price (exits)
     "max_unpriced_trading_days": 5,   # a due close with no reliable price this long is closed as NO_PRICE (no fill invented)
+    # --- the paper tracker's entry rules (pure intraday) ---
+    "notional_usd": 10_000.0,         # every trade = this much at entry: shares = floor(notional / entry price)
+    "quote_max_age_s": 60.0,          # the live quote an ENTRY is priced at must be younger than this (else no entry)
+    "entry_start": "10:00",           # new entries only from here (ET) ...
+    "entry_end": "15:00",             # ... until here, and never later than close - 60 min (early-close days)
+    "eod_minutes_before_close": 10,   # every open position is closed this long before the official close (15:50 / 12:50)
+    "breakeven_at": 0.5,              # stop moves to the entry once profit reaches this share of the target distance
 }
 
 # Life of a live signal row (intraday_signal_v2.py). A signal is a same-day idea; one that is still open from an earlier
