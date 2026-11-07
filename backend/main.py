@@ -41,6 +41,28 @@ from confidence_service import calculate_confidence
 from estimate_score_service import score_estimates
 
 from api_routes import router as api_router
+import auth_service as _auth_guard
+import database as _db_guard
+
+_PLACEHOLDER_PASSWORDS = {"change-me", "changeme", "password", "admin", "secret", "123456", "trdgo"}
+
+
+def _refuse_weak_production_credentials() -> None:
+    """Fail closed on a production box whose ACCESS_PASSWORD is missing or a placeholder: with it empty
+    the auth gate is off and every page is public; with the example value anyone is admin. Runs at
+    import time, like database.py's production guard, so the service never comes up half-protected."""
+    if not _db_guard.is_production():
+        return
+    pw = _auth_guard._password()
+    if not pw or pw.strip().lower() in _PLACEHOLDER_PASSWORDS:
+        raise SystemExit("REFUSING TO START: APP_ENV=production but ACCESS_PASSWORD is empty or a placeholder. "
+                         "Set a real password (12+ characters) in backend/.env.")
+    if len(pw) < 12:
+        logging.getLogger(__name__).warning(
+            "ACCESS_PASSWORD is shorter than 12 characters; rotate it to a longer one (login throttle is the only brake)")
+
+
+_refuse_weak_production_credentials()
 
 
 # ---------------------------------------------------------
@@ -872,6 +894,12 @@ def health_check():
 # COMPANY
 # ---------------------------------------------------------
 
+# Every {symbol} route declared on the app from here on validates the ticker first (same guard as the
+# /api router): a crafted path segment never reaches a provider URL or a cache key.
+from api_routes import _SymbolGuardRoute as _LegacySymbolGuard
+app.router.route_class = _LegacySymbolGuard
+
+
 @app.get("/companies/{symbol}")
 def get_company(
     symbol: str,
@@ -1450,7 +1478,8 @@ async def _gate(request: Request, call_next):
     # Block cross-site writes before anything else touches them.
     if request.method in ("POST", "PUT", "PATCH", "DELETE") and (
             request.url.path.startswith("/api")
-            or request.url.path.startswith("/market")):
+            or request.url.path.startswith("/market")
+            or request.url.path.startswith("/auth")):
         if not _csrf_ok(request):
             return JSONResponse({"detail": "Cross-site request blocked."},
                                 status_code=403)
@@ -1510,7 +1539,24 @@ async def _gate(request: Request, call_next):
                             {"detail": "This account is view-only. Ask the "
                                        "administrator to grant full access."},
                             status_code=403)
-    return await call_next(request)
+    response = await call_next(request)
+    _set_security_headers(request, response)
+    return response
+
+
+def _set_security_headers(request: Request, response) -> None:
+    """Browser-side hardening that cannot break the SPA: no MIME sniffing, no framing (clickjacking),
+    no plugin objects, no <base> hijack, referrer trimmed, HSTS only once the request already came over
+    HTTPS. script-src/style-src are deliberately NOT restricted: index.html carries an inline theme
+    bootstrap and the built assets are hashed; a strict CSP is a separate, tested change."""
+    h = response.headers
+    h.setdefault("X-Content-Type-Options", "nosniff")
+    h.setdefault("X-Frame-Options", "DENY")
+    h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    h.setdefault("Content-Security-Policy", "frame-ancestors 'none'; object-src 'none'; base-uri 'self'")
+    forwarded = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip()
+    if forwarded == "https" or request.url.scheme == "https":
+        h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 
 
 @app.get("/auth/status")
@@ -1551,9 +1597,20 @@ def auth_me(request: Request) -> dict:
 
 
 def _client_key(request: Request) -> str:
-    """Best-effort client identity for the login throttle."""
-    fwd = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
-    return fwd or (request.client.host if request.client else "unknown")
+    """Client identity for the login throttle.
+
+    X-Forwarded-For is honoured only when the direct peer is a proxy listed in
+    TRUSTED_PROXIES (comma-separated addresses). A caller that reaches uvicorn
+    directly could otherwise rotate the header and get a fresh throttle bucket
+    per guess; with no proxy configured the socket peer is the identity."""
+    import os as _os
+    peer = request.client.host if request.client else "unknown"
+    trusted = {x.strip() for x in (_os.getenv("TRUSTED_PROXIES") or "").split(",") if x.strip()}
+    if peer in trusted:
+        fwd = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+        if fwd:
+            return fwd
+    return peer
 
 
 @app.post("/auth/login")
@@ -1586,10 +1643,19 @@ async def auth_login(request: Request):
 
     username = str(body.get("username") or "").strip().lower()
     password = str(body.get("password") or "")
+    account = username or "admin"
+    # Per-account lockout on top of the per-client one: a guess spread over many
+    # addresses still locks the account it targets (same 8 fails / 5 min rule).
+    wait = auth.account_blocked(account)
+    if wait:
+        return JSONResponse(
+            {"detail": f"Too many attempts. Try again in {wait}s."},
+            status_code=429)
     user = auth.authenticate(username, password)
     ua = request.headers.get("user-agent", "")[:256]
     if not user:
         auth.note_login_failure(client)
+        auth.note_account_failure(account)
         try:
             import user_service
             user_service.record_login(username or "admin", False, client, ua)
@@ -1612,7 +1678,10 @@ async def auth_login(request: Request):
         import os as _os
         _login_mfa = (_os.getenv("LOGIN_MFA") or "").strip().lower() in (
             "1", "true", "yes", "on")
-        if _login_mfa and not auth.trust_valid(
+        # Staff tiers (super_admin/operations/finance/marketing/support) are
+        # never exempt: an admin console behind a phone+password only is one
+        # phished password away from every user's data.
+        if (_login_mfa or auth.is_staff(user["role"])) and not auth.trust_valid(
                 request.cookies.get(auth.TRUST_COOKIE), user["username"]):
             import otp_service
             sent = otp_service.request_code(user["username"])  # username == phone
@@ -1691,9 +1760,15 @@ async def auth_otp_request(request: Request):
     """Send a WhatsApp OTP for a NEW phone signup. Existing numbers sign in."""
     import otp_service
     import user_service
+    client = _client_key(request)
+    wait = auth.login_blocked(client)
+    if wait:
+        return JSONResponse({"detail": f"Too many attempts. Try again in {wait}s."},
+                            status_code=429)
     body = await _json_body(request)
     phone = str(body.get("phone") or "")
     if user_service.phone_exists(phone):
+        auth.note_login_failure(client)   # probing which numbers exist costs the same as a wrong password
         return JSONResponse(
             {"detail": "This number already has an account — sign in with your password."},
             status_code=409)
@@ -1710,6 +1785,11 @@ async def auth_register(request: Request):
     """Verify the OTP, create the account (full access), and sign them in."""
     import otp_service
     import user_service
+    client = _client_key(request)
+    wait = auth.login_blocked(client)
+    if wait:
+        return JSONResponse({"detail": f"Too many attempts. Try again in {wait}s."},
+                            status_code=429)
     body = await _json_body(request)
     phone = str(body.get("phone") or "")
     code = str(body.get("code") or "")
@@ -1717,6 +1797,7 @@ async def auth_register(request: Request):
     password = str(body.get("password") or "")
     age = body.get("age")
     if not otp_service.verify_code(phone, code):
+        auth.note_login_failure(client)
         return JSONResponse({"detail": "Invalid or expired code. Request a new one."},
                             status_code=400)
     res = user_service.create_phone_user(phone, name, password, age)
@@ -1738,9 +1819,15 @@ async def auth_reset_request(request: Request):
     """Send a WhatsApp OTP to reset the password of an EXISTING phone account."""
     import otp_service
     import user_service
+    client = _client_key(request)
+    wait = auth.login_blocked(client)
+    if wait:
+        return JSONResponse({"detail": f"Too many attempts. Try again in {wait}s."},
+                            status_code=429)
     body = await _json_body(request)
     phone = str(body.get("phone") or "")
     if not user_service.phone_exists(phone):
+        auth.note_login_failure(client)   # enumeration attempts count as failures
         return JSONResponse(
             {"detail": "No account found for this number. Create one instead."},
             status_code=404)
@@ -1757,6 +1844,11 @@ async def auth_reset(request: Request):
     """Verify the OTP and set a new password, then sign the user in."""
     import otp_service
     import user_service
+    client = _client_key(request)
+    wait = auth.login_blocked(client)
+    if wait:
+        return JSONResponse({"detail": f"Too many attempts. Try again in {wait}s."},
+                            status_code=429)
     body = await _json_body(request)
     phone = str(body.get("phone") or "")
     code = str(body.get("code") or "")
@@ -1764,6 +1856,7 @@ async def auth_reset(request: Request):
     import whatsapp_service as wa
     username = wa.normalize_phone(phone)
     if not otp_service.verify_code(phone, code):
+        auth.note_login_failure(client)
         return JSONResponse({"detail": "Invalid or expired code. Request a new one."},
                             status_code=400)
     res = user_service.reset_password(username, password)

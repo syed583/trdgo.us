@@ -139,9 +139,12 @@ def _generate_password() -> str:
     return secrets.token_urlsafe(12)
 
 
+MIN_PASSWORD_LEN = 10   # raised from 6 (2026-11-07 audit); existing shorter passwords keep working until reset
+
+
 def valid_password(password: str) -> bool:
     """A password the admin typed must be long enough to be worth having."""
-    return isinstance(password, str) and 6 <= len(password) <= 128
+    return isinstance(password, str) and MIN_PASSWORD_LEN <= len(password) <= 128
 
 
 def create_user(username: str, role: str = "user",

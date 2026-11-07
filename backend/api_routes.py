@@ -63,6 +63,13 @@ class _SymbolGuardRoute(APIRoute):
 
 router = APIRouter(prefix="/api", tags=["dashboard"], route_class=_SymbolGuardRoute)
 
+def _require_ops(request: Request) -> dict:
+    """Shared, service-wide actions (cache clear, snapshot capture/fill, call evaluation, quarterly SEC ingest) change
+    state every user sees and cost provider budget. They are for the operator, not for any account that merely
+    holds full access, so they need the super-admin role on top of the session gate."""
+    import auth_service as auth
+    return auth.require_admin(request)
+
 
 DEFAULT_STRIP = [
     "NVDA", "ORCL", "ADBE", "GME", "AVGO",
@@ -1524,13 +1531,14 @@ def snapshot_status() -> dict:
 
 
 @router.post("/snapshots/capture")
-def snapshot_capture(payload: dict = Body(default={})) -> dict:
+def snapshot_capture(request: Request, payload: dict = Body(default={})) -> dict:
     """
     Store today's reading for a set of symbols.
 
     Defaults to the watchlist, then the standard basket, because the record is
     only useful for symbols someone actually looks at.
     """
+    _require_ops(request)
     import snapshot_service as snap
 
     symbols = payload.get("symbols")
@@ -1542,8 +1550,9 @@ def snapshot_capture(payload: dict = Body(default={})) -> dict:
 
 
 @router.post("/snapshots/fill")
-def snapshot_fill(payload: dict = Body(default={})) -> dict:
+def snapshot_fill(request: Request, payload: dict = Body(default={})) -> dict:
     """Record what happened after snapshots old enough to have an outcome."""
+    _require_ops(request)
     import snapshot_service as snap
 
     return snap.fill_forward_returns(limit=int(payload.get("limit") or 200))
@@ -1602,8 +1611,9 @@ def calls_scorecard(horizon: Optional[str] = None, days: int = 30,
 
 
 @router.post("/calls/evaluate")
-def calls_evaluate() -> dict:
+def calls_evaluate(request: Request) -> dict:
     """Fill in outcomes for calls whose session has closed."""
+    _require_ops(request)
     import calls_service
 
     return calls_service.evaluate_pending()
@@ -1784,14 +1794,16 @@ def institutional_ingest_status() -> dict:
 
 
 @router.post("/institutional-ingest/run")
-def institutional_ingest_run(payload: dict = Body(default={})) -> dict:
+def institutional_ingest_run(request: Request, payload: dict = Body(default={})) -> dict:
     """
     Load the newest quarterly datasets. Minutes, not seconds -- intended to be
     run once a quarter from Settings, not on a page load.
     """
+    _require_ops(request)
     import institutional_service as inst
 
-    return inst.ingest_latest(count=int(payload.get("count") or 2))
+    # Each dataset is a multi-minute SEC download: bound the request so a caller cannot queue hours of work.
+    return inst.ingest_latest(count=validate.clamp_int(payload.get("count"), low=1, high=8, default=2))
 
 
 # ---------------------------------------------------------------------------
@@ -2041,7 +2053,9 @@ def insiders_sectors(limit: int = 10) -> dict:
 
 
 @router.get("/providers/usage")
-def providers_usage() -> dict:
+def providers_usage(request: Request) -> dict:
+    import auth_service as auth
+    auth.require_permission(request, "dashboard.view")
     """Which provider powers which screen, and what is lost without it."""
     import provider_usage
 
@@ -3016,7 +3030,8 @@ def _dashboard_build(owner: Optional[str] = None) -> dict:
 
 
 @router.post("/cache/clear")
-def clear_cache() -> dict:
+def clear_cache(request: Request) -> dict:
+    _require_ops(request)
     market.cache.clear()
     return {"cleared": True}
 

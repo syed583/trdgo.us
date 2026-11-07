@@ -296,6 +296,28 @@ def note_login_failure(client: str) -> None:
         _fails_global[:] = _prune(_fails_global, now) + [now]
 
 
+def note_account_failure(account: str) -> None:
+    """Count a failed login against the account itself (not the global ceiling), so a
+    guessing attack spread across many client addresses still locks that account."""
+    now = time.time()
+    key = "acct:" + (account or "").strip().lower()
+    with _fail_lock:
+        _fails[key] = _prune(_fails.get(key, []), now) + [now]
+
+
+def account_blocked(account: str) -> Optional[int]:
+    """Seconds the account must wait after too many failed logins, or None."""
+    key = "acct:" + (account or "").strip().lower()
+    now = time.time()
+    with _fail_lock:
+        times = _prune(_fails.get(key, []), now)
+        _fails[key] = times
+        if len(times) >= _MAX_FAILS:
+            wait = int(_LOCKOUT - (now - times[-1]))
+            return wait if wait > 0 else None
+    return None
+
+
 def note_login_success(client: str) -> None:
     with _fail_lock:
         _fails.pop(client, None)

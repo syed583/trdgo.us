@@ -4,6 +4,7 @@
 
 # web layer
 fastapi==0.136.0
+starlette==1.6.0   # transitive via fastapi; pinned so a redeploy cannot silently pick up a different ASGI core
 uvicorn==0.44.0
 pydantic==2.13.1
 
