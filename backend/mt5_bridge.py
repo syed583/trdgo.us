@@ -1,228 +1,236 @@
-"""Thin adapter over the official ``MetaTrader5`` Python package (Windows only; needs a running MT5 terminal on the
-same machine). Every call goes through one lock (the package is not thread-safe), returns plain dicts, and never raises
-for a provider-side refusal: a refusal is a result with ``ok=False`` and a reason, so the caller can log it verbatim.
+"""Adapter over the mtapi.io MT5 Client RESTful API (cloud; no local terminal, no MetaTrader5 package).
 
-The package is imported lazily: on a machine without it (this laptop, a VPS before the terminal is installed) the
-bridge reports ``available() == False`` and every operation answers NOT_INSTALLED. Nothing here decides *whether* to
-trade; see mt5_autotrade.py for the policy (mapping, switch, sizing, retries, audit)."""
+Owner's API notes (2026-11-11): base https://mt5.mtapi.io/, every call GET with the session token as query param ``id``;
+Connect / ConnectEx(user, password, server) returns the token; AccountSummary; Symbols; SymbolParams(symbol); GetQuote(symbol);
+OrderSendSafe(symbol, operation 0=Buy 1=Sell, volume in LOTS, stoploss, takeprofit, slippage, comment, expertID);
+OrderCloseSafe(ticket); OpenedOrders; HistoryDealsByPositionId(ticket); errors come back as HTTP 201 with a JSON
+ExceptionResult {errorCode, message, details}.
+
+Every function returns a plain dict with ``ok``; a provider refusal is a result, never an exception. The token appears only in
+the query string of the outgoing request: it is never logged, never put into a result, and the audit sees paths only. Field
+names in the responses are read tolerantly (several candidate keys, case-insensitive) because the owner's note gives the
+semantics, not the exact JSON keys; ``raw`` is kept on failures so the first demo session shows what the API really sends."""
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from typing import Any, Optional
 
 _log = logging.getLogger("mt5")
 _lock = threading.RLock()
-_mt5: Any = None
-_import_error: Optional[str] = None
 
-# MT5 constants (the package exposes the same names; these fallbacks keep the module importable without it)
-TRADE_ACTION_DEAL = 1
-ORDER_TYPE_BUY, ORDER_TYPE_SELL = 0, 1
-ORDER_FILLING_FOK, ORDER_FILLING_IOC, ORDER_FILLING_RETURN = 0, 1, 2
-ORDER_TIME_GTC = 0
-SYMBOL_FILLING_FOK, SYMBOL_FILLING_IOC = 1, 2
+DEFAULT_BASE_URL = "https://mt5.mtapi.io/"
+TIMEOUT_S = 25
+_session: dict = {"base_url": DEFAULT_BASE_URL, "token": None, "login": None, "server": None}
+
+OP_BUY, OP_SELL = 0, 1
 SYMBOL_TRADE_MODE_DISABLED, SYMBOL_TRADE_MODE_LONGONLY, SYMBOL_TRADE_MODE_SHORTONLY, SYMBOL_TRADE_MODE_CLOSEONLY, SYMBOL_TRADE_MODE_FULL = 0, 1, 2, 3, 4
-POSITION_TYPE_BUY, POSITION_TYPE_SELL = 0, 1
-DEAL_ENTRY_OUT = 1
-DEAL_REASON_SL, DEAL_REASON_TP, DEAL_REASON_SO = 4, 5, 6
-RET_DONE, RET_DONE_PARTIAL, RET_PLACED = 10009, 10010, 10008
-RET_REQUOTE, RET_PRICE_CHANGED, RET_PRICE_OFF = 10004, 10020, 10021
-RET_TIMEOUT, RET_CONNECTION, RET_LOCKED, RET_TOO_MANY = 10012, 10031, 10028, 10024
-RETCODE_TEXT = {10004: "REQUOTE", 10006: "REJECT", 10007: "CANCEL", 10008: "PLACED", 10009: "DONE", 10010: "DONE_PARTIAL", 10011: "ERROR",
-                10012: "TIMEOUT", 10013: "INVALID", 10014: "INVALID_VOLUME", 10015: "INVALID_PRICE", 10016: "INVALID_STOPS", 10017: "TRADE_DISABLED",
-                10018: "MARKET_CLOSED", 10019: "NO_MONEY", 10020: "PRICE_CHANGED", 10021: "PRICE_OFF", 10022: "INVALID_EXPIRATION", 10023: "ORDER_CHANGED",
-                10024: "TOO_MANY_REQUESTS", 10025: "NO_CHANGES", 10026: "SERVER_DISABLES_AT", 10027: "CLIENT_DISABLES_AT", 10028: "LOCKED", 10029: "FROZEN",
-                10030: "INVALID_FILL", 10031: "CONNECTION", 10032: "ONLY_REAL", 10033: "LIMIT_ORDERS", 10034: "LIMIT_VOLUME", 10035: "INVALID_ORDER",
-                10036: "POSITION_CLOSED", 10038: "INVALID_CLOSE_VOLUME", 10039: "CLOSE_ORDER_EXIST", 10040: "LIMIT_POSITIONS", 10041: "REJECT_CANCEL",
-                10042: "LONG_ONLY", 10043: "SHORT_ONLY", 10044: "CLOSE_ONLY", 10045: "FIFO_CLOSE", 10046: "HEDGE_PROHIBITED"}
-# refusals that must never be retried: the request itself (or the account / market state) is wrong
-NO_RETRY = {10013, 10014, 10015, 10016, 10017, 10018, 10019, 10022, 10030, 10032, 10033, 10034, 10035, 10040, 10042, 10043, 10044, 10045, 10046, 10029}
-# a price moved under the request: re-price once, then give up
-RETRY_ONCE_REPRICE = {10004, 10020}
-# the request may or may not have reached the server: reconcile before any resend
-RECONCILE_FIRST = {10012, 10031, 10028, 10024, 10006, 10011}
-
-
-def _load() -> bool:
-    global _mt5, _import_error
-    if _mt5 is not None:
-        return True
-    if _import_error is not None:
-        return False
-    try:
-        import MetaTrader5 as mt5  # type: ignore
-        _mt5 = mt5
-        return True
-    except Exception as exc:  # noqa: BLE001 - ImportError on non-Windows / not installed
-        _import_error = "%s: %s" % (type(exc).__name__, exc)
-        return False
-
-
-def _reset_for_tests(module=None) -> None:
-    """Tests inject a fake module; production never calls this."""
-    global _mt5, _import_error
-    _mt5, _import_error = module, None
+# refusal classes (by the API's errorCode / message text, which follow the MT5 trade return codes where they come from the server)
+NO_RETRY_WORDS = ("invalid volume", "invalid price", "invalid stops", "trade disabled", "market closed", "not enough money", "no money",
+                  "invalid fill", "only real", "limit", "long only", "short only", "close only", "hedge prohibited", "unknown symbol", "not found", "frozen")
+REPRICE_WORDS = ("requote", "price changed", "off quotes", "price off")
+RECONCILE_WORDS = ("timeout", "no connection", "too many requests", "locked", "busy", "network")
 
 
 def available() -> bool:
-    return _load()
+    """A cloud API needs no local package: the bridge is always available; connectivity is a connect-time question."""
+    return True
 
 
 def not_installed() -> dict:
-    return {"ok": False, "reason": "NOT_INSTALLED", "detail": "the MetaTrader5 Python package is not installed on this machine (pip install MetaTrader5; a running MT5 terminal is required)" + (" [%s]" % _import_error if _import_error else "")}
+    return {"ok": False, "reason": "NOT_AVAILABLE", "detail": "mtapi.io bridge is always available; connect first"}
 
 
-def _c(name: str, default):
-    return getattr(_mt5, name, default) if _mt5 is not None else default
+def _reset_for_tests(getter=None) -> None:
+    """Tests replace the HTTP getter; production never calls this."""
+    global _http_get
+    _http_get = getter or _real_http_get
+    _session.update(token=None, login=None, server=None)
 
 
-def _err() -> str:
+# ----------------------------------------------------------------------------- HTTP
+def _real_http_get(url: str, timeout: float = TIMEOUT_S) -> tuple[int, str]:
+    req = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "TRDGO-US mt5 bridge"})
     try:
-        code, text = _mt5.last_error()
-        return "%s %s" % (code, text)
-    except Exception:  # noqa: BLE001
-        return "unknown"
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return int(r.status), r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        return int(e.code), e.read().decode("utf-8", "replace") if e.fp else ""
 
 
-def _d(obj) -> Optional[dict]:
-    if obj is None:
-        return None
-    if hasattr(obj, "_asdict"):
-        return dict(obj._asdict())
-    if isinstance(obj, dict):
-        return dict(obj)
-    return {k: getattr(obj, k) for k in dir(obj) if not k.startswith("_") and not callable(getattr(obj, k))}
+_http_get = _real_http_get
+
+
+def _call(path: str, params: Optional[dict] = None, *, with_token: bool = True, base_url: Optional[str] = None) -> dict:
+    """One GET. Returns {"ok", "status", "data"|"error", "path"}; the token never leaves this function."""
+    base = (base_url or _session["base_url"] or DEFAULT_BASE_URL).rstrip("/") + "/"
+    q = dict(params or {})
+    if with_token:
+        if not _session.get("token"):
+            return {"ok": False, "reason": "NOT_CONNECTED", "detail": "no session token: connect first", "path": path}
+        q["id"] = _session["token"]
+    url = base + path.lstrip("/") + ("?" + urllib.parse.urlencode({k: v for k, v in q.items() if v is not None}) if q else "")
+    safe_path = path + ("?" + urllib.parse.urlencode({k: ("***" if k in ("id", "password") else v) for k, v in q.items() if v is not None}) if q else "")
+    try:
+        status, body = _http_get(url)
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "reason": "TRANSPORT", "detail": "%s: %s" % (type(exc).__name__, exc), "path": safe_path}
+    data: Any
+    try:
+        data = json.loads(body) if body.strip() else None
+    except ValueError:
+        data = body.strip().strip('"')
+    if isinstance(data, dict) and ("errorCode" in data or ("message" in data and "details" in data)):
+        return {"ok": False, "reason": "API_ERROR", "status": status, "error_code": data.get("errorCode"), "detail": "%s%s" % (data.get("message"), (" (" + str(data.get("details")) + ")") if data.get("details") else ""),
+                "raw": data, "path": safe_path}
+    if status >= 400:
+        return {"ok": False, "reason": "HTTP_%d" % status, "status": status, "detail": (body or "")[:300], "path": safe_path}
+    return {"ok": True, "status": status, "data": data, "path": safe_path}
+
+
+def _g(d: Any, *names, default=None):
+    """Tolerant field read: first present key among `names`, case-insensitive."""
+    if not isinstance(d, dict):
+        return default
+    low = {str(k).lower(): v for k, v in d.items()}
+    for n in names:
+        if n in d:
+            return d[n]
+        if n.lower() in low:
+            return low[n.lower()]
+    return default
+
+
+def _f(x, default=None):
+    try:
+        return float(x) if x is not None and x != "" else default
+    except (TypeError, ValueError):
+        return default
+
+
+def classify_refusal(res: dict) -> str:
+    """NO_RETRY / REPRICE / RECONCILE / OTHER from the API's error text."""
+    text = ("%s %s %s" % (res.get("error_code"), res.get("detail"), res.get("reason"))).lower()
+    if any(w in text for w in REPRICE_WORDS):
+        return "REPRICE"
+    if any(w in text for w in NO_RETRY_WORDS):
+        return "NO_RETRY"
+    if any(w in text for w in RECONCILE_WORDS):
+        return "RECONCILE"
+    return "OTHER"
 
 
 # ----------------------------------------------------------------------------- session
-def connect(login: int, password: str, server: str, terminal_path: Optional[str] = None, timeout_ms: int = 30_000) -> dict:
-    """Initialise the terminal link and log in. The password is passed through, never logged or returned."""
-    if not _load():
-        return not_installed()
+def connect(login: int, password: str, server: str, base_url: Optional[str] = None, **_ignored) -> dict:
+    """ConnectEx(user, password, server) -> session token (kept in memory only)."""
     with _lock:
-        kw = {"login": int(login), "password": password, "server": server, "timeout": timeout_ms}
-        try:
-            ok = _mt5.initialize(terminal_path, **kw) if terminal_path else _mt5.initialize(**kw)
-        except Exception as exc:  # noqa: BLE001
-            return {"ok": False, "reason": "INITIALIZE_RAISED", "detail": "%s: %s" % (type(exc).__name__, exc)}
-        if not ok:
-            return {"ok": False, "reason": "INITIALIZE_FAILED", "detail": _err()}
-        acct = _d(_mt5.account_info())
-        if not acct or int(acct.get("login") or 0) != int(login):
-            detail = "logged-in account %s is not the requested %s" % ((acct or {}).get("login"), login) if acct else _err()
-            try:
-                if not _mt5.login(int(login), password=password, server=server):
-                    return {"ok": False, "reason": "LOGIN_FAILED", "detail": _err()}
-                acct = _d(_mt5.account_info())
-            except Exception as exc:  # noqa: BLE001
-                return {"ok": False, "reason": "LOGIN_RAISED", "detail": "%s: %s" % (type(exc).__name__, exc)}
-            if not acct or int(acct.get("login") or 0) != int(login):
-                return {"ok": False, "reason": "WRONG_ACCOUNT", "detail": detail}
-        return {"ok": True, "account": account_summary(acct)}
-
-
-def account_summary(acct: Optional[dict]) -> Optional[dict]:
-    if not acct:
-        return None
-    keys = ("login", "server", "name", "company", "currency", "balance", "equity", "margin", "margin_free", "leverage", "trade_allowed", "trade_mode", "margin_mode")
-    out = {k: acct.get(k) for k in keys if k in acct}
-    tm = acct.get("trade_mode")
-    out["account_kind"] = {0: "DEMO", 1: "CONTEST", 2: "REAL"}.get(tm, str(tm)) if tm is not None else None
-    return out
+        base = (base_url or DEFAULT_BASE_URL).strip() or DEFAULT_BASE_URL
+        _session.update(base_url=base, token=None, login=None, server=None)
+        res = _call("ConnectEx", {"user": int(login), "password": password, "server": server}, with_token=False, base_url=base)
+        if not res.get("ok"):
+            return {"ok": False, "reason": res.get("reason"), "detail": res.get("detail"), "error_code": res.get("error_code"), "path": res.get("path")}
+        tok = res.get("data")
+        if isinstance(tok, dict):
+            tok = _g(tok, "id", "token", "sessionId", "session")
+        if not tok or not isinstance(tok, str):
+            return {"ok": False, "reason": "NO_TOKEN", "detail": "ConnectEx answered without a session token", "raw": res.get("data")}
+        _session.update(token=tok, login=int(login), server=server)
+        acct = account()
+        if not acct.get("ok"):
+            _session["token"] = None
+            return {"ok": False, "reason": "ACCOUNT_SUMMARY_FAILED", "detail": acct.get("detail")}
+        return {"ok": True, "account": acct["account"]}
 
 
 def disconnect() -> dict:
-    if not _load():
-        return not_installed()
     with _lock:
-        try:
-            _mt5.shutdown()
-        except Exception as exc:  # noqa: BLE001
-            return {"ok": False, "reason": "SHUTDOWN_RAISED", "detail": str(exc)}
+        if _session.get("token"):
+            _call("Disconnect")                                             # best effort; the token is dropped regardless
+        _session.update(token=None, login=None, server=None)
     return {"ok": True}
 
 
+def connected() -> bool:
+    return bool(_session.get("token"))
+
+
 def account() -> dict:
-    if not _load():
-        return not_installed()
-    with _lock:
-        acct = _d(_mt5.account_info())
-    if not acct:
-        return {"ok": False, "reason": "NOT_CONNECTED", "detail": _err()}
-    return {"ok": True, "account": account_summary(acct)}
+    res = _call("AccountSummary")
+    if not res.get("ok"):
+        return {"ok": False, "reason": res.get("reason"), "detail": res.get("detail")}
+    d = res["data"] if isinstance(res["data"], dict) else {}
+    kind = _g(d, "type", "accountType", "tradeMode", "isDemo")
+    return {"ok": True, "account": {"login": _session.get("login") or _g(d, "login", "user", "account"), "server": _session.get("server") or _g(d, "server"),
+                                    "name": _g(d, "name", "userName"), "company": _g(d, "company"), "currency": _g(d, "currency"),
+                                    "balance": _f(_g(d, "balance")), "equity": _f(_g(d, "equity")), "margin": _f(_g(d, "margin")), "margin_free": _f(_g(d, "freeMargin", "marginFree")),
+                                    "leverage": _g(d, "leverage"), "account_kind": ("DEMO" if (kind is True or str(kind).lower() in ("demo", "0", "true")) else "REAL" if kind is not None else None), "raw_keys": sorted(d.keys())[:40]}}
 
 
 def terminal() -> dict:
-    if not _load():
-        return not_installed()
-    with _lock:
-        t = _d(_mt5.terminal_info())
-    if not t:
-        return {"ok": False, "reason": "NO_TERMINAL", "detail": _err()}
-    return {"ok": True, "terminal": {k: t.get(k) for k in ("connected", "trade_allowed", "tradeapi_disabled", "ping_last", "company", "name", "path", "build") if k in t}}
+    return {"ok": True, "terminal": {"name": "mtapi.io cloud", "connected": connected(), "base_url": _session.get("base_url"), "server": _session.get("server")}}
 
 
 # ----------------------------------------------------------------------------- symbols and prices
 def symbol(sym: str, select: bool = True) -> dict:
-    """The broker's view of a symbol: whether it exists, is tradable, its volume rules and filling modes."""
-    if not _load():
-        return not_installed()
-    with _lock:
-        info = _d(_mt5.symbol_info(sym))
-        if info is None:
-            return {"ok": False, "reason": "UNKNOWN_SYMBOL", "detail": "symbol %r is not offered by this broker (%s)" % (sym, _err())}
-        if select and not info.get("visible"):
-            try:
-                _mt5.symbol_select(sym, True)
-            except Exception:  # noqa: BLE001
-                pass
-            info = _d(_mt5.symbol_info(sym)) or info
-    fm = int(info.get("filling_mode") or 0)
-    tm = info.get("trade_mode")
-    return {"ok": True, "symbol": sym, "description": info.get("description"), "visible": bool(info.get("visible")), "trade_mode": tm,
-            "trade_mode_text": {0: "DISABLED", 1: "LONG_ONLY", 2: "SHORT_ONLY", 3: "CLOSE_ONLY", 4: "FULL"}.get(tm, str(tm)),
-            "volume_min": info.get("volume_min"), "volume_max": info.get("volume_max"), "volume_step": info.get("volume_step"),
-            "digits": info.get("digits"), "point": info.get("point"), "contract_size": info.get("trade_contract_size"),
-            "filling_fok": bool(fm & SYMBOL_FILLING_FOK), "filling_ioc": bool(fm & SYMBOL_FILLING_IOC), "filling_mode_raw": fm,
-            "stops_level": info.get("trade_stops_level"), "freeze_level": info.get("trade_freeze_level"), "bid": info.get("bid"), "ask": info.get("ask"),
-            "currency_profit": info.get("currency_profit"), "path": info.get("path")}
+    res = _call("SymbolParams", {"symbol": sym})
+    if not res.get("ok"):
+        text = ("%s" % res.get("detail")).lower()
+        return {"ok": False, "reason": "UNKNOWN_SYMBOL" if ("not found" in text or "unknown" in text or "invalid symbol" in text) else res.get("reason"), "detail": res.get("detail"), "raw": res.get("raw")}
+    d = res["data"] if isinstance(res["data"], dict) else {}
+    # mtapi.io nests the MT5 symbol info under a key on some versions; accept both shapes
+    inner = _g(d, "symbolInfo", "info", "params") if isinstance(_g(d, "symbolInfo", "info", "params"), dict) else d
+    tm = _g(inner, "tradeMode", "trade_mode", "tradeMod")
+    if isinstance(tm, str):
+        tm = {"disabled": 0, "longonly": 1, "shortonly": 2, "closeonly": 3, "full": 4}.get(tm.replace("_", "").lower(), tm)
+    contract = _f(_g(inner, "contractSize", "contract_size", "tradeContractSize", "lotSize"), 1.0) or 1.0
+    out = {"ok": True, "symbol": sym, "description": _g(inner, "description"), "visible": True, "trade_mode": tm,
+           "trade_mode_text": {0: "DISABLED", 1: "LONG_ONLY", 2: "SHORT_ONLY", 3: "CLOSE_ONLY", 4: "FULL"}.get(tm, str(tm)),
+           "volume_min": _f(_g(inner, "volumeMin", "minVolume", "volume_min", "lotMin", "minLot")), "volume_max": _f(_g(inner, "volumeMax", "maxVolume", "volume_max", "lotMax", "maxLot")),
+           "volume_step": _f(_g(inner, "volumeStep", "stepVolume", "volume_step", "lotStep", "stepLot")), "digits": _g(inner, "digits"), "point": _f(_g(inner, "point")),
+           "tick_size": _f(_g(inner, "tickSize", "tick_size")), "contract_size": contract, "stops_level": _g(inner, "stopsLevel", "tradeStopsLevel"),
+           "currency_profit": _g(inner, "currencyProfit", "profitCurrency"), "raw_keys": sorted(inner.keys())[:60] if isinstance(inner, dict) else None}
+    if out["volume_min"] is None or out["volume_step"] is None:
+        out["note"] = "volume rules not found in SymbolParams (keys: %s)" % out["raw_keys"]
+    return out
 
 
 def tick(sym: str) -> dict:
-    if not _load():
-        return not_installed()
-    with _lock:
-        t = _d(_mt5.symbol_info_tick(sym))
-    if not t or not t.get("bid") or not t.get("ask"):
-        return {"ok": False, "reason": "NO_TICK", "detail": "no bid/ask for %s (%s)" % (sym, _err())}
-    return {"ok": True, "bid": float(t["bid"]), "ask": float(t["ask"]), "time": t.get("time"), "age_s": (time.time() - float(t["time"])) if t.get("time") else None}
-
-
-def filling_for(sym_info: dict) -> int:
-    """IOC when the broker allows it (fills what is available, the rest is cancelled: partial fills are then explicit),
-    else FOK, else RETURN."""
-    if sym_info.get("filling_ioc"):
-        return _c("ORDER_FILLING_IOC", ORDER_FILLING_IOC)
-    if sym_info.get("filling_fok"):
-        return _c("ORDER_FILLING_FOK", ORDER_FILLING_FOK)
-    return _c("ORDER_FILLING_RETURN", ORDER_FILLING_RETURN)
+    res = _call("GetQuote", {"symbol": sym})
+    if not res.get("ok"):
+        return {"ok": False, "reason": "NO_TICK", "detail": res.get("detail")}
+    d = res["data"] if isinstance(res["data"], dict) else {}
+    bid, ask = _f(_g(d, "bid")), _f(_g(d, "ask"))
+    if not bid or not ask:
+        return {"ok": False, "reason": "NO_TICK", "detail": "no bid/ask for %s (keys: %s)" % (sym, sorted(d.keys())[:20])}
+    t = _g(d, "time", "timestamp", "serverTime")
+    age = None
+    try:
+        if isinstance(t, (int, float)):
+            age = time.time() - (float(t) / 1000.0 if float(t) > 1e11 else float(t))
+    except (TypeError, ValueError):
+        age = None
+    return {"ok": True, "bid": bid, "ask": ask, "last": _f(_g(d, "last")), "time": t, "age_s": age}
 
 
 # ----------------------------------------------------------------------------- orders
-def _result(res) -> dict:
-    r = _d(res) or {}
-    code = int(r.get("retcode") or 0)
-    return {"retcode": code, "retcode_text": RETCODE_TEXT.get(code, str(code)), "comment": r.get("comment"), "deal": r.get("deal"), "order": r.get("order"),
-            "volume": r.get("volume"), "price": r.get("price"), "bid": r.get("bid"), "ask": r.get("ask"), "request_id": r.get("request_id")}
+def _order_fields(d: Any) -> dict:
+    if isinstance(d, (int, float)) or (isinstance(d, str) and d.isdigit()):
+        return {"ticket": int(d)}
+    if not isinstance(d, dict):
+        return {}
+    return {"ticket": _g(d, "ticket", "orderTicket", "positionId", "order"), "volume": _f(_g(d, "lots", "volume")), "price": _f(_g(d, "openPrice", "price", "priceOpen")),
+            "sl": _f(_g(d, "stopLoss", "sl")), "tp": _f(_g(d, "takeProfit", "tp")), "symbol": _g(d, "symbol"), "comment": _g(d, "comment"), "magic": _g(d, "expertId", "expertID", "magic"),
+            "type": _g(d, "orderType", "type"), "profit": _f(_g(d, "profit")), "time": _g(d, "openTime", "time")}
 
 
 def market_order(sym: str, side: str, volume: float, *, sl: Optional[float], tp: Optional[float], deviation_points: int, magic: int, comment: str,
                  sym_info: Optional[dict] = None, check_only: bool = False) -> dict:
-    """One market order with server-side SL/TP. ``check_only`` runs the broker's order_check (no order is created)."""
-    if not _load():
-        return not_installed()
+    """OrderSendSafe: ``volume`` is already in LOTS (the policy converts shares with the contract size)."""
     info = sym_info or symbol(sym)
     if not info.get("ok"):
         return info
@@ -230,110 +238,83 @@ def market_order(sym: str, side: str, volume: float, *, sl: Optional[float], tp:
     if not t.get("ok"):
         return t
     buy = side.upper() in ("BUY", "LONG")
-    req = {"action": _c("TRADE_ACTION_DEAL", TRADE_ACTION_DEAL), "symbol": sym, "volume": float(volume),
-           "type": _c("ORDER_TYPE_BUY", ORDER_TYPE_BUY) if buy else _c("ORDER_TYPE_SELL", ORDER_TYPE_SELL),
-           "price": t["ask"] if buy else t["bid"], "deviation": int(deviation_points), "magic": int(magic), "comment": comment[:31],
-           "type_time": _c("ORDER_TIME_GTC", ORDER_TIME_GTC), "type_filling": filling_for(info)}
+    req = {"symbol": sym, "operation": OP_BUY if buy else OP_SELL, "volume": float(volume), "slippage": int(deviation_points), "comment": comment[:31], "expertID": int(magic)}
+    digits = int(info.get("digits") or 2)
     if sl is not None:
-        req["sl"] = round(float(sl), int(info.get("digits") or 2))
+        req["stoploss"] = round(float(sl), digits)
     if tp is not None:
-        req["tp"] = round(float(tp), int(info.get("digits") or 2))
-    with _lock:
-        try:
-            if check_only:
-                res = _result(_mt5.order_check(req))
-                res["ok"] = res["retcode"] == 0
-                res["request"] = req
-                return res
-            chk = _result(_mt5.order_check(req))
-            if chk["retcode"] != 0:
-                return {"ok": False, "stage": "order_check", "request": req, **chk}
-            res = _result(_mt5.order_send(req))
-        except Exception as exc:  # noqa: BLE001
-            return {"ok": False, "stage": "order_send", "request": req, "retcode": -1, "retcode_text": "RAISED", "comment": "%s: %s" % (type(exc).__name__, exc)}
-    res["ok"] = res["retcode"] in (_c("TRADE_RETCODE_DONE", RET_DONE), _c("TRADE_RETCODE_DONE_PARTIAL", RET_DONE_PARTIAL))
-    res["partial"] = res["retcode"] == _c("TRADE_RETCODE_DONE_PARTIAL", RET_DONE_PARTIAL) or (res["ok"] and res.get("volume") is not None and float(res["volume"]) < float(volume) - 1e-9)
-    res["stage"] = "order_send"
-    res["request"] = req
-    res["tick"] = t
-    return res
+        req["takeprofit"] = round(float(tp), digits)
+    if check_only:
+        return {"ok": True, "request": req, "tick": t, "note": "mtapi.io has no order_check; validation is local"}
+    res = _call("OrderSendSafe", req)
+    if not res.get("ok"):
+        return {"ok": False, "stage": "order_send", "request": req, "tick": t, "retcode": res.get("error_code"), "retcode_text": classify_refusal(res), "comment": res.get("detail"), "raw": res.get("raw")}
+    o = _order_fields(res.get("data"))
+    if not o.get("ticket"):
+        return {"ok": False, "stage": "order_send", "request": req, "tick": t, "retcode": None, "retcode_text": "NO_TICKET", "comment": "OrderSendSafe answered without a ticket", "raw": res.get("data")}
+    filled = o.get("volume")
+    partial = filled is not None and filled < float(volume) - 1e-9
+    return {"ok": True, "stage": "order_send", "request": req, "tick": t, "retcode": 0, "retcode_text": "DONE_PARTIAL" if partial else "DONE", "partial": partial,
+            "order": o["ticket"], "deal": o["ticket"], "volume": filled if filled is not None else float(volume), "price": o.get("price") or (t["ask"] if buy else t["bid"]), "comment": o.get("comment")}
 
 
 def positions(sym: Optional[str] = None, magic: Optional[int] = None) -> dict:
-    if not _load():
-        return not_installed()
-    with _lock:
-        try:
-            rows = _mt5.positions_get(symbol=sym) if sym else _mt5.positions_get()
-        except Exception as exc:  # noqa: BLE001
-            return {"ok": False, "reason": "POSITIONS_RAISED", "detail": str(exc)}
+    res = _call("OpenedOrders")
+    if not res.get("ok"):
+        return {"ok": False, "reason": res.get("reason"), "detail": res.get("detail")}
+    rows = res["data"] if isinstance(res["data"], list) else (_g(res["data"], "orders", "positions", "items") or [])
     out = []
-    for p in rows or []:
-        d = _d(p) or {}
-        if magic is not None and int(d.get("magic") or 0) != int(magic):
+    for d in rows or []:
+        o = _order_fields(d)
+        if sym and o.get("symbol") != sym:
             continue
-        out.append({"ticket": d.get("ticket"), "symbol": d.get("symbol"), "type": "BUY" if d.get("type") == _c("POSITION_TYPE_BUY", POSITION_TYPE_BUY) else "SELL",
-                    "volume": d.get("volume"), "price_open": d.get("price_open"), "sl": d.get("sl"), "tp": d.get("tp"), "profit": d.get("profit"),
-                    "magic": d.get("magic"), "comment": d.get("comment"), "time": d.get("time")})
+        if magic is not None and (o.get("magic") is None or int(o["magic"]) != int(magic)):
+            continue
+        ty = o.get("type")
+        side = "BUY" if (ty in (0, "0", "Buy", "BUY", "ORDER_TYPE_BUY", "buy")) else "SELL" if (ty in (1, "1", "Sell", "SELL", "ORDER_TYPE_SELL", "sell")) else str(ty)
+        out.append({"ticket": o.get("ticket"), "symbol": o.get("symbol"), "type": side, "volume": o.get("volume"), "price_open": o.get("price"), "sl": o.get("sl"), "tp": o.get("tp"),
+                    "profit": o.get("profit"), "magic": o.get("magic"), "comment": o.get("comment"), "time": o.get("time")})
     return {"ok": True, "positions": out}
 
 
 def close_position(ticket: int, *, deviation_points: int, magic: int, comment: str) -> dict:
-    """Close one position by ticket at market (opposite deal of the full volume)."""
-    if not _load():
-        return not_installed()
-    with _lock:
-        try:
-            rows = _mt5.positions_get(ticket=int(ticket))
-        except Exception as exc:  # noqa: BLE001
-            return {"ok": False, "reason": "POSITIONS_RAISED", "detail": str(exc)}
-    if not rows:
+    """OrderCloseSafe(ticket). A ticket that is no longer open counts as already closed."""
+    live = positions()
+    if live.get("ok") and not any(int(p.get("ticket") or 0) == int(ticket) for p in live["positions"]):
         return {"ok": True, "already_closed": True, "ticket": int(ticket)}
-    p = _d(rows[0]) or {}
-    sym = p["symbol"]
-    info = symbol(sym)
-    if not info.get("ok"):
-        return info
-    t = tick(sym)
-    if not t.get("ok"):
-        return t
-    is_buy = p.get("type") == _c("POSITION_TYPE_BUY", POSITION_TYPE_BUY)
-    req = {"action": _c("TRADE_ACTION_DEAL", TRADE_ACTION_DEAL), "symbol": sym, "volume": float(p["volume"]), "position": int(ticket),
-           "type": _c("ORDER_TYPE_SELL", ORDER_TYPE_SELL) if is_buy else _c("ORDER_TYPE_BUY", ORDER_TYPE_BUY),
-           "price": t["bid"] if is_buy else t["ask"], "deviation": int(deviation_points), "magic": int(magic), "comment": comment[:31],
-           "type_time": _c("ORDER_TIME_GTC", ORDER_TIME_GTC), "type_filling": filling_for(info)}
-    with _lock:
-        try:
-            res = _result(_mt5.order_send(req))
-        except Exception as exc:  # noqa: BLE001
-            return {"ok": False, "stage": "close", "request": req, "retcode": -1, "retcode_text": "RAISED", "comment": "%s: %s" % (type(exc).__name__, exc)}
-    res["ok"] = res["retcode"] in (_c("TRADE_RETCODE_DONE", RET_DONE), _c("TRADE_RETCODE_DONE_PARTIAL", RET_DONE_PARTIAL))
-    res["partial"] = res["retcode"] == _c("TRADE_RETCODE_DONE_PARTIAL", RET_DONE_PARTIAL)
-    res["stage"] = "close"
-    res["request"] = req
-    res["ticket"] = int(ticket)
-    return res
+    res = _call("OrderCloseSafe", {"ticket": int(ticket), "slippage": int(deviation_points)})
+    if not res.get("ok"):
+        text = ("%s" % res.get("detail")).lower()
+        if "not found" in text or "already closed" in text or "position closed" in text:
+            return {"ok": True, "already_closed": True, "ticket": int(ticket)}
+        return {"ok": False, "stage": "close", "ticket": int(ticket), "retcode": res.get("error_code"), "retcode_text": classify_refusal(res), "comment": res.get("detail"), "raw": res.get("raw")}
+    o = _order_fields(res.get("data"))
+    return {"ok": True, "stage": "close", "ticket": int(ticket), "retcode": 0, "retcode_text": "DONE", "volume": o.get("volume"), "price": o.get("price") or _f(_g(res.get("data"), "closePrice")), "partial": False}
 
 
 def position_exit_deals(ticket: int, since_epoch: float) -> dict:
-    """Deals that closed (part of) a position: tells a server-side SL / TP / stop-out apart from our own close."""
-    if not _load():
-        return not_installed()
-    import datetime as _dt
-    with _lock:
-        try:
-            rows = _mt5.history_deals_get(position=int(ticket))
-            if rows is None:
-                rows = _mt5.history_deals_get(_dt.datetime.fromtimestamp(since_epoch), _dt.datetime.now() + _dt.timedelta(days=1), position=int(ticket))
-        except Exception as exc:  # noqa: BLE001
-            return {"ok": False, "reason": "HISTORY_RAISED", "detail": str(exc)}
+    res = _call("HistoryDealsByPositionId", {"ticket": int(ticket)})
+    if not res.get("ok"):
+        return {"ok": False, "reason": res.get("reason"), "detail": res.get("detail")}
+    rows = res["data"] if isinstance(res["data"], list) else (_g(res["data"], "deals", "items") or [])
     out = []
-    for d0 in rows or []:
-        d = _d(d0) or {}
-        if d.get("entry") != _c("DEAL_ENTRY_OUT", DEAL_ENTRY_OUT):
+    for d in rows or []:
+        entry = _g(d, "entry", "dealEntry")
+        if entry not in (1, "1", "Out", "OUT", "DEAL_ENTRY_OUT", "out", None):
             continue
-        reason = d.get("reason")
-        out.append({"deal": d.get("ticket"), "time": d.get("time"), "price": d.get("price"), "volume": d.get("volume"), "profit": d.get("profit"),
-                    "reason": {_c("DEAL_REASON_SL", DEAL_REASON_SL): "SL", _c("DEAL_REASON_TP", DEAL_REASON_TP): "TP", _c("DEAL_REASON_SO", DEAL_REASON_SO): "STOP_OUT"}.get(reason, "CLIENT" if reason in (0, 1, 2, 3) else str(reason)),
-                    "comment": d.get("comment")})
+        reason = _g(d, "reason", "dealReason")
+        rtxt = str(reason).lower() if reason is not None else ""
+        why = "SL" if (reason in (4, "4") or "sl" in rtxt or "stop loss" in rtxt or "stoploss" in rtxt) else "TP" if (reason in (5, "5") or "tp" in rtxt or "take profit" in rtxt or "takeprofit" in rtxt) \
+            else "STOP_OUT" if (reason in (6, "6") or "stop out" in rtxt or "so" == rtxt) else "CLIENT" if reason in (0, 1, 2, 3, "0", "1", "2", "3", "client", "expert", "mobile", "web") else (str(reason) if reason is not None else "UNKNOWN")
+        if entry is None and why in ("CLIENT", "UNKNOWN"):
+            continue                                                        # an entry deal without an entry flag: not an exit
+        out.append({"deal": _g(d, "ticket", "deal"), "time": _g(d, "time"), "price": _f(_g(d, "price")), "volume": _f(_g(d, "lots", "volume")), "profit": _f(_g(d, "profit")), "reason": why, "comment": _g(d, "comment")})
     return {"ok": True, "deals": out}
+
+
+def symbols_list() -> dict:
+    res = _call("Symbols")
+    if not res.get("ok"):
+        return {"ok": False, "reason": res.get("reason"), "detail": res.get("detail")}
+    rows = res["data"] if isinstance(res["data"], list) else (_g(res["data"], "symbols", "items") or [])
+    return {"ok": True, "symbols": [s if isinstance(s, str) else _g(s, "symbol", "name") for s in rows]}

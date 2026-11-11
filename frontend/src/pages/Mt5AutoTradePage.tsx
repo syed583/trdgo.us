@@ -31,7 +31,7 @@ function SwitchBanner({ st }: { st: any }) {
       <Info size={16} />
       <div>
         <b>AUTO_TRADE = {st.auto_trade ? '1 (ON)' : '0 (OFF)'}</b>{st.paused ? ' · entries PAUSED by the operator' : ''}
-        {' · '}{st.installed ? 'MetaTrader5 package installed' : 'MetaTrader5 package NOT installed on the server'}
+        {' · '}{st.provider || 'mtapi.io MT5 Client REST API'}
         <div className="sm-q-muted">The master switch is the server setting AUTO_TRADE (default 0). With it off nothing is ever sent, whatever this page shows. Only MAPPED symbols trade; quantity = the Strategy Trades share count rounded down to the broker step.</div>
       </div>
     </div>
@@ -44,9 +44,11 @@ export function Mt5AccountView() {
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
   const [server, setServer] = useState('');
+  const [baseUrl, setBaseUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const srv = server || d?.server || d?.default_server || 'STGlobalMarketsLtd-Live-1';
+  const url = baseUrl || d?.base_url || 'https://mt5.mtapi.io/';
   const act = async (fn: () => Promise<any>) => {
     setBusy(true); setMsg(null);
     try { const r = await fn(); setMsg(r?.status === 'OK' ? 'Done.' : `${r?.reason || 'FAILED'}: ${r?.detail || r?.last_error || ''}`); setPassword(''); st.refresh(); }
@@ -55,7 +57,7 @@ export function Mt5AccountView() {
   };
   return (
     <div className="sm" data-testid="mt5-account-view">
-      <PageHead title="MT5 auto-trading — Account" subtitle="Connect the operator's MetaTrader 5 account (demo or live). Credentials are stored on the server in an owner-only file and never shown again." />
+      <PageHead title="MT5 auto-trading — Account" subtitle="Connect the operator's MetaTrader 5 account (demo or live) through the cloud MT API: no terminal on the server. Credentials are stored on the server in an owner-only file and never shown again." />
       <Tabs />
       {st.error && <div className="sm-fresh stale" role="alert"><AlertTriangle size={14} /> {st.error}</div>}
       <SwitchBanner st={d} />
@@ -69,11 +71,12 @@ export function Mt5AccountView() {
         </div>
       )}
       {d?.last_error && !d.connected && <div className="sm-fresh stale" role="alert" data-testid="mt5-last-error"><AlertTriangle size={14} /> Last connection error: {d.last_error}</div>}
-      <form className="sm-filters" onSubmit={(e) => { e.preventDefault(); act(() => mt5.connect({ login, password, server: srv })); }} data-testid="mt5-connect-form" style={{ flexWrap: 'wrap', gap: 8 }}>
+      <form className="sm-filters" onSubmit={(e) => { e.preventDefault(); act(() => mt5.connect({ login, password, server: srv, base_url: url })); }} data-testid="mt5-connect-form" style={{ flexWrap: 'wrap', gap: 8 }}>
+        <label>MT API endpoint <input value={url} onChange={(e) => setBaseUrl(e.target.value)} style={{ width: 200 }} /></label>
         <label>Account ID <input value={login} onChange={(e) => setLogin(e.target.value)} inputMode="numeric" autoComplete="off" required /></label>
         <label>Password <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required /></label>
         <label>Server <input value={srv} onChange={(e) => setServer(e.target.value)} /></label>
-        <button className="ghost-btn" type="submit" disabled={busy || !d?.installed}>Connect</button>
+        <button className="ghost-btn" type="submit" disabled={busy}>Connect</button>
         <button className="ghost-btn" type="button" disabled={busy} onClick={() => act(() => mt5.reconnect())}>Reconnect (saved)</button>
         <button className="ghost-btn" type="button" disabled={busy || !d?.connected} onClick={() => act(() => mt5.disconnect(false))}>Disconnect</button>
         <button className="ghost-btn" type="button" disabled={busy} onClick={() => { if (window.confirm('Forget the saved MT5 credentials on the server?')) act(() => mt5.disconnect(true)); }}>Disconnect &amp; forget</button>

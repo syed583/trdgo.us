@@ -129,6 +129,9 @@ backend/models_profiles.py
 backend/models_snapshots.py
 backend/models_trade_plans.py
 backend/models_user.py
+backend/mt5_autotrade.py
+backend/mt5_bridge.py
+backend/mt5_routes.py
 backend/news_desk_service.py
 backend/nport_service.py
 backend/oi_buildup_service.py

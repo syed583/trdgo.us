@@ -1,131 +1,108 @@
-"""MT5 auto-trading (mt5_bridge + mt5_autotrade + mt5_routes) against a FAKE MetaTrader5 module: no terminal, no broker.
+"""MT5 auto-trading (mt5_bridge + mt5_autotrade + mt5_routes) against a FAKE mtapi.io HTTP endpoint: no network, no broker.
 
-Pins the owner's policy: switch default OFF, unmapped never trades, exact paper quantity rounded DOWN to the broker step (below
-the minimum -> skip + log), BUY/SELL market orders with server-side SL/TP, score exits close with up to 3 attempts then a
-logged failure, broker-side SL/TP detected and logged, rejections logged with the full reason and never retried forever,
-partial fills recorded, one position per symbol/side, operator-only routes, password never in the audit log."""
+Pins the owner's policy: switch default OFF, unmapped never trades, exact paper quantity converted to lots with the contract
+size and rounded DOWN to the broker step (below the minimum -> skip + log), BUY/SELL market orders with server-side SL/TP,
+score exits close with up to 3 attempts then a logged failure, broker-side SL/TP detected and logged, rejections (HTTP 201
+ExceptionResult) logged with the full reason and never retried forever, partial fills recorded, one position per symbol/side,
+operator-only routes, password and session token never in the audit log or any response."""
 from __future__ import annotations
 
 import json
-import types
+import urllib.parse
 
 import pytest
 
 import mt5_autotrade as AT
 import mt5_bridge as B
 
+TOKEN = "sess-9f3a-TOKEN"
 
-class FakeMT5:
-    """The subset of the MetaTrader5 package the bridge uses, with scripted behaviour per test."""
-    TRADE_ACTION_DEAL = 1
-    ORDER_TYPE_BUY, ORDER_TYPE_SELL = 0, 1
-    ORDER_FILLING_FOK, ORDER_FILLING_IOC, ORDER_FILLING_RETURN = 0, 1, 2
-    ORDER_TIME_GTC = 0
-    POSITION_TYPE_BUY, POSITION_TYPE_SELL = 0, 1
-    DEAL_ENTRY_OUT = 1
-    DEAL_REASON_SL, DEAL_REASON_TP, DEAL_REASON_SO = 4, 5, 6
-    TRADE_RETCODE_DONE, TRADE_RETCODE_DONE_PARTIAL = 10009, 10010
+
+class FakeMtapi:
+    """Answers the mtapi.io paths the bridge uses, with scripted refusals per test."""
 
     def __init__(self):
-        self.symbols = {"AAPL": {"visible": True, "trade_mode": 4, "volume_min": 1.0, "volume_max": 10000.0, "volume_step": 1.0, "digits": 2, "point": 0.01, "filling_mode": 2, "bid": 100.0, "ask": 100.1},
-                        "TSLA.NAS": {"visible": True, "trade_mode": 4, "volume_min": 10.0, "volume_max": 10000.0, "volume_step": 10.0, "digits": 2, "point": 0.01, "filling_mode": 1, "bid": 200.0, "ask": 200.2}}
-        self.ticks = {"AAPL": (100.0, 100.1), "TSLA.NAS": (200.0, 200.2)}
-        self.sent, self.checks, self.closes = [], [], []
+        self.calls = []                       # (path, params)
+        self.login_ok = True
+        self.symbols = {"AAPL": {"symbol": "AAPL", "tradeMode": "Full", "volumeMin": 1.0, "volumeMax": 10000.0, "volumeStep": 1.0, "digits": 2, "contractSize": 1.0, "description": "Apple"},
+                        "TSLA.NAS": {"symbol": "TSLA.NAS", "tradeMode": 4, "volumeMin": 0.1, "volumeMax": 100.0, "volumeStep": 0.1, "digits": 2, "contractSize": 100.0}}
+        self.quotes = {"AAPL": (100.0, 100.1), "TSLA.NAS": (200.0, 200.2)}
         self.positions = {}
         self.deals = {}
         self.next_ticket = 500
-        self.send_script = []            # retcodes to answer in order (None = DONE)
+        self.send_script = []                 # list of ExceptionResult dicts or None per OrderSendSafe
         self.close_script = []
-        self.login_ok = True
-        self.account = {"login": 123, "server": "STGlobalMarketsLtd-Live-1", "name": "Demo", "company": "ST", "currency": "USD", "balance": 10000.0, "equity": 10000.0, "margin": 0.0, "margin_free": 10000.0, "leverage": 100, "trade_allowed": True, "trade_mode": 0, "margin_mode": 0}
+        self.fill_fraction = 1.0
 
-    # session
-    def initialize(self, *a, **kw):
-        return self.login_ok
-
-    def login(self, login, password=None, server=None):
-        return self.login_ok
-
-    def shutdown(self):
-        return True
-
-    def last_error(self):
-        return (-1, "fake error")
-
-    def account_info(self):
-        return types.SimpleNamespace(**self.account) if self.login_ok else None
-
-    def terminal_info(self):
-        return types.SimpleNamespace(connected=True, trade_allowed=True, tradeapi_disabled=False, ping_last=12000, company="ST", name="MT5", path="C:/mt5", build=4000)
-
-    # symbols
-    def symbol_info(self, sym):
-        d = self.symbols.get(sym)
-        return types.SimpleNamespace(**d) if d else None
-
-    def symbol_select(self, sym, flag):
-        return sym in self.symbols
-
-    def symbol_info_tick(self, sym):
-        t = self.ticks.get(sym)
-        return types.SimpleNamespace(bid=t[0], ask=t[1], time=1_700_000_000) if t else None
-
-    # orders
-    def order_check(self, req):
-        self.checks.append(dict(req))
-        return types.SimpleNamespace(retcode=0, comment="ok", request_id=1)
-
-    def order_send(self, req):
-        if req.get("position"):
-            self.closes.append(dict(req))
+    def __call__(self, url, timeout=None):
+        u = urllib.parse.urlparse(url)
+        path = u.path.strip("/").split("/")[-1]
+        q = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
+        self.calls.append((path, q))
+        if path == "ConnectEx":
+            assert "id" not in q and q["user"] == "123" and q["server"] == "STGlobalMarketsLtd-Live-1"
+            return (200, json.dumps(TOKEN)) if self.login_ok else (201, json.dumps({"errorCode": "INVALID_ACCOUNT", "message": "Invalid account", "details": "auth failed"}))
+        if q.get("id") != TOKEN:
+            return 201, json.dumps({"errorCode": "INVALID_TOKEN", "message": "Invalid token"})
+        if path == "AccountSummary":
+            return 200, json.dumps({"balance": 10000.0, "equity": 10010.0, "currency": "USD", "freeMargin": 9000.0, "leverage": 100, "type": "Demo", "name": "Demo", "company": "ST"})
+        if path == "SymbolParams":
+            d = self.symbols.get(q["symbol"])
+            return (200, json.dumps({"symbolInfo": d})) if d else (201, json.dumps({"errorCode": "SYMBOL_NOT_FOUND", "message": "Symbol not found", "details": q["symbol"]}))
+        if path == "GetQuote":
+            t = self.quotes.get(q["symbol"])
+            return (200, json.dumps({"bid": t[0], "ask": t[1], "last": t[0], "time": 1_700_000_000_000})) if t else (201, json.dumps({"errorCode": "NO_QUOTE", "message": "No quote"}))
+        if path == "OrderSendSafe":
+            code = self.send_script.pop(0) if self.send_script else None
+            if code:
+                return 201, json.dumps(code)
+            self.next_ticket += 1
+            lots = float(q["volume"]) * self.fill_fraction
+            px = self.quotes[q["symbol"]][1 if q["operation"] == "0" else 0]
+            self.positions[self.next_ticket] = {"ticket": self.next_ticket, "symbol": q["symbol"], "orderType": "Buy" if q["operation"] == "0" else "Sell", "lots": lots, "openPrice": px,
+                                                "stopLoss": float(q.get("stoploss") or 0), "takeProfit": float(q.get("takeprofit") or 0), "profit": 0.0, "expertId": int(q["expertID"]), "comment": q.get("comment"), "openTime": "2026-11-11T15:00:00"}
+            return 200, json.dumps(self.positions[self.next_ticket])
+        if path == "OpenedOrders":
+            return 200, json.dumps(list(self.positions.values()))
+        if path == "OrderCloseSafe":
             code = self.close_script.pop(0) if self.close_script else None
             if code:
-                return types.SimpleNamespace(retcode=code, comment="refused %s" % code, deal=0, order=0, volume=0.0, price=0.0, request_id=2)
-            self.positions.pop(int(req["position"]), None)
-            return types.SimpleNamespace(retcode=10009, comment="closed", deal=900, order=901, volume=req["volume"], price=req["price"], request_id=2)
-        self.sent.append(dict(req))
-        code = self.send_script.pop(0) if self.send_script else None
-        if code:
-            return types.SimpleNamespace(retcode=code, comment="refused %s" % code, deal=0, order=0, volume=0.0, price=0.0, request_id=3)
-        self.next_ticket += 1
-        vol = req["volume"]
-        if req.get("comment", "").startswith("TRDGO half"):
-            vol = req["volume"] / 2
-        self.positions[self.next_ticket] = {"ticket": self.next_ticket, "symbol": req["symbol"], "type": req["type"], "volume": vol, "price_open": req["price"], "sl": req.get("sl"), "tp": req.get("tp"), "profit": 0.0, "magic": req["magic"], "comment": req.get("comment"), "time": 1_700_000_000}
-        return types.SimpleNamespace(retcode=10010 if vol != req["volume"] else 10009, comment="done", deal=self.next_ticket, order=self.next_ticket, volume=vol, price=req["price"], request_id=3)
-
-    def positions_get(self, symbol=None, ticket=None):
-        rows = [types.SimpleNamespace(**p) for p in self.positions.values() if (symbol is None or p["symbol"] == symbol) and (ticket is None or p["ticket"] == ticket)]
-        return rows
-
-    def history_deals_get(self, *a, position=None, **kw):
-        return [types.SimpleNamespace(**d) for d in self.deals.get(position, [])]
+                return 201, json.dumps(code)
+            p = self.positions.pop(int(q["ticket"]), None)
+            if not p:
+                return 201, json.dumps({"errorCode": "POSITION_NOT_FOUND", "message": "Position not found"})
+            return 200, json.dumps({"ticket": p["ticket"], "lots": p["lots"], "closePrice": self.quotes[p["symbol"]][0]})
+        if path == "HistoryDealsByPositionId":
+            return 200, json.dumps(self.deals.get(int(q["ticket"]), []))
+        if path == "Disconnect":
+            return 200, "true"
+        return 404, "no such path"
 
 
 @pytest.fixture
 def fake(tmp_path, monkeypatch):
-    m = FakeMT5()
+    m = FakeMtapi()
     B._reset_for_tests(m)
     monkeypatch.setattr(AT, "STATE_DIR", tmp_path / "state")
     monkeypatch.setattr(AT, "CRED_FILE", tmp_path / "sec" / "mt5_credentials.json")
     monkeypatch.setenv("AUTO_TRADE", "1")
-    monkeypatch.delenv("MT5_LOGIN", raising=False)
-    monkeypatch.delenv("MT5_PASSWORD", raising=False)
+    for k in ("MT5_LOGIN", "MT5_PASSWORD", "MT5_SERVER", "MT5_BASE_URL"):
+        monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(AT, "software_symbols", lambda: ["AAPL", "TSLA", "NVDA"])
-    AT._conn.update(connected=False, account=None, since=None, last_error=None, server=None)
+    AT._conn.update(connected=False, account=None, since=None, last_error=None, server=None, base_url=None)
     yield m
     B._reset_for_tests(None)
-    AT._conn.update(connected=False, account=None, since=None, last_error=None, server=None)
+    AT._conn.update(connected=False, account=None, since=None, last_error=None, server=None, base_url=None)
 
 
-def _audit(tmp_path):
+def _audit():
     p = AT.STATE_DIR / AT.AUDIT_FILE
     return [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()] if p.exists() else []
 
 
 def _connected(fake):
-    r = AT.connect(123, "s3cret-pass", "STGlobalMarketsLtd-Live-1")
-    assert r["ok"] and AT.status()["connected"]
+    r = AT.connect(123, "s3cret-pass", "STGlobalMarketsLtd-Live-1", base_url="https://mt5.mtapi.io/")
+    assert r["ok"] and AT.status()["connected"], r
     AT.set_mapping("AAPL", "AAPL")
     AT.set_mapping("TSLA", "TSLA.NAS")
     return r
@@ -137,50 +114,59 @@ def entry(**kw):
     return e
 
 
+def _sent(fake):
+    return [q for p, q in fake.calls if p == "OrderSendSafe"]
+
+
+def _closes(fake):
+    return [q for p, q in fake.calls if p == "OrderCloseSafe"]
+
+
 # ---------------------------------------------------------------- switch, connection, credentials
-def test_master_switch_defaults_off_and_blocks_every_order(fake, monkeypatch, tmp_path):
+def test_master_switch_defaults_off_and_blocks_every_order(fake, monkeypatch):
     monkeypatch.delenv("AUTO_TRADE", raising=False)
     assert AT.auto_trade_enabled() is False
     _connected(fake)
-    assert AT.on_paper_event(entry()) == {"ok": False, "reason": "AUTO_TRADE_OFF"} and fake.sent == []
+    assert AT.on_paper_event(entry()) == {"ok": False, "reason": "AUTO_TRADE_OFF"} and _sent(fake) == []
 
 
-def test_connect_stores_credentials_obfuscated_and_never_logs_the_password(fake, tmp_path):
+def test_connect_uses_connectex_keeps_the_token_in_memory_and_never_logs_secrets(fake):
     _connected(fake)
+    assert fake.calls[0][0] == "ConnectEx" and fake.calls[1] == ("AccountSummary", {"id": TOKEN})
     raw = AT.CRED_FILE.read_text(encoding="utf-8")
-    assert "s3cret-pass" not in raw and AT.load_credentials()["password"] == "s3cret-pass"
-    assert "s3cret-pass" not in (AT.STATE_DIR / AT.AUDIT_FILE).read_text(encoding="utf-8")
+    assert "s3cret-pass" not in raw and TOKEN not in raw and AT.load_credentials()["password"] == "s3cret-pass" and AT.load_credentials()["base_url"] == "https://mt5.mtapi.io/"
+    aud = (AT.STATE_DIR / AT.AUDIT_FILE).read_text(encoding="utf-8")
+    assert "s3cret-pass" not in aud and TOKEN not in aud
     st = AT.status()
-    assert st["connected"] and st["account"]["login"] == 123 and st["account"]["account_kind"] == "DEMO" and "password" not in json.dumps(st)
+    assert st["connected"] and st["account"]["login"] == 123 and st["account"]["account_kind"] == "DEMO" and st["account"]["balance"] == 10000.0
+    assert "s3cret-pass" not in json.dumps(st) and TOKEN not in json.dumps(st) and st["base_url"] == "https://mt5.mtapi.io/"
     AT.disconnect(forget=True)
-    assert not AT.CRED_FILE.exists() and AT.status()["connected"] is False
+    assert not AT.CRED_FILE.exists() and AT.status()["connected"] is False and B.connected() is False
 
 
-def test_a_failed_login_is_reported_and_audited(fake):
+def test_a_failed_login_is_reported_with_the_api_message_and_audited(fake):
     fake.login_ok = False
     r = AT.connect(123, "x", "STGlobalMarketsLtd-Live-1")
-    assert not r["ok"] and r["reason"] == "INITIALIZE_FAILED" and AT.status()["connected"] is False
-    assert any(a["event"] == "CONNECT_FAILED" for a in _audit(None))
+    assert not r["ok"] and r["reason"] == "API_ERROR" and "Invalid account" in r["detail"] and AT.status()["connected"] is False
+    assert any(a["event"] == "CONNECT_FAILED" and "Invalid account" in a["detail"] for a in _audit())
 
 
-def test_without_the_package_everything_answers_not_installed(fake, monkeypatch):
-    B._reset_for_tests(None)
-    monkeypatch.setattr(B, "_load", lambda: False)
-    assert AT.status()["installed"] is False and "pip install MetaTrader5" in AT.status()["install_note"]
-    assert AT.connect(1, "p", "s")["reason"] == "NOT_INSTALLED"
+def test_a_transport_error_is_a_result_not_an_exception(fake, monkeypatch):
+    _connected(fake)
+    monkeypatch.setattr(B, "_http_get", lambda url, timeout=None: (_ for _ in ()).throw(OSError("network down")))
+    r = B.account()
+    assert not r["ok"] and r["reason"] == "TRANSPORT" and "network down" in r["detail"]
 
 
 # ---------------------------------------------------------------- mapping
 def test_mapping_verifies_against_the_broker_and_unmapped_never_trades(fake):
-    rows = AT.mapping_rows()
-    assert rows["summary"] == "0 of 3 symbols mapped"
+    assert AT.mapping_rows()["summary"] == "0 of 3 symbols mapped"
     _connected(fake)
     m = AT.mapping_rows()
-    assert m["mapped"] == 2 and m["summary"] == "2 of 3 symbols mapped"
-    assert {r["symbol"]: r["status"] for r in m["rows"]} == {"AAPL": "MAPPED", "TSLA": "MAPPED", "NVDA": "UNMAPPED"}
-    assert AT.set_mapping("NVDA", "NVDA.XYZ")["status"] == "UNVERIFIED"                      # the broker does not offer it
-    assert AT.on_paper_event(entry(symbol="NVDA"))["reason"] == "UNMAPPED" and fake.sent == []
-    assert any(a["event"] == "SKIPPED" and a["symbol"] == "NVDA" and a["reason"] == "UNMAPPED" for a in _audit(None))
+    assert m["summary"] == "2 of 3 symbols mapped" and {r["symbol"]: r["status"] for r in m["rows"]} == {"AAPL": "MAPPED", "TSLA": "MAPPED", "NVDA": "UNMAPPED"}
+    assert AT.set_mapping("NVDA", "NVDA.XYZ")["status"] == "UNVERIFIED"
+    assert AT.on_paper_event(entry(symbol="NVDA"))["reason"] == "UNMAPPED" and _sent(fake) == []
+    assert any(a["event"] == "SKIPPED" and a["symbol"] == "NVDA" and a["reason"] == "UNMAPPED" for a in _audit())
     assert AT.set_mapping("TSLA", "")["status"] == "UNMAPPED" and AT.mapped("TSLA") is None
 
 
@@ -192,36 +178,42 @@ def test_automap_tries_the_plain_ticker_then_suffixes(fake):
 
 
 # ---------------------------------------------------------------- entries
-def test_buy_signal_sends_a_market_buy_with_exact_quantity_and_server_side_sl_tp(fake):
+def test_buy_signal_sends_a_market_buy_with_exact_quantity_in_lots_and_server_side_sl_tp(fake):
     _connected(fake)
     r = AT.on_paper_event(entry(shares=99))
-    assert r["ok"] and len(fake.sent) == 1
-    req = fake.sent[0]
-    assert req["symbol"] == "AAPL" and req["type"] == FakeMT5.ORDER_TYPE_BUY and req["volume"] == 99.0 and req["sl"] == 98.0 and req["tp"] == 104.0
-    assert req["price"] == 100.1 and req["magic"] == AT.MAGIC and req["type_filling"] == FakeMT5.ORDER_FILLING_IOC
-    assert len(fake.checks) == 1                                                          # validated before sending
-    a = _audit(None)[-1]
-    assert a["event"] == "FILLED" and a["quantity"] == 99.0 and a["ticket"] == r["ticket"] and a["action"] == "LONG"
-    assert str(1) in AT.open_positions()
+    assert r["ok"] and len(_sent(fake)) == 1
+    q = _sent(fake)[0]
+    assert q["symbol"] == "AAPL" and q["operation"] == "0" and q["volume"] == "99.0" and q["stoploss"] == "98.0" and q["takeprofit"] == "104.0"
+    assert q["expertID"] == str(AT.MAGIC) and "#1" in q["comment"] and q["id"] == TOKEN
+    a = _audit()[-1]
+    assert a["event"] == "FILLED" and a["quantity"] == 99.0 and a["ticket"] == r["ticket"] and a["action"] == "LONG" and a["detail"]["paper_shares"] == 99 and a["detail"]["contract_size"] == 1.0
+    assert "1" in AT.open_positions()
 
 
-def test_sell_signal_sends_a_market_sell_and_volume_rounds_down_to_the_broker_step(fake):
+def test_sell_signal_converts_shares_to_lots_with_the_contract_size_and_rounds_down(fake):
     _connected(fake)
     r = AT.on_paper_event(entry(trade_id=2, symbol="TSLA", side="SHORT", shares=47, stop=206.0, target=190.0))
-    assert r["ok"] and fake.sent[-1]["symbol"] == "TSLA.NAS" and fake.sent[-1]["type"] == FakeMT5.ORDER_TYPE_SELL
-    assert fake.sent[-1]["volume"] == 40.0 and fake.sent[-1]["price"] == 200.0 and fake.sent[-1]["type_filling"] == FakeMT5.ORDER_FILLING_FOK
-    r2 = AT.on_paper_event(entry(trade_id=3, symbol="TSLA", side="SHORT", shares=7))
-    assert r2["reason"] == "SKIPPED_DUPLICATE"
-    AT._positions()["open"].clear()
+    assert r["ok"] and _sent(fake)[-1]["symbol"] == "TSLA.NAS" and _sent(fake)[-1]["operation"] == "1"
+    assert _sent(fake)[-1]["volume"] == "0.4"                                         # 47 shares / contract 100 = 0.47 lots -> step 0.1 -> 0.4
+    a = _audit()[-1]
+    assert a["quantity"] == 0.4 and a["detail"]["paper_shares"] == 47 and a["detail"]["lots"] == 0.4
     AT._save_positions({"version": 1, "open": {}})
-    r3 = AT.on_paper_event(entry(trade_id=4, symbol="TSLA", side="SHORT", shares=7))             # below the 10-share minimum
-    assert r3["reason"] == "BELOW_MIN_VOLUME" and len(fake.sent) == 1
-    assert any(a["event"] == "SKIPPED" and "BELOW_MIN_VOLUME" in a["reason"] for a in _audit(None))
+    r3 = AT.on_paper_event(entry(trade_id=4, symbol="TSLA", side="SHORT", shares=7))         # 0.07 lots < min 0.1
+    assert r3["reason"] == "BELOW_MIN_VOLUME" and len(_sent(fake)) == 1
+    assert any(a["event"] == "SKIPPED" and "BELOW_MIN_VOLUME" in a["reason"] and "0.0700 lots" in a["reason"] for a in _audit())
 
 
-def test_round_volume_rules():
-    assert AT.round_volume(99, 1, 1) == 99.0 and AT.round_volume(47, 10, 10) == 40.0 and AT.round_volume(7, 10, 10) is None
-    assert AT.round_volume(15, 0.01, 0.01) == 15.0 and AT.round_volume(0.5, 1, 1) is None and AT.round_volume(99, 1, 1, volume_max=50) == 50.0
+def test_sizing_rules():
+    assert AT.shares_to_lots(99, 1) == 99.0 and AT.shares_to_lots(47, 100) == 0.47 and AT.shares_to_lots(250, None) == 250.0
+    assert AT.round_volume(99, 1, 1) == 99.0 and AT.round_volume(0.47, 0.1, 0.1) == 0.4 and AT.round_volume(0.07, 0.1, 0.1) is None
+    assert AT.round_volume(15, 0.01, 0.01) == 15.0 and AT.round_volume(99, 1, 1, volume_max=50) == 50.0
+
+
+def test_missing_volume_rules_are_a_logged_rejection_not_a_guess(fake):
+    _connected(fake)
+    fake.symbols["AAPL"] = {"symbol": "AAPL", "tradeMode": "Full", "contractSize": 1.0}
+    r = AT.on_paper_event(entry())
+    assert r["reason"] == "NO_VOLUME_RULES" and _sent(fake) == [] and _audit()[-1]["event"] == "REJECTED"
 
 
 def test_one_position_per_symbol_and_side_and_no_opposite_direction_while_open(fake):
@@ -229,88 +221,96 @@ def test_one_position_per_symbol_and_side_and_no_opposite_direction_while_open(f
     assert AT.on_paper_event(entry(trade_id=1, strategy="grok"))["ok"]
     assert AT.on_paper_event(entry(trade_id=2, strategy="meta"))["reason"] == "SKIPPED_DUPLICATE"
     assert AT.on_paper_event(entry(trade_id=3, strategy="kimi", side="SHORT", stop=104.0, target=96.0))["reason"] == "SKIPPED_OPPOSITE_OPEN"
-    assert len(fake.sent) == 1
+    assert len(_sent(fake)) == 1
 
 
-def test_a_rejection_is_logged_with_the_full_reason_and_not_retried_forever(fake):
+def test_a_rejection_is_logged_with_the_full_api_reason_and_not_retried(fake):
     _connected(fake)
-    fake.send_script = [10019]                                                                # NO_MONEY
+    fake.send_script = [{"errorCode": "TRADE_RETCODE_NO_MONEY", "message": "Not enough money", "details": "margin 9000 < 9900"}]
     r = AT.on_paper_event(entry())
-    assert not r["ok"] and len(fake.sent) == 1
-    a = _audit(None)[-1]
-    assert a["event"] == "REJECTED" and "NO_MONEY (10019)" in a["reason"] and a["detail"]["request"]["symbol"] == "AAPL"
+    assert not r["ok"] and len(_sent(fake)) == 1
+    a = _audit()[-1]
+    assert a["event"] == "REJECTED" and "Not enough money" in a["reason"] and "margin 9000" in a["reason"] and a["detail"]["request"]["symbol"] == "AAPL"
     assert AT.open_positions() == {}
 
 
 def test_a_requote_is_repriced_once_then_given_up(fake):
     _connected(fake)
-    fake.send_script = [10004, 10004]
+    fake.send_script = [{"errorCode": "TRADE_RETCODE_REQUOTE", "message": "Requote"}, {"errorCode": "TRADE_RETCODE_REQUOTE", "message": "Requote"}]
     r = AT.on_paper_event(entry())
-    assert not r["ok"] and len(fake.sent) == 2
-    ev = [a["event"] for a in _audit(None)]
+    assert not r["ok"] and len(_sent(fake)) == 2
+    ev = [a["event"] for a in _audit()]
     assert ev.count("REPRICE") == 1 and ev[-1] == "REJECTED"
-    fake.send_script = [10020]
-    assert AT.on_paper_event(entry(trade_id=9))["ok"] and len(fake.sent) == 4                 # price changed once, second try filled
+    fake.send_script = [{"errorCode": "TRADE_RETCODE_PRICE_CHANGED", "message": "Price changed"}]
+    assert AT.on_paper_event(entry(trade_id=9))["ok"] and len(_sent(fake)) == 4
 
 
-def test_a_partial_fill_is_recorded_with_the_filled_volume(fake):
+def test_a_partial_fill_is_recorded_with_the_filled_lots(fake):
     _connected(fake)
-    r = AT.on_paper_event(entry(trade_id=7, strategy="half"))                                 # the fake fills half when the comment starts with 'TRDGO half'
+    fake.fill_fraction = 0.5
+    r = AT.on_paper_event(entry(trade_id=7))
     assert r["ok"] and r["volume"] == 49.5
-    a = _audit(None)[-1]
-    assert a["event"] == "PARTIAL_FILL" and a["quantity"] == 49.5 and "requested 99.0, filled 49.5" in a["reason"]
+    a = _audit()[-1]
+    assert a["event"] == "PARTIAL_FILL" and a["quantity"] == 49.5 and "requested 99.0 lots, filled 49.5" in a["reason"]
     assert AT.open_positions()["7"]["volume"] == 49.5
 
 
+def test_the_session_token_is_never_in_an_audit_record_even_on_failure(fake):
+    _connected(fake)
+    fake.send_script = [{"errorCode": "X", "message": "boom"}]
+    AT.on_paper_event(entry())
+    assert TOKEN not in (AT.STATE_DIR / AT.AUDIT_FILE).read_text(encoding="utf-8")
+
+
 # ---------------------------------------------------------------- exits
-def test_score_exit_closes_the_position_and_is_audited(fake):
+def test_score_exit_closes_the_position_with_ordercloasesafe_and_is_audited(fake):
     _connected(fake)
     AT.on_paper_event(entry(trade_id=1))
     ticket = AT.open_positions()["1"]["ticket"]
     r = AT.on_paper_event({"type": "EXIT", "trade_id": 1, "strategy": "grok", "symbol": "AAPL", "side": "LONG", "shares": 99, "exit_price": 101.0, "reason": "SCORE_EXIT"})
-    assert r["ok"] and r["attempts"] == 1 and len(fake.closes) == 1 and fake.closes[0]["position"] == ticket and fake.closes[0]["type"] == FakeMT5.ORDER_TYPE_SELL
-    assert AT.open_positions() == {} and _audit(None)[-1]["event"] == "CLOSED" and "SCORE_EXIT" in _audit(None)[-1]["reason"]
+    assert r["ok"] and r["attempts"] == 1 and len(_closes(fake)) == 1 and _closes(fake)[0]["ticket"] == str(ticket)
+    assert AT.open_positions() == {} and _audit()[-1]["event"] == "CLOSED" and "SCORE_EXIT" in _audit()[-1]["reason"] and _audit()[-1]["price"] == 100.0
 
 
 def test_close_retries_three_times_then_logs_a_failure(fake, monkeypatch):
     monkeypatch.setattr(AT.time, "sleep", lambda s: None)
     _connected(fake)
     AT.on_paper_event(entry(trade_id=1))
-    fake.close_script = [10004, 10021, 10012]
+    fake.close_script = [{"errorCode": "REQUOTE", "message": "Requote"}, {"errorCode": "OFF", "message": "Off quotes"}, {"errorCode": "T", "message": "Timeout"}]
     r = AT.on_paper_event({"type": "EXIT", "trade_id": 1, "symbol": "AAPL", "side": "LONG", "reason": "EOD_CLOSE"})
-    assert not r["ok"] and r["reason"] == "CLOSE_FAILED" and len(fake.closes) == 3
-    ev = [a["event"] for a in _audit(None)]
-    assert ev.count("CLOSE_RETRY") == 3 and ev[-1] == "CLOSE_FAILED" and "STILL OPEN" in _audit(None)[-1]["reason"]
-    assert "1" in AT.open_positions()                                                        # kept in the ledger so reconcile / a later exit can act
+    assert not r["ok"] and r["reason"] == "CLOSE_FAILED" and len(_closes(fake)) == 3
+    ev = [a["event"] for a in _audit()]
+    assert ev.count("CLOSE_RETRY") == 3 and ev[-1] == "CLOSE_FAILED" and "STILL OPEN" in _audit()[-1]["reason"]
+    assert "1" in AT.open_positions()
     fake.close_script = []
     assert AT.on_paper_event({"type": "EXIT", "trade_id": 1, "symbol": "AAPL", "side": "LONG", "reason": "EOD_CLOSE"})["ok"]
 
 
-def test_a_no_retry_rejection_stops_the_close_loop_early(fake, monkeypatch):
+def test_a_no_retry_refusal_stops_the_close_loop_early(fake, monkeypatch):
     monkeypatch.setattr(AT.time, "sleep", lambda s: None)
     _connected(fake)
     AT.on_paper_event(entry(trade_id=1))
-    fake.close_script = [10018]                                                               # MARKET_CLOSED
+    fake.close_script = [{"errorCode": "TRADE_RETCODE_MARKET_CLOSED", "message": "Market closed"}]
     r = AT.on_paper_event({"type": "EXIT", "trade_id": 1, "symbol": "AAPL", "side": "LONG", "reason": "SCORE_EXIT"})
-    assert not r["ok"] and len(fake.closes) == 1
+    assert not r["ok"] and len(_closes(fake)) == 1
 
 
-def test_a_stop_loss_hit_on_mt5_is_logged_not_closed_again(fake):
+def test_a_stop_loss_hit_on_the_broker_is_logged_not_closed_again(fake):
     _connected(fake)
     AT.on_paper_event(entry(trade_id=1))
     ticket = AT.open_positions()["1"]["ticket"]
-    fake.positions.pop(ticket)                                                                # the broker closed it ...
-    fake.deals[ticket] = [{"ticket": 777, "entry": 1, "reason": 4, "time": 1_700_000_500, "price": 98.0, "volume": 99.0, "profit": -200.0, "comment": "[sl 98.00]"}]
+    fake.positions.pop(ticket)
+    fake.deals[ticket] = [{"ticket": 777, "entry": "Out", "reason": "StopLoss", "time": "2026-11-11T16:00:00", "price": 98.0, "lots": 99.0, "profit": -200.0, "comment": "[sl 98.00]"}]
     r = AT.on_paper_event({"type": "EXIT", "trade_id": 1, "symbol": "AAPL", "side": "LONG", "reason": "STOP"})
-    assert r == {"ok": True, "closed_by": "SL"} and fake.closes == []
-    a = _audit(None)[-1]
+    assert r == {"ok": True, "closed_by": "SL"} and _closes(fake) == []
+    a = _audit()[-1]
     assert a["event"] == "CLOSED_BY_BROKER" and a["result"] == "SL" and a["price"] == 98.0 and AT.open_positions() == {}
 
 
-def test_an_exit_for_a_trade_that_never_traded_on_mt5_is_a_no_op(fake):
+def test_an_exit_for_a_trade_that_never_traded_is_a_no_op(fake):
     _connected(fake)
     assert AT.on_paper_event({"type": "EXIT", "trade_id": 42, "symbol": "AAPL", "side": "LONG", "reason": "SCORE_EXIT"}) == {"ok": True, "reason": "NO_MT5_POSITION"}
-    assert fake.closes == []
+    assert _closes(fake) == []
 
 
 def test_reconcile_notices_positions_the_broker_closed_meanwhile(fake):
@@ -318,7 +318,7 @@ def test_reconcile_notices_positions_the_broker_closed_meanwhile(fake):
     AT.on_paper_event(entry(trade_id=1))
     ticket = AT.open_positions()["1"]["ticket"]
     fake.positions.pop(ticket)
-    fake.deals[ticket] = [{"ticket": 778, "entry": 1, "reason": 5, "time": 1_700_000_900, "price": 104.0, "volume": 99.0, "profit": 390.0, "comment": "[tp 104.00]"}]
+    fake.deals[ticket] = [{"ticket": 778, "entry": 1, "reason": 5, "time": "x", "price": 104.0, "lots": 99.0, "profit": 390.0}]
     r = AT.reconcile()
     assert r["ok"] and r["closed_meanwhile"] == [{"trade_id": 1, "ticket": ticket, "reason": "TP"}] and AT.open_positions() == {}
 
@@ -327,7 +327,7 @@ def test_pause_file_blocks_entries_but_exits_still_close(fake):
     _connected(fake)
     AT.on_paper_event(entry(trade_id=1))
     AT.set_paused(True)
-    assert AT.on_paper_event(entry(trade_id=2, symbol="TSLA", side="SHORT", shares=20))["reason"] == "PAUSED"
+    assert AT.on_paper_event(entry(trade_id=2, symbol="TSLA", side="SHORT", shares=200))["reason"] == "PAUSED"
     assert AT.on_paper_event({"type": "EXIT", "trade_id": 1, "symbol": "AAPL", "side": "LONG", "reason": "SCORE_EXIT"})["ok"]
     AT.set_paused(False)
     assert AT.paused() is False
@@ -344,15 +344,13 @@ def test_routes_are_operator_only_and_wired_into_the_app(fake, monkeypatch):
         assert c.get("/api/mt5/status").status_code == 403
         monkeypatch.setenv("MT5_OPERATOR", "someone")
         r = c.get("/api/mt5/status")
-        assert r.status_code == 200 and r.json()["auto_trade"] is True and r.json()["connected"] is False
-        r = c.post("/api/mt5/connect", json={"login": "123", "password": "s3cret-pass", "server": "STGlobalMarketsLtd-Live-1"}, headers={"origin": "http://testserver"})
-        assert r.status_code == 200 and r.json()["status"] == "OK" and "s3cret-pass" not in r.text
-        r = c.get("/api/mt5/symbols")
-        assert r.status_code == 200 and r.json()["total"] == 3
+        assert r.status_code == 200 and r.json()["auto_trade"] is True and r.json()["connected"] is False and r.json()["base_url"] == "https://mt5.mtapi.io/"
+        r = c.post("/api/mt5/connect", json={"login": "123", "password": "s3cret-pass", "server": "STGlobalMarketsLtd-Live-1", "base_url": "https://mt5.mtapi.io/"}, headers={"origin": "http://testserver"})
+        assert r.status_code == 200 and r.json()["status"] == "OK" and "s3cret-pass" not in r.text and TOKEN not in r.text
+        assert c.get("/api/mt5/symbols").json()["total"] == 3
         r = c.post("/api/mt5/symbols/map", json={"symbol": "aapl", "broker_symbol": "AAPL"}, headers={"origin": "http://testserver"})
-        assert r.json()["status"] == "OK" and r.json()["symbol"] == "AAPL"
-        r = c.get("/api/mt5/audit?limit=5")
-        assert r.status_code == 200 and r.json()["rows"][0]["event"] in ("MAPPED", "CONNECTED")
+        assert r.json()["status"] == "OK" and r.json()["map_status"] == "MAPPED"
+        assert c.get("/api/mt5/audit?limit=5").json()["rows"][0]["event"] in ("MAPPED", "CONNECTED")
         assert c.post("/api/mt5/disconnect", json={}, headers={"origin": "http://testserver"}).json()["connected"] is False
 
 
@@ -360,12 +358,12 @@ def test_the_tracker_emits_entry_and_exit_events_to_registered_hooks(fake):
     import demo_trade_service as dts
     seen = []
     dts.HOOKS.append(seen.append)
+    bad = lambda ev: (_ for _ in ()).throw(RuntimeError("boom"))  # noqa: E731
     try:
         dts._emit([{"type": "ENTRY", "trade_id": 1}])
         assert seen == [{"type": "ENTRY", "trade_id": 1}]
-        bad = lambda ev: (_ for _ in ()).throw(RuntimeError("boom"))  # noqa: E731
         dts.HOOKS.append(bad)
-        dts._emit([{"type": "EXIT", "trade_id": 1}])                                          # a failing hook never raises into the tracker
+        dts._emit([{"type": "EXIT", "trade_id": 1}])
         assert len(seen) == 2
     finally:
         dts.HOOKS[:] = [h for h in dts.HOOKS if h is not seen.append and h is not bad]

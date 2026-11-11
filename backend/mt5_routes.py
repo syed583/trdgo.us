@@ -47,7 +47,8 @@ def mt5_connect(request: Request, payload: dict = Body(...)) -> dict:
     server = str(payload.get("server") or AT.DEFAULT_SERVER).strip() or AT.DEFAULT_SERVER
     if not password:
         raise HTTPException(status_code=422, detail="Password is required.")
-    res = AT.connect(login, password, server, remember=bool(payload.get("remember", True)))
+    base_url = str(payload.get("base_url") or "").strip() or None
+    res = AT.connect(login, password, server, remember=bool(payload.get("remember", True)), base_url=base_url)
     return {"status": "OK" if res.get("ok") else "FAILED", **{k: v for k, v in res.items() if k != "password"}, **AT.status()}
 
 

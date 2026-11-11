@@ -13,9 +13,12 @@ Policy (owner spec 2026-11-11):
     would otherwise close the first one);
   * every event is appended to mt5_state/audit.jsonl and shown on the Audit Report page.
 Nothing here changes scoring or the paper tracker's own rules: it only listens to the tracker's ENTRY / EXIT events.
-Credentials: entered on the account page by the operator, stored under backend/.sec_cache/mt5_credentials.json (owner-only
-file, password obfuscated with the app's session secret), or supplied through env MT5_LOGIN / MT5_PASSWORD / MT5_SERVER.
-They are never logged, never returned by any route."""
+Execution venue: the mtapi.io MT5 Client REST API (cloud; see mt5_bridge.py) - no local terminal, no MetaTrader5 package.
+Volume: the API trades in LOTS; shares -> lots = shares / contract size (SymbolParams), rounded DOWN to the volume step,
+skipped (and logged) when below the minimum. Both the share count and the lots are in the audit record.
+Credentials: entered on the account page by the operator (endpoint, account ID, password, server), stored under
+backend/.sec_cache/mt5_credentials.json (owner-only file, password obfuscated with the app's session secret), or supplied
+through env MT5_LOGIN / MT5_PASSWORD / MT5_SERVER / MT5_BASE_URL. They are never logged, never returned by any route."""
 from __future__ import annotations
 
 import hashlib
@@ -142,11 +145,11 @@ def _deobf(h: str) -> str:
     return bytes(x ^ y for x, y in zip(b, _keystream(len(b)))).decode("utf-8")
 
 
-def save_credentials(login: int, password: str, server: str) -> None:
+def save_credentials(login: int, password: str, server: str, base_url: Optional[str] = None) -> None:
     """Owner-only file; the password is obfuscated with the session secret (not plaintext, not strong encryption: the file
     permissions are the real protection)."""
     CRED_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _write_json(CRED_FILE, {"login": int(login), "server": server, "password_obf": _obf(password), "saved_at": _now_iso()})
+    _write_json(CRED_FILE, {"login": int(login), "server": server, "base_url": base_url or B.DEFAULT_BASE_URL, "password_obf": _obf(password), "saved_at": _now_iso()})
     try:
         os.chmod(CRED_FILE, 0o600)
     except OSError:
@@ -163,30 +166,31 @@ def clear_credentials() -> None:
 def load_credentials() -> Optional[dict]:
     """env wins (MT5_LOGIN / MT5_PASSWORD / MT5_SERVER), else the saved file. Never log the result."""
     if os.getenv("MT5_LOGIN") and os.getenv("MT5_PASSWORD"):
-        return {"login": int(os.getenv("MT5_LOGIN")), "password": os.getenv("MT5_PASSWORD"), "server": os.getenv("MT5_SERVER") or DEFAULT_SERVER, "source": "env"}
+        return {"login": int(os.getenv("MT5_LOGIN")), "password": os.getenv("MT5_PASSWORD"), "server": os.getenv("MT5_SERVER") or DEFAULT_SERVER, "base_url": os.getenv("MT5_BASE_URL") or B.DEFAULT_BASE_URL, "source": "env"}
     d = _read_json(CRED_FILE, None)
     if not d:
         return None
     try:
-        return {"login": int(d["login"]), "password": _deobf(d["password_obf"]), "server": d.get("server") or DEFAULT_SERVER, "source": "file"}
+        return {"login": int(d["login"]), "password": _deobf(d["password_obf"]), "server": d.get("server") or DEFAULT_SERVER, "base_url": d.get("base_url") or B.DEFAULT_BASE_URL, "source": "file"}
     except (KeyError, ValueError):
         return None
 
 
 # ----------------------------------------------------------------------------- connection
-_conn: dict = {"connected": False, "account": None, "since": None, "last_error": None, "server": None}
+_conn: dict = {"connected": False, "account": None, "since": None, "last_error": None, "server": None, "base_url": None}
 
 
-def connect(login: int, password: str, server: str, remember: bool = True) -> dict:
+def connect(login: int, password: str, server: str, remember: bool = True, base_url: Optional[str] = None) -> dict:
     with _lock:
-        res = B.connect(int(login), password, server)
+        base = (base_url or B.DEFAULT_BASE_URL).strip()
+        res = B.connect(int(login), password, server, base_url=base)
         if res.get("ok"):
-            _conn.update(connected=True, account=res["account"], since=_now_iso(), last_error=None, server=server)
+            _conn.update(connected=True, account=res["account"], since=_now_iso(), last_error=None, server=server, base_url=base)
             if remember:
-                save_credentials(int(login), password, server)
-            audit("CONNECTED", detail={"login": int(login), "server": server, "account_kind": (res["account"] or {}).get("account_kind")})
+                save_credentials(int(login), password, server, base)
+            audit("CONNECTED", detail={"login": int(login), "server": server, "base_url": base, "account_kind": (res["account"] or {}).get("account_kind")})
         else:
-            _conn.update(connected=False, account=None, last_error="%s: %s" % (res.get("reason"), res.get("detail")), server=server)
+            _conn.update(connected=False, account=None, last_error="%s: %s" % (res.get("reason"), res.get("detail")), server=server, base_url=base)
             audit("CONNECT_FAILED", reason=res.get("reason"), detail=res.get("detail"))
         return {k: v for k, v in res.items() if k != "password"}
 
@@ -194,8 +198,8 @@ def connect(login: int, password: str, server: str, remember: bool = True) -> di
 def reconnect_from_saved() -> dict:
     c = load_credentials()
     if not c:
-        return {"ok": False, "reason": "NO_CREDENTIALS", "detail": "no saved MT5 credentials (enter them on the account page or set MT5_LOGIN / MT5_PASSWORD / MT5_SERVER)"}
-    return connect(c["login"], c["password"], c["server"], remember=False)
+        return {"ok": False, "reason": "NO_CREDENTIALS", "detail": "no saved MT5 credentials (enter them on the account page or set MT5_LOGIN / MT5_PASSWORD / MT5_SERVER / MT5_BASE_URL)"}
+    return connect(c["login"], c["password"], c["server"], remember=False, base_url=c.get("base_url"))
 
 
 def disconnect(forget: bool = False) -> dict:
@@ -215,7 +219,7 @@ def status() -> dict:
             _conn.update(connected=False, account=None, last_error="%s: %s" % (live.get("reason"), live.get("detail")))
         elif live:
             _conn["account"] = live["account"]
-        return {"installed": B.available(), "install_note": None if B.available() else B.not_installed()["detail"],
+        return {"installed": True, "install_note": None, "provider": "mtapi.io MT5 Client REST API", "base_url": _conn["base_url"] or B.DEFAULT_BASE_URL,
                 "connected": bool(_conn["connected"]), "account": _conn["account"], "server": _conn["server"] or DEFAULT_SERVER, "since": _conn["since"],
                 "last_error": _conn["last_error"], "credentials_saved": CRED_FILE.exists() or bool(os.getenv("MT5_LOGIN")),
                 "auto_trade": auto_trade_enabled(), "paused": paused(), "magic": MAGIC, "default_server": DEFAULT_SERVER,
@@ -333,12 +337,18 @@ def mapped(symbol: str) -> Optional[dict]:
 
 
 # ----------------------------------------------------------------------------- sizing
-def round_volume(shares: float, volume_min: float, volume_step: float, volume_max: Optional[float] = None) -> Optional[float]:
+def shares_to_lots(shares: float, contract_size: Optional[float]) -> float:
+    """The API trades in lots; a US stock CFD lot is ``contract_size`` shares (1 or 100 depending on the broker)."""
+    c = float(contract_size or 1.0) or 1.0
+    return float(shares) / c
+
+
+def round_volume(lots: float, volume_min: float, volume_step: float, volume_max: Optional[float] = None) -> Optional[float]:
     """Round DOWN to the broker's step; None when below the minimum (skip)."""
     try:
         step = float(volume_step or 0) or 1.0
         vmin = float(volume_min or 0) or step
-        v = math.floor((float(shares) + 1e-9) / step) * step
+        v = math.floor((float(lots) + 1e-9) / step) * step
         v = round(v, 8)
         if volume_max:
             v = min(v, float(volume_max))
@@ -412,14 +422,18 @@ def _handle_entry(ev: dict) -> dict:
     if not info.get("ok"):
         audit("REJECTED", symbol=sym, broker_symbol=bsym, action=side, quantity=ev.get("shares"), trade_id=tid, strategy=strat, reason="%s: %s" % (info.get("reason"), info.get("detail")))
         return {"ok": False, "reason": info.get("reason")}
-    vol = round_volume(ev["shares"], info.get("volume_min"), info.get("volume_step"), info.get("volume_max"))
+    if info.get("volume_min") is None or info.get("volume_step") is None:
+        audit("REJECTED", symbol=sym, broker_symbol=bsym, action=side, quantity=ev.get("shares"), trade_id=tid, strategy=strat, reason="NO_VOLUME_RULES: %s" % info.get("note"), detail={"raw_keys": info.get("raw_keys")})
+        return {"ok": False, "reason": "NO_VOLUME_RULES"}
+    lots = shares_to_lots(ev["shares"], info.get("contract_size"))
+    vol = round_volume(lots, info.get("volume_min"), info.get("volume_step"), info.get("volume_max"))
     if vol is None:
         audit("SKIPPED", symbol=sym, broker_symbol=bsym, action=side, quantity=ev.get("shares"), trade_id=tid, strategy=strat,
-              reason="BELOW_MIN_VOLUME: %s shares rounds below the broker minimum %s (step %s)" % (ev.get("shares"), info.get("volume_min"), info.get("volume_step")))
+              reason="BELOW_MIN_VOLUME: %s shares = %.4f lots (contract size %s) rounds below the broker minimum %s lots (step %s)" % (ev.get("shares"), lots, info.get("contract_size"), info.get("volume_min"), info.get("volume_step")))
         return {"ok": False, "reason": "BELOW_MIN_VOLUME"}
     comment = "TRDGO %s #%s" % ((strat or "")[:6], tid)
     res = B.market_order(bsym, side, vol, sl=ev.get("stop"), tp=ev.get("target"), deviation_points=DEVIATION_POINTS, magic=MAGIC, comment=comment, sym_info=info)
-    if not res.get("ok") and res.get("retcode") in B.RETRY_ONCE_REPRICE:
+    if not res.get("ok") and res.get("retcode_text") == "REPRICE":
         audit("REPRICE", symbol=sym, broker_symbol=bsym, action=side, quantity=vol, trade_id=tid, strategy=strat, reason="%s: %s" % (res.get("retcode_text"), res.get("comment")))
         res = B.market_order(bsym, side, vol, sl=ev.get("stop"), tp=ev.get("target"), deviation_points=DEVIATION_POINTS, magic=MAGIC, comment=comment, sym_info=info)
     if not res.get("ok"):
@@ -433,7 +447,8 @@ def _handle_entry(ev: dict) -> dict:
                              "price": res.get("price"), "sl": ev.get("stop"), "tp": ev.get("target"), "opened_at": _now_iso(), "opened_epoch": time.time(), "strategy": strat}
     _save_positions(pos)
     audit("PARTIAL_FILL" if res.get("partial") else "FILLED", symbol=sym, broker_symbol=bsym, action=side, quantity=filled, trade_id=tid, strategy=strat, ticket=ticket, price=res.get("price"),
-          result=res.get("retcode_text"), reason=("requested %s, filled %s" % (vol, filled)) if res.get("partial") else None, detail={"sl": ev.get("stop"), "tp": ev.get("target"), "paper_shares": ev.get("shares")})
+          result=res.get("retcode_text"), reason=("requested %s lots, filled %s" % (vol, filled)) if res.get("partial") else None,
+          detail={"sl": ev.get("stop"), "tp": ev.get("target"), "paper_shares": ev.get("shares"), "lots": vol, "contract_size": info.get("contract_size")})
     return {"ok": True, "ticket": ticket, "volume": filled}
 
 
@@ -469,7 +484,7 @@ def _handle_exit(ev: dict) -> dict:
             return {"ok": True, "attempts": attempt}
         audit("CLOSE_RETRY", symbol=sym, broker_symbol=bsym, trade_id=tid, strategy=p.get("strategy"), ticket=ticket,
               reason="attempt %d/%d: %s (%s): %s" % (attempt, MAX_CLOSE_ATTEMPTS, res.get("retcode_text") or res.get("reason"), res.get("retcode"), res.get("comment") or res.get("detail")))
-        if res.get("retcode") in B.NO_RETRY:
+        if res.get("retcode_text") == "NO_RETRY":
             break
         time.sleep(0.5 * attempt)
     audit("CLOSE_FAILED", symbol=sym, broker_symbol=bsym, trade_id=tid, strategy=p.get("strategy"), ticket=ticket,
@@ -510,9 +525,6 @@ def startup() -> None:
     """At service start: reconnect from saved credentials when the switch is on (never sends an order by itself)."""
     if not auto_trade_enabled():
         _log.info("MT5 auto-trade: switch AUTO_TRADE is off")
-        return
-    if not B.available():
-        audit("STARTUP", result="NOT_INSTALLED", reason=B.not_installed()["detail"])
         return
     res = reconnect_from_saved()
     audit("STARTUP", result="CONNECTED" if res.get("ok") else "NOT_CONNECTED", reason=None if res.get("ok") else "%s: %s" % (res.get("reason"), res.get("detail")))

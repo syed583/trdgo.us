@@ -1001,7 +1001,7 @@ const emQs = (q: EmPage) => Object.entries(q).filter(([, v]) => v !== '' && v !=
 /** MT5 auto-trading (operator only). The password travels once, in the connect body, and is never read back. */
 export const mt5 = {
   status: (s?: AbortSignal) => request<any>('/api/mt5/status', s),
-  connect: (body: { login: string; password: string; server: string; remember?: boolean }) => send<any>('/api/mt5/connect', 'POST', body),
+  connect: (body: { login: string; password: string; server: string; base_url?: string; remember?: boolean }) => send<any>('/api/mt5/connect', 'POST', body),
   reconnect: () => send<any>('/api/mt5/reconnect', 'POST', {}),
   disconnect: (forget: boolean) => send<any>('/api/mt5/disconnect', 'POST', { forget }),
   pause: (paused: boolean) => send<any>('/api/mt5/pause', 'POST', { paused }),

@@ -17,10 +17,10 @@ test('account page shows the switch, connection status, the pre-filled server an
   assert.ok(!/s3cret/.test(h));
 });
 
-test('account page reports a failed connection and a missing package', () => {
+test('account page reports a failed connection and the paused state', () => {
   g.__apiState = { mt5status: { data: { installed: false, install_note: 'pip install MetaTrader5', connected: false, auto_trade: true, paused: true, server: 'STGlobalMarketsLtd-Live-1', last_error: 'INITIALIZE_FAILED: -6 auth', open_positions: [] } } };
   const h = render(<Mt5AccountView />);
-  assert.match(h, />Failed</); assert.match(h, /INITIALIZE_FAILED/); assert.match(h, /NOT installed/); assert.match(h, /entries PAUSED/);
+  assert.match(h, />Failed</); assert.match(h, /INITIALIZE_FAILED/); assert.match(h, /mtapi\.io/); assert.match(h, /entries PAUSED/); assert.match(h, /MT API endpoint/);
 });
 
 test('symbol mapping page lists every symbol with its status and the X of Y summary', () => {
