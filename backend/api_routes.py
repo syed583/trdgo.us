@@ -3414,7 +3414,11 @@ def market_etf_strip() -> dict:
             except Exception as exc:  # noqa: BLE001
                 q, errors = None, errors + [f"{sym}: {type(exc).__name__}"]
             if not q:
-                st = uw.last_status() if hasattr(uw, "last_status") else "NO_DATA"
+                # the status of THIS symbol's quote call (uw.quote caches it), not the process-wide last status of any request
+                try:
+                    st = (uw.quote(sym) or {}).get("status") or "NO_DATA"
+                except Exception:  # noqa: BLE001
+                    st = uw.last_status() if hasattr(uw, "last_status") else "NO_DATA"
                 rows.append({"symbol": sym, "price": None, "change": None, "change_percent": None, "bid": None,
                              "ask": None, "updated_at": None, "age_s": None, "status": st or "NO_DATA"})
                 errors.append(f"{sym}: no quote ({st})")

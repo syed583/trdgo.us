@@ -20,7 +20,7 @@ PINS = {
     "earnings_engine.py": "d2da225e84ecae07e3da3429639828e38fa7b87db033b067d45e22cdc1cd9039",
     "earnings_equity_service.py": "516f87dbdca1acf76e7cdeb08053295f17231f6fee85ee908054ac93527d23f3",
     "earnings_trade_service.py": "32e7db8f5a2ac1719764884f2390af9d9c0cb74500aa159de2fbfbad920cd931",
-    "tab_settings.py": "759fe7dd0d54795f14d78f2139af92a23933cf49c56523a7960aabdfa44fc05e",
+    "tab_settings.py": "54745601252e4fbda59ae37b1181615242f073d974cdd0bf205058832647d0d5",   # re-pinned 2026-11-11: UW_BUDGET rails only (essential 15k->60k, intraday 44k->89k); no weight or threshold
     "gemini_intraday_service.py": "5b0ba43b68b60ef58de116123e4497924046e5639e0ddaced1685566b84cac20",
     "intraday_grok_service.py": "f23e8626543a3764bba25a56e5b988792b6b96c4ee6391fda463764f604ae6dc",
     "kimi_intraday_service.py": "03ad3db52a75e7fb193a9226b68ceba06c41926391ad830387b21a56fc4a2e90",
