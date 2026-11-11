@@ -49,14 +49,14 @@ def with_manifest(files: dict, root: str) -> dict:
     return {root + "/" + n: b for n, b in files.items()}
 
 
-KIT_README = """KIT V6.2 (hourly-cap pause: a run that stops at our own hourly rail is a successful partial pass, not a provider failure) - install ONLY with the owner's explicit approval, from an elevated PowerShell on the server.
-Three backend files: smart_move_engine20.py, smart_move_collection_runner.py, smart_move_monday_bmo.py. Every other kit file must be the installed v6.1 bytes (checked); a rollback returns exactly to v6.1.
+KIT_README = """KIT V6.3 (v6.2 hourly-cap pause + E01/E02 calendar planner + runner safety) - install ONLY with the owner's explicit approval, from an elevated PowerShell on the server.
+Four backend files: smart_move_engine20.py, smart_move_collection_runner.py, smart_move_monday_bmo.py, smart_move_calendar_tiers.py. Every other kit file must be the installed v6.1 bytes (checked); a rollback returns exactly to v6.1.
   1. verify the zip SHA-256 and MANIFEST.sha256 anchor against RELEASE_HASHES_V6_3.txt (sent separately)
   2. python install_kit_v6_3.py install  --manifest KIT_V6_3_MANIFEST.json --payload payload\\backend --app-backend C:\\apps\\us-stock-reader\\backend --backup-root C:\\smlive\\kit_v6_3_backups --state-root C:\\apps\\us-stock-reader\\sm_collector_state --store-dir C:\\apps\\us-stock-reader\\sm_evidence_store
   3. python install_kit_v6_3.py rollback --manifest KIT_V6_3_MANIFEST.json --app-backend ... (same paths)         # exact return to v6
   4. python install_kit_v6_3.py recover  --manifest KIT_V6_3_MANIFEST.json --app-backend ... (same paths)         # only after an interrupted install
 The installer refuses while the collector lock exists, while the runner kill switch is missing, while the installed files differ from the approved v5 hashes, or while another operation runs.
-Installing the kit changes no budget, limit, threshold, window or scoring rule: it only changes how a DENIED HOURLY_SHARED_CAP is classified (pause) and how scan_ok is derived from it.
+Installing the kit changes no budget, limit, threshold, window or scoring rule: it changes how a DENIED HOURLY_SHARED_CAP is classified (pause), how scan_ok is derived from it, how a small ceiling funds urgent calendar slots (within the hard ceiling), and when the runner releases its kill switch.
 """
 
 WRAPPER_README = """COLLECTOR WRAPPER V2 (adds -Profile engine20|monday_bmo_friday, default engine20 = unchanged behaviour) - replaces collector_tools\\run_engine20_collection.ps1 only. The settings file is never touched.
