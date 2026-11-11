@@ -97,8 +97,11 @@ export function Mt5AccountView() {
 }
 
 export function Mt5SymbolsView() {
-  const sy = useApi<any>((s) => mt5.symbols(s), [], { refreshMs: 60_000 });
+  const [polling, setPolling] = useState(false);
+  const sy = useApi<any>((s) => mt5.symbols(s), [], { refreshMs: polling ? 3_000 : 60_000 });
   const d = sy.data;
+  const job = d?.automap;
+  if (job && polling && !job.running) setPolling(false);
   const [edit, setEdit] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -117,7 +120,8 @@ export function Mt5SymbolsView() {
         <>
           <div className="sm-filters">
             <b data-testid="mt5-map-summary">{d.summary}</b>
-            <button className="ghost-btn" disabled={busy || !d.connected} onClick={() => act(() => mt5.automap(), 'Auto-map done')} title={d.connected ? '' : 'connect the account first'}>Auto-map with the broker</button>
+            <button className="ghost-btn" disabled={busy || !d.connected || job?.running} onClick={() => { setPolling(true); act(() => mt5.automap(), 'Auto-map started'); }} title={d.connected ? '' : 'connect the account first'}>{job?.running ? `Auto-mapping ${job.done}/${job.total}…` : 'Auto-map with the broker'}</button>
+            {job?.finished_at && !job.running && <span className="sm-q-muted" data-testid="mt5-automap-result">Last auto-map: {job.mapped?.length ?? 0} mapped, {job.unmapped?.length ?? 0} not on the broker{job.broker_symbols != null ? ` (broker lists ${job.broker_symbols} symbols)` : ''}{job.error ? ` · ${job.error}` : ''}</span>}
             <button className="ghost-btn" onClick={() => sy.refresh()}><RefreshCw size={14} /> Reload</button>
             {!d.connected && <span className="sm-q-muted">Not connected: new mappings are saved UNVERIFIED and will not trade until verified.</span>}
           </div>

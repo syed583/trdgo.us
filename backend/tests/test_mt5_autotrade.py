@@ -45,6 +45,8 @@ class FakeMtapi:
             return (200, json.dumps(TOKEN)) if self.login_ok else (201, json.dumps({"code": 65538, "message": "Invalid account", "nodeName": "mt5-1", "stackTrace": "...", "user": 123}))
         if q.get("id") != TOKEN:
             return 201, json.dumps({"code": 1, "message": "Invalid token", "nodeName": "mt5-1", "user": 0})
+        if path == "Symbols":
+            return 200, json.dumps({n: {"description": n} for n in self.symbols})          # swagger: a map symbol -> SymbolInfo
         if path == "AccountSummary":
             return 200, json.dumps({"balance": 10000.0, "equity": 10010.0, "currency": "USD", "freeMargin": 9000.0, "leverage": 100, "type": "Demo", "name": "Demo", "company": "ST"})
         if path == "SymbolParams":
@@ -90,6 +92,7 @@ def fake(tmp_path, monkeypatch):
     for k in ("MT5_LOGIN", "MT5_PASSWORD", "MT5_SERVER", "MT5_BASE_URL"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(AT, "software_symbols", lambda: ["AAPL", "TSLA", "NVDA"])
+    monkeypatch.setattr(AT, "_ignore_automap_on_connect", True)
     AT._conn.update(connected=False, account=None, since=None, last_error=None, server=None, base_url=None)
     yield m
     B._reset_for_tests(None)
@@ -171,11 +174,38 @@ def test_mapping_verifies_against_the_broker_and_unmapped_never_trades(fake):
     assert AT.set_mapping("TSLA", "")["status"] == "UNMAPPED" and AT.mapped("TSLA") is None
 
 
-def test_automap_tries_the_plain_ticker_then_suffixes(fake):
+def test_automap_uses_one_symbols_call_then_verifies_only_the_matches(fake):
     AT.connect(123, "p", "STGlobalMarketsLtd-Live-1")
+    n0 = len(fake.calls)
     r = AT.automap()
     assert {x["symbol"]: x["broker_symbol"] for x in r["mapped"]} == {"AAPL": "AAPL", "TSLA": "TSLA.NAS"}
-    assert [x["symbol"] for x in r["unmapped"]] == ["NVDA"] and r["summary"] == "2 of 3 symbols mapped"
+    assert [x["symbol"] for x in r["unmapped"]] == ["NVDA"] and r["unmapped"][0]["note"] == "not offered by the broker" and r["summary"] == "2 of 3 symbols mapped"
+    paths = [pp for pp, q in fake.calls[n0:]]
+    assert paths.count("Symbols") == 1 and paths.count("SymbolParams") == 2                  # never one call per candidate suffix
+    st = AT.automap_state()
+    assert st["running"] is False and st["done"] == 3 and st["total"] == 3 and st["broker_symbols"] == 2 and st["finished_at"]
+    assert AT.mapping_rows()["automap"]["done"] == 3
+
+
+def test_match_broker_symbol_rules():
+    names = ["AAPL", "TSLA.NAS", "MSFT.US", "NVDA.NAS", "NVDA.NYSE", "ko"]
+    assert AT.match_broker_symbol("AAPL", names) == "AAPL" and AT.match_broker_symbol("TSLA", names) == "TSLA.NAS"
+    assert AT.match_broker_symbol("MSFT", names) == "MSFT.US" and AT.match_broker_symbol("KO", names) == "ko"
+    assert AT.match_broker_symbol("NVDA", names) == "NVDA.NAS"                             # configured suffix order decides
+    assert AT.match_broker_symbol("AMZN", names) is None and AT.match_broker_symbol("TSLA", names, previous="TSLA.NAS") == "TSLA.NAS"
+
+
+def test_automap_runs_in_the_background_and_status_keeps_answering(fake):
+    AT.connect(123, "p", "STGlobalMarketsLtd-Live-1")
+    r = AT.start_automap()
+    assert r["ok"] and r["started"] is True
+    import time as _t
+    for _ in range(200):
+        if not AT.automap_state()["running"]:
+            break
+        _t.sleep(0.02)
+    assert AT.automap_state()["running"] is False and AT.mapping_rows()["summary"] == "2 of 3 symbols mapped"
+    assert AT.status()["connected"] is True
 
 
 # ---------------------------------------------------------------- entries
@@ -352,7 +382,9 @@ def test_routes_are_operator_only_and_wired_into_the_app(fake, monkeypatch):
         assert c.get("/api/mt5/symbols").json()["total"] == 3
         r = c.post("/api/mt5/symbols/map", json={"symbol": "aapl", "broker_symbol": "AAPL"}, headers={"origin": "http://testserver"})
         assert r.json()["status"] == "OK" and r.json()["map_status"] == "MAPPED"
-        assert c.get("/api/mt5/audit?limit=5").json()["rows"][0]["event"] in ("MAPPED", "CONNECTED")
+        r = c.post("/api/mt5/symbols/automap", json={}, headers={"origin": "http://testserver"})
+        assert r.status_code == 200 and r.json()["status"] == "OK" and "running" in r.json()
+        assert c.get("/api/mt5/audit?limit=5").json()["rows"][0]["event"] in ("MAPPED", "CONNECTED", "AUTOMAP")
         assert c.post("/api/mt5/disconnect", json={}, headers={"origin": "http://testserver"}).json()["connected"] is False
 
 

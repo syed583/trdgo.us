@@ -92,7 +92,7 @@ def mt5_symbols_map(request: Request, payload: dict = Body(...)) -> dict:
 @router.post("/symbols/automap")
 def mt5_symbols_automap(request: Request) -> dict:
     _require_operator(request)
-    res = AT.automap()
+    res = AT.start_automap()
     return {"status": "OK" if res.get("ok") else "FAILED", **res}
 
 

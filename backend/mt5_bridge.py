@@ -25,7 +25,7 @@ _log = logging.getLogger("mt5")
 _lock = threading.RLock()
 
 DEFAULT_BASE_URL = "https://mt5.mtapi.io/"
-TIMEOUT_S = 25
+TIMEOUT_S = 15
 _session: dict = {"base_url": DEFAULT_BASE_URL, "token": None, "login": None, "server": None}
 
 OP_BUY, OP_SELL = 0, 1
@@ -333,5 +333,10 @@ def symbols_list() -> dict:
     res = _call("Symbols")
     if not res.get("ok"):
         return {"ok": False, "reason": res.get("reason"), "detail": res.get("detail")}
-    rows = res["data"] if isinstance(res["data"], list) else (_g(res["data"], "symbols", "items") or [])
-    return {"ok": True, "symbols": [s if isinstance(s, str) else _g(s, "symbol", "name") for s in rows]}
+    data = res["data"]
+    if isinstance(data, dict) and not any(k in data for k in ("symbols", "items")):
+        names = list(data.keys())                                               # swagger: /Symbols returns a map symbol -> SymbolInfo
+    else:
+        rows = data if isinstance(data, list) else (_g(data, "symbols", "items") or [])
+        names = [x if isinstance(x, str) else _g(x, "symbol", "name") for x in rows]
+    return {"ok": True, "symbols": [n for n in names if n]}

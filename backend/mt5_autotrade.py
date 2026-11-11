@@ -178,6 +178,7 @@ def load_credentials() -> Optional[dict]:
 
 # ----------------------------------------------------------------------------- connection
 _conn: dict = {"connected": False, "account": None, "since": None, "last_error": None, "server": None, "base_url": None}
+_ignore_automap_on_connect = False          # tests set this; production auto-maps right after a successful connect
 
 
 def connect(login: int, password: str, server: str, remember: bool = True, base_url: Optional[str] = None) -> dict:
@@ -189,6 +190,8 @@ def connect(login: int, password: str, server: str, remember: bool = True, base_
             if remember:
                 save_credentials(int(login), password, server, base)
             audit("CONNECTED", detail={"login": int(login), "server": server, "base_url": base, "account_kind": (res["account"] or {}).get("account_kind")})
+            if not _ignore_automap_on_connect:
+                start_automap()
         else:
             _conn.update(connected=False, account=None, last_error="%s: %s" % (res.get("reason"), res.get("detail")), server=server, base_url=base)
             audit("CONNECT_FAILED", reason=res.get("reason"), detail=res.get("detail"))
@@ -213,7 +216,9 @@ def disconnect(forget: bool = False) -> dict:
 
 
 def status() -> dict:
-    with _lock:
+    # No module lock here: a status read must never queue behind a long operation (the first auto-map did exactly that and
+    # every page timed out). The bridge serialises its own HTTP calls.
+    if True:
         live = B.account() if (_conn["connected"] and B.available()) else None
         if live and not live.get("ok"):
             _conn.update(connected=False, account=None, last_error="%s: %s" % (live.get("reason"), live.get("detail")))
@@ -264,7 +269,7 @@ def mapping_rows() -> dict:
         rows.append({"symbol": s, "broker_symbol": e.get("broker_symbol"), "status": "MAPPED" if e.get("broker_symbol") and e.get("verified") else ("UNVERIFIED" if e.get("broker_symbol") else "UNMAPPED"),
                      "verified_at": e.get("verified_at"), "source": e.get("source"), "volume_min": e.get("volume_min"), "volume_step": e.get("volume_step"), "trade_mode": e.get("trade_mode_text"), "note": e.get("note")})
     mapped = sum(1 for r in rows if r["status"] == "MAPPED")
-    return {"rows": rows, "mapped": mapped, "total": len(rows), "summary": "%d of %d symbols mapped" % (mapped, len(rows))}
+    return {"rows": rows, "mapped": mapped, "total": len(rows), "summary": "%d of %d symbols mapped" % (mapped, len(rows)), "automap": automap_state()}
 
 
 def verify_broker_symbol(broker_symbol: str) -> dict:
@@ -284,51 +289,108 @@ def set_mapping(symbol: str, broker_symbol: Optional[str], source: str = "manual
     (an unverified mapping never trades)."""
     symbol = (symbol or "").upper().strip()
     broker_symbol = (broker_symbol or "").strip()
-    m = load_map()
     if not broker_symbol:
-        m["map"].pop(symbol, None)
-        save_map(m)
+        with _map_lock:
+            m = load_map()
+            m["map"].pop(symbol, None)
+            save_map(m)
         audit("UNMAPPED", symbol=symbol, detail={"source": source})
         return {"ok": True, "symbol": symbol, "status": "UNMAPPED"}
-    v = verify_broker_symbol(broker_symbol) if _conn["connected"] else {"ok": False, "reason": "NOT_CONNECTED"}
+    v = verify_broker_symbol(broker_symbol) if _conn["connected"] else {"ok": False, "reason": "NOT_CONNECTED"}   # network, no lock held
     e = {"broker_symbol": broker_symbol, "source": source, "verified": bool(v.get("ok")), "verified_at": _now_iso() if v.get("ok") else None, "note": None if v.get("ok") else "%s: %s" % (v.get("reason"), v.get("detail", ""))}
     if v.get("ok"):
         i = v["info"]
         e.update(volume_min=i.get("volume_min"), volume_max=i.get("volume_max"), volume_step=i.get("volume_step"), digits=i.get("digits"), trade_mode_text=i.get("trade_mode_text"),
                  filling_ioc=i.get("filling_ioc"), filling_fok=i.get("filling_fok"))
-    m["map"][symbol] = e
-    save_map(m)
+    with _map_lock:
+        m = load_map()
+        m["map"][symbol] = e
+        save_map(m)
     audit("MAPPED" if e["verified"] else "MAP_UNVERIFIED", symbol=symbol, broker_symbol=broker_symbol, reason=e.get("note"), detail={"source": source})
     return {"ok": True, "symbol": symbol, "broker_symbol": broker_symbol, "status": "MAPPED" if e["verified"] else "UNVERIFIED", "note": e.get("note")}
 
 
-def automap(candidates: Optional[dict] = None) -> dict:
-    """For every software symbol without a verified mapping, try the plain ticker and common broker suffixes."""
+_automap: dict = {"running": False, "started_at": None, "finished_at": None, "done": 0, "total": 0, "mapped": [], "unmapped": [], "error": None, "broker_symbols": None}
+_automap_lock = threading.Lock()
+_map_lock = threading.Lock()
+
+
+def automap_state() -> dict:
+    return {k: v for k, v in _automap.items() if k != "broker_symbols"} | {"broker_symbols": _automap["broker_symbols"]}
+
+
+def _suffixes() -> list:
+    return [x.strip() for x in (os.getenv("MT5_SYMBOL_SUFFIXES") or ",.NAS,.NYSE,.US,.m").split(",")]
+
+
+def match_broker_symbol(sym: str, broker_names: list, previous: Optional[str] = None) -> Optional[str]:
+    """Pure: the broker name for a software symbol, from the broker's own list. Exact (case-insensitive) first, then the
+    configured suffixes, then a UNIQUE 'SYMBOL.<anything>' candidate. None when the broker does not offer it."""
+    by_upper = {n.upper(): n for n in broker_names if n}
+    for cand in ([previous] if previous else []) + [sym] + [sym + suf for suf in _suffixes() if suf]:
+        hit = by_upper.get(cand.upper())
+        if hit:
+            return hit
+    pref = [n for u, n in by_upper.items() if u.startswith(sym.upper() + ".")]
+    return pref[0] if len(pref) == 1 else None
+
+
+def run_automap() -> dict:
+    """ONE Symbols call, local matching, then one SymbolParams verification per matched symbol (never per candidate).
+    Runs without the module lock so status / mapping reads keep answering. Symbols the broker does not offer stay UNMAPPED."""
     if not _conn["connected"]:
         return {"ok": False, "reason": "NOT_CONNECTED", "detail": "connect the MT5 account first"}
-    suffixes = [x.strip() for x in (os.getenv("MT5_SYMBOL_SUFFIXES") or ",.NAS,.NYSE,.US,.m").split(",")]
-    m = load_map()
-    done, failed = [], []
-    for s in software_symbols():
-        e = m["map"].get(s) or {}
-        if e.get("verified"):
-            continue
-        tried = []
-        hit = None
-        for suf in ([e["broker_symbol"]] if e.get("broker_symbol") else []) + [s + suf for suf in suffixes]:
-            tried.append(suf)
-            v = verify_broker_symbol(suf)
-            if v.get("ok"):
-                hit = suf
-                break
-        if hit:
-            set_mapping(s, hit, source="auto")
-            done.append({"symbol": s, "broker_symbol": hit})
-        else:
-            failed.append({"symbol": s, "tried": tried})
-    audit("AUTOMAP", detail={"mapped": len(done), "unmapped": len(failed)})
-    mr = mapping_rows()
-    return {"ok": True, "mapped": done, "unmapped": failed, "mapped_count": mr["mapped"], "total": mr["total"], "summary": mr["summary"]}
+    with _automap_lock:
+        if _automap["running"]:
+            return {"ok": False, "reason": "ALREADY_RUNNING"}
+        _automap.update(running=True, started_at=_now_iso(), finished_at=None, done=0, total=0, mapped=[], unmapped=[], error=None)
+    try:
+        lst = B.symbols_list()
+        if not lst.get("ok"):
+            _automap.update(error="%s: %s" % (lst.get("reason"), lst.get("detail")))
+            audit("AUTOMAP_FAILED", reason=_automap["error"])
+            return {"ok": False, "reason": lst.get("reason"), "detail": lst.get("detail")}
+        names = lst["symbols"]
+        _automap["broker_symbols"] = len(names)
+        m = load_map()
+        todo = [s for s in software_symbols() if not (m["map"].get(s) or {}).get("verified")]
+        _automap["total"] = len(todo)
+        for s in todo:
+            prev = (m["map"].get(s) or {}).get("broker_symbol")
+            hit = match_broker_symbol(s, names, prev)
+            if hit:
+                r = set_mapping(s, hit, source="auto")                       # one SymbolParams call (verification + volume rules)
+                (_automap["mapped"] if r.get("status") == "MAPPED" else _automap["unmapped"]).append({"symbol": s, "broker_symbol": hit, "note": r.get("note")})
+            else:
+                _automap["unmapped"].append({"symbol": s, "broker_symbol": None, "note": "not offered by the broker"})
+            _automap["done"] += 1
+        res = {"ok": True, "mapped": list(_automap["mapped"]), "unmapped": list(_automap["unmapped"])}
+        mr = mapping_rows()
+        res.update(mapped_count=mr["mapped"], total=mr["total"], summary=mr["summary"])
+        audit("AUTOMAP", detail={"broker_symbols": len(names), "mapped": len(_automap["mapped"]), "unmapped": len(_automap["unmapped"]), "summary": mr["summary"]})
+        return res
+    except Exception as exc:  # noqa: BLE001
+        _automap["error"] = "%s: %s" % (type(exc).__name__, exc)
+        audit("AUTOMAP_FAILED", reason=_automap["error"])
+        return {"ok": False, "reason": "ERROR", "detail": _automap["error"]}
+    finally:
+        _automap.update(running=False, finished_at=_now_iso())
+
+
+def start_automap() -> dict:
+    """Background job: returns at once with the job state; the mapping page polls it."""
+    if not _conn["connected"]:
+        return {"ok": False, "reason": "NOT_CONNECTED", "detail": "connect the MT5 account first", **automap_state()}
+    if _automap["running"]:
+        return {"ok": True, "started": False, **automap_state()}
+    threading.Thread(target=run_automap, name="mt5-automap", daemon=True).start()
+    time.sleep(0.05)
+    return {"ok": True, "started": True, **automap_state()}
+
+
+def automap() -> dict:
+    """Synchronous variant (tests, scripts)."""
+    return run_automap()
 
 
 def mapped(symbol: str) -> Optional[dict]:
