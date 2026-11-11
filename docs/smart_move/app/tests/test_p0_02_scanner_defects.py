@@ -5,8 +5,14 @@ D2  an event that only ever received PENDING_REFRESH got no WINDOW_MISSED marker
     PENDING record counted as a prediction), so the dashboard showed "PENDING FINAL REFRESH" as a historical outcome;
 D4  the status file hard-coded schedule.every_minutes = 60 although LIVE runs every 6 h (feeds the STALE label).
 """
+import sys
 from datetime import timedelta
+from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(ROOT / "backend"))
+sys.path.insert(0, str(ROOT / "docs" / "smart_move" / "app"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import smart_move_live_publisher as PUB  # noqa: E402
 from test_engine20 import NOW  # noqa: E402
 from test_live_publisher import EV, synth  # noqa: E402
