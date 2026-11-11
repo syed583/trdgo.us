@@ -151,3 +151,31 @@ def test_a_slot_that_fills_every_page_is_recorded_incomplete_not_silently_comple
     assert e["complete"] is False and e["reason"] == "PAGE_CAP_REACHED" and e["pages_fetched"] == 2
     st = CT.record_refresh(fresh_state(), svc.last_slot_log, SAT)
     assert CT.slot_is_fresh(st, CT.classify((date(2026, 11, 9), "premarket"), SAT), SAT) is False
+
+
+# ---------------------------------------------------------------- E01 / E02 (2026-11-11 handoff register)
+def test_e01_a_ceiling_of_five_still_refreshes_the_open_windows_within_the_hard_ceiling():
+    """Before: int(0.3*5) - 2 < 0 -> cap 0 -> every T0 slot deferred and the run proceeded on a stale calendar."""
+    p = CT.plan_refresh(SAT, fresh_state(), horizon_days=30, run_ceiling=5, budget_left=5, evidence_demand=0)
+    assert [c["key"] for c in p["refresh"]] == ["2026-11-09|premarket", "2026-11-09|afterhours"]
+    assert p["cap"] == 3 and p["est_requests"] == 2 + CT.CONFIRM_RESERVE and p["est_requests"] <= 5       # never above the run ceiling
+    assert not any(d["tier"] == "T1" for d in p["refresh"])
+    # a ceiling of 3 funds exactly one open slot (1 page + 2 confirmations); the second is deferred, never dropped
+    q = CT.plan_refresh(SAT, fresh_state(), horizon_days=30, run_ceiling=3, budget_left=3, evidence_demand=0)
+    assert [c["key"] for c in q["refresh"]] == ["2026-11-09|premarket"] and q["est_requests"] == 3
+    assert [d["key"] for d in q["deferred"] if d["tier"] == "T0_NEXT"] == ["2026-11-09|afterhours"]
+
+
+def test_e01_the_floor_never_exceeds_the_daily_budget_left():
+    p = CT.plan_refresh(SAT, fresh_state(), horizon_days=30, run_ceiling=5, budget_left=2, evidence_demand=0)
+    assert p["refresh"] == [] and p["cap"] == 0 and p["needed"] is False
+
+
+def test_e02_far_days_get_nothing_while_an_urgent_slot_is_deferred():
+    st = CT.record_refresh(fresh_state(), [log("2026-11-09", "afterhours", ["AAA"], pages=4, complete=False, reason="cut")], SAT)   # T0_NEXT needs 4 pages
+    p = CT.plan_refresh(SAT, st, horizon_days=30, run_ceiling=12, budget_left=50, evidence_demand=0)        # cap = int(3.6) - 2 = 1: funds the open slot only
+    assert [c["key"] for c in p["refresh"]] == ["2026-11-09|premarket"]
+    assert any(d["tier"] == "T0_NEXT" for d in p["deferred"]) and not any(c["tier"] == "T1" for c in p["refresh"])
+    # once the urgent slots fit, far days are funded again
+    q = CT.plan_refresh(SAT, st, horizon_days=30, run_ceiling=50, budget_left=50, evidence_demand=0)
+    assert [c["tier"] for c in q["refresh"]][:2] == ["T0_OPEN", "T0_NEXT"] and any(c["tier"] == "T1" for c in q["refresh"])

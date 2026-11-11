@@ -148,6 +148,12 @@ def plan_refresh(now, st: dict, *, horizon_days: int, run_ceiling: int, budget_l
     t0.sort(key=lambda c: (0 if c["tier"] == "T0_OPEN" else 1, c["cutoff_utc"] if c["tier"] == "T0_OPEN" else c["window_start_utc"], c["key"]))
     t1.sort(key=lambda c: (-(c["age_h"] if c["age_h"] is not None else 1e9), c["window_start_utc"], c["key"]))
     cap = max(0, min(int(share * run_ceiling), budget_left) - (CONFIRM_RESERVE if t0 or t1 else 0))
+    # E01 (small ceilings): the 30 % share of a small run (ceiling < 10) leaves nothing for even one urgent T0 slot, and
+    # the run would then proceed on a stale calendar. An open / next window may use the run ceiling itself (minus the
+    # confirmations) when the share cannot fund the first T0 slot; the owner-approved ceilings stay hard limits.
+    cap_share = cap                                   # the 30 % share: what far days (T1) may ever use
+    if t0 and cap < t0[0]["est_requests"]:
+        cap = max(0, max(cap, min(budget_left, run_ceiling) - CONFIRM_RESERVE))   # the floor is for urgent slots only
     refresh, deferred, used = [], [], 0
     for c in t0:
         if used + c["est_requests"] <= cap:
@@ -156,7 +162,9 @@ def plan_refresh(now, st: dict, *, horizon_days: int, run_ceiling: int, budget_l
         else:
             deferred.append(dict(c, deferred_because="CALENDAR_CAP (%d requests planned of %d)" % (used, cap)))
     t0_used = used
-    t1_room = max(0, min(cap - t0_used, budget_left - evidence_demand - CONFIRM_RESERVE - t0_used))          # far days only get what is left after T0 AND the evidence this run needs
+    # E02: far days are funded only once every urgent slot is; while a T0 slot is deferred, T1 gets nothing.
+    t0_all_funded = len(refresh) == len(t0)
+    t1_room = max(0, min(cap_share - t0_used, budget_left - evidence_demand - CONFIRM_RESERVE - t0_used)) if t0_all_funded else 0   # far days only get what is left after T0 AND the evidence this run needs
     t1_used, taken = 0, 0
     for c in t1:
         if taken < t1_run_max and t1_used + c["est_requests"] <= t1_room:
