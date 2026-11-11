@@ -29,3 +29,31 @@ test('default export opens on the LIVE scanner and offers the historical snapsho
   const h = renderToStaticMarkup(<SmartMoveEngine20Page ctx={{} as any} />);
   assert.match(h, /data-testid="tab-live"/); assert.match(h, /Historical snapshot \(20 stocks\)/); assert.match(h, /sm-live-view/);
 });
+
+// ---------------------------------------------------------------- 2026-11-11: upcoming first, past last, only upcoming BUY/SELL blink
+test('upcoming earnings are listed first (earliest date first) and past earnings go to the bottom section', () => {
+  const h = live(base([
+    row({ symbol: 'OLD', earnings_date: '2026-11-05', label: 'HISTORICAL', signal_code: 'BUY' }),
+    row({ symbol: 'NXT', earnings_date: '2026-11-13', label: 'LIVE', signal_code: 'SELL' }),
+    row({ symbol: 'TMR', earnings_date: '2026-11-12', label: 'LIVE', signal_code: 'BUY' }),
+    row({ symbol: 'OLDER', earnings_date: '2026-11-03', label: 'HISTORICAL', signal_code: 'NO_TRADE' }),
+  ]));
+  const order = ['TMR', 'NXT', 'OLD', 'OLDER'].map((s) => h.indexOf('<b>' + s + '</b>'));
+  assert.ok(order.every((i) => i > 0) && order[0] < order[1] && order[1] < order[2] && order[2] < order[3], 'order: TMR, NXT, OLD, OLDER');
+  assert.ok(h.indexOf('data-testid="sm-section-upcoming"') < h.indexOf('<b>TMR</b>'));
+  const past = h.indexOf('data-testid="sm-section-past"');
+  assert.ok(past > h.indexOf('<b>NXT</b>') && past < h.indexOf('<b>OLD</b>'), 'past section header sits between the last upcoming and the first past row');
+});
+
+test('only upcoming BUY / SELL badges blink; past events and non-directional calls never do', () => {
+  const h = live(base([
+    row({ symbol: 'UPB', earnings_date: '2026-11-12', label: 'LIVE', signal_code: 'BUY' }),
+    row({ symbol: 'UPS', earnings_date: '2026-11-12', label: 'STALE', signal_code: 'SELL' }),
+    row({ symbol: 'UPN', earnings_date: '2026-11-12', label: 'LIVE', signal_code: 'NO_TRADE' }),
+    row({ symbol: 'PAB', earnings_date: '2026-11-05', label: 'HISTORICAL', signal_code: 'BUY' }),
+  ]));
+  const rows = h.split('data-testid="sm-live-row"').slice(1);
+  const blink = (sym: string) => rows.find((r) => r.includes('<b>' + sym + '</b>'))!.includes('sm-blink');
+  assert.equal(blink('UPB'), true); assert.equal(blink('UPS'), true);
+  assert.equal(blink('UPN'), false); assert.equal(blink('PAB'), false);
+});

@@ -22,6 +22,20 @@ export function CategoryBadge({ category }: { category: string }) {
   return <span className={cls} data-testid="category">{LABEL[category] || category}</span>;
 }
 
+/** Visual ordering only (no data logic): a row is "upcoming" while its window has not closed (LIVE / STALE); HISTORICAL and WINDOW MISSED are past. */
+export function isUpcoming(r: { label?: string }): boolean {
+  return r.label === 'LIVE' || r.label === 'STALE';
+}
+/** Upcoming rows first (earliest earnings date first), then past rows (newest first); ties by symbol. */
+export function sortUpcomingFirst<T extends { label?: string; symbol?: string }>(rows: T[], dateOf: (r: T) => string): T[] {
+  const by = (a: T, b: T, dir: 1 | -1) => dir * (dateOf(a) || '').localeCompare(dateOf(b) || '') || (a.symbol || '').localeCompare(b.symbol || '');
+  return [...rows.filter(isUpcoming).sort((a, b) => by(a, b, 1)), ...rows.filter((r) => !isUpcoming(r)).sort((a, b) => by(a, b, -1))];
+}
+/** The BUY / SELL badge pulses only while the event is still ahead (upcoming); past events never blink. */
+export function blinkClass(r: { label?: string; signal_code?: string }): string | undefined {
+  return isUpcoming(r) && (r.signal_code === 'BUY' || r.signal_code === 'SELL') ? 'sm-blink' : undefined;
+}
+
 export function missingText(r: { missing_factors?: any[] }): string {
   const m = r.missing_factors || [];
   return m.length ? m.map((x: any) => `${x[0]}: ${nice(x[1])}`).join('; ') : 'none';
@@ -125,7 +139,8 @@ export function LiveView() {
   const missed = all.filter((r) => r.label === 'WINDOW MISSED');
   const calls = all.filter((r) => r.label !== 'WINDOW MISSED');
   const n = (code: string) => calls.filter((r) => r.signal_code === code).length;
-  const shown = cat === 'MISSED' ? missed : calls.filter((r) => !cat || r.signal_code === cat);
+  const shown = sortUpcomingFirst(cat === 'MISSED' ? missed : calls.filter((r) => !cat || r.signal_code === cat), (r) => r.earnings_date);
+  const firstPast = shown.findIndex((r) => !isUpcoming(r));                 // where the "past earnings" section starts (-1: none)
   const s = d?.scan || {};
   const q = d?.requests || {};
   const e = d?.events || {};
@@ -172,15 +187,17 @@ export function LiveView() {
           {shown.length > 0 && (
             <div className="sm-table-wrap"><table className="sm-table sm-q-table" data-testid="sm-live-table">
               <thead><tr><th>Symbol</th><th>Earnings date</th><th>Session</th><th>Prediction</th><th>Bull</th><th>Bear</th><th>Coverage</th><th>Evidence freshness</th><th>Liquidity</th><th>Missing factors</th><th>Window closes (ET)</th></tr></thead>
-              <tbody>{shown.map((r) => {
+              <tbody>{shown.map((r, i) => {
                 const k = r.symbol + r.earnings_date;
                 const tone = LIVE_TONE[r.label] || ['gray', ''];
                 return (
                   <Fragment key={k}>
+                    {i === 0 && isUpcoming(r) && <tr className="sm-section" data-testid="sm-section-upcoming"><td colSpan={11}>Upcoming earnings (window open)</td></tr>}
+                    {i === firstPast && <tr className="sm-section" data-testid="sm-section-past"><td colSpan={11}>Past earnings (window closed)</td></tr>}
                     <tr className="sm-q-row" data-testid="sm-live-row" tabIndex={0} onClick={() => setOpen(open === k ? '' : k)} onKeyDown={(ev) => { if (ev.key === 'Enter') setOpen(open === k ? '' : k); }}>
                       <td><b>{r.symbol}</b><div className="sm-q-muted">{r.company || '—'}</div></td>
                       <td>{r.earnings_date}</td><td>{r.session === 'BMO' ? 'Before Open' : r.session === 'AMC' ? 'After Close' : r.session}</td>
-                      <td>{r.signal_code ? <CategoryBadge category={r.signal_code} /> : <span className="sm-q-badge amber">WINDOW MISSED</span>} <span className={`sm-q-badge ${tone[0]}`} title={tone[1]} data-testid="sm-live-label">{r.label}</span></td>
+                      <td>{r.signal_code ? <span className={blinkClass(r)} data-testid={blinkClass(r) ? 'sm-blink' : undefined}><CategoryBadge category={r.signal_code} /></span> : <span className="sm-q-badge amber">WINDOW MISSED</span>} <span className={`sm-q-badge ${tone[0]}`} title={tone[1]} data-testid="sm-live-label">{r.label}</span></td>
                       <td>{r.bull ?? '—'}</td><td>{r.bear ?? '—'}</td>
                       <td>{r.coverage ?? '—'}</td>
                       <td>{r.evidence_age_h != null ? <span className={r.evidence_warning ? 'sm-fresh stale' : undefined}>{r.evidence_age_h} h old{r.evidence_warning ? ' — old evidence' : ''}</span> : 'none'}<div className="sm-q-muted">{r.evidence_latest_et ?? ''}</div></td>
@@ -295,7 +312,7 @@ export function MondayBmoView() {
   const [f, setF] = useState('');
   const d = mb.data;
   const all: any[] = d?.rows || [];
-  const rows = all.filter((r) => !f || r.label === f);
+  const rows = sortUpcomingFirst(all.filter((r) => !f || r.label === f), (r) => r.monday_earnings_date);
   const a = d?.accuracy;
   const counts = d?.counts || {};
   return (
@@ -335,7 +352,7 @@ export function MondayBmoView() {
                   <td>{r.company || '—'}</td>
                   <td><b>{r.symbol}</b></td>
                   <td>{r.monday_earnings_date}<div className="sm-q-muted">Before Open · reaction {r.reaction_session ?? '—'}</div></td>
-                  <td>{r.signal ? <CategoryBadge category={r.signal_code === 'NO_TRADE' ? 'NO_TRADE' : r.signal_code} /> : <span className="sm-q-badge amber">WINDOW MISSED</span>} <span className={`sm-q-badge ${r.label === 'LIVE' ? 'green' : r.label === 'STALE' ? 'amber' : 'gray'}`}>{r.label}</span><div className="sm-q-muted">{r.reason ?? ''}</div></td>
+                  <td>{r.signal ? <span className={blinkClass(r)} data-testid={blinkClass(r) ? 'sm-blink' : undefined}><CategoryBadge category={r.signal_code === 'NO_TRADE' ? 'NO_TRADE' : r.signal_code} /></span> : <span className="sm-q-badge amber">WINDOW MISSED</span>} <span className={`sm-q-badge ${r.label === 'LIVE' ? 'green' : r.label === 'STALE' ? 'amber' : 'gray'}`}>{r.label}</span><div className="sm-q-muted">{r.reason ?? ''}</div></td>
                   <td>{r.bull ?? '—'}</td><td>{r.bear ?? '—'}</td><td>{r.coverage ?? '—'}<div className="sm-q-muted">liquidity {r.liquidity ?? '—'}</div></td>
                   <td>{r.predicted_at_et ?? '—'}</td>
                   <td>{r.friday_entry_deadline_et ?? '—'}{r.hours_to_deadline != null ? <div className="sm-q-muted">{r.hours_to_deadline} h left</div> : null}</td>
