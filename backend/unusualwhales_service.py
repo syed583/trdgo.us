@@ -153,6 +153,20 @@ def _max_inflight() -> int:
 
 MAX_INFLIGHT = _max_inflight()
 
+# A provider call made on a page's own worker thread (anonymous: the page did not label it) may wait this long for
+# a connection, then it answers BUSY and the thread is free again. The server has a small pool of worker threads;
+# with the class wait (45 s essential / 30 s dashboard) a page burst behind two slots held every one of them and
+# the whole site, /health included, stopped answering (2026-11-11, three times). Labelled work keeps its class wait.
+def _page_wait_s() -> float:
+    raw = os.environ.get("UW_PAGE_WAIT_S", "").strip()
+    try:
+        return max(0.5, min(30.0, float(raw))) if raw else 6.0
+    except ValueError:
+        return 6.0
+
+
+PAGE_WAIT_S = _page_wait_s()
+
 
 # --- compatibility with the production earnings-evaluation modules (earnings_outcomes, tools/outcome_*) ---------------
 # They mark their own thread as "background" so live requests win. Under the priority gate that is priority class
@@ -216,10 +230,12 @@ class _FairSlot:
         t0 = time.monotonic()
         if prio in (uw_priority.DASHBOARD, uw_priority.WARMER):
             self.gate.cfg["low_cap"] = _background_slots(self.gate.cfg["slots"])
-        self.gate.acquire(prio)
+        cap = uw_priority.wait_cap()
+        self.gate.acquire(prio, cap)
         handle = None
         try:
-            wait = max(0.05, self.gate.cfg["max_wait_s"][prio] - (time.monotonic() - t0))
+            limit = self.gate.cfg["max_wait_s"][prio] if cap is None else min(cap, self.gate.cfg["max_wait_s"][prio])
+            wait = max(0.05, limit - (time.monotonic() - t0))
             handle = self.machine.acquire(wait)
             if handle is None:
                 raise uw_priority.Busy("no machine-wide slot free (another process holds all of them)")
@@ -594,8 +610,17 @@ def _get_impl(path: str, params: Optional[dict] = None) -> dict:
     # Admission by priority and shared budget (uw_budget): a refusal is a clean "no data" answer, never
     # a silent stall, and it is counted against the module that asked.
     prio, module, tracker = _uwp.current()
-    if not _uwp.is_explicit() and _uwf.classify(path) in _ESSENTIAL_TYPES:
+    page_call = not _uwp.is_explicit()
+    if page_call and _uwf.classify(path) in _ESSENTIAL_TYPES:
         prio, module = _uwp.ESSENTIAL, "market_data"      # prices, options flow and positioning: essential
+    if page_call:
+        with _uwp.capped_wait(PAGE_WAIT_S):               # a page's thread never queues for the class's full wait
+            return _get_admitted(path, params, prio, module, tracker)
+    return _get_admitted(path, params, prio, module, tracker)
+
+
+def _get_admitted(path: str, params: Optional[dict], prio: int, module: str, tracker) -> dict:
+    global _last_status
     decision = _uwb.get().admit(prio, module)
     if not decision.ok:
         if tracker is not None:
@@ -778,7 +803,8 @@ def get(path: str, params: Optional[dict] = None) -> dict:
         if leader:
             flight = _req_flights[key] = _Flight()
     if not leader:
-        if flight.event.wait(timeout=35.0) and flight.result is not None:
+        cap = _uwp.wait_cap()
+        if flight.event.wait(timeout=35.0 if cap is None else min(35.0, cap + 2.0)) and flight.result is not None:
             _metrics["dedup_hits"] = _metrics.get("dedup_hits", 0) + 1
             return flight.result
         # the leader failed or took too long: make our own request below

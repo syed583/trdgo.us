@@ -379,3 +379,57 @@ def test_background_slots_by_environment_session_and_how_many_connections_produc
     monkeypatch.setenv("APP_ENV", "development")
     in_s[0] = True
     assert uw._background_slots(1) == 1                                    # a dev machine's pages must still load
+
+
+# ------------------------------------------------------- A.16: a page's thread never queues for long ---
+def test_gate_honours_a_shorter_wait_cap_but_never_a_longer_one():
+    g = pri.PriorityGate({"slots": 1, "max_wait_s": {1: 60, 2: 45, 3: 30, 4: 10}})
+    g.acquire(2)                                                       # the only slot is taken
+    t0 = time.monotonic()
+    with pytest.raises(pri.Busy, match="waited 0s|waited 1s"):
+        g.acquire(2, max_wait=0.3)                                     # the cap wins over the class's 45 s
+    assert time.monotonic() - t0 < 5.0 and g.stats[2]["busy"] == 1
+    g.cfg["max_wait_s"][4] = 0.2
+    t0 = time.monotonic()
+    with pytest.raises(pri.Busy):
+        g.acquire(4, max_wait=30.0)                                    # a cap above the class wait changes nothing
+    assert time.monotonic() - t0 < 5.0
+    g.release(2)
+
+
+def test_anonymous_page_call_answers_busy_after_the_page_wait_and_frees_its_thread(monkeypatch):
+    """Two slots held by labelled work; a page's own (anonymous) quote call must come back BUSY within the page wait,
+    while a labelled essential caller keeps waiting for its class's full allowance."""
+    monkeypatch.setattr(uw, "PAGE_WAIT_S", 0.4)
+    monkeypatch.setattr(uw, "configured", lambda: True)
+    monkeypatch.setattr(uw, "api_key", lambda: "x")
+    monkeypatch.setattr(uw, "_blocked_until", 0.0)
+
+    class _NoNet:                                                      # never a real request from a test
+        def open(self, *a, **k):
+            raise urllib.error.URLError("offline in tests")
+    monkeypatch.setattr(uw, "_OPENER", _NoNet())
+    gate = uw._inflight.gate
+    held = gate.cfg["slots"]
+    for _ in range(held):
+        gate.acquire(1)                                                # labelled live work holds every slot
+    try:
+        t0 = time.monotonic()
+        out = uw.get("/api/stock/QQQ/quote")                           # anonymous: the strip's own thread
+        took = time.monotonic() - t0
+        assert out["status"] == "BUSY" and took < 3.0, (out, took)
+        assert pri.wait_cap() is None                                  # the cap does not leak out of the call
+        # the same call, labelled by its caller, is not capped: it is still waiting when the cap would have fired
+        res = {}
+
+        def labelled():
+            with pri.use(pri.ESSENTIAL, "paper_trade_tracker"):
+                res["out"] = uw.get("/api/stock/QQQ/quote")
+        th = threading.Thread(target=labelled, daemon=True)
+        th.start()
+        th.join(1.5)
+        assert th.is_alive() and "out" not in res                     # not given up after 1.5 s (class wait is 45 s)
+    finally:
+        for _ in range(held):
+            gate.release(1)
+        th.join(10)

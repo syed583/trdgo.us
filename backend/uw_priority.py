@@ -51,6 +51,24 @@ def is_explicit() -> bool:
     return _ctx.get() is not None
 
 
+# A ceiling on how long THIS call chain may wait for a connection, regardless of its class (None: the class's
+# own maximum). Set for anonymous page requests: a page's worker thread must not sit in the queue for 45 s.
+_wait_cap: contextvars.ContextVar = contextvars.ContextVar("uw_wait_cap", default=None)
+
+
+def wait_cap() -> Optional[float]:
+    return _wait_cap.get()
+
+
+@contextmanager
+def capped_wait(seconds: Optional[float]):
+    token = _wait_cap.set(None if seconds is None else max(0.05, float(seconds)))
+    try:
+        yield
+    finally:
+        _wait_cap.reset(token)
+
+
 def current() -> tuple[int, str, Optional[Tracker]]:
     c = _ctx.get()
     return c if c else (DASHBOARD, "dashboard", None)
@@ -194,8 +212,12 @@ class PriorityGate:
                 d[w[0]] += 1
             return d
 
-    def acquire(self, prio: int) -> None:
+    def acquire(self, prio: int, max_wait: Optional[float] = None) -> None:
+        """A slot for ``prio``; raises Busy after the class's maximum wait (or ``max_wait`` when given and shorter)."""
         prio = prio if prio in NAMES else DASHBOARD
+        limit = self.cfg["max_wait_s"][prio]
+        if max_wait is not None:
+            limit = min(limit, max(0.05, float(max_wait)))
         with self._cond:
             if sum(1 for w in self._waiting if w[0] == prio) >= self.cfg["queue_limit"][prio]:
                 self.stats[prio]["busy"] += 1
@@ -204,7 +226,7 @@ class PriorityGate:
             t0 = self._clock()
             w = [prio, self._seq, t0]
             self._waiting.append(w)
-            deadline = t0 + self.cfg["max_wait_s"][prio]
+            deadline = t0 + limit
             try:
                 while True:
                     now = self._clock()
@@ -219,8 +241,7 @@ class PriorityGate:
                         return
                     if now >= deadline:
                         self.stats[prio]["busy"] += 1
-                        raise Busy(f"waited {self.cfg['max_wait_s'][prio]:.0f}s for a free slot "
-                                   f"({NAMES[prio]})")
+                        raise Busy(f"waited {limit:.0f}s for a free slot ({NAMES[prio]})")
                     self._cond.wait(min(0.25, max(0.01, deadline - now)))
             finally:
                 self._waiting.remove(w)
