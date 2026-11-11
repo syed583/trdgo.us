@@ -19,7 +19,7 @@
 | Missing-data handling verified | PASS | NVP never neutral; PENDING_REFRESH closed out as WINDOW_MISSED (v6.4 candidate) |
 | Earnings results verified | NOT TESTED | outcomes grading exists (smart_move_outcomes); not re-verified against live data in this pass |
 | Historical outcome calculations verified | BLOCKED | needs the production ledger/outcomes (E09) |
-| Dashboard integration verified | PARTIAL | reads correct files, no stale-as-fresh leak; label defects (STALE 150 min vs 6 h, DRY_RUN mode, mojibake) pending the app-side fix |
+| Dashboard integration verified | PASS (local) | reads correct files, no stale-as-fresh leak; label defects fixed on the app branch (STALE = cadence + grace, scanner mode, mojibake, ETF strip dash) — awaiting deploy |
 | Scheduler reliability verified | PARTIAL | resume/dedup/lock PASS; Friday-holiday Monday-BMO gap (D3) and no alert channel |
 | Full regression suite completed | PASS (offline) | TEST_RESULTS.md |
 | Working TRDGO.US application preserved | PASS | /health, /safety, A.10 running; Smart Money Move scanning again |
@@ -30,6 +30,6 @@
 COMPLETED: safety chain repair, planner E01/E02, scanner verification, kit v6.3 install, incident recovery.
 FIXED: 3 FAIL + 4 PARTIAL safety items; D1/D2/D4 (local); intraday 16:01 close (local).
 TESTED: offline suites above; VPS gates/plan-only.
-PENDING: 17:20 pass result; diffs of the three unbacked Nov 10 files; app deploy; kit v6.4.
+PENDING: 17:20 pass result; app deploy (hardening + 15:50 close + dashboard labels); kit v6.4 install (built, rehearsed 20/20, staging block ready).
 BLOCKED: historical accuracy rebuild (data), Friday-holiday schedule (owner), factor-F7 capture (owner), alert channel (owner choice of email/webhook).
 READY FOR CONTROLLED LIVE VALIDATION: yes for Smart Money Move under kit v6.3 (already scheduled); the app-side changes need their own deploy approval.

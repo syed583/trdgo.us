@@ -2,7 +2,7 @@
 
 ## Needs the owner's decision
 1. **Push** the local branches to GitHub: `feature/sm-handoff-nov10` (kit v6.3 source + tooling + D1/D2/D4), `feature/security-hardening` (app security fixes + 15:50 close). Nothing is on GitHub yet.
-2. **Kit v6.4** (publisher D1/D2/D4): build + rehearse + install, same path as v6.3. Changes only labels/markers and the status schedule field; no scoring, no budget.
+2. **Kit v6.4** (publisher D1/D2/D4 + bar-flag case): BUILT and rehearsed 20/20 (`release_candidates\sm_v6_4\`, zip sha cf6a581d…, anchor 35a07fb3…, staging block + v6_4 scripts ready). Install = same steps as v6.3. No scoring, no budget change.
 3. **App deploy** of `889e1332`: security hardening + tracker 15:50 close. Installer re-pin + window between Smart Money Move runs. Before it: confirm the VPS ACCESS_PASSWORD is not a placeholder (new build refuses to start otherwise); decide `LOGIN_MFA=1` and `TRUSTED_PROXIES`.
 4. **Friday-holiday Monday-BMO schedule (D3)**: add a variant trigger that falls inside a Wed-close..Thu-15:30 window in such weeks (e.g. Thu 20:35 VPS when Friday is a holiday), or make the variant task daily (its gates skip when nothing applies). Code needs no change.
 5. **Factor F7 options capture** (`-WithF7`, +2 requests per stock): currently OFF by scope default, never formally decided. Yes/no.

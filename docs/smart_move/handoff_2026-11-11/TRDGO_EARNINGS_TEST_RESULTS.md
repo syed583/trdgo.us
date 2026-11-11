@@ -7,6 +7,8 @@
 | New: planner E01/E02 | test_p1_calendar_tiers.py | 17 passed (3 new) |
 | New: runner safety | test_engine20.py | +2 passed (live-gate refusal of a persistent flag; AST pin that `kill_file.unlink()` sits inside the guarded block in both live profiles) |
 | New: P0-02 defects D1/D2/D4 | test_p0_02_scanner_defects.py | 4 passed; publisher + variant suites 37 passed |
+| New: end-to-end LIVE pass | test_e2e_live_main.py | 2 passed: `main()` -> live gates -> plan -> E20.run -> AttemptRecorder -> real InfraFetcher -> mocked `unusualwhales_service.get` -> store -> publisher (attempts = provider calls = status requests_attempted, 5 records, kill switch re-engaged); a governor DENIAL leaves no attempts line but a store-ledger line |
+| Kit v6.4 installer rehearsal (isolated copies) | rehearse_kit_v6_4.py | 20 passed, 0 failed (zip sha c52ce7a7->cf6a581d, anchor 35a07fb3) |
 | Kit v6.3 installer rehearsal (isolated copies) | rehearse_kit_v6_3.py | 20 passed, 0 failed (pre-check, install, post, rollback, interrupted install → recover, lock refusal, missing-kill refusal, wrapper install/rollback) |
 | App backend suite (security-hardening branch) | `wt_a10\backend\tests` | 1,604 tests: 5 failures, all pre-existing/environmental (zlib-ng compression test; horizon_days date-dependent on a Saturday; 3 order-dependent that pass alone); 28 new hardening tests pass; tracker tests pass incl. 3 new EOD fast-close pins |
 | release_check.py | both app trees | PASS |
@@ -20,6 +22,5 @@
 - Pending: 17:20 VPS LIVE pass under v6.3 (expect `halted: HOURLY_CAP`, `scan_ok: true`, `last_successful_scan_at` today); Thu 23:35 Monday-BMO pass.
 
 ## Not tested (and why)
-- End-to-end `main()` LIVE path through the real InfraFetcher/AttemptRecorder with a mocked provider (specified in the P0-03 report; `InfraFetcher` is deliberately never built in tests today). To add as `test_e2e_live_main.py`.
 - PowerShell scheduled-script exit codes (no harness; proven on the VPS by the plan-only run).
 - Historical accuracy rebuild (E09/P1-07): needs the production ledger and outcomes; not available locally.
