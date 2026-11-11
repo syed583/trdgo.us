@@ -318,10 +318,11 @@ def publish(rows: list, now, out_dir, *, scan_id: str, mode: str, scan_ok: bool,
         if cl["window"] == "CLOSED":
             c["closed"] += 1
             cutoff = _dt(cl["window_cutoff_utc"])
-            if mode == "LIVE" and key not in seen_pred and key not in seen_missed and now - cutoff <= PUB.MISSED_LOOKBACK:
+            only_pending = key in seen_pred and (latest.get(key) or {}).get("record_type") == "PREDICTION" and (latest.get(key) or {}).get("result") == "PENDING_REFRESH"
+            if mode == "LIVE" and (key not in seen_pred or only_pending) and key not in seen_missed and now - cutoff <= PUB.MISSED_LOOKBACK:
                 rec = PUB._append(out / PUB.LEDGER, dict({"schema": SCHEMA, "record_type": "WINDOW_MISSED", "symbol": cl["symbol"], "company": cl.get("company"), "event_date": cl["event_date"], "session": cl["session"],
                                                           "window_cutoff_utc": cutoff.isoformat(), "noted_at": now.isoformat(), "predicted": False, "scan_id": scan_id, "model_version": cl["model_version"],
-                                                          "reason": "NO_PREDICTION_BEFORE_THE_FRIDAY_DEADLINE", "evidence_items_at_close": len(PUB._evidence(r))}, **extra), prev, seq + 1)
+                                                          "reason": "ONLY_PENDING_REFRESH_BEFORE_THE_FRIDAY_DEADLINE" if only_pending else "NO_PREDICTION_BEFORE_THE_FRIDAY_DEADLINE", "evidence_items_at_close": len(PUB._evidence(r))}, **extra), prev, seq + 1)
                 prev, seq = rec["record_sha256"], seq + 1
                 seen_missed.add(key)
                 c["window_missed_noted"] += 1

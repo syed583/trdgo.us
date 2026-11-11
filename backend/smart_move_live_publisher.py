@@ -26,6 +26,7 @@ STATUS_SCHEMA = "smart_move.live_status.v1"
 LEDGER, STATUS = "live_predictions.jsonl", "live_status.json"
 CATEGORY = {"BUY": "BUY", "SELL": "SELL", "NO TRADE (genuine)": "NO_TRADE", "NO VALID PREDICTION": "NO_VALID_PREDICTION", "PENDING FINAL REFRESH": "PENDING_REFRESH"}
 MISSED_LOOKBACK = timedelta(days=10)
+SCHEDULE_MINUTES = {"LIVE": 360, "DRY_RUN": 60}          # owner decision 2026-11-05: LIVE every 6 h; the hourly task is DRY_RUN (status only)
 FUTURE_TOLERANCE = timedelta(seconds=5)
 
 
@@ -120,7 +121,11 @@ def publish_rows(rows: list, now, out_dir, *, scan_id: str, mode: str, scan_ok: 
         if r.get("earnings_date"):
             max_date = max(max_date or r["earnings_date"], r["earnings_date"])
         if r.get("kind") not in ("BMO", "AMC"):
-            skipped["announcement session unknown"] += 1
+            cal = r.get("calendar") or {}
+            if cal.get("status_now") == "STALE" or "ONLY_STALE_VENDOR_ROWS" in (cal.get("reasons") or []):
+                skipped["calendar observation stale"] += 1              # the vendors did label the session; the observation is just too old
+            else:
+                skipped["announcement session unknown"] += 1
             continue
         if r.get("blocked_by"):
             skipped["calendar not confirmed by two vendors"] += 1
@@ -134,10 +139,11 @@ def publish_rows(rows: list, now, out_dir, *, scan_id: str, mode: str, scan_ok: 
         if window == "CLOSED":
             c["closed"] += 1
             cutoff = _dt(cl["window_cutoff_utc"])
-            if mode == "LIVE" and key not in seen_pred and key not in seen_missed and now - cutoff <= MISSED_LOOKBACK:
+            only_pending = key in seen_pred and (latest.get(key) or {}).get("record_type") == "PREDICTION" and (latest.get(key) or {}).get("result") == "PENDING_REFRESH"
+            if mode == "LIVE" and (key not in seen_pred or only_pending) and key not in seen_missed and now - cutoff <= MISSED_LOOKBACK:
                 rec = _append(out / LEDGER, {"schema": SCHEMA, "record_type": "WINDOW_MISSED", "symbol": cl["symbol"], "company": cl.get("company"), "event_date": cl["event_date"], "session": cl["session"],
                                              "window_cutoff_utc": cutoff.isoformat(), "noted_at": now.isoformat(), "predicted": False, "scan_id": scan_id, "model_version": cl["model_version"],
-                                             "reason": "NO_PREDICTION_BEFORE_THE_WINDOW_CLOSED", "evidence_items_at_close": len(_evidence(r))}, prev, seq + 1)
+                                             "reason": "ONLY_PENDING_REFRESH_BEFORE_CLOSE" if only_pending else "NO_PREDICTION_BEFORE_THE_WINDOW_CLOSED", "evidence_items_at_close": len(_evidence(r))}, prev, seq + 1)
                 prev, seq = rec["record_sha256"], seq + 1
                 seen_missed.add(key)
                 c["window_missed_noted"] += 1
@@ -183,7 +189,7 @@ def publish_rows(rows: list, now, out_dir, *, scan_id: str, mode: str, scan_ok: 
                            "ny_date": now.astimezone(ET).date().isoformat()},
               "events": {"open_scanned": c["open"], "published_new": c["published"], "unchanged": c["unchanged"], "upcoming": c["upcoming"], "window_closed": c["closed"], "window_missed_noted": c["window_missed_noted"],
                          "unfunded_this_pass": unfunded, "skipped": dict(skipped), "published_by_result": {k[10:]: v for k, v in c.items() if k.startswith("published_") and k != "published"}},
-              "calendar": {"age_h": calendar_age_h, "through": max_date}, "schedule": {"every_minutes": 60}, "ledger": {"records": seq, "head_sha256": prev}}
+              "calendar": {"age_h": calendar_age_h, "through": max_date}, "schedule": {"every_minutes": SCHEDULE_MINUTES.get(mode, 60), "live_every_minutes": SCHEDULE_MINUTES["LIVE"], "dry_run_every_minutes": SCHEDULE_MINUTES["DRY_RUN"]}, "ledger": {"records": seq, "head_sha256": prev}}
     _atomic_json(sp, status)
     return status
 
