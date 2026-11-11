@@ -177,7 +177,16 @@ def sleep_seconds(default: float = 60.0) -> float:
     """How long the tracker loop sleeps. 60 s, except that it wakes at the official close when that is sooner (workflow v2)."""
     try:
         import intraday_workflow as wf
-        return wf.sleep_seconds(_et_now(), default) if wf.active() else default
+        if wf.active():
+            return wf.sleep_seconds(_et_now(), default)
+        # Pure-intraday rule: the 15:50 cutoff is a boundary the 60-second cadence must not blur. Wake exactly there.
+        now = _et_now()
+        cut = eod_cutoff(now.date())
+        if cut is not None:
+            to_cut = (cut - now).total_seconds()
+            if 0 < to_cut < default:
+                return max(1.0, to_cut + 1.0)
+        return default
     except Exception:  # noqa: BLE001
         return default
 
@@ -478,10 +487,54 @@ def _evidence(info: dict, q: dict, shares: int, entry: float, reason_ok: str = "
         return json.dumps({"error": "evidence not serialisable"})
 
 
+def _close_due_fast(s, et: datetime) -> int:
+    """At/after the EOD cutoff close every due position of TODAY from a direct quote, before any board is rebuilt.
+
+    A board rebuild re-scores ~38 names for four models and can take minutes under the shared provider limit; on the
+    first two live days (2026-11-09/10) the 15:50 tick reached the exits only at 16:01 ET. The close must not depend on
+    that work: one quote per symbol prices the exits, the rest of the tick runs afterwards as usual. Stop / target still
+    take precedence (same ``_exit_reason``). A symbol without a quote is left for the normal path. Returns the count."""
+    import paper_fills as pf
+    from sqlalchemy import update
+    from models_demo_trades import DemoTrade
+    today = et.date()
+    cut = eod_cutoff(today)
+    if cut is None or et < cut:
+        return 0
+    rows = s.query(DemoTrade).filter_by(status="OPEN", session_date=today).order_by(DemoTrade.id.asc()).all()
+    if not rows:
+        return 0
+    quotes: dict[str, Optional[float]] = {}
+    n = 0
+    for t in rows:
+        if t.symbol not in quotes:
+            quotes[t.symbol] = _quote_price(t.symbol)
+        last = quotes[t.symbol]
+        if last is None:
+            continue
+        stop, target = t.stop, t.target
+        if stop is None or target is None:
+            stop, target = _with_levels(t.side, t.entry_price, stop, target)
+        reason = _exit_reason(_Level(t, stop, target), float(last), None, True)
+        if not reason:
+            continue
+        exit_px = pf.fill_price(t.side, reason, stop, target, float(last), False)
+        profit, pct = _pnl(t.side, t.entry_price, exit_px, t.shares)
+        res = s.execute(update(DemoTrade).where(DemoTrade.id == t.id, DemoTrade.status == "OPEN").values(
+            stop=stop, target=target, exit_price=exit_px, last_price=exit_px, profit=profit, profit_pct=pct,
+            status=reason, exit_time=et.astimezone(timezone.utc)))
+        if res.rowcount:
+            n += 1
+            _log.info("EXIT %s %s %s #%s: %s at %.4f (level stop %.4f target %.4f, source quote, eod-fast) P&L %.2f",
+                      reason, t.strategy, t.symbol, t.id, t.side, exit_px, stop or 0.0, target or 0.0, profit)
+    return n
+
+
 def tick(force: bool = False) -> None:
     """Refresh open trades from the live boards and open new ones. Throttled."""
     global _last_tick
     now = _time.time()
+    boards_s = float("nan")
     if not force and (now - _last_tick) < 15:
         return
     if not _tick_lock.acquire(blocking=False):
@@ -498,8 +551,20 @@ def tick(force: bool = False) -> None:
         et = _et_now()
         today = et.date()
 
+        # Exits first at the cutoff: never let a slow board rebuild push the 15:50 close past the bell.
+        s0 = database.SessionLocal()
+        try:
+            if _close_due_fast(s0, et):
+                s0.commit()
+        except Exception:  # noqa: BLE001
+            _log.exception("eod fast close failed; the normal path will retry")
+        finally:
+            s0.close()
+
+        t_boards = _time.time()
         boards = {k: _row_map(b) for k, (lbl, spec) in MODELS.items()
                   if (b := _board(spec))}
+        boards_s = _time.time() - t_boards
 
         s = database.SessionLocal()
         try:
@@ -613,6 +678,9 @@ def tick(force: bool = False) -> None:
         _log.exception("paper-trade tick failed; the next tick retries")
     finally:
         _tick_lock.release()
+        took = _time.time() - now
+        if took >= 30:
+            _log.warning("tick took %.1fs (boards %.1fs)", took, boards_s)
 
 
 def _shadow_log_legacy(et, boards: dict, have0: set, have: set) -> None:

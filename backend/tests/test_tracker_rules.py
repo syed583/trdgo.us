@@ -327,3 +327,49 @@ def test_the_blotter_reports_sizing_quote_fields_and_rules(sim):
     assert {s["label"] for s in b["strategies"]} >= {"ChatGPT Intraday (retired)", "Claude Pro Intraday (retired)"}
     assert b["rules"]["entry_window_et"] == ["10:00", "15:00"] and b["rules"]["eod_close_et"] == "15:50"
     assert b["total_pct"] == 0.0
+
+
+def test_eod_close_happens_before_any_board_is_rebuilt(sim):
+    """2026-11-09/10: the 15:50 tick reached the exits at 16:01 because the four board rebuilds ran first. At the cutoff
+    the due positions are priced from a direct quote and closed before a single board is built."""
+    sim.quote("AAA", 100.0)
+    sim.signal("grok", "AAA", "BUY", 100.0)
+    sim.tick(11, 0)
+    assert sim.rows()[0].status == "OPEN"
+    sim.quote("AAA", 100.5)
+    real_board = dts._board
+    seen = {}
+
+    def slow_board(spec):
+        with sim.Session() as s:
+            seen.setdefault("open_when_boards_built", s.query(DemoTrade).filter_by(status="OPEN").count())
+        return real_board(spec)
+    sim.m.setattr(dts, "_board", slow_board)
+    sim.tick(15, 50)
+    r = sim.rows()[0]
+    assert r.status == "EOD_CLOSE" and r.exit_price == 100.5 and r.exit_time.astimezone(ET).time().strftime("%H:%M") == "15:50"
+    assert seen["open_when_boards_built"] == 0            # already closed when the boards were first touched
+
+
+def test_eod_fast_close_keeps_stop_and_target_precedence_and_skips_unquoted(sim):
+    sim.quote("AAA", 100.0)
+    sim.quote("BBB", 50.0)
+    sim.signal("grok", "AAA", "BUY", 100.0, sl=99.0, tp=102.0)
+    sim.signal("kimi", "BBB", "SELL", 50.0)
+    sim.tick(11, 0)
+    sim.quote("AAA", 103.0)                                 # through the target at the cutoff
+    del sim.quotes["BBB"]                                   # no quote at all: left for the normal path
+    sim.price("kimi", "BBB", 49.5)                          # ...which prices it from the board
+    sim.tick(15, 50)
+    rows = {r.symbol: r for r in sim.rows()}
+    assert rows["AAA"].status == "TARGET" and rows["AAA"].exit_price == 103.0     # observed fill, as everywhere else
+    assert rows["BBB"].status == "EOD_CLOSE" and rows["BBB"].exit_price == 49.5
+
+
+def test_tracker_loop_wakes_exactly_at_the_cutoff(sim):
+    sim.now = et(15, 49, DAY).replace(second=30)
+    assert 30.0 <= dts.sleep_seconds() <= 32.0
+    sim.now = et(12, 0, DAY)
+    assert dts.sleep_seconds() == 60.0
+    sim.now = et(15, 50, DAY).replace(second=5)
+    assert dts.sleep_seconds() == 60.0
