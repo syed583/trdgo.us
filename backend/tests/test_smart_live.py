@@ -49,7 +49,7 @@ def test_the_status_block_answers_last_next_scanned_skipped_and_requests(live):
     out = SL.load(str(live), T2 + timedelta(minutes=10))
     s, e, q = out["scan"], out["events"], out["requests"]
     assert s["mode"] == "LIVE" and s["last_successful_scan_et"] == "2026-11-02 16:30 EST" and s["minutes_since_success"] == 10 and s["last_scan_ok"] is True
-    assert s["next_scan_expected_et"] == "2026-11-02 17:31 EST" and s["last_trigger"]["event"] == "FINISHED"
+    assert s["next_scan_expected_et"] == "2026-11-02 22:31 EST" and s["last_trigger"]["event"] == "FINISHED"   # next LIVE pass: 6 h after the last trigger
     assert e["open_scanned"] == 4 and e["published_new"] == 1 and e["unchanged"] == 3 and e["skipped"] == {}
     assert (q["used_today"], q["remaining_today"], q["daily_limit"], q["run_limit"], q["concurrency"]) == (17, 683, 700, 150, 1)
     assert out["calendar"] == {"age_h": 2.2, "through": "2026-11-04"} and out["counts"] == {"LIVE": 4, "WINDOW MISSED": 1}
