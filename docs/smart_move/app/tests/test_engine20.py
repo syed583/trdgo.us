@@ -231,3 +231,35 @@ def test_default_policy_is_unchanged_market_cap_first(tmp_path):
     rows = L.LiveScorer(svc).score_all(NOW)
     caps = {o["symbol"]: float(o["marketcap"]) for o in svc.store.read("cal_obs")}
     assert [x["symbol"] for x in E20.select_top(rows, caps, NOW, n=5, event_date="2026-11-04", session="BMO")] == ["AAA", "BBB", "CCC", "DDD", "EEE"]
+
+
+# ---------------------------------------------------------------- 2026-11-11 safety audit (P0-01)
+def test_live_gate_refuses_a_live_flag_stored_in_the_user_or_machine_environment(monkeypatch):
+    import types
+    a = types.SimpleNamespace(mode="live", arm=True, authorize_requests=10)
+    monkeypatch.setattr(RUNNER, "persistent_live_flag", lambda: False)
+    assert RUNNER.live_gate(a, env={"SMART_MOVE_COLLECTION_LIVE": "1"}) == []
+    monkeypatch.setattr(RUNNER, "persistent_live_flag", lambda: True)
+    why = RUNNER.live_gate(a, env={"SMART_MOVE_COLLECTION_LIVE": "1"})
+    assert len(why) == 1 and "User or Machine scope" in why[0]
+
+
+def test_the_kill_switch_is_released_only_inside_the_guarded_block():
+    """A crash between `unlink()` and `try:` used to leave the runner kill switch disengaged until the PS script's
+    close-out ran. Both live profiles now release it as the first statement INSIDE the try whose finally re-engages it."""
+    import ast
+    import inspect
+    import smart_move_monday_bmo as MB
+
+    def unlink_inside_try(fn) -> bool:
+        tree = ast.parse(inspect.getsource(fn))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Try) and node.finalbody:
+                first = node.body[0]
+                src = ast.unparse(first)
+                if "kill_file.unlink()" in src:
+                    return True
+        return False
+    assert unlink_inside_try(RUNNER.engine20_profile)
+    assert unlink_inside_try(MB.profile)
+    assert "kill_file.unlink()\n    svc.gov" not in inspect.getsource(RUNNER.engine20_profile)

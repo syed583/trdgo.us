@@ -74,7 +74,28 @@ def live_gate(args, env=os.environ) -> list:
         why.append("--authorize-requests missing")
     if env.get("SMART_MOVE_COLLECTION_LIVE") != "1":
         why.append("SMART_MOVE_COLLECTION_LIVE=1 not set")
+    if persistent_live_flag():
+        why.append("SMART_MOVE_COLLECTION_LIVE is set at User or Machine scope (it must exist only inside the one authorised process)")
     return why
+
+
+def persistent_live_flag() -> bool:
+    """True when the live flag is stored in the Windows User or Machine environment (registry), which would arm every
+    process on the box. The scheduled scripts refuse that too; this makes a direct runner invocation refuse as well."""
+    try:
+        import winreg
+    except ImportError:                                                      # not Windows: nothing persistent to inspect
+        return False
+    for hive, path in ((winreg.HKEY_CURRENT_USER, r"Environment"),
+                       (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment")):
+        try:
+            with winreg.OpenKey(hive, path) as k:
+                v, _ = winreg.QueryValueEx(k, "SMART_MOVE_COLLECTION_LIVE")
+                if str(v).strip():
+                    return True
+        except OSError:
+            continue
+    return False
 
 
 def execute(svc, *, now, state_dir, live: bool, authorized: int, ceiling: int, batch: int, news_pages=None, calendar_requests=None, stage_caps=None, calendar_scope="horizon", max_consecutive_failures=None, outcome_events_fn=None, daily_limit=None) -> dict:
@@ -186,9 +207,9 @@ def engine20_profile(a, svc, now, live: bool) -> int:
                                               ledger_path=Path(a.publish_dir) / UNI.PUB.LEDGER))
         print(json.dumps({k: v for k, v in summary.items() if k != "tasks"}, indent=1, default=str))
         return 0
-    svc.store.kill_file.unlink()
     svc.gov.authorized_daily, svc.gov.enabled = (a.daily_limit or a.authorize_requests), True
     try:
+        svc.store.kill_file.unlink()                                          # released INSIDE the guarded block: whatever happens next, `finally` re-engages it
         used = 0
         att_start = E20.attempts_of(svc)
         if cal_needed:

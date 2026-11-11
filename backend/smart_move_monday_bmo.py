@@ -505,9 +505,9 @@ def profile(a, svc, now: datetime, live: bool) -> int:
             PUB._atomic_json(out / ACCURACY, accuracy(out, now))
         print(json.dumps({k: v for k, v in summary.items() if k != "tasks"}, indent=1, default=str))
         return 0
-    svc.store.kill_file.unlink()
     svc.gov.authorized_daily, svc.gov.enabled = (a.daily_limit or a.authorize_requests), True
     try:
+        svc.store.kill_file.unlink()                                          # released INSIDE the guarded block (see the engine20 profile)
         att0 = E20.attempts_of(svc)
         stopped = lambda: bool(svc.gov.stopped_until and svc.clock.now() < svc.gov.stopped_until)  # noqa: E731
         cal = {"requests": 0, "dates": []}
