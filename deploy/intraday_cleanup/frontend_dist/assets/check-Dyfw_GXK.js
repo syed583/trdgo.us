@@ -1,0 +1,1 @@
+import{n as e}from"./jsx-runtime-B5Ih7TCJ.js";var t={name:`check`,size:24,node:[[`path`,{d:`M20 6 9 17l-5-5`,key:`1gmf2c`}]]};t.node;var n=e(t);export{n as t};

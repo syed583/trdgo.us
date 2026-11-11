@@ -58,6 +58,21 @@ _schema_ready = False
 _last_tick = 0.0
 _tick_lock = threading.Lock()
 
+# Listeners for paper ENTRY / EXIT events (the MT5 auto-trader registers here). Called AFTER the database commit with a
+# plain dict; a listener that raises is logged and never disturbs the tracker. Nothing here changes a paper decision.
+HOOKS: list = []
+
+
+def _emit(events: list) -> None:
+    if not events or not HOOKS:
+        return
+    for ev in events:
+        for h in list(HOOKS):
+            try:
+                h(ev)
+            except Exception:  # noqa: BLE001
+                _log.exception("tracker hook %s failed for %s", getattr(h, "__name__", h), ev.get("type"))
+
 try:
     import app_logging as _al
     _log = _al.file_logger("tracker")
@@ -487,6 +502,9 @@ def _evidence(info: dict, q: dict, shares: int, entry: float, reason_ok: str = "
         return json.dumps({"error": "evidence not serialisable"})
 
 
+_pending_events: list = []
+
+
 def _close_due_fast(s, et: datetime) -> int:
     """At/after the EOD cutoff close every due position of TODAY from a direct quote, before any board is rebuilt.
 
@@ -525,6 +543,8 @@ def _close_due_fast(s, et: datetime) -> int:
             status=reason, exit_time=et.astimezone(timezone.utc)))
         if res.rowcount:
             n += 1
+            _pending_events.append({"type": "EXIT", "trade_id": t.id, "strategy": t.strategy, "symbol": t.symbol, "side": t.side, "shares": t.shares,
+                                    "exit_price": exit_px, "reason": reason, "at": et.isoformat()})
             _log.info("EXIT %s %s %s #%s: %s at %.4f (level stop %.4f target %.4f, source quote, eod-fast) P&L %.2f",
                       reason, t.strategy, t.symbol, t.id, t.side, exit_px, stop or 0.0, target or 0.0, profit)
     return n
@@ -573,6 +593,9 @@ def tick(force: bool = False) -> None:
             # earlier date -- an older build carried positions -- is closed at the current price as CLEANUP.
             open_trades = s.query(DemoTrade).filter_by(status="OPEN").order_by(DemoTrade.id.asc()).all()
             import paper_fills as pf
+            events: list = list(_pending_events)
+            _pending_events.clear()
+            new_rows: list = []
             for t in open_trades:
                 info = boards.get(t.strategy, {}).get(t.symbol) or {}
                 stop, target = t.stop, t.target
@@ -610,6 +633,8 @@ def tick(force: bool = False) -> None:
                     profit, pct = _pnl(t.side, t.entry_price, exit_px, t.shares)
                     values.update(exit_price=exit_px, last_price=exit_px, profit=profit, profit_pct=pct,
                                   status=reason, exit_time=et.astimezone(timezone.utc))
+                    events.append({"type": "EXIT", "trade_id": t.id, "strategy": t.strategy, "symbol": t.symbol, "side": t.side, "shares": t.shares,
+                                   "exit_price": exit_px, "reason": reason, "at": et.isoformat()})
                     _log.info("EXIT %s %s %s #%s: %s at %.4f (level stop %.4f target %.4f, source %s) P&L %.2f",
                               reason, t.strategy, t.symbol, t.id, t.side, exit_px, stop or 0.0, target or 0.0, price.source, profit)
                 # Guarded by "still OPEN": if another process / tick already closed this trade, nothing is written
@@ -647,21 +672,27 @@ def tick(force: bool = False) -> None:
                         side = "LONG" if sig == "BUY" else "SHORT"
                         sl, tp = rebase_levels(side, info.get("entry"), info.get("sl"), info.get("tp"), entry)
                         profit0, pct0 = _pnl(side, entry, entry, shares)
-                        s.add(DemoTrade(strategy=strat, symbol=sym, side=side, shares=shares,
+                        row = DemoTrade(strategy=strat, symbol=sym, side=side, shares=shares,
                                         session_date=today, entry_time=et.astimezone(timezone.utc), entry_price=entry,
                                         stop=sl, target=tp,
                                         score_at_entry=info.get("score"), last_price=entry,
                                         profit=profit0, profit_pct=pct0, status="OPEN",
                                         entry_bid=q.get("bid"), entry_ask=q.get("ask"), entry_spread_pct=q.get("spread_pct"),
                                         entry_quote_age_s=q.get("quote_age_s"), be_moved=False,
-                                        entry_evidence=_evidence(info, q, shares, entry)))
+                                        entry_evidence=_evidence(info, q, shares, entry))
+                        s.add(row)
+                        new_rows.append((row, sl, tp, entry, shares))
                         have.add((strat, sym))
                         _log.info("ENTRY %s %s %s: %d sh at %.4f (quote age %.1fs, spread %s%%) stop %.4f target %.4f score %s coverage %s",
                                   strat, sym, side, shares, entry, q.get("quote_age_s") or -1, q.get("spread_pct"), sl, tp,
                                   info.get("score"), info.get("coverage"))
             s.commit()
+            for row, sl, tp, entry, shares in new_rows:
+                events.append({"type": "ENTRY", "trade_id": row.id, "strategy": row.strategy, "symbol": row.symbol, "side": row.side, "shares": shares,
+                               "entry": entry, "stop": sl, "target": tp, "at": et.isoformat()})
         finally:
             s.close()
+        _emit(events)
         try:
             import signal_verification as sv
             if sv.enabled():                  # audit only, AFTER Legacy has committed: records, never blocks or changes a trade

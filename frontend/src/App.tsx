@@ -47,6 +47,9 @@ const OptionScannerPage = lazy(() => import('./pages/OptionScannerPage'));
 const UnusualActivityPage = lazy(() => import('./pages/UnusualActivityPage'));
 const InstitutionalPage = lazy(() => import('./pages/InstitutionalPage'));
 const StrategyTradesPage = lazy(() => import('./pages/StrategyTradesPage'));
+const Mt5AccountView = lazy(() => import('./pages/Mt5AutoTradePage').then((m) => ({ default: m.Mt5AccountView })));
+const Mt5SymbolsView = lazy(() => import('./pages/Mt5AutoTradePage').then((m) => ({ default: m.Mt5SymbolsView })));
+const Mt5AuditView = lazy(() => import('./pages/Mt5AutoTradePage').then((m) => ({ default: m.Mt5AuditView })));
 const PreEarningsDirectionPage = lazy(() => import('./pages/PreEarningsDirectionPage'));
 const TradgoCallPage = lazy(() => import('./pages/TradgoCallPage'));
 const VolatilityPage = lazy(() => import('./pages/VolatilityPage'));
@@ -243,6 +246,12 @@ function Shell() {
   // is still loading we do not know yet, so we do not lock the UI prematurely.
   const readOnly = !demo && me.data?.authenticated === true
     && !isAdmin && me.data?.full_access !== true;
+  // MT5 auto-trading pages: the operator only (admin, or the username named in the server's MT5_OPERATOR setting).
+  const mt5Operator = !demo && (isAdmin || me.data?.mt5_operator === true);
+  const operatorGate = (el: React.ReactNode) =>
+    (mt5Operator ? el
+      : authResolving ? null
+        : <Navigate to={`/strategy-trades${location.search}`} replace />);
 
   const ctx: PageContext = {
     symbol, demo, onSymbol, indices, strip, quote, search: location.search, readOnly,
@@ -259,7 +268,7 @@ function Shell() {
 
   return (
     <div className="app">
-      <Sidebar optionsMode={optionsMode} search={location.search} isAdmin={isAdmin} symbol={symbol} />
+      <Sidebar optionsMode={optionsMode} search={location.search} isAdmin={isAdmin} mt5Operator={mt5Operator} symbol={symbol} />
 
       <div className="app-main">
         <TopBar
@@ -388,6 +397,9 @@ function Shell() {
           <Route path="/model-accuracy" element={<ModelAccuracyPage />} />
           <Route path="/institutional-intel" element={<InstitutionalPage />} />
           <Route path="/strategy-trades" element={<StrategyTradesPage />} />
+          <Route path="/mt5" element={operatorGate(<Mt5AccountView />)} />
+          <Route path="/mt5/symbols" element={operatorGate(<Mt5SymbolsView />)} />
+          <Route path="/mt5/audit" element={operatorGate(<Mt5AuditView />)} />
           <Route path="/grok-intraday" element={<GrokIntradayPage ctx={ctx} />} />
           <Route path="/grok-intraday/:symbol" element={<ClaudeLastDetail ctx={ctx} model={GROK_INTRADAY_DETAIL} />} />
           <Route path="/meta-intraday" element={<GrokIntradayPage ctx={ctx} cfg={META_INTRADAY_CFG} />} />

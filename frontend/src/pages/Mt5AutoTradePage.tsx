@@ -1,0 +1,182 @@
+import { useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import { AlertTriangle, Info, RefreshCw } from 'lucide-react';
+import { mt5 } from '../api/client';
+import { useApi } from '../hooks/useApi';
+import { PageHead } from './shared';
+import './smart-move.css';
+
+/** MT5 auto-trading (operator account only): account connection, symbol mapping, audit report. Everything shown here comes
+ * from the server's own state files; the page never computes a trade and never sees a password after submit. */
+
+const TABS = [
+  { to: '/mt5', label: 'Account', testid: 'tab-mt5-account' },
+  { to: '/mt5/symbols', label: 'Symbol mapping', testid: 'tab-mt5-symbols' },
+  { to: '/mt5/audit', label: 'Audit report', testid: 'tab-mt5-audit' },
+];
+
+function Tabs() {
+  const { pathname } = useLocation();
+  return (
+    <div className="sm-tabs" role="tablist" aria-label="MT5 auto-trading">
+      {TABS.map((t) => <Link key={t.to} to={t.to} role="tab" aria-selected={pathname === t.to} className={`sm-tab ${pathname === t.to ? 'on' : ''}`} data-testid={t.testid}>{t.label}</Link>)}
+    </div>
+  );
+}
+
+function SwitchBanner({ st }: { st: any }) {
+  if (!st) return null;
+  return (
+    <div className={`sm-q-banner ${st.auto_trade && !st.paused ? '' : 'stale'}`} role="note" data-testid="mt5-switch">
+      <Info size={16} />
+      <div>
+        <b>AUTO_TRADE = {st.auto_trade ? '1 (ON)' : '0 (OFF)'}</b>{st.paused ? ' · entries PAUSED by the operator' : ''}
+        {' · '}{st.installed ? 'MetaTrader5 package installed' : 'MetaTrader5 package NOT installed on the server'}
+        <div className="sm-q-muted">The master switch is the server setting AUTO_TRADE (default 0). With it off nothing is ever sent, whatever this page shows. Only MAPPED symbols trade; quantity = the Strategy Trades share count rounded down to the broker step.</div>
+      </div>
+    </div>
+  );
+}
+
+export function Mt5AccountView() {
+  const st = useApi<any>((s) => mt5.status(s), [], { refreshMs: 30_000 });
+  const d = st.data;
+  const [login, setLogin] = useState('');
+  const [password, setPassword] = useState('');
+  const [server, setServer] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const srv = server || d?.server || d?.default_server || 'STGlobalMarketsLtd-Live-1';
+  const act = async (fn: () => Promise<any>) => {
+    setBusy(true); setMsg(null);
+    try { const r = await fn(); setMsg(r?.status === 'OK' ? 'Done.' : `${r?.reason || 'FAILED'}: ${r?.detail || r?.last_error || ''}`); setPassword(''); st.refresh(); }
+    catch (e: any) { setMsg(String(e?.message || e)); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="sm" data-testid="mt5-account-view">
+      <PageHead title="MT5 auto-trading — Account" subtitle="Connect the operator's MetaTrader 5 account (demo or live). Credentials are stored on the server in an owner-only file and never shown again." />
+      <Tabs />
+      {st.error && <div className="sm-fresh stale" role="alert"><AlertTriangle size={14} /> {st.error}</div>}
+      <SwitchBanner st={d} />
+      {d && (
+        <div className="sm-summary" data-testid="mt5-status">
+          <div className="sm-card"><div className="sm-card-k">Connection</div><div className="sm-card-v">{d.connected ? <span className="sm-q-badge green">Connected</span> : <span className="sm-q-badge amber">{d.last_error ? 'Failed' : 'Not connected'}</span>}</div></div>
+          <div className="sm-card"><div className="sm-card-k">Account</div><div className="sm-card-v">{d.account?.login ?? '—'}</div><div className="sm-q-muted">{d.account ? `${d.account.account_kind ?? ''} · ${d.account.company ?? ''} · ${d.account.currency ?? ''}` : (d.credentials_saved ? 'credentials saved' : 'no credentials')}</div></div>
+          <div className="sm-card"><div className="sm-card-k">Server</div><div className="sm-card-v" style={{ fontSize: 14 }}>{d.server}</div></div>
+          <div className="sm-card"><div className="sm-card-k">Balance / equity</div><div className="sm-card-v">{d.account ? `${d.account.balance} / ${d.account.equity}` : '—'}</div></div>
+          <div className="sm-card"><div className="sm-card-k">Open MT5 positions (ours)</div><div className="sm-card-v">{d.open_positions?.length ?? 0}</div></div>
+        </div>
+      )}
+      {d?.last_error && !d.connected && <div className="sm-fresh stale" role="alert" data-testid="mt5-last-error"><AlertTriangle size={14} /> Last connection error: {d.last_error}</div>}
+      <form className="sm-filters" onSubmit={(e) => { e.preventDefault(); act(() => mt5.connect({ login, password, server: srv })); }} data-testid="mt5-connect-form" style={{ flexWrap: 'wrap', gap: 8 }}>
+        <label>Account ID <input value={login} onChange={(e) => setLogin(e.target.value)} inputMode="numeric" autoComplete="off" required /></label>
+        <label>Password <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" required /></label>
+        <label>Server <input value={srv} onChange={(e) => setServer(e.target.value)} /></label>
+        <button className="ghost-btn" type="submit" disabled={busy || !d?.installed}>Connect</button>
+        <button className="ghost-btn" type="button" disabled={busy} onClick={() => act(() => mt5.reconnect())}>Reconnect (saved)</button>
+        <button className="ghost-btn" type="button" disabled={busy || !d?.connected} onClick={() => act(() => mt5.disconnect(false))}>Disconnect</button>
+        <button className="ghost-btn" type="button" disabled={busy} onClick={() => { if (window.confirm('Forget the saved MT5 credentials on the server?')) act(() => mt5.disconnect(true)); }}>Disconnect &amp; forget</button>
+        <button className="ghost-btn" type="button" disabled={busy} onClick={() => act(() => mt5.pause(!d?.paused))}>{d?.paused ? 'Resume entries' : 'Pause entries'}</button>
+        <button className="ghost-btn" type="button" disabled={busy || !d?.connected} onClick={() => act(() => mt5.reconcile())}>Reconcile with broker</button>
+        <button className="ghost-btn" type="button" onClick={() => st.refresh()}><RefreshCw size={14} /> Refresh</button>
+      </form>
+      {msg && <div className="sm-fresh" role="status" data-testid="mt5-msg">{msg}</div>}
+      {d?.terminal && <div className="sm-q-muted">Terminal: {d.terminal.name} build {d.terminal.build} · connected {String(d.terminal.connected)} · trade allowed {String(d.terminal.trade_allowed)} · ping {d.terminal.ping_last} µs</div>}
+      {d?.open_positions?.length > 0 && (
+        <div className="sm-table-wrap"><table className="sm-table sm-q-table" data-testid="mt5-open-table">
+          <thead><tr><th>Paper trade</th><th>Symbol</th><th>Broker symbol</th><th>Side</th><th>Volume</th><th>Ticket</th><th>Price</th><th>SL</th><th>TP</th><th>Opened</th></tr></thead>
+          <tbody>{d.open_positions.map((p: any) => <tr key={p.trade_id}><td>#{p.trade_id} {p.strategy}</td><td><b>{p.symbol}</b></td><td>{p.broker_symbol}</td><td>{p.side}</td><td>{p.volume}</td><td>{p.ticket}</td><td>{p.price}</td><td>{p.sl}</td><td>{p.tp}</td><td>{p.opened_at}</td></tr>)}</tbody>
+        </table></div>
+      )}
+    </div>
+  );
+}
+
+export function Mt5SymbolsView() {
+  const sy = useApi<any>((s) => mt5.symbols(s), [], { refreshMs: 60_000 });
+  const d = sy.data;
+  const [edit, setEdit] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const act = async (fn: () => Promise<any>, ok: string) => {
+    setBusy(true); setMsg(null);
+    try { const r = await fn(); setMsg(r?.status === 'OK' ? (r?.summary ? `${ok}: ${r.summary}` : ok) : `${r?.reason || 'FAILED'}: ${r?.detail || ''}`); sy.refresh(); }
+    catch (e: any) { setMsg(String(e?.message || e)); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="sm" data-testid="mt5-symbols-view">
+      <PageHead title="MT5 auto-trading — Symbol mapping" subtitle="Every Strategy Trades symbol and the broker symbol it trades as. An UNMAPPED or UNVERIFIED symbol never sends an order." />
+      <Tabs />
+      {sy.error && <div className="sm-fresh stale" role="alert"><AlertTriangle size={14} /> {sy.error}</div>}
+      {d && (
+        <>
+          <div className="sm-filters">
+            <b data-testid="mt5-map-summary">{d.summary}</b>
+            <button className="ghost-btn" disabled={busy || !d.connected} onClick={() => act(() => mt5.automap(), 'Auto-map done')} title={d.connected ? '' : 'connect the account first'}>Auto-map with the broker</button>
+            <button className="ghost-btn" onClick={() => sy.refresh()}><RefreshCw size={14} /> Reload</button>
+            {!d.connected && <span className="sm-q-muted">Not connected: new mappings are saved UNVERIFIED and will not trade until verified.</span>}
+          </div>
+          {msg && <div className="sm-fresh" role="status" data-testid="mt5-map-msg">{msg}</div>}
+          <div className="sm-table-wrap"><table className="sm-table sm-q-table" data-testid="mt5-map-table">
+            <thead><tr><th>Software symbol</th><th>Broker symbol</th><th>Status</th><th>Min / step</th><th>Trade mode</th><th>Note</th><th>Override</th></tr></thead>
+            <tbody>{d.rows.map((r: any) => (
+              <tr key={r.symbol} data-testid="mt5-map-row" data-status={r.status}>
+                <td><b>{r.symbol}</b></td>
+                <td>{r.broker_symbol || '—'}</td>
+                <td><span className={`sm-q-badge ${r.status === 'MAPPED' ? 'green' : r.status === 'UNVERIFIED' ? 'amber' : 'gray'}`}>{r.status}</span></td>
+                <td>{r.volume_min != null ? `${r.volume_min} / ${r.volume_step}` : '—'}</td>
+                <td>{r.trade_mode ?? '—'}</td>
+                <td className="sm-q-muted">{r.note ?? (r.source ? `${r.source}${r.verified_at ? ` · ${r.verified_at}` : ''}` : '')}</td>
+                <td>
+                  <input value={edit[r.symbol] ?? ''} placeholder={r.broker_symbol || r.symbol} onChange={(e) => setEdit({ ...edit, [r.symbol]: e.target.value })} style={{ width: 110 }} />
+                  {' '}<button className="ghost-btn" disabled={busy} onClick={() => act(() => mt5.mapSymbol(r.symbol, edit[r.symbol] || r.broker_symbol || r.symbol), `${r.symbol} saved`)}>Save</button>
+                  {r.broker_symbol && <> <button className="ghost-btn" disabled={busy} onClick={() => act(() => mt5.mapSymbol(r.symbol, ''), `${r.symbol} unmapped`)}>Unmap</button></>}
+                </td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        </>
+      )}
+    </div>
+  );
+}
+
+const EVENT_TONE: Record<string, string> = { FILLED: 'green', PARTIAL_FILL: 'amber', CLOSED: 'green', CLOSED_BY_BROKER: 'blue', REJECTED: 'red', CLOSE_FAILED: 'red', CLOSE_RETRY: 'amber', SKIPPED: 'gray', REPRICE: 'amber', ERROR: 'red', CONNECT_FAILED: 'red', CONNECTED: 'green', DISCONNECTED: 'gray' };
+
+export function Mt5AuditView() {
+  const [event, setEvent] = useState('');
+  const au = useApi<any>((s) => mt5.audit(400, event, s), [event], { refreshMs: 30_000 });
+  const d = au.data;
+  const rows: any[] = d?.rows || [];
+  return (
+    <div className="sm" data-testid="mt5-audit-view">
+      <PageHead title="MT5 auto-trading — Audit report" subtitle="Every event, newest first: connections, mappings, orders sent, fills, partial fills, rejections with the broker's reason, closes, retries, broker-side SL/TP hits." />
+      <Tabs />
+      {au.error && <div className="sm-fresh stale" role="alert"><AlertTriangle size={14} /> {au.error}</div>}
+      <div className="sm-filters">
+        <div className="sm-tabs" role="group" aria-label="Event filter">
+          {['', 'FILLED', 'PARTIAL_FILL', 'REJECTED', 'SKIPPED', 'CLOSED', 'CLOSED_BY_BROKER', 'CLOSE_FAILED'].map((k) => <button key={k || 'all'} className={`sm-tab ${event === k ? 'on' : ''}`} aria-pressed={event === k} onClick={() => setEvent(k)}>{k || 'All'}</button>)}
+        </div>
+        <button className="ghost-btn" onClick={() => au.refresh()}><RefreshCw size={14} /> Reload</button>
+        {d && <span className="sm-q-muted">AUTO_TRADE {d.auto_trade ? 'ON' : 'OFF'}{d.paused ? ' · paused' : ''}</span>}
+      </div>
+      {!rows.length && <div className="sm-none" data-testid="mt5-audit-none">No MT5 event recorded yet.</div>}
+      {rows.length > 0 && (
+        <div className="sm-table-wrap"><table className="sm-table sm-q-table" data-testid="mt5-audit-table">
+          <thead><tr><th>Time (UTC)</th><th>Event</th><th>Symbol</th><th>Broker symbol</th><th>Action</th><th>Quantity</th><th>Price</th><th>Result</th><th>Ticket</th><th>Paper trade</th><th>Reason / detail</th></tr></thead>
+          <tbody>{rows.map((r, i) => (
+            <tr key={i} data-testid="mt5-audit-row" data-event={r.event}>
+              <td>{r.at}</td>
+              <td><span className={`sm-q-badge ${EVENT_TONE[r.event] || 'gray'}`}>{r.event}</span></td>
+              <td><b>{r.symbol ?? ''}</b></td><td>{r.broker_symbol ?? ''}</td><td>{r.action ?? ''}</td><td>{r.quantity ?? ''}</td><td>{r.price ?? ''}</td>
+              <td>{r.result ?? ''}</td><td>{r.ticket ?? ''}</td><td>{r.trade_id != null ? `#${r.trade_id} ${r.strategy ?? ''}` : ''}</td>
+              <td className="sm-q-muted">{r.reason ?? ''}{r.detail ? ` ${typeof r.detail === 'string' ? r.detail : JSON.stringify(r.detail)}` : ''}</td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+      )}
+    </div>
+  );
+}

@@ -143,6 +143,8 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+from mt5_routes import router as _mt5_router  # noqa: E402  (operator-only MT5 auto-trading; see mt5_autotrade.py)
+app.include_router(_mt5_router)
 
 # Smart Move Engine20 snapshot (read-only; the session gate below covers it like every /api route). Serves a file snapshot; no provider code.
 from smart_move_engine20_routes import router as _sm_engine20_router  # noqa: E402
@@ -567,6 +569,20 @@ def _capture_earnings_signals() -> None:
 
 
 @_bg
+@_startup
+def _start_mt5_autotrade() -> None:
+    """Register the MT5 auto-trader on the paper tracker's events and reconnect from saved credentials when AUTO_TRADE=1.
+    With the switch off it registers nothing and sends nothing."""
+    try:
+        import demo_trade_service as dts
+        import mt5_autotrade as AT
+        if AT.on_paper_event not in dts.HOOKS:
+            dts.HOOKS.append(AT.on_paper_event)
+        AT.startup()
+    except Exception:  # noqa: BLE001
+        logging.getLogger("mt5").exception("mt5 auto-trade startup failed")
+
+
 def _start_demo_trade_tracker() -> None:
     """Open + track the intraday demo (paper) trades continuously. Runs a tick
     every 60s during regular hours so signals are captured even when nobody has
@@ -1592,6 +1608,7 @@ def auth_me(request: Request) -> dict:
     return {"authenticated": True, "username": user["username"],
             "display_name": display_name,
             "role": role, "is_admin": is_staff,
+            "mt5_operator": __import__("mt5_routes").is_operator(user),
             "permissions": auth.permissions_for(role),
             "full_access": full_access}
 

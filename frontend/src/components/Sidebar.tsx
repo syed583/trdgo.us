@@ -30,6 +30,13 @@ interface NavGroup {
  * The groups are labels only, not collapsible: a label you cannot get wrong is
  * worth more here than another thing to toggle.
  */
+// MT5 auto-trading (operator only): shown next to Strategy Trades for the operator, in the admin panel for the admin.
+const MT5_ITEMS: NavEntry[] = [
+  { to: '/mt5', label: 'MT5 Account', icon: <Settings size={S} /> },
+  { to: '/mt5/symbols', label: 'MT5 Symbol Mapping', icon: <ListOrdered size={S} /> },
+  { to: '/mt5/audit', label: 'MT5 Audit Report', icon: <ScrollText size={S} /> },
+];
+
 const NAV_GROUPS: NavGroup[] = [
   { heading: 'Analysis', items: [
     { to: '/ai-insights', label: 'Analysis', icon: <Brain size={S} /> },
@@ -106,11 +113,13 @@ export default function Sidebar({
   search,
   isAdmin,
   symbol,
+  mt5Operator,
 }: {
   optionsMode: boolean;
   search: string;
   isAdmin?: boolean;
   symbol?: string;
+  mt5Operator?: boolean;
 }) {
   // The admin is the operator, not a viewer: signed in as admin the sidebar is
   // just the admin panel -- Users and Settings -- and none of the data pages.
@@ -121,8 +130,9 @@ export default function Sidebar({
         { to: '/admin/users', label: 'Users', icon: <Users size={S} /> },
         { to: '/admin/audit', label: 'Audit Log', icon: <ScrollText size={S} /> },
         { to: '/admin/workflow', label: 'Workflow', icon: <Waypoints size={S} /> },
-        { to: '/settings', label: 'Settings', icon: <Settings size={S} /> }] }]
-    : NAV_GROUPS;
+        { to: '/settings', label: 'Settings', icon: <Settings size={S} /> },
+        ...(mt5Operator ? MT5_ITEMS : [])] }]
+    : (mt5Operator ? NAV_GROUPS.map((g) => (g.heading === 'Analysis' ? { ...g, items: [...g.items, ...MT5_ITEMS] } : g)) : NAV_GROUPS);
   const [collapsed, setCollapsed] = React.useState(readCollapsed);
 
   // On a phone the sidebar is a drawer rather than a column. Without it there

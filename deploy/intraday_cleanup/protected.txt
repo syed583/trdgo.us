@@ -9,6 +9,7 @@ backend/logs/
 backend/.cache/
 backend/.sec_cache/
 backend/.venv/
+backend/mt5_state/
 collector_tools/
 docs/smart_move/
 sm_collector_state/

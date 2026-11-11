@@ -998,6 +998,20 @@ export const api2 = {
 /** Earnings monitor: read-only views of the automatic upcoming-earnings scan, every model's stored prediction, detected changes, comparable-model consensus and accuracy. */
 export type EmPage = { date?: string; scope?: string; limit?: number; offset?: number; days?: number | ''; sm?: string };
 const emQs = (q: EmPage) => Object.entries(q).filter(([, v]) => v !== '' && v != null).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join('&');
+/** MT5 auto-trading (operator only). The password travels once, in the connect body, and is never read back. */
+export const mt5 = {
+  status: (s?: AbortSignal) => request<any>('/api/mt5/status', s),
+  connect: (body: { login: string; password: string; server: string; remember?: boolean }) => send<any>('/api/mt5/connect', 'POST', body),
+  reconnect: () => send<any>('/api/mt5/reconnect', 'POST', {}),
+  disconnect: (forget: boolean) => send<any>('/api/mt5/disconnect', 'POST', { forget }),
+  pause: (paused: boolean) => send<any>('/api/mt5/pause', 'POST', { paused }),
+  reconcile: () => send<any>('/api/mt5/reconcile', 'POST', {}),
+  symbols: (s?: AbortSignal) => request<any>('/api/mt5/symbols', s),
+  mapSymbol: (symbol: string, broker_symbol: string) => send<any>('/api/mt5/symbols/map', 'POST', { symbol, broker_symbol }),
+  automap: () => send<any>('/api/mt5/symbols/automap', 'POST', {}),
+  audit: (limit: number, event: string, s?: AbortSignal) => request<any>(`/api/mt5/audit?limit=${limit}${event ? `&event=${encodeURIComponent(event)}` : ''}`, s),
+};
+
 export const earningsMonitor = {
   status: (s?: AbortSignal) => request<any>('/api/earnings-monitor/status', s),
   upcoming: (history: boolean, q: EmPage, s?: AbortSignal) => request<any>(`/api/earnings-monitor/upcoming?include_history=${history ? 'true' : 'false'}&${emQs(q)}`, s),
