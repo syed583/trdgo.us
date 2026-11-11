@@ -65,3 +65,12 @@ def test_d4_the_status_schedule_describes_the_live_cadence(tmp_path):
     assert st["schedule"] == {"every_minutes": 360, "live_every_minutes": 360, "dry_run_every_minutes": 60}
     st = PUB.publish_rows([synth("AAA", "BUY", EV)], NOW + timedelta(hours=1), tmp_path, scan_id="d", mode="DRY_RUN", scan_ok=True)
     assert st["schedule"]["every_minutes"] == 60 and st["schedule"]["live_every_minutes"] == 360
+
+
+def test_regular_session_bars_are_recognised_case_insensitively():
+    """Nov 10 VPS edit (the only one worth keeping): a provider row with market_time "R" is a regular-session bar."""
+    import inspect
+    import smart_move_live as L
+    src = inspect.getsource(L)
+    assert src.count('str(r.get("market_time", "")).strip().lower() == "r"') == 2
+    assert 'str(r.get("market_time")) == "r"' not in src

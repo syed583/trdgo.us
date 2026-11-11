@@ -360,7 +360,7 @@ class RefreshService:
             obj = json.loads(body)
             rows = obj.get("data") if isinstance(obj, dict) else None
             if kind == "ohlc" and isinstance(rows, list):
-                reg = [r["date"][:10] for r in rows if str(r.get("market_time")) == "r"]
+                reg = [r["date"][:10] for r in rows if str(r.get("market_time", "")).strip().lower() == "r"]   # case-insensitive: a provider "R" must still count as a regular-session bar
                 rec["last_bar_date"] = max(reg) if reg else None
             if kind in ("vol_context", "iv_rank"):
                 d = rows if isinstance(rows, dict) else (rows[0] if isinstance(rows, list) and rows else {})
@@ -502,7 +502,7 @@ class RefreshService:
         try:
             rows = json.loads(self.store.get(rec["raw_sha256"])).get("data")
             if rec["kind"] == "ohlc" and isinstance(rows, list):
-                reg = [r["date"][:10] for r in rows if str(r.get("market_time")) == "r"]
+                reg = [r["date"][:10] for r in rows if str(r.get("market_time", "")).strip().lower() == "r"]   # case-insensitive: a provider "R" must still count as a regular-session bar
                 out["last_bar_date"] = max(reg) if reg else None
             elif rec["kind"] == "vol_context":
                 d = rows if isinstance(rows, dict) else (rows[0] if isinstance(rows, list) and rows else None)
