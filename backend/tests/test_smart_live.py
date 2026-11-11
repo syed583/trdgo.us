@@ -56,10 +56,15 @@ def test_the_status_block_answers_last_next_scanned_skipped_and_requests(live):
 
 
 def test_a_scan_that_is_too_old_turns_every_open_call_stale_not_live(live):
-    out = SL.load(str(live), T2 + timedelta(minutes=151))
-    assert out["state"] == "STALE" and "151" in out["state_text"] and {r["label"] for r in out["rows"] if r["symbol"] in ("AAA", "BBB", "CCC", "LOW")} == {"STALE"}
-    assert SL.load(str(live), T2 + timedelta(minutes=150))["state"] == "OK"                      # the limit is inclusive
-    assert SL.load(str(live), T2 + timedelta(minutes=151), stale_min=240)["state"] == "OK"        # configurable
+    # LIVE runs every 6 h (owner decision 2026-11-05): a scan is stale only after cadence + 30 min of grace (390 min),
+    # never between two scheduled passes (the old 150-min rule showed STALE ~60 % of the time).
+    out = SL.load(str(live), T2 + timedelta(minutes=391))
+    assert out["state"] == "STALE" and "391" in out["state_text"] and {r["label"] for r in out["rows"] if r["symbol"] in ("AAA", "BBB", "CCC", "LOW")} == {"STALE"}
+    assert SL.load(str(live), T2 + timedelta(minutes=390))["state"] == "OK"                      # the limit is inclusive
+    assert SL.load(str(live), T2 + timedelta(minutes=151))["state"] == "OK"                      # between two 6-hourly passes: still LIVE
+    assert SL.load(str(live), T2 + timedelta(minutes=391), stale_min=480)["state"] == "OK"        # configurable upwards
+    assert SL.load(str(live), T2 + timedelta(minutes=391), stale_min=60)["state"] == "STALE"      # never below cadence + grace
+    assert out["scan"]["mode"] == "LIVE" and out["scan"]["live_every_minutes"] == 360
 
 
 def test_once_the_prediction_window_has_closed_a_call_is_historical_never_live(live):

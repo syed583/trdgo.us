@@ -24,7 +24,24 @@ from zoneinfo import ZoneInfo
 
 UTC, ET = timezone.utc, ZoneInfo("America/New_York")
 LEDGER, STATUS, RUNS = "live_predictions.jsonl", "live_status.json", "collection_runs.jsonl"
-STALE_MIN_DEFAULT = 150            # hourly schedule + 30 minutes of grace
+STALE_MIN_DEFAULT = 390            # LIVE cadence (6 h, owner decision 2026-11-05) + 30 minutes of grace; a status file that states its
+                                   # cadence (schedule.live_every_minutes, kit v6.4+) overrides this (cadence + GRACE_MIN)
+GRACE_MIN = 30
+LIVE_EVERY_FALLBACK_MIN = 360
+
+
+def live_cadence_minutes(st: Optional[dict]) -> int:
+    """How often a LIVE pass is scheduled, as the status file states it; the hourly DRY_RUN rewrites `every_minutes`,
+    so only `live_every_minutes` (or `every_minutes` written by a LIVE pass) counts."""
+    sch = (st or {}).get("schedule") or {}
+    try:
+        if sch.get("live_every_minutes"):
+            return int(sch["live_every_minutes"])
+        if (st or {}).get("mode") == "LIVE" and sch.get("every_minutes"):
+            return int(sch["every_minutes"])
+    except (TypeError, ValueError):
+        pass
+    return LIVE_EVERY_FALLBACK_MIN
 UNIVERSE = "universe.json"
 UNIVERSE_STALE_H = 8.0             # the collector rewrites it on every pass; older than this means no pass has finished recently
 MONDAY_BMO_SUBDIR = "monday_bmo_friday"       # the SEPARATE Friday-window variant: its own ledger, status, outcomes and accuracy under this folder (never mixed with the frozen ledger above)
@@ -116,6 +133,8 @@ def load(live_dir: Optional[str], now: datetime, *, kill_file: Optional[str] = N
     kill = Path(kill_file) if kill_file else d.parent / "KILL"
     killed = kill.exists()
     last_ok = _dt((st or {}).get("last_successful_scan_at"))
+    every = live_cadence_minutes(st)
+    stale_min = max(int(stale_min), every + GRACE_MIN)                      # never call a scan stale before its next pass is even due
     scan_age_min = round((now - last_ok).total_seconds() / 60) if last_ok else None
     scan_fresh = bool(st and last_ok and scan_age_min is not None and scan_age_min <= stale_min and not killed)
     last_run = runs[-1] if runs else None
@@ -136,7 +155,6 @@ def load(live_dir: Optional[str], now: datetime, *, kill_file: Optional[str] = N
         state, why = "OK", "The last successful live scan is %d minutes old." % scan_age_min
     nxt = None
     if state in ("OK", "STALE", "DRY_RUN") and last_trigger:
-        every = int(((st or {}).get("schedule") or {}).get("every_minutes") or 60)
         nxt = last_trigger + timedelta(minutes=every)
         while nxt <= now:
             nxt += timedelta(minutes=every)                                     # the schedule keeps its rhythm; a missed trigger is not "overdue", it is simply the next slot
@@ -175,7 +193,8 @@ def load(live_dir: Optional[str], now: datetime, *, kill_file: Optional[str] = N
         counts[r["label"]] = counts.get(r["label"], 0) + 1
     return {"configured": True, "now": now.isoformat(), "now_et": _et(now), "state": state, "state_text": why, "kill_switch": killed,
             "ledger": {"ok": led["ok"], "problem": led["problem"], "records": len(led["records"]) if led["ok"] else None},
-            "scan": {"mode": (st or {}).get("mode"), "last_successful_scan_at": last_ok.isoformat() if last_ok else None, "last_successful_scan_et": _et(last_ok), "minutes_since_success": scan_age_min,
+            "scan": {"mode": ("LIVE" if last_ok else (st or {}).get("mode")),            # the scanner's mode; the hourly DRY_RUN only rewrites the status file
+                     "status_written_by": (st or {}).get("mode"), "live_every_minutes": every, "last_successful_scan_at": last_ok.isoformat() if last_ok else None, "last_successful_scan_et": _et(last_ok), "minutes_since_success": scan_age_min,
                      "last_scan_at": last_scan.isoformat() if last_scan else None, "last_scan_et": _et(last_scan), "last_scan_ok": (st or {}).get("scan_ok"), "last_run": (st or {}).get("run"),
                      "next_scan_expected_at": nxt.isoformat() if nxt else None, "next_scan_expected_et": _et(nxt), "stale_after_min": stale_min,
                      "last_trigger": {"at": last_run.get("at"), "event": last_run.get("event"), "reason": last_run.get("reason")} if last_run else None},

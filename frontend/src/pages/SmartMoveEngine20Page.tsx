@@ -131,8 +131,8 @@ export function LiveView() {
   const e = d?.events || {};
   return (
     <div className="sm" data-testid="sm-live-view">
-      <PageHead title="Smart Money Move â€” LIVE scanner" subtitle="Live predictions of the frozen 40-point engine (score40-v1) from this server's own collector. Each call is recorded in an append-only ledger before its prediction window closes." />
-      {live.initialLoading && <div className="sm-none" role="status">Loading the live scannerâ€¦</div>}
+      <PageHead title="Smart Money Move — LIVE scanner" subtitle="Live predictions of the frozen 40-point engine (score40-v1) from this server's own collector. Each call is recorded in an append-only ledger before its prediction window closes." />
+      {live.initialLoading && <div className="sm-none" role="status">Loading the live scanner…</div>}
       {live.error && <div className="sm-fresh stale" role="alert"><AlertTriangle size={14} /> The live scanner could not be loaded: {live.error} <button className="ghost-btn" onClick={() => live.refresh()}><RefreshCw size={14} /> Retry</button></div>}
       {d && !d.configured && (
         <div className="sm-q-state" role="status" data-testid="sm-live-off"><b>The live scanner is not installed here</b><div>{d.note}</div></div>
@@ -145,13 +145,13 @@ export function LiveView() {
             : <div className="sm-fresh stale" role="alert" data-testid="sm-live-state"><AlertTriangle size={14} /> {String(d.state).replace(/_/g, ' ')}: {d.state_text}</div>}
           <div className="sm-q-muted" data-testid="sm-live-status">
             Last successful scan: <b>{s.last_successful_scan_et ?? 'none yet'}</b>{s.minutes_since_success != null && <> ({s.minutes_since_success} min ago; stale after {s.stale_after_min} min)</>}
-            {' Â· '}Mode: {s.mode ?? 'â€”'}{d.kill_switch && <b> Â· KILL SWITCH ENGAGED</b>}
-            {' Â· '}Now: {d.now_et}
+            {' · '}Mode: {s.mode ?? '—'}{d.kill_switch && <b> · KILL SWITCH ENGAGED</b>}
+            {' · '}Now: {d.now_et}
           </div>
           <div className="sm-q-muted" data-testid="sm-live-requests">
-            Unusual Whales requests by the collector today: <b>{q.used_today ?? 'unknown'}</b> of {q.daily_limit ?? 'unknown'} Â· remaining <b>{q.remaining_today ?? 'unknown'}</b> Â· per run â‰¤ {q.run_limit ?? 'unknown'}
-            {d.calendar?.through && <> Â· calendar through {d.calendar.through} (age {d.calendar.age_h} h)</>}
-            {e.open_scanned != null && <> Â· events in an open window scanned: <b>{e.open_scanned}</b></>}
+            Unusual Whales requests by the collector today: <b>{q.used_today ?? 'unknown'}</b> of {q.daily_limit ?? 'unknown'} · remaining <b>{q.remaining_today ?? 'unknown'}</b> · per run ≤ {q.run_limit ?? 'unknown'}
+            {d.calendar?.through && <> · calendar through {d.calendar.through} (age {d.calendar.age_h} h)</>}
+            {e.open_scanned != null && <> · events in an open window scanned: <b>{e.open_scanned}</b></>}
           </div>
           <div className="sm-summary" data-testid="live-counts">
             <div className="sm-card"><div className="sm-card-k">BUY</div><div className="sm-card-v">{n('BUY')}</div></div>
@@ -178,17 +178,17 @@ export function LiveView() {
                 return (
                   <Fragment key={k}>
                     <tr className="sm-q-row" data-testid="sm-live-row" tabIndex={0} onClick={() => setOpen(open === k ? '' : k)} onKeyDown={(ev) => { if (ev.key === 'Enter') setOpen(open === k ? '' : k); }}>
-                      <td><b>{r.symbol}</b><div className="sm-q-muted">{r.company || 'â€”'}</div></td>
+                      <td><b>{r.symbol}</b><div className="sm-q-muted">{r.company || '—'}</div></td>
                       <td>{r.earnings_date}</td><td>{r.session === 'BMO' ? 'Before Open' : r.session === 'AMC' ? 'After Close' : r.session}</td>
                       <td>{r.signal_code ? <CategoryBadge category={r.signal_code} /> : <span className="sm-q-badge amber">WINDOW MISSED</span>} <span className={`sm-q-badge ${tone[0]}`} title={tone[1]} data-testid="sm-live-label">{r.label}</span></td>
-                      <td>{r.bull ?? 'â€”'}</td><td>{r.bear ?? 'â€”'}</td>
-                      <td>{r.coverage ?? 'â€”'}</td>
-                      <td>{r.evidence_age_h != null ? <span className={r.evidence_warning ? 'sm-fresh stale' : undefined}>{r.evidence_age_h} h old{r.evidence_warning ? ' â€” old evidence' : ''}</span> : 'none'}<div className="sm-q-muted">{r.evidence_latest_et ?? ''}</div></td>
-                      <td>{r.liquidity ?? 'â€”'}{r.adv20_usd != null && <div className="sm-q-muted">ADV20 ${(r.adv20_usd / 1e6).toFixed(0)}M</div>}</td>
+                      <td>{r.bull ?? '—'}</td><td>{r.bear ?? '—'}</td>
+                      <td>{r.coverage ?? '—'}</td>
+                      <td>{r.evidence_age_h != null ? <span className={r.evidence_warning ? 'sm-fresh stale' : undefined}>{r.evidence_age_h} h old{r.evidence_warning ? ' — old evidence' : ''}</span> : 'none'}<div className="sm-q-muted">{r.evidence_latest_et ?? ''}</div></td>
+                      <td>{r.liquidity ?? '—'}{r.adv20_usd != null && <div className="sm-q-muted">ADV20 ${(r.adv20_usd / 1e6).toFixed(0)}M</div>}</td>
                       <td>{r.missing?.length ? r.missing.join('; ') : 'none'}</td>
-                      <td>{r.window_cutoff_et ?? 'â€”'}{r.hours_to_cutoff != null && <div className="sm-q-muted">{r.hours_to_cutoff} h left</div>}</td>
+                      <td>{r.window_cutoff_et ?? '—'}{r.hours_to_cutoff != null && <div className="sm-q-muted">{r.hours_to_cutoff} h left</div>}</td>
                     </tr>
-                    {open === k && <tr><td colSpan={11}><div data-testid="live-detail"><div><b>Why:</b> {r.reason ?? 'â€”'}</div><div className="sm-q-muted">Generated {r.generated_at_et ?? 'â€”'} Â· mode {r.mode ?? 'â€”'} Â· record {r.record_sha256}</div></div></td></tr>}
+                    {open === k && <tr><td colSpan={11}><div data-testid="live-detail"><div><b>Why:</b> {r.reason ?? '—'}</div><div className="sm-q-muted">Generated {r.generated_at_et ?? '—'} · mode {r.mode ?? '—'} · record {r.record_sha256}</div></div></td></tr>}
                   </Fragment>
                 );
               })}</tbody>

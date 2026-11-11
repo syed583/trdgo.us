@@ -64,7 +64,7 @@ function EtfStrip() {
               {ch == null ? '—' : `${ch > 0 ? '+' : ''}${Number(ch).toFixed(2)}`}
               {' '}({pct(r?.change_percent)})
             </div>
-            <div className="st-etf-ba ma-n">bid {r?.bid == null ? '—' : px(r.bid)} · ask {r?.ask == null ? '—' : px(r.ask)}</div>
+            <div className="st-etf-ba ma-n">bid {r?.bid == null || r.bid <= 0 ? '—' : px(r.bid)} · ask {r?.ask == null || r.ask <= 0 ? '—' : px(r.ask)}</div>
             <div className="st-etf-upd ma-n">last update {localClock(r?.updated_at)}{r?.age_s != null ? ` · ${ageText(r.age_s)}` : ''}</div>
           </div>
         );
