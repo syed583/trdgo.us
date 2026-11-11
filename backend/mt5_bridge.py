@@ -25,7 +25,7 @@ _log = logging.getLogger("mt5")
 _lock = threading.RLock()
 
 DEFAULT_BASE_URL = "https://mt5.mtapi.io/"
-TIMEOUT_S = 15
+TIMEOUT_S = 12
 _session: dict = {"base_url": DEFAULT_BASE_URL, "token": None, "login": None, "server": None}
 
 OP_BUY, OP_SELL = 0, 1

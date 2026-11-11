@@ -91,7 +91,8 @@ def fake(tmp_path, monkeypatch):
     monkeypatch.setenv("AUTO_TRADE", "1")
     for k in ("MT5_LOGIN", "MT5_PASSWORD", "MT5_SERVER", "MT5_BASE_URL"):
         monkeypatch.delenv(k, raising=False)
-    monkeypatch.setattr(AT, "software_symbols", lambda: ["AAPL", "TSLA", "NVDA"])
+    monkeypatch.setattr(AT, "_software_symbols_uncached", lambda: ["AAPL", "TSLA", "NVDA"])
+    monkeypatch.setattr(AT, "_symbols_cache", {"at": 0.0, "symbols": None})
     monkeypatch.setattr(AT, "_ignore_automap_on_connect", True)
     AT._conn.update(connected=False, account=None, since=None, last_error=None, server=None, base_url=None)
     yield m
@@ -187,11 +188,37 @@ def test_automap_uses_one_symbols_call_then_verifies_only_the_matches(fake):
     assert AT.mapping_rows()["automap"]["done"] == 3
 
 
+def test_match_broker_symbol_handles_the_brokers_amznus_m_form():
+    names = ["AMZNUS.m", "TSLAUS.m", "METAUS.m", "NVDAUS.m", "NVDAUS", "GOOGLUS.m", "GOOGUS.m", "USDJPY", "US30.m"]
+    assert AT.match_broker_symbol("AMZN", names) == "AMZNUS.m" and AT.match_broker_symbol("META", names) == "METAUS.m"
+    assert AT.match_broker_symbol("NVDA", names) == "NVDAUS.m"                            # configured suffix 'US.m' is tried before 'US'
+    assert AT.match_broker_symbol("GOOG", names) == "GOOGUS.m" and AT.match_broker_symbol("GOOGL", names) == "GOOGLUS.m"
+    assert AT.match_broker_symbol("US", names) is None                                   # 'USDJPY' / 'US30.m' are not US + a short suffix
+    assert AT.match_broker_symbol("AAPL", names) is None
+
+
+def test_status_and_symbol_list_do_not_hit_the_broker_or_the_database_per_poll(fake, monkeypatch):
+    _connected(fake)
+    n0 = [p for p, q in fake.calls].count("AccountSummary")
+    for _ in range(5):
+        AT.status()
+    assert [p for p, q in fake.calls].count("AccountSummary") == n0                       # cached for ACCOUNT_REFRESH_S
+    monkeypatch.setattr(AT, "_acct_refreshed_at", 0.0)
+    AT.status()
+    assert [p for p, q in fake.calls].count("AccountSummary") == n0 + 1
+    calls = {"n": 0}
+    monkeypatch.setattr(AT, "_software_symbols_uncached", lambda: calls.__setitem__("n", calls["n"] + 1) or ["AAPL"])
+    monkeypatch.setattr(AT, "_symbols_cache", {"at": 0.0, "symbols": None})
+    for _ in range(5):
+        AT.software_symbols()
+    assert calls["n"] == 1                                                                 # one query per SYMBOLS_CACHE_S, not per poll
+
+
 def test_match_broker_symbol_rules():
     names = ["AAPL", "TSLA.NAS", "MSFT.US", "NVDA.NAS", "NVDA.NYSE", "ko"]
     assert AT.match_broker_symbol("AAPL", names) == "AAPL" and AT.match_broker_symbol("TSLA", names) == "TSLA.NAS"
     assert AT.match_broker_symbol("MSFT", names) == "MSFT.US" and AT.match_broker_symbol("KO", names) == "ko"
-    assert AT.match_broker_symbol("NVDA", names) == "NVDA.NAS"                             # configured suffix order decides
+    assert AT.match_broker_symbol("NVDA", names) == "NVDA.NAS"                             # configured suffix order decides (.NAS before .NYSE)
     assert AT.match_broker_symbol("AMZN", names) is None and AT.match_broker_symbol("TSLA", names, previous="TSLA.NAS") == "TSLA.NAS"
 
 

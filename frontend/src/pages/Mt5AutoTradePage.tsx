@@ -39,7 +39,7 @@ function SwitchBanner({ st }: { st: any }) {
 }
 
 export function Mt5AccountView() {
-  const st = useApi<any>((s) => mt5.status(s), [], { refreshMs: 30_000 });
+  const st = useApi<any>((s) => mt5.status(s), [], { refreshMs: 60_000 });
   const d = st.data;
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
@@ -98,7 +98,7 @@ export function Mt5AccountView() {
 
 export function Mt5SymbolsView() {
   const [polling, setPolling] = useState(false);
-  const sy = useApi<any>((s) => mt5.symbols(s), [], { refreshMs: polling ? 3_000 : 60_000 });
+  const sy = useApi<any>((s) => mt5.symbols(s), [], { refreshMs: polling ? 5_000 : 120_000 });
   const d = sy.data;
   const job = d?.automap;
   if (job && polling && !job.running) setPolling(false);

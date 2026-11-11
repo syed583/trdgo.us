@@ -27,6 +27,7 @@ import json
 import logging
 import math
 import os
+import re
 import threading
 import time
 from datetime import datetime, timezone
@@ -187,6 +188,8 @@ def connect(login: int, password: str, server: str, remember: bool = True, base_
         res = B.connect(int(login), password, server, base_url=base)
         if res.get("ok"):
             _conn.update(connected=True, account=res["account"], since=_now_iso(), last_error=None, server=server, base_url=base)
+            global _acct_refreshed_at
+            _acct_refreshed_at = time.time()
             if remember:
                 save_credentials(int(login), password, server, base)
             audit("CONNECTED", detail={"login": int(login), "server": server, "base_url": base, "account_kind": (res["account"] or {}).get("account_kind")})
@@ -215,25 +218,51 @@ def disconnect(forget: bool = False) -> dict:
         return res
 
 
-def status() -> dict:
-    # No module lock here: a status read must never queue behind a long operation (the first auto-map did exactly that and
-    # every page timed out). The bridge serialises its own HTTP calls.
+ACCOUNT_REFRESH_S = 30.0
+_acct_refreshed_at = 0.0
+
+
+def is_connected() -> bool:
+    """In-memory answer, no network."""
+    return bool(_conn["connected"])
+
+
+def status(refresh: bool = True) -> dict:
+    """Page status. The broker account is re-read at most every ACCOUNT_REFRESH_S seconds (one HTTPS call), never per poll,
+    and never while holding the module lock: a status read must not queue behind anything (2026-11-11: a poll per 3 s with a
+    broker call and a database query each took the whole site down)."""
+    global _acct_refreshed_at
     if True:
-        live = B.account() if (_conn["connected"] and B.available()) else None
-        if live and not live.get("ok"):
-            _conn.update(connected=False, account=None, last_error="%s: %s" % (live.get("reason"), live.get("detail")))
-        elif live:
-            _conn["account"] = live["account"]
+        if refresh and _conn["connected"] and (time.time() - _acct_refreshed_at) >= ACCOUNT_REFRESH_S:
+            _acct_refreshed_at = time.time()
+            live = B.account()
+            if not live.get("ok"):
+                _conn.update(connected=False, account=None, last_error="%s: %s" % (live.get("reason"), live.get("detail")))
+            else:
+                _conn["account"] = live["account"]
         return {"installed": True, "install_note": None, "provider": "mtapi.io MT5 Client REST API", "base_url": _conn["base_url"] or B.DEFAULT_BASE_URL,
                 "connected": bool(_conn["connected"]), "account": _conn["account"], "server": _conn["server"] or DEFAULT_SERVER, "since": _conn["since"],
                 "last_error": _conn["last_error"], "credentials_saved": CRED_FILE.exists() or bool(os.getenv("MT5_LOGIN")),
                 "auto_trade": auto_trade_enabled(), "paused": paused(), "magic": MAGIC, "default_server": DEFAULT_SERVER,
-                "terminal": (B.terminal().get("terminal") if (_conn["connected"] and B.available()) else None)}
+                "terminal": (B.terminal().get("terminal") if _conn["connected"] else None)}
 
 
 # ----------------------------------------------------------------------------- symbol mapping
+SYMBOLS_CACHE_S = 60.0
+_symbols_cache: dict = {"at": 0.0, "symbols": None}
+
+
 def software_symbols() -> list:
-    """Every symbol the Strategy Trades tab can trade: the intraday boards' liquid universe plus any symbol already in the paper book."""
+    """Every symbol the Strategy Trades tab can trade: the intraday boards' liquid universe plus any symbol already in the paper
+    book. Cached for SYMBOLS_CACHE_S: the mapping page polls, and a database query per poll exhausts the 15-connection pool."""
+    if _symbols_cache["symbols"] is not None and (time.time() - _symbols_cache["at"]) < SYMBOLS_CACHE_S:
+        return list(_symbols_cache["symbols"])
+    out = _software_symbols_uncached()
+    _symbols_cache.update(at=time.time(), symbols=list(out))
+    return out
+
+
+def _software_symbols_uncached() -> list:
     syms = set()
     try:
         import ai_trade_service as ats
@@ -320,7 +349,10 @@ def automap_state() -> dict:
 
 
 def _suffixes() -> list:
-    return [x.strip() for x in (os.getenv("MT5_SYMBOL_SUFFIXES") or ",.NAS,.NYSE,.US,.m").split(",")]
+    return [x.strip() for x in (os.getenv("MT5_SYMBOL_SUFFIXES") or ",US.m,.US,.NAS,.NYSE,.m,US").split(",")]
+
+
+_SUFFIX_RE = re.compile(r"^(US)?([._-][A-Z]{1,4})?$")        # "US.m", "US", ".NAS", "_m": the exchange tag and/or one dotted suffix; "DJPY" is not a suffix
 
 
 def match_broker_symbol(sym: str, broker_names: list, previous: Optional[str] = None) -> Optional[str]:
@@ -331,7 +363,9 @@ def match_broker_symbol(sym: str, broker_names: list, previous: Optional[str] = 
         hit = by_upper.get(cand.upper())
         if hit:
             return hit
-    pref = [n for u, n in by_upper.items() if u.startswith(sym.upper() + ".")]
+    # last resort: a UNIQUE broker name that is the symbol plus a short suffix ("AMZNUS.m", "AAPL.NAS", "KO_m"); ambiguity -> None
+    up = sym.upper()
+    pref = [n for u, n in by_upper.items() if u != up and u.startswith(up) and _SUFFIX_RE.match(u[len(up):])]
     return pref[0] if len(pref) == 1 else None
 
 

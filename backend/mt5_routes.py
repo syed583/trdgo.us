@@ -76,7 +76,7 @@ def mt5_pause(request: Request, payload: dict = Body(default={})) -> dict:
 @router.get("/symbols")
 def mt5_symbols(request: Request) -> dict:
     _require_operator(request)
-    return {"status": "OK", **AT.mapping_rows(), "connected": AT.status()["connected"]}
+    return {"status": "OK", **AT.mapping_rows(), "connected": AT.is_connected()}        # in-memory only: no broker call, no database query per poll
 
 
 @router.post("/symbols/map")
@@ -105,7 +105,7 @@ def mt5_symbols_verify(request: Request, payload: dict = Body(...)) -> dict:
 @router.get("/audit")
 def mt5_audit(request: Request, limit: int = 200, event: str = "", symbol: str = "") -> dict:
     _require_operator(request)
-    return {"status": "OK", "rows": AT.audit_rows(limit=limit, event=event or None, symbol=(symbol or "").upper() or None), "auto_trade": AT.auto_trade_enabled(), "paused": AT.paused()}
+    return {"status": "OK", "rows": AT.audit_rows(limit=limit, event=event or None, symbol=(symbol or "").upper() or None), "auto_trade": AT.auto_trade_enabled(), "paused": AT.paused(), "connected": AT.is_connected()}
 
 
 @router.post("/reconcile")
