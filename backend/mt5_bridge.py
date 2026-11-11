@@ -85,9 +85,11 @@ def _call(path: str, params: Optional[dict] = None, *, with_token: bool = True, 
         data = json.loads(body) if body.strip() else None
     except ValueError:
         data = body.strip().strip('"')
-    if isinstance(data, dict) and ("errorCode" in data or ("message" in data and "details" in data)):
-        return {"ok": False, "reason": "API_ERROR", "status": status, "error_code": data.get("errorCode"), "detail": "%s%s" % (data.get("message"), (" (" + str(data.get("details")) + ")") if data.get("details") else ""),
-                "raw": data, "path": safe_path}
+    if isinstance(data, dict) and ("errorCode" in data or ("message" in data and any(k in data for k in ("code", "nodeName", "stackTrace", "details")))):
+        code = data.get("code", data.get("errorCode"))
+        extra = data.get("details") or data.get("nodeName")
+        return {"ok": False, "reason": "API_ERROR", "status": status, "error_code": code, "detail": "%s%s" % (data.get("message"), (" (" + str(extra) + ")") if extra else ""),
+                "raw": {k: v for k, v in data.items() if k != "stackTrace"}, "path": safe_path}
     if status >= 400:
         return {"ok": False, "reason": "HTTP_%d" % status, "status": status, "detail": (body or "")[:300], "path": safe_path}
     return {"ok": True, "status": status, "data": data, "path": safe_path}
@@ -182,18 +184,25 @@ def symbol(sym: str, select: bool = True) -> dict:
         text = ("%s" % res.get("detail")).lower()
         return {"ok": False, "reason": "UNKNOWN_SYMBOL" if ("not found" in text or "unknown" in text or "invalid symbol" in text) else res.get("reason"), "detail": res.get("detail"), "raw": res.get("raw")}
     d = res["data"] if isinstance(res["data"], dict) else {}
-    # mtapi.io nests the MT5 symbol info under a key on some versions; accept both shapes
-    inner = _g(d, "symbolInfo", "info", "params") if isinstance(_g(d, "symbolInfo", "info", "params"), dict) else d
+    # swagger: SymbolParams = {symbol, symbolInfo, symbolGroup}; symbolInfo carries contractSize/digits/tickSize, symbolGroup the
+    # trading rules (tradeMode, minLots/maxLots/lotsStep or minVolume/maxVolume/volumeStep). Flat shapes are accepted too.
+    info_part = _g(d, "symbolInfo", "info", "params")
+    group_part = _g(d, "symbolGroup", "group")
+    inner = dict(d)
+    if isinstance(info_part, dict):
+        inner.update(info_part)
+    if isinstance(group_part, dict):
+        inner.update(group_part)
     tm = _g(inner, "tradeMode", "trade_mode", "tradeMod")
     if isinstance(tm, str):
         tm = {"disabled": 0, "longonly": 1, "shortonly": 2, "closeonly": 3, "full": 4}.get(tm.replace("_", "").lower(), tm)
     contract = _f(_g(inner, "contractSize", "contract_size", "tradeContractSize", "lotSize"), 1.0) or 1.0
     out = {"ok": True, "symbol": sym, "description": _g(inner, "description"), "visible": True, "trade_mode": tm,
            "trade_mode_text": {0: "DISABLED", 1: "LONG_ONLY", 2: "SHORT_ONLY", 3: "CLOSE_ONLY", 4: "FULL"}.get(tm, str(tm)),
-           "volume_min": _f(_g(inner, "volumeMin", "minVolume", "volume_min", "lotMin", "minLot")), "volume_max": _f(_g(inner, "volumeMax", "maxVolume", "volume_max", "lotMax", "maxLot")),
-           "volume_step": _f(_g(inner, "volumeStep", "stepVolume", "volume_step", "lotStep", "stepLot")), "digits": _g(inner, "digits"), "point": _f(_g(inner, "point")),
+           "volume_min": _f(_g(inner, "minLots", "volumeMin", "minVolume", "volume_min", "lotMin", "minLot")), "volume_max": _f(_g(inner, "maxLots", "volumeMax", "maxVolume", "volume_max", "lotMax", "maxLot")),
+           "volume_step": _f(_g(inner, "lotsStep", "volumeStep", "stepVolume", "volume_step", "lotStep", "stepLot")), "digits": _g(inner, "digits"), "point": _f(_g(inner, "point", "points")),
            "tick_size": _f(_g(inner, "tickSize", "tick_size")), "contract_size": contract, "stops_level": _g(inner, "stopsLevel", "tradeStopsLevel"),
-           "currency_profit": _g(inner, "currencyProfit", "profitCurrency"), "raw_keys": sorted(inner.keys())[:60] if isinstance(inner, dict) else None}
+           "currency_profit": _g(inner, "currencyProfit", "profitCurrency"), "raw_keys": sorted(inner.keys())[:80] if isinstance(inner, dict) else None, "group": _g(inner, "groupName")}
     if out["volume_min"] is None or out["volume_step"] is None:
         out["note"] = "volume rules not found in SymbolParams (keys: %s)" % out["raw_keys"]
     return out
@@ -212,6 +221,12 @@ def tick(sym: str) -> dict:
     try:
         if isinstance(t, (int, float)):
             age = time.time() - (float(t) / 1000.0 if float(t) > 1e11 else float(t))
+        elif isinstance(t, str) and t:
+            import datetime as _dt
+            ts = _dt.datetime.fromisoformat(t.replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=_dt.timezone.utc)                 # the API stamps server time as UTC
+            age = time.time() - ts.timestamp()
     except (TypeError, ValueError):
         age = None
     return {"ok": True, "bid": bid, "ask": ask, "last": _f(_g(d, "last")), "time": t, "age_s": age}
@@ -299,16 +314,18 @@ def position_exit_deals(ticket: int, since_epoch: float) -> dict:
     rows = res["data"] if isinstance(res["data"], list) else (_g(res["data"], "deals", "items") or [])
     out = []
     for d in rows or []:
-        entry = _g(d, "entry", "dealEntry")
-        if entry not in (1, "1", "Out", "OUT", "DEAL_ENTRY_OUT", "out", None):
+        direction = _g(d, "direction", "entry", "dealEntry")
+        comment = str(_g(d, "comment") or "")
+        cl = comment.lower()
+        is_exit = direction in (1, 2, 3, "1", "2", "3", "Out", "OUT", "InOut", "OutBy", "out") or "[sl" in cl or "[tp" in cl or cl.startswith("so:") or "stop out" in cl
+        if not is_exit:
             continue
         reason = _g(d, "reason", "dealReason")
         rtxt = str(reason).lower() if reason is not None else ""
-        why = "SL" if (reason in (4, "4") or "sl" in rtxt or "stop loss" in rtxt or "stoploss" in rtxt) else "TP" if (reason in (5, "5") or "tp" in rtxt or "take profit" in rtxt or "takeprofit" in rtxt) \
-            else "STOP_OUT" if (reason in (6, "6") or "stop out" in rtxt or "so" == rtxt) else "CLIENT" if reason in (0, 1, 2, 3, "0", "1", "2", "3", "client", "expert", "mobile", "web") else (str(reason) if reason is not None else "UNKNOWN")
-        if entry is None and why in ("CLIENT", "UNKNOWN"):
-            continue                                                        # an entry deal without an entry flag: not an exit
-        out.append({"deal": _g(d, "ticket", "deal"), "time": _g(d, "time"), "price": _f(_g(d, "price")), "volume": _f(_g(d, "lots", "volume")), "profit": _f(_g(d, "profit")), "reason": why, "comment": _g(d, "comment")})
+        why = "SL" if ("[sl" in cl or reason in (4, "4") or "stop loss" in rtxt or "stoploss" in rtxt) else "TP" if ("[tp" in cl or reason in (5, "5") or "take profit" in rtxt or "takeprofit" in rtxt) \
+            else "STOP_OUT" if (cl.startswith("so:") or "stop out" in cl or reason in (6, "6")) else "CLIENT"
+        out.append({"deal": _g(d, "ticketNumber", "ticket", "deal"), "time": _g(d, "openTime", "historyTime", "time"), "price": _f(_g(d, "price", "openPrice")),
+                    "volume": _f(_g(d, "lots", "volume")), "profit": _f(_g(d, "profit")), "reason": why, "comment": comment})
     return {"ok": True, "deals": out}
 
 

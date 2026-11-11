@@ -24,8 +24,9 @@ class FakeMtapi:
     def __init__(self):
         self.calls = []                       # (path, params)
         self.login_ok = True
-        self.symbols = {"AAPL": {"symbol": "AAPL", "tradeMode": "Full", "volumeMin": 1.0, "volumeMax": 10000.0, "volumeStep": 1.0, "digits": 2, "contractSize": 1.0, "description": "Apple"},
-                        "TSLA.NAS": {"symbol": "TSLA.NAS", "tradeMode": 4, "volumeMin": 0.1, "volumeMax": 100.0, "volumeStep": 0.1, "digits": 2, "contractSize": 100.0}}
+        # SymbolParams = {symbol, symbolInfo, symbolGroup} (swagger): rules in symbolGroup (minLots/maxLots/lotsStep/tradeMode), contract in symbolInfo
+        self.symbols = {"AAPL": {"symbol": "AAPL", "symbolInfo": {"contractSize": 1.0, "digits": 2, "tickSize": 0.01, "description": "Apple"}, "symbolGroup": {"groupName": "Stocks", "tradeMode": 4, "minLots": 1.0, "maxLots": 10000.0, "lotsStep": 1.0, "minVolume": 10000, "maxVolume": 100000000, "volumeStep": 10000}},
+                        "TSLA.NAS": {"symbol": "TSLA.NAS", "symbolInfo": {"contractSize": 100.0, "digits": 2, "tickSize": 0.01}, "symbolGroup": {"groupName": "Stocks", "tradeMode": 4, "minLots": 0.1, "maxLots": 100.0, "lotsStep": 0.1}}}
         self.quotes = {"AAPL": (100.0, 100.1), "TSLA.NAS": (200.0, 200.2)}
         self.positions = {}
         self.deals = {}
@@ -41,17 +42,17 @@ class FakeMtapi:
         self.calls.append((path, q))
         if path == "ConnectEx":
             assert "id" not in q and q["user"] == "123" and q["server"] == "STGlobalMarketsLtd-Live-1"
-            return (200, json.dumps(TOKEN)) if self.login_ok else (201, json.dumps({"errorCode": "INVALID_ACCOUNT", "message": "Invalid account", "details": "auth failed"}))
+            return (200, json.dumps(TOKEN)) if self.login_ok else (201, json.dumps({"code": 65538, "message": "Invalid account", "nodeName": "mt5-1", "stackTrace": "...", "user": 123}))
         if q.get("id") != TOKEN:
-            return 201, json.dumps({"errorCode": "INVALID_TOKEN", "message": "Invalid token"})
+            return 201, json.dumps({"code": 1, "message": "Invalid token", "nodeName": "mt5-1", "user": 0})
         if path == "AccountSummary":
             return 200, json.dumps({"balance": 10000.0, "equity": 10010.0, "currency": "USD", "freeMargin": 9000.0, "leverage": 100, "type": "Demo", "name": "Demo", "company": "ST"})
         if path == "SymbolParams":
             d = self.symbols.get(q["symbol"])
-            return (200, json.dumps({"symbolInfo": d})) if d else (201, json.dumps({"errorCode": "SYMBOL_NOT_FOUND", "message": "Symbol not found", "details": q["symbol"]}))
+            return (200, json.dumps(d)) if d else (201, json.dumps({"code": 4301, "message": "Symbol not found: " + q["symbol"], "nodeName": "mt5-1", "user": 123}))
         if path == "GetQuote":
             t = self.quotes.get(q["symbol"])
-            return (200, json.dumps({"bid": t[0], "ask": t[1], "last": t[0], "time": 1_700_000_000_000})) if t else (201, json.dumps({"errorCode": "NO_QUOTE", "message": "No quote"}))
+            return (200, json.dumps({"symbol": q["symbol"], "bid": t[0], "ask": t[1], "last": t[0], "time": "2026-11-11T15:00:00", "volume": 0})) if t else (201, json.dumps({"code": 2, "message": "No quote", "nodeName": "mt5-1"}))
         if path == "OrderSendSafe":
             code = self.send_script.pop(0) if self.send_script else None
             if code:
@@ -70,7 +71,7 @@ class FakeMtapi:
                 return 201, json.dumps(code)
             p = self.positions.pop(int(q["ticket"]), None)
             if not p:
-                return 201, json.dumps({"errorCode": "POSITION_NOT_FOUND", "message": "Position not found"})
+                return 201, json.dumps({"code": 10036, "message": "Position not found", "nodeName": "mt5-1"})
             return 200, json.dumps({"ticket": p["ticket"], "lots": p["lots"], "closePrice": self.quotes[p["symbol"]][0]})
         if path == "HistoryDealsByPositionId":
             return 200, json.dumps(self.deals.get(int(q["ticket"]), []))
@@ -147,7 +148,7 @@ def test_connect_uses_connectex_keeps_the_token_in_memory_and_never_logs_secrets
 def test_a_failed_login_is_reported_with_the_api_message_and_audited(fake):
     fake.login_ok = False
     r = AT.connect(123, "x", "STGlobalMarketsLtd-Live-1")
-    assert not r["ok"] and r["reason"] == "API_ERROR" and "Invalid account" in r["detail"] and AT.status()["connected"] is False
+    assert not r["ok"] and r["reason"] == "API_ERROR" and "Invalid account" in r["detail"] and r["error_code"] == 65538 and AT.status()["connected"] is False
     assert any(a["event"] == "CONNECT_FAILED" and "Invalid account" in a["detail"] for a in _audit())
 
 
@@ -211,7 +212,7 @@ def test_sizing_rules():
 
 def test_missing_volume_rules_are_a_logged_rejection_not_a_guess(fake):
     _connected(fake)
-    fake.symbols["AAPL"] = {"symbol": "AAPL", "tradeMode": "Full", "contractSize": 1.0}
+    fake.symbols["AAPL"] = {"symbol": "AAPL", "symbolInfo": {"contractSize": 1.0, "digits": 2}, "symbolGroup": {"tradeMode": 4}}
     r = AT.on_paper_event(entry())
     assert r["reason"] == "NO_VOLUME_RULES" and _sent(fake) == [] and _audit()[-1]["event"] == "REJECTED"
 
@@ -226,22 +227,22 @@ def test_one_position_per_symbol_and_side_and_no_opposite_direction_while_open(f
 
 def test_a_rejection_is_logged_with_the_full_api_reason_and_not_retried(fake):
     _connected(fake)
-    fake.send_script = [{"errorCode": "TRADE_RETCODE_NO_MONEY", "message": "Not enough money", "details": "margin 9000 < 9900"}]
+    fake.send_script = [{"code": 10019, "message": "Not enough money (margin 9000 < 9900)", "nodeName": "mt5-1", "user": 123}]
     r = AT.on_paper_event(entry())
     assert not r["ok"] and len(_sent(fake)) == 1
     a = _audit()[-1]
-    assert a["event"] == "REJECTED" and "Not enough money" in a["reason"] and "margin 9000" in a["reason"] and a["detail"]["request"]["symbol"] == "AAPL"
+    assert a["event"] == "REJECTED" and "Not enough money" in a["reason"] and "(10019)" in a["reason"] and a["detail"]["request"]["symbol"] == "AAPL"
     assert AT.open_positions() == {}
 
 
 def test_a_requote_is_repriced_once_then_given_up(fake):
     _connected(fake)
-    fake.send_script = [{"errorCode": "TRADE_RETCODE_REQUOTE", "message": "Requote"}, {"errorCode": "TRADE_RETCODE_REQUOTE", "message": "Requote"}]
+    fake.send_script = [{"code": 10004, "message": "Requote", "nodeName": "mt5-1"}, {"code": 10004, "message": "Requote", "nodeName": "mt5-1"}]
     r = AT.on_paper_event(entry())
     assert not r["ok"] and len(_sent(fake)) == 2
     ev = [a["event"] for a in _audit()]
     assert ev.count("REPRICE") == 1 and ev[-1] == "REJECTED"
-    fake.send_script = [{"errorCode": "TRADE_RETCODE_PRICE_CHANGED", "message": "Price changed"}]
+    fake.send_script = [{"code": 10020, "message": "Price changed", "nodeName": "mt5-1"}]
     assert AT.on_paper_event(entry(trade_id=9))["ok"] and len(_sent(fake)) == 4
 
 
@@ -257,7 +258,7 @@ def test_a_partial_fill_is_recorded_with_the_filled_lots(fake):
 
 def test_the_session_token_is_never_in_an_audit_record_even_on_failure(fake):
     _connected(fake)
-    fake.send_script = [{"errorCode": "X", "message": "boom"}]
+    fake.send_script = [{"code": 1, "message": "boom", "nodeName": "mt5-1"}]
     AT.on_paper_event(entry())
     assert TOKEN not in (AT.STATE_DIR / AT.AUDIT_FILE).read_text(encoding="utf-8")
 
@@ -276,7 +277,7 @@ def test_close_retries_three_times_then_logs_a_failure(fake, monkeypatch):
     monkeypatch.setattr(AT.time, "sleep", lambda s: None)
     _connected(fake)
     AT.on_paper_event(entry(trade_id=1))
-    fake.close_script = [{"errorCode": "REQUOTE", "message": "Requote"}, {"errorCode": "OFF", "message": "Off quotes"}, {"errorCode": "T", "message": "Timeout"}]
+    fake.close_script = [{"code": 10004, "message": "Requote"}, {"code": 10021, "message": "Off quotes"}, {"code": 10012, "message": "Timeout"}]
     r = AT.on_paper_event({"type": "EXIT", "trade_id": 1, "symbol": "AAPL", "side": "LONG", "reason": "EOD_CLOSE"})
     assert not r["ok"] and r["reason"] == "CLOSE_FAILED" and len(_closes(fake)) == 3
     ev = [a["event"] for a in _audit()]
@@ -290,7 +291,7 @@ def test_a_no_retry_refusal_stops_the_close_loop_early(fake, monkeypatch):
     monkeypatch.setattr(AT.time, "sleep", lambda s: None)
     _connected(fake)
     AT.on_paper_event(entry(trade_id=1))
-    fake.close_script = [{"errorCode": "TRADE_RETCODE_MARKET_CLOSED", "message": "Market closed"}]
+    fake.close_script = [{"code": 10018, "message": "Market closed"}]
     r = AT.on_paper_event({"type": "EXIT", "trade_id": 1, "symbol": "AAPL", "side": "LONG", "reason": "SCORE_EXIT"})
     assert not r["ok"] and len(_closes(fake)) == 1
 
@@ -300,7 +301,8 @@ def test_a_stop_loss_hit_on_the_broker_is_logged_not_closed_again(fake):
     AT.on_paper_event(entry(trade_id=1))
     ticket = AT.open_positions()["1"]["ticket"]
     fake.positions.pop(ticket)
-    fake.deals[ticket] = [{"ticket": 777, "entry": "Out", "reason": "StopLoss", "time": "2026-11-11T16:00:00", "price": 98.0, "lots": 99.0, "profit": -200.0, "comment": "[sl 98.00]"}]
+    fake.deals[ticket] = [{"ticketNumber": 776, "direction": 0, "type": 0, "price": 100.1, "volume": 990000, "profit": 0.0, "comment": "TRDGO grok #1"},
+                          {"ticketNumber": 777, "direction": 1, "type": 1, "openTime": "2026-11-11T16:00:00", "price": 98.0, "volume": 990000, "profit": -200.0, "comment": "[sl 98.00]"}]
     r = AT.on_paper_event({"type": "EXIT", "trade_id": 1, "symbol": "AAPL", "side": "LONG", "reason": "STOP"})
     assert r == {"ok": True, "closed_by": "SL"} and _closes(fake) == []
     a = _audit()[-1]
@@ -318,7 +320,7 @@ def test_reconcile_notices_positions_the_broker_closed_meanwhile(fake):
     AT.on_paper_event(entry(trade_id=1))
     ticket = AT.open_positions()["1"]["ticket"]
     fake.positions.pop(ticket)
-    fake.deals[ticket] = [{"ticket": 778, "entry": 1, "reason": 5, "time": "x", "price": 104.0, "lots": 99.0, "profit": 390.0}]
+    fake.deals[ticket] = [{"ticketNumber": 778, "direction": 1, "type": 1, "price": 104.0, "volume": 990000, "profit": 390.0, "comment": "[tp 104.00]"}]
     r = AT.reconcile()
     assert r["ok"] and r["closed_meanwhile"] == [{"trade_id": 1, "ticket": ticket, "reason": "TP"}] and AT.open_positions() == {}
 
