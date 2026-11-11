@@ -379,8 +379,8 @@ UW_BUDGET: dict = {
     "yield_min_samples": 5,
     "module_hourly_runaway": 12000,   # no single dashboard / warmer module may make more than this in one hour
     "emergency_reserve": 1000,     # the last calls belong to the live intraday engine only
-    "intraday_budget": 89000,      # priorities 1+2 together = live_hard_cap - emergency_reserve + essential_budget (live cap unchanged at 30k)
-    "essential_budget": 60000,     # priority 2 alone. MEASURED 2026-11-11: the four boards + quotes + the paper tracker used 15,003 by 12:30 ET
+    "intraday_budget": 129000,     # priorities 1+2 together = live_hard_cap - emergency_reserve + essential_budget (live cap unchanged at 30k)
+    "essential_budget": 100000,    # priority 2 alone (owner decision 2026-11-11: 60k -> 100k). MEASURED 2026-11-11: the four boards + quotes + the paper tracker used 15,003 by 12:30 ET
                                    # (market_data 7.4k, ai_boards 7.3k), so 15k starved every board, the ETF strip and the tracker's own
                                    # quotes until the 20:00 ET reset. 60k is still a runaway rail (~4x a full day), not a quota.
     "feed_hourly_cap": 2500,       # the six boards' shared feed (module "ai_boards") per clock hour (needs ~850)
