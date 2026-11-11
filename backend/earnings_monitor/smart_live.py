@@ -32,13 +32,12 @@ LIVE_EVERY_FALLBACK_MIN = 360
 
 def live_cadence_minutes(st: Optional[dict]) -> int:
     """How often a LIVE pass is scheduled, as the status file states it; the hourly DRY_RUN rewrites `every_minutes`,
-    so only `live_every_minutes` (or `every_minutes` written by a LIVE pass) counts."""
+    so only `live_every_minutes` counts; without it the owner-approved 6-hour cadence is assumed."""
     sch = (st or {}).get("schedule") or {}
     try:
         if sch.get("live_every_minutes"):
             return int(sch["live_every_minutes"])
-        if (st or {}).get("mode") == "LIVE" and sch.get("every_minutes"):
-            return int(sch["every_minutes"])
+        # `every_minutes` alone is NOT trusted: the installed publisher (kit <= v6.3) writes 60 even for a LIVE pass
     except (TypeError, ValueError):
         pass
     return LIVE_EVERY_FALLBACK_MIN
