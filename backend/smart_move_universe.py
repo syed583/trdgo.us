@@ -68,7 +68,7 @@ def build(svc, now, *, horizon_days: int, slot_state: dict, funded_symbols: Opti
     funded_symbols = funded_symbols or set()
     selected_symbols = selected_symbols or set()
     change_index = change_index if change_index is not None else (slot_state.get("symbol_index") or {})
-    cal_rows = svc.store.read("cal_obs")
+    cal_rows = L.filter_cal_obs(svc.store.read("cal_obs"))                               # kit v6.6: the market-cap floor applies to the universe table too
     meta = {}
     for r in cal_rows:
         m = meta.setdefault(r["symbol"], {"company": None, "marketcap": None, "sector": None})

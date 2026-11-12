@@ -105,7 +105,7 @@ def stale_slots(svc, now: datetime, *, lookahead_days: int = 5) -> list:
     Date-based on purpose: a stale calendar row is exactly what hides an event from events(), so the refresh decision must not depend on events()."""
     out = []
     newest = {}
-    for r in svc.store.read("cal_obs"):
+    for r in svc.cal_obs():
         if r.get("source") == "UW_CALENDAR" and r.get("label") == "premarket":
             newest[r["date"]] = max(newest.get(r["date"], ""), r["observed_at"])
     today = now.astimezone(ET).date()

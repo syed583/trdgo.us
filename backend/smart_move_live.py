@@ -36,6 +36,49 @@ from smvshadow import scorer as sc  # noqa: E402
 from smvshadow.freshness import missing  # noqa: E402
 from smvshadow.store import PayloadStore  # noqa: E402
 
+# Market-cap floor (owner decision 2026-11-12, kit v6.6): a symbol whose best known market cap is below this, or unknown on every
+# observation, is dropped from the calendar observations before anything looks at it. The threshold is a constant, not a setting.
+MIN_MARKET_CAP_USD = 7_000_000.0
+
+
+def symbol_market_caps(cal_rows) -> dict:
+    """symbol -> best (max) market cap across its calendar observations; a symbol with no usable value is absent."""
+    caps: dict = {}
+    for r in cal_rows:
+        v = r.get("marketcap")
+        if v in (None, ""):
+            continue
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            continue
+        if f > 0:
+            caps[r["symbol"]] = max(f, caps.get(r["symbol"], 0.0))
+    return caps
+
+
+def excluded_by_market_cap(cal_rows, floor: float = MIN_MARKET_CAP_USD) -> dict:
+    """symbol -> reason ("below floor" with the value, or "unknown") for every symbol the floor removes. Pure; reads nothing else."""
+    caps = symbol_market_caps(cal_rows)
+    out: dict = {}
+    for r in cal_rows:
+        s = r["symbol"]
+        if s in out:
+            continue
+        c = caps.get(s)
+        if c is None:
+            out[s] = "market cap unknown on every calendar observation"
+        elif c < floor:
+            out[s] = "market cap %.0f USD below the %.0f USD floor" % (c, floor)
+    return out
+
+
+def filter_cal_obs(cal_rows, floor: float = MIN_MARKET_CAP_USD) -> list:
+    """The calendar observations minus every symbol below the floor or without a market cap. Order preserved."""
+    rows = list(cal_rows)
+    drop = excluded_by_market_cap(rows, floor)
+    return [r for r in rows if r["symbol"] not in drop] if drop else rows
+
 UTC = timezone.utc
 ROOT = Path(__file__).resolve().parents[1]
 ETFS = sorted(set(SECTOR_ETF.values()))
@@ -467,9 +510,15 @@ class RefreshService:
         return done
 
     # ---- evidence planning
+    def cal_obs(self) -> list:
+        """The saved calendar observations this collector works from: the store's rows minus every symbol below the market-cap floor
+        (kit v6.6). Every consumer reads through here (or through filter_cal_obs), so an excluded symbol is never scanned, counted,
+        displayed or captured."""
+        return filter_cal_obs(self.store.read("cal_obs"))
+
     def _calobs(self, symbol=None):
         out = {}
-        for r in self.store.read("cal_obs"):
+        for r in self.cal_obs():
             if symbol and r["symbol"] != symbol:
                 continue
             o = cc.CalObs(r["source"], r["symbol"], date.fromisoformat(r["date"]), r["label"], r["clock"], r["vendor_flag"], r["raw_sha256"], datetime.fromisoformat(r["observed_at"]))

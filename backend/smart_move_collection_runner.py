@@ -113,7 +113,7 @@ def execute(svc, *, now, state_dir, live: bool, authorized: int, ceiling: int, b
 
 def outcome_events(svc, now) -> list:
     """Events with a BMO/AMC session recorded in the saved calendar (the event record, not a vendor label alone) whose date has passed: the candidates for daily-bar collection once their reaction session has closed."""
-    recs = ER.records_from_saved(svc.store.read("cal_obs"), now, {})
+    recs = ER.records_from_saved(svc.cal_obs(), now, {})
     return [{"symbol": r["symbol"], "event_date": r["event_date"], "session": r["session"]} for r in recs if r["event_date"] and r["session"] in ("BMO", "AMC")
             and r["event_date"] < now.date().isoformat()]
 
@@ -156,7 +156,7 @@ def engine20_profile(a, svc, now, live: bool) -> int:
     d = Path(a.state_dir)
     d.mkdir(parents=True, exist_ok=True)
     caps = {}
-    for o in svc.store.read("cal_obs"):
+    for o in svc.cal_obs():
         try:
             caps[o["symbol"]] = float(o["marketcap"])
         except (KeyError, TypeError, ValueError):
@@ -261,7 +261,7 @@ def record_events(svc, now, state_dir) -> dict:
     # Found after Batch #2: the collector saves its earnings payloads as kind `uw_earnings` in v2_evidence, while the engine-kind `earnings` rows live in `evidence`. Both feed the quarter lookup; the files themselves are never touched.
     ev_rows, v2_rows = svc.store.read("evidence"), svc.store.read("v2_evidence")
     payloads = ER.earnings_payloads(list(ev_rows) + list(v2_rows), load, now)
-    recs = ER.records_from_saved(svc.store.read("cal_obs"), now, payloads)
+    recs = ER.records_from_saved(svc.cal_obs(), now, payloads)
     store = ER.EventRecords(Path(state_dir) / "event_records.jsonl")
     res = store.observe_snapshot(recs, observed=now)
     reg = REG.EventRegistry(Path(state_dir) / "event_registry.jsonl")
