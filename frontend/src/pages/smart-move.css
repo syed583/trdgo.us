@@ -208,3 +208,12 @@
 .sm-q-lab { padding: 2px 8px; font-size: 11.5px; }
 .sm-q-lab.on { background: #3b6cf6; color: #fff; border-color: #3b6cf6; }
 @media (max-width: 720px) { .sm-q-headline { max-width: 220px; } }
+
+/* gate-refusal alert channel (2026-11-12) */
+.sm-q-state.ack { border-color: #9aa3ad; background: #eef0f2; color: var(--text); }
+[data-theme="dark"] .sm-q-state.ack { background: #2a2d31; }
+.sm-alert-grid { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 8px 0; font-size: 13px; }
+.sm-alert-grid > span:nth-child(odd) { color: var(--muted, #6b7280); }
+.sm-alert-reasons { margin: 0; padding-left: 18px; }
+.sm-alert-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.sm-alert-output { max-height: 320px; overflow: auto; font-size: 11.5px; background: var(--bg-2, #f6f7f9); padding: 8px; border-radius: 6px; }

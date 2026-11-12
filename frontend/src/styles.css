@@ -2428,3 +2428,12 @@ select.mini {
   background: #2c1616;
   border-bottom-color: #4a2020;
 }
+
+/* Smart Money Move gate-refusal strip (operator / admin), 2026-11-12 */
+.sm-alert-strip { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 16px; font-size: 12.5px; line-height: 1.4; color: #8a1c1c; background: #fde2e2; border-bottom: 1px solid #f3b4b4; }
+.sm-alert-strip.ack { color: #4b5563; background: #eef0f2; border-bottom-color: #d1d5db; }
+:root[data-theme="dark"] .sm-alert-strip, :root:not([data-theme="light"]) .sm-alert-strip { color: #f4a3a3; background: #3a1d1d; border-bottom-color: #5a2a2a; }
+:root[data-theme="dark"] .sm-alert-strip.ack, :root:not([data-theme="light"]) .sm-alert-strip.ack { color: #c3c7cc; background: #2a2d31; border-bottom-color: #3d4147; }
+.nav-badge { margin-left: auto; min-width: 16px; height: 16px; border-radius: 8px; font-size: 11px; font-weight: 700; line-height: 16px; text-align: center; padding: 0 4px; }
+.nav-badge.critical { background: #d93025; color: #fff; }
+.nav-badge.ack { background: #9aa3ad; color: #fff; }

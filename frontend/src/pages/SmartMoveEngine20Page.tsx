@@ -2,6 +2,7 @@ import { Fragment, useState } from 'react';
 import { AlertTriangle, Info, RefreshCw } from 'lucide-react';
 import type { PageContext } from '../App';
 import { earningsMonitor, smartMoveEngine20 } from '../api/client';
+import { SmartMoveAlertCard } from '../components/SmartMoveAlert';
 import { useApi } from '../hooks/useApi';
 import { PageHead } from './shared';
 import './smart-move.css';
@@ -154,6 +155,7 @@ export function LiveView() {
       )}
       {d?.configured && (
         <>
+          {(d.alerts || []).map((al: any) => <SmartMoveAlertCard key={al.id} alert={al} canAck onChanged={() => live.refresh()} />)}
           {d.ledger && !d.ledger.ok && <div className="sm-q-state bad" role="alert" data-testid="sm-live-ledger"><b>Prediction ledger integrity check FAILED</b><div>{d.ledger.problem}. No call is shown.</div></div>}
           {d.state === 'OK'
             ? <div className="sm-q-banner" role="note" data-testid="sm-live-state"><Info size={16} /><div><b>Live.</b> {d.state_text} NO TRADE means every gate passed and the margin was too small; NO VALID PREDICTION means data was missing or insufficient and is never a neutral view; PENDING means the evidence has not been collected yet and is not a prediction.</div></div>

@@ -24,6 +24,10 @@ from zoneinfo import ZoneInfo
 
 UTC, ET = timezone.utc, ZoneInfo("America/New_York")
 LEDGER, STATUS, RUNS = "live_predictions.jsonl", "live_status.json", "collection_runs.jsonl"
+REFUSAL, REFUSAL_ACK, REFUSAL_NOTIFIED = "last_gate_refusal.json", "last_gate_refusal.ack.json", "last_gate_refusal.notified.json"
+SCHEDULE_LOG, MONDAY_BMO_SCHEDULE_SUBDIR = "scheduled_live_runs.jsonl", "monday_bmo"
+SCHEDULE_LOG_DIR_DEFAULT = r"C:\smlive\live_schedule"        # the scheduled scripts' own log (FINISHED exit_code); SMART_MOVE_SCHEDULE_LOG_DIR overrides
+VARIANT_LIVE = "LIVE"
 STALE_MIN_DEFAULT = 390            # LIVE cadence (6 h, owner decision 2026-11-05) + 30 minutes of grace; a status file that states its
                                    # cadence (schedule.live_every_minutes, kit v6.4+) overrides this (cadence + GRACE_MIN)
 GRACE_MIN = 30
@@ -120,7 +124,8 @@ def _label(rec: dict, now: datetime, ledger_ok: bool, scan_fresh: bool) -> str:
     return "LIVE" if scan_fresh else "STALE"
 
 
-def load(live_dir: Optional[str], now: datetime, *, kill_file: Optional[str] = None, stale_min: int = STALE_MIN_DEFAULT, snapshot_meta: Optional[dict] = None) -> dict:
+def load(live_dir: Optional[str], now: datetime, *, kill_file: Optional[str] = None, stale_min: int = STALE_MIN_DEFAULT, snapshot_meta: Optional[dict] = None,
+         schedule_log_dir: Optional[str] = None) -> dict:
     now = now if now.tzinfo else now.replace(tzinfo=UTC)
     if not live_dir:
         return {"configured": False, "now": now.isoformat(), "now_et": _et(now), "rows": [], "note": "Smart Money Move LIVE is not installed here (SMART_MOVE_LIVE_DIR is not set). "
@@ -139,13 +144,14 @@ def load(live_dir: Optional[str], now: datetime, *, kill_file: Optional[str] = N
     last_run = runs[-1] if runs else None
     last_trigger = _dt(last_run["at"]) if last_run and last_run.get("at") else None
     last_scan = _dt((st or {}).get("written_at"))
-    blocked = bool(last_run and last_run.get("event") in ("BLOCKED",))
+    blocked = bool(last_run and last_run.get("event") in ("BLOCKED",)) or load_alerts(live_dir, now, schedule_log_dir=schedule_log_dir)["active"]
     if killed:
         state, why = "STOPPED", "The kill-switch file is present: the collector will not run."
     elif not st:
         state, why = "NEVER_RAN", "No scan has been recorded yet."
     elif blocked:
-        state, why = "BLOCKED", "The last trigger was blocked: %s" % (last_run.get("reason") or "unknown reason")
+        _ref = _refusal(d) or last_run or {}
+        state, why = "BLOCKED", "The last trigger was blocked: %s" % (_ref.get("reason") or "unknown reason")
     elif st.get("mode") == "DRY_RUN" and not last_ok:
         state, why = "DRY_RUN", "Only dry-run scans have happened: no provider request has been sent and no prediction has been published."
     elif not scan_fresh:
@@ -202,7 +208,173 @@ def load(live_dir: Optional[str], now: datetime, *, kill_file: Optional[str] = N
             "requests": {"used_today": used, "remaining_today": (max(0, daily - used) if daily is not None and used is not None else None), "daily_limit": daily, "run_limit": lim.get("run_limit"),
                          "concurrency": lim.get("concurrency"), "counted_for": rq.get("ny_date"), "as_of": (st or {}).get("written_at"), "provider": "Unusual Whales (collector only; the application's own requests are in the provider ledger)"},
             "calendar": (st or {}).get("calendar"), "counts": counts, "rows": rows, "historical_snapshot": snapshot_meta,
+            "alerts": load_alerts(live_dir, now, schedule_log_dir=schedule_log_dir)["alerts"],
             "note": "Rows are the frozen score40-v1 engine's own output, recorded when each scan finished. A historical snapshot is never shown as a live signal; a missed window is never back-filled."}
+
+
+# ----------------------------------------------------------------------------------------------- gate-refusal alerts
+# A scheduled script (v6.3+) that refuses to run writes <live>/last_gate_refusal.json and a BLOCKED record in collection_runs.jsonl,
+# and exits 3 (the schedule log records FINISHED exit_code 3). Source of truth for the alert is the refusal file; the BLOCKED
+# record and the exit code are cross-checks by timestamp. "Last record" is never used: the hourly DRY_RUN appends its own
+# records to collection_runs.jsonl and used to hide a refusal within the hour. The alert clears only when a LIVE pass of the
+# SAME variant succeeds after the refusal (last_successful_scan_at moves past it); a DRY_RUN never moves that stamp.
+def _variant_of(rec: dict) -> str:
+    src = str((rec or {}).get("source") or "").lower()
+    prof = str((rec or {}).get("profile") or "").lower()
+    return MONDAY_BMO_VARIANT if ("monday_bmo" in src or "monday_bmo" in prof) else VARIANT_LIVE
+
+
+def _task_of(variant: str) -> str:
+    return "TRDGO-SmartMove-MondayBMO" if variant == MONDAY_BMO_VARIANT else "TRDGO-SmartMove-LIVE-6h"
+
+
+def _near(a: Optional[datetime], b: Optional[datetime], seconds: float) -> bool:
+    return bool(a and b and abs((a - b).total_seconds()) <= seconds)
+
+
+def _schedule_records(schedule_log_dir: Optional[str], variant: str) -> list:
+    if not schedule_log_dir:
+        return []
+    p = Path(schedule_log_dir) / (MONDAY_BMO_SCHEDULE_SUBDIR if variant == MONDAY_BMO_VARIANT else "") / SCHEDULE_LOG
+    return _last_runs(p)
+
+
+def _gates_output_name(schedule_log_dir: Optional[str], variant: str, at: Optional[datetime]) -> Optional[str]:
+    """The transcript the scheduled script wrote for this trigger (sched_run_<UTC stamp>.txt), if the log folder is readable."""
+    if not schedule_log_dir or not at:
+        return None
+    d = Path(schedule_log_dir) / (MONDAY_BMO_SCHEDULE_SUBDIR if variant == MONDAY_BMO_VARIANT else "")
+    try:
+        names = sorted(x.name for x in d.glob("sched_run_*.txt"))
+    except OSError:
+        return None
+    best = None
+    for n in names:
+        try:
+            stamp = datetime.strptime(n[len("sched_run_"):-4], "%Y%m%d_%H%M%S").replace(tzinfo=UTC)
+        except ValueError:
+            continue
+        if stamp <= at + timedelta(minutes=2) and (best is None or stamp > best[0]):
+            best = (stamp, n)
+    return best[1] if best and best[0] >= at - timedelta(minutes=30) else None
+
+
+def _refusal(live_dir: Path) -> Optional[dict]:
+    rec = _json(live_dir / REFUSAL)
+    if not isinstance(rec, dict) or rec.get("event") != "BLOCKED" or not _dt(rec.get("at")):
+        return None
+    return rec
+
+
+def load_alerts(live_dir: Optional[str], now: datetime, *, schedule_log_dir: Optional[str] = None) -> dict:
+    """The gate-refusal alert (at most one per variant: the latest refusal file). READ ONLY apart from nothing: no file is written here."""
+    now = now if now.tzinfo else now.replace(tzinfo=UTC)
+    if not live_dir:
+        return {"configured": False, "active": False, "alerts": []}
+    d = Path(live_dir)
+    rec = _refusal(d)
+    if not rec:
+        return {"configured": True, "active": False, "alerts": []}
+    at = _dt(rec["at"])
+    variant = _variant_of(rec)
+    st = _json(d / STATUS) if variant == VARIANT_LIVE else _json(d / MONDAY_BMO_SUBDIR / STATUS)
+    last_ok = _dt((st or {}).get("last_successful_scan_at"))
+    runs = _last_runs(d / RUNS)
+    blocked_same = [r for r in runs if r.get("event") == "BLOCKED" and _variant_of(r) == variant]
+    blocked_confirmed = any(_near(_dt(r.get("at")), at, 120) for r in blocked_same)
+    sched = _schedule_records(schedule_log_dir, variant)
+    exit3 = [r for r in sched if r.get("event") == "FINISHED" and str(r.get("exit_code")) == "3" and _dt(r.get("at")) and at - timedelta(minutes=2) <= _dt(r["at"]) <= at + timedelta(minutes=15)]
+    exit_code = int(exit3[-1]["exit_code"]) if exit3 else None
+    # cleared only by a later SUCCESSFUL pass of the same variant (status stamp, cross-checked by the schedule log's exit 0)
+    sched_ok_after = any(r.get("event") == "FINISHED" and str(r.get("exit_code")) == "0" and _dt(r.get("at")) and _dt(r["at"]) > at for r in sched)
+    cleared_by_status = bool(last_ok and last_ok > at)
+    cleared = cleared_by_status or sched_ok_after
+    since = last_ok if (last_ok and last_ok < at) else None
+    consecutive = sum(1 for r in blocked_same if _dt(r.get("at")) and (since is None or _dt(r["at"]) > since) and _dt(r["at"]) <= at + timedelta(seconds=120))
+    consecutive = max(1, consecutive)
+    ack = _json(d / REFUSAL_ACK)
+    acknowledged = bool(isinstance(ack, dict) and _near(_dt(ack.get("refusal_at")), at, 1))
+    every = live_cadence_minutes(st)
+    nxt = at + timedelta(minutes=every)
+    while nxt <= now:
+        nxt += timedelta(minutes=every)
+    alert = {"id": at.isoformat(), "kind": "GATE_REFUSAL", "variant": variant, "task": _task_of(variant), "at": at.isoformat(), "at_et": _et(at), "at_vps": rec.get("at_vps"),
+             "minutes_ago": round((now - at).total_seconds() / 60), "exit_code": exit_code, "exit_code_confirmed": exit_code == 3, "blocked_record_confirmed": blocked_confirmed,
+             "schedule_log_checked": bool(sched), "reasons": [x.strip() for x in str(rec.get("reason") or "").replace("gates failed: ", "", 1).split(" | ") if x.strip()], "reason_text": rec.get("reason"),
+             "source": rec.get("source"), "mode": rec.get("mode"), "consecutive": consecutive, "last_success_before": since.isoformat() if since else None, "last_success_before_et": _et(since),
+             "next_attempt_at": nxt.isoformat() if not cleared else None, "next_attempt_et": _et(nxt) if not cleared else None,
+             "gates_output": _gates_output_name(schedule_log_dir, variant, at), "acknowledged": acknowledged, "acknowledged_by": (ack or {}).get("by") if acknowledged else None,
+             "acknowledged_at": (ack or {}).get("acknowledged_at") if acknowledged else None, "cleared": cleared, "cleared_by": ("LIVE pass succeeded at %s" % _et(last_ok)) if cleared_by_status else ("scheduled pass finished with exit 0" if sched_ok_after else None),
+             "severity": "ok" if cleared else ("acknowledged" if acknowledged else "critical")}
+    return {"configured": True, "active": not cleared, "alerts": [] if cleared else [alert], "last_cleared": alert if cleared else None}
+
+
+def acknowledge_refusal(live_dir: Optional[str], who: str, now: datetime) -> dict:
+    """Operator acknowledgement: a small file beside the refusal record, valid for THAT refusal only (its timestamp is stored)."""
+    now = now if now.tzinfo else now.replace(tzinfo=UTC)
+    if not live_dir:
+        return {"ok": False, "reason": "NOT_CONFIGURED"}
+    d = Path(live_dir)
+    rec = _refusal(d)
+    if not rec:
+        return {"ok": False, "reason": "NO_REFUSAL"}
+    body = {"refusal_at": rec["at"], "acknowledged_at": now.isoformat(), "by": str(who or "operator")[:80]}
+    try:
+        (d / REFUSAL_ACK).write_text(json.dumps(body, indent=1), encoding="utf-8")
+    except OSError as exc:
+        return {"ok": False, "reason": "WRITE_FAILED", "detail": str(exc)}
+    return {"ok": True, **body}
+
+
+def gates_output_text(live_dir: Optional[str], schedule_log_dir: Optional[str], now: datetime, max_chars: int = 60000) -> dict:
+    """The scheduled script's transcript for the current refusal (read only; the name is derived, never taken from a request)."""
+    a = load_alerts(live_dir, now, schedule_log_dir=schedule_log_dir)
+    alert = (a["alerts"] or [a.get("last_cleared")])[0] if (a["alerts"] or a.get("last_cleared")) else None
+    name = (alert or {}).get("gates_output")
+    if not name or not schedule_log_dir:
+        return {"ok": False, "reason": "NO_OUTPUT", "detail": "no transcript is known for the current refusal"}
+    d = Path(schedule_log_dir) / (MONDAY_BMO_SCHEDULE_SUBDIR if alert["variant"] == MONDAY_BMO_VARIANT else "")
+    try:
+        txt = (d / name).read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return {"ok": False, "reason": "READ_FAILED", "detail": str(exc)}
+    return {"ok": True, "name": name, "text": txt[-max_chars:], "truncated": len(txt) > max_chars}
+
+
+def webhook_payload(alert: dict) -> dict:
+    return {"type": "smart_move_gate_refusal", "task": alert["task"], "variant": alert["variant"], "at": alert["at"], "at_et": alert["at_et"], "exit_code": alert["exit_code"],
+            "reasons": alert["reasons"], "consecutive": alert["consecutive"], "next_attempt_et": alert["next_attempt_et"], "text": "Smart Money Move %s refused to run at %s ET (exit %s): %s" % (alert["task"], alert["at_et"], alert["exit_code"], "; ".join(alert["reasons"]) or alert["reason_text"])}
+
+
+def notify_webhook_once(live_dir: Optional[str], url: Optional[str], now: datetime, *, schedule_log_dir: Optional[str] = None, post=None) -> dict:
+    """Post the current refusal to the webhook ONCE (a marker file beside the refusal stores the refusal timestamp that was sent).
+    Off unless a URL is given. ``post(url, payload) -> bool`` is injectable for tests; the default uses urllib with a 10 s limit."""
+    if not url or not live_dir:
+        return {"sent": False, "reason": "OFF"}
+    a = load_alerts(live_dir, now, schedule_log_dir=schedule_log_dir)
+    if not a["alerts"]:
+        return {"sent": False, "reason": "NO_ACTIVE_ALERT"}
+    alert = a["alerts"][0]
+    d = Path(live_dir)
+    mark = _json(d / REFUSAL_NOTIFIED)
+    if isinstance(mark, dict) and mark.get("refusal_at") == alert["at"]:
+        return {"sent": False, "reason": "ALREADY_SENT"}
+    if post is None:
+        def post(u, payload):  # noqa: E306
+            import urllib.request
+            req = urllib.request.Request(u, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json", "User-Agent": "trdgo-smart-move-alert/1.0"}, method="POST")
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return 200 <= r.status < 300
+    try:
+        ok = bool(post(url, webhook_payload(alert)))
+    except Exception as exc:  # noqa: BLE001
+        return {"sent": False, "reason": "POST_FAILED", "detail": str(exc)[:200]}
+    if ok:
+        try:
+            (d / REFUSAL_NOTIFIED).write_text(json.dumps({"refusal_at": alert["at"], "sent_at": now.isoformat()}), encoding="utf-8")
+        except OSError:
+            pass
+    return {"sent": ok, "reason": None if ok else "POST_REJECTED"}
 
 
 def load_universe(live_dir: Optional[str], now: datetime) -> dict:

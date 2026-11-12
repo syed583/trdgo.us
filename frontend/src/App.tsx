@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useCallback } from 'react';
+import { SmartMoveAlertStrip, useSmartMoveAlerts } from './components/SmartMoveAlert';
 import {
   BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate,
   useParams,
@@ -248,6 +249,9 @@ function Shell() {
     && !isAdmin && me.data?.full_access !== true;
   // MT5 auto-trading pages: the operator only (admin, or the username named in the server's MT5_OPERATOR setting).
   const mt5Operator = !demo && (isAdmin || me.data?.mt5_operator === true);
+  // Smart Money Move gate-refusal alerts: operator and admin only (the hook sends nothing for anyone else).
+  const smAlerts = useSmartMoveAlerts(mt5Operator);
+  const smAlertList: any[] = smAlerts.data?.alerts || [];
   const operatorGate = (el: React.ReactNode) =>
     (mt5Operator ? el
       : authResolving ? null
@@ -268,7 +272,7 @@ function Shell() {
 
   return (
     <div className="app">
-      <Sidebar optionsMode={optionsMode} search={location.search} isAdmin={isAdmin} mt5Operator={mt5Operator} symbol={symbol} />
+      <Sidebar optionsMode={optionsMode} search={location.search} isAdmin={isAdmin} mt5Operator={mt5Operator} symbol={symbol} smAlert={smAlertList.length ? (smAlertList[0].acknowledged ? 'ack' : 'critical') : undefined} />
 
       <div className="app-main">
         <TopBar
@@ -285,6 +289,8 @@ function Shell() {
           username={me.data?.username}
           displayName={me.data?.display_name}
         />
+
+        {mt5Operator && <SmartMoveAlertStrip alerts={smAlertList} />}
 
         {!online && (
           <div className="offline-banner" role="status">

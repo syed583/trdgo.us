@@ -114,12 +114,15 @@ export default function Sidebar({
   isAdmin,
   symbol,
   mt5Operator,
+  smAlert,
 }: {
   optionsMode: boolean;
   search: string;
   isAdmin?: boolean;
   symbol?: string;
   mt5Operator?: boolean;
+  /** Gate-refusal badge on the Smart Money Move (LIVE) item: 'critical' (red) until acknowledged, 'ack' (grey) until a LIVE pass succeeds. */
+  smAlert?: 'critical' | 'ack';
 }) {
   // The admin is the operator, not a viewer: signed in as admin the sidebar is
   // just the admin panel -- Users and Settings -- and none of the data pages.
@@ -223,6 +226,9 @@ export default function Sidebar({
               >
                 {item.icon}
                 {!collapsed && <span>{item.label}</span>}
+                {smAlert && item.to === '/smart-move/engine20' && (
+                  <span className={`nav-badge ${smAlert}`} data-testid="sm-alert-badge" title={smAlert === 'ack' ? 'Gate refusal acknowledged; waiting for a successful LIVE pass' : 'The scheduled LIVE pass was refused'} aria-label="Smart Money Move alert">!</span>
+                )}
               </NavLink>
             ))}
           </div>

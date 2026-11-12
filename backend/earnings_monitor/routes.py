@@ -6,7 +6,7 @@ from datetime import date, datetime, timezone
 from itertools import combinations
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 
 from . import config as C
 from . import logic as L
@@ -557,8 +557,59 @@ def smart_move_live():
         stale = int(os.getenv("SMART_MOVE_LIVE_STALE_MIN") or SL.STALE_MIN_DEFAULT)
     except ValueError:
         stale = SL.STALE_MIN_DEFAULT
-    out = SL.load(os.getenv("SMART_MOVE_LIVE_DIR"), now(), kill_file=os.getenv("SMART_MOVE_LIVE_KILL_FILE") or None, stale_min=stale, snapshot_meta=meta)
+    out = SL.load(os.getenv("SMART_MOVE_LIVE_DIR"), now(), kill_file=os.getenv("SMART_MOVE_LIVE_KILL_FILE") or None, stale_min=stale, snapshot_meta=meta, schedule_log_dir=_schedule_log_dir())
     return dict(out, status="OK")
+
+
+def _schedule_log_dir() -> Optional[str]:
+    """Where the scheduled scripts keep their own log (FINISHED exit codes and transcripts). Env overrides; else the server's standard folder when present."""
+    import os
+    from . import smart_live as SL
+    v = (os.getenv("SMART_MOVE_SCHEDULE_LOG_DIR") or "").strip()
+    if v:
+        return v
+    return SL.SCHEDULE_LOG_DIR_DEFAULT if os.path.isdir(SL.SCHEDULE_LOG_DIR_DEFAULT) else None
+
+
+def _require_alert_role(request) -> dict:
+    """Operator (MT5 operator account) or admin: the only roles that see the site-wide refusal badge and may acknowledge."""
+    import auth_service as auth
+    from fastapi import HTTPException
+    user = auth.current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if not (auth.is_staff(user.get("role")) or __import__("mt5_routes").is_operator(user)):
+        raise HTTPException(status_code=403, detail="Smart Money Move alerts are for the operator and admin accounts only.")
+    return user
+
+
+@router.get("/smart-move/alerts")
+def smart_move_alerts(request: Request):
+    """Gate-refusal alerts (operator / admin): the latest refusal, cross-checked, with its acknowledgement state. Read only."""
+    import os
+    from . import smart_live as SL
+    _require_alert_role(request)
+    return dict(SL.load_alerts(os.getenv("SMART_MOVE_LIVE_DIR"), now(), schedule_log_dir=_schedule_log_dir()), status="OK", webhook_configured=bool((os.getenv("SM_ALERT_WEBHOOK_URL") or "").strip()))
+
+
+@router.post("/smart-move/alerts/ack")
+def smart_move_alerts_ack(request: Request):
+    """Acknowledge the current refusal: the badge and strip turn grey; the card stays until a LIVE pass of that variant succeeds."""
+    import os
+    from . import smart_live as SL
+    user = _require_alert_role(request)
+    who = str(user.get("username") or user.get("email") or user.get("id") or "operator")
+    res = SL.acknowledge_refusal(os.getenv("SMART_MOVE_LIVE_DIR"), who, now())
+    return dict(res, status="OK" if res.get("ok") else "FAILED", alerts=SL.load_alerts(os.getenv("SMART_MOVE_LIVE_DIR"), now(), schedule_log_dir=_schedule_log_dir())["alerts"])
+
+
+@router.get("/smart-move/alerts/gates-output")
+def smart_move_alerts_gates_output(request: Request):
+    """The scheduled script's transcript for the current refusal (operator / admin), read from the schedule log folder; the file name is derived from the refusal time, never from the request."""
+    import os
+    from . import smart_live as SL
+    _require_alert_role(request)
+    return dict(SL.gates_output_text(os.getenv("SMART_MOVE_LIVE_DIR"), _schedule_log_dir(), now()), status="OK")
 
 
 @router.get("/smart-move/universe")

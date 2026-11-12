@@ -569,6 +569,44 @@ def _capture_earnings_signals() -> None:
 
 
 @_bg
+def _start_smart_move_alert_webhook() -> None:
+    """Gate-refusal webhook (owner decision 2026-11-12): OFF unless SM_ALERT_WEBHOOK_URL is set. Posts each new refusal once
+    (marker file beside the refusal record), checking once a minute. Never posts on a poll without a new refusal."""
+    import os
+    url = (os.getenv("SM_ALERT_WEBHOOK_URL") or "").strip()
+    live = os.getenv("SMART_MOVE_LIVE_DIR")
+    if not url or not live:
+        return
+
+    def loop() -> None:
+        import time as _t
+        from datetime import datetime as _dt, timezone as _tz
+        from earnings_monitor import smart_live as SL
+        from earnings_monitor.routes import _schedule_log_dir
+        _t.sleep(45)
+        while True:
+            try:
+                res = SL.notify_webhook_once(live, url, _dt.now(_tz.utc), schedule_log_dir=_schedule_log_dir())
+                if res.get("sent"):
+                    logging.getLogger("smart_move_alerts").warning("gate-refusal alert posted to the webhook")
+                elif res.get("reason") in ("POST_FAILED", "POST_REJECTED"):
+                    logging.getLogger("smart_move_alerts").warning("gate-refusal webhook not delivered: %s %s", res.get("reason"), res.get("detail", ""))
+            except Exception:  # noqa: BLE001 - the notifier must never die
+                pass
+            _t.sleep(60)
+
+    import threading
+    threading.Thread(target=loop, name="smart-move-alert-webhook", daemon=True).start()
+
+
+@_startup
+def _start_smart_move_alert_webhook_at_startup() -> None:
+    try:
+        _start_smart_move_alert_webhook()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 @_startup
 def _start_mt5_autotrade() -> None:
     """Register the MT5 auto-trader on the paper tracker's events and reconnect from saved credentials when AUTO_TRADE=1.
