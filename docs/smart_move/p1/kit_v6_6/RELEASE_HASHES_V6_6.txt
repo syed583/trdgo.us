@@ -1,6 +1,6 @@
 stage_c_kit_v6_6.zip
-  zip sha256 : 14322d184964ba7595a1f53e042c6cce3b00f49cadb6cc3ca6ce4da07b072b10
-  anchor     : 7cb3d2677b743914f37f7bbc0bf17b84d00146506b9da5f598b56a6a6979ce4a (SHA-256 of MANIFEST.sha256)
+  zip sha256 : b14742062403f08dd6b682f688db062ad35a55ea6980e6d2ad60b60f384ed8b8
+  anchor     : a9533df1e79f7d16cc8b5385bc3eb6e034963a81931b7c279bed7c219de48049 (SHA-256 of MANIFEST.sha256)
   files      : 9
 
 stage_d_collector_wrapper_v2.zip
