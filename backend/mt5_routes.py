@@ -100,6 +100,29 @@ def mt5_symbols_exclude(request: Request, payload: dict = Body(...)) -> dict:
     return {"status": "OK" if res.get("ok") else "FAILED", **res, "map_status": AT.mapping_rows()}
 
 
+@router.get("/settings")
+def mt5_settings_get(request: Request) -> dict:
+    """Operator settings (shares per trade, max open positions, daily loss %) and the per-symbol volume table."""
+    _require_operator(request)
+    return {"status": "OK", "settings": AT.mt5_settings(), "limits": AT.SETTINGS_LIMITS, "defaults": AT.SETTINGS_DEFAULTS, "sizing": AT.sizing_table(), "dry_run": AT.dry_run(), "halted": AT.halted()}
+
+
+@router.post("/settings")
+def mt5_settings_set(request: Request, payload: dict = Body(...)) -> dict:
+    """Change the operator settings from the admin / MT5 page (no deploy). Validated and audited."""
+    user = _require_operator(request)
+    who = str((user or {}).get("username") or (user or {}).get("email") or "operator")
+    res = AT.update_mt5_settings(payload or {}, who=who)
+    return dict(res, status="OK" if res.get("ok") else "FAILED", sizing=AT.sizing_table())
+
+
+@router.get("/symbols/sizing")
+def mt5_symbols_sizing(request: Request) -> dict:
+    """The per-symbol volume table for the current shares-per-trade setting (from the stored mapping; no broker call)."""
+    _require_operator(request)
+    return {"status": "OK", **AT.sizing_table()}
+
+
 @router.post("/symbols/automap")
 def mt5_symbols_automap(request: Request) -> dict:
     _require_operator(request)

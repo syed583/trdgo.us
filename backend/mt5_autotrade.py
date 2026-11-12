@@ -30,6 +30,7 @@ import os
 import re
 import threading
 import time
+from datetime import datetime
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -44,6 +45,12 @@ MAGIC = int(os.getenv("MT5_MAGIC") or 240911)                       # identifies
 STATE_DIR = Path(os.getenv("MT5_STATE_DIR") or (Path(__file__).parent / "mt5_state"))
 CRED_FILE = Path(os.getenv("SEC_CACHE_DIR") or (Path(__file__).parent / ".sec_cache")) / "mt5_credentials.json"
 MAP_FILE, AUDIT_FILE, POS_FILE, PAUSE_FILE = "symbol_map.json", "audit.jsonl", "positions.json", "PAUSE"
+SETTINGS_FILE, HALT_FILE, DAILY_FILE = "settings.json", "HALT", "daily.json"
+# A.21 (owner decisions 2026-11-12): one magic number per model so each model's positions are its own on the broker.
+MAGIC_BY_MODEL = {"grok": 240911, "meta": 240912, "kimi": 240913, "gemini": 240914}
+MAGIC_OTHER = 240919
+SETTINGS_DEFAULTS = {"shares_per_trade": 10, "max_open_positions": 20, "daily_loss_pct": 1.0}
+SETTINGS_LIMITS = {"shares_per_trade": (1, 10000), "max_open_positions": (1, 500), "daily_loss_pct": (0.1, 25.0)}
 MAX_CLOSE_ATTEMPTS = 3
 DEVIATION_POINTS = int(os.getenv("MT5_DEVIATION_POINTS") or 50)       # max slippage for a market order, in broker points
 AUDIT_TAIL = 2000
@@ -57,6 +64,175 @@ def auto_trade_enabled() -> bool:
 
 def paused() -> bool:
     return (STATE_DIR / PAUSE_FILE).exists()
+
+
+def halted() -> bool:
+    """Kill switch: a HALT file blocks every new order until an operator removes the file by hand (never cleared by the app)."""
+    return (STATE_DIR / HALT_FILE).exists()
+
+
+def dry_run() -> bool:
+    """MT5_DRY_RUN=1: compute everything, write ORDER_DRY / CLOSE_DRY audit lines, send nothing to the broker."""
+    return (os.getenv("MT5_DRY_RUN") or "").strip() == "1"
+
+
+def magic_for(strategy: Optional[str]) -> int:
+    return MAGIC_BY_MODEL.get((strategy or "").lower().strip(), MAGIC_OTHER)
+
+
+def all_magics() -> set:
+    return set(MAGIC_BY_MODEL.values()) | {MAGIC_OTHER, MAGIC}
+
+
+# ----------------------------------------------------------------------------- operator settings (admin page, no deploy)
+def mt5_settings() -> dict:
+    """Shares per trade, max open positions, daily loss % of balance; stored in mt5_state/settings.json (survives deploys)."""
+    cur = _read_json(STATE_DIR / SETTINGS_FILE, {})
+    out = dict(SETTINGS_DEFAULTS)
+    for k in SETTINGS_DEFAULTS:
+        v = (cur or {}).get(k)
+        if v is not None:
+            try:
+                lo, hi = SETTINGS_LIMITS[k]
+                f = float(v)
+                out[k] = int(f) if k != "daily_loss_pct" else f
+                if not (lo <= f <= hi):
+                    out[k] = SETTINGS_DEFAULTS[k]
+            except (TypeError, ValueError):
+                pass
+    return out
+
+
+def update_mt5_settings(patch: dict, who: str = "operator") -> dict:
+    """Validate and persist the operator settings; every change is audited with old and new values."""
+    cur = mt5_settings()
+    new = dict(cur)
+    errors = {}
+    for k, v in (patch or {}).items():
+        if k not in SETTINGS_DEFAULTS:
+            continue
+        lo, hi = SETTINGS_LIMITS[k]
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            errors[k] = "not a number"
+            continue
+        if k != "daily_loss_pct" and abs(f - round(f)) > 1e-9:
+            errors[k] = "must be a whole number"
+            continue
+        if not (lo <= f <= hi):
+            errors[k] = "must be between %s and %s" % (lo, hi)
+            continue
+        new[k] = int(round(f)) if k != "daily_loss_pct" else round(f, 2)
+    if errors:
+        return {"ok": False, "errors": errors, "settings": cur}
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    _write_json(STATE_DIR / SETTINGS_FILE, dict(new, updated_at=_now_iso(), updated_by=who))
+    changed = {k: {"from": cur[k], "to": new[k]} for k in new if new[k] != cur[k]}
+    if changed:
+        audit("SETTINGS", detail={"by": who, "changed": changed})
+    return {"ok": True, "settings": new, "changed": changed}
+
+
+# ----------------------------------------------------------------------------- exact-share sizing
+def sizing(contract_size, volume_min, volume_step, volume_max, shares: int) -> dict:
+    """volume = shares / contract size, rounded to the step; valid only when it is >= min, <= max, on the step grid and equals
+    EXACTLY the requested shares. Anything else is SKIPPED_SIZE (never a different share count)."""
+    out = {"shares": int(shares), "contract_size": contract_size, "volume": None, "shares_sent": None, "valid": False, "reason": None}
+    try:
+        cs = float(contract_size or 0)
+        if cs <= 0:
+            out["reason"] = "contract size unknown"
+            return out
+        raw = float(shares) / cs
+        step = float(volume_step) if volume_step else None
+        vmin = float(volume_min) if volume_min is not None else None
+        vmax = float(volume_max) if volume_max else None
+        if step is None or step <= 0 or vmin is None:
+            out["reason"] = "volume rules unknown (re-run auto-map)"
+            return out
+        vol = round(round(raw / step) * step, 8)
+        out["volume"] = vol
+        out["shares_sent"] = round(vol * cs, 6)
+        if abs(vol * cs - float(shares)) > 1e-6:
+            out["reason"] = "%s shares is not a multiple of the volume step %s x contract size %s" % (shares, step, cs)
+            return out
+        if vol < vmin - 1e-9:
+            out["reason"] = "volume %s below the broker minimum %s" % (vol, vmin)
+            return out
+        if vmax and vol > vmax + 1e-9:
+            out["reason"] = "volume %s above the broker maximum %s" % (vol, vmax)
+            return out
+        out["valid"] = True
+        return out
+    except (TypeError, ValueError) as exc:
+        out["reason"] = "sizing error: %s" % exc
+        return out
+
+
+def sizing_table() -> dict:
+    """The per-symbol volume table for the admin / MT5 page, from the stored mapping (no broker call)."""
+    st = mt5_settings()
+    shares = st["shares_per_trade"]
+    full = load_map()
+    m, ex = full["map"], set(full.get("excluded") or [])
+    rows = []
+    for s in software_symbols():
+        e = m.get(s) or {}
+        if s in ex:
+            rows.append({"symbol": s, "broker_symbol": e.get("broker_symbol"), "status": "EXCLUDED", "contract_size": None, "volume": None, "shares_sent": None, "valid": False, "reason": "excluded"})
+            continue
+        if not (e.get("broker_symbol") and e.get("verified")):
+            rows.append({"symbol": s, "broker_symbol": e.get("broker_symbol"), "status": "UNMAPPED", "contract_size": None, "volume": None, "shares_sent": None, "valid": False, "reason": "not mapped"})
+            continue
+        z = sizing(e.get("contract_size"), e.get("volume_min"), e.get("volume_step"), e.get("volume_max"), shares)
+        rows.append({"symbol": s, "broker_symbol": e.get("broker_symbol"), "status": "MAPPED", "contract_size": e.get("contract_size"), "volume_min": e.get("volume_min"), "volume_step": e.get("volume_step"),
+                     "volume": z["volume"], "shares_sent": z["shares_sent"], "valid": z["valid"], "reason": z["reason"]})
+    return {"shares_per_trade": shares, "rows": rows, "valid": sum(1 for r in rows if r["valid"]), "invalid": sum(1 for r in rows if r["status"] == "MAPPED" and not r["valid"]), "total": len(rows)}
+
+
+# ----------------------------------------------------------------------------- daily realized P&L (safety)
+def _ny_date() -> str:
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+
+
+def daily_state() -> dict:
+    d = _read_json(STATE_DIR / DAILY_FILE, {}) or {}
+    if d.get("ny_date") != _ny_date():
+        d = {"ny_date": _ny_date(), "realized": 0.0, "closed": 0, "limit_hit_at": None}
+    return d
+
+
+def _book_realized(pnl: float) -> dict:
+    d = daily_state()
+    d["realized"] = round(float(d.get("realized") or 0.0) + float(pnl), 2)
+    d["closed"] = int(d.get("closed") or 0) + 1
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    _write_json(STATE_DIR / DAILY_FILE, d)
+    return d
+
+
+def daily_loss_limit_usd() -> Optional[float]:
+    bal = ((_conn.get("account") or {}).get("balance"))
+    try:
+        return round(float(bal) * float(mt5_settings()["daily_loss_pct"]) / 100.0, 2) if bal else None
+    except (TypeError, ValueError):
+        return None
+
+
+def daily_loss_reached() -> bool:
+    lim = daily_loss_limit_usd()
+    return bool(lim is not None and float(daily_state().get("realized") or 0.0) <= -lim)
+
+
+def _realized_for(p: dict, close_price) -> Optional[float]:
+    try:
+        sgn = 1 if p.get("side") in ("BUY", "LONG") else -1
+        cs = float(p.get("contract_size") or 1.0)
+        return round((float(close_price) - float(p["price"])) * sgn * float(p.get("volume") or 0) * cs, 2)
+    except (TypeError, ValueError, KeyError):
+        return None
 
 
 def set_paused(flag: bool, who: str = "operator") -> None:
@@ -243,7 +419,9 @@ def status(refresh: bool = True) -> dict:
         return {"installed": True, "install_note": None, "provider": "mtapi.io MT5 Client REST API", "base_url": _conn["base_url"] or B.DEFAULT_BASE_URL,
                 "connected": bool(_conn["connected"]), "account": _conn["account"], "server": _conn["server"] or DEFAULT_SERVER, "since": _conn["since"],
                 "last_error": _conn["last_error"], "credentials_saved": CRED_FILE.exists() or bool(os.getenv("MT5_LOGIN")),
-                "auto_trade": auto_trade_enabled(), "paused": paused(), "magic": MAGIC, "default_server": DEFAULT_SERVER,
+                "auto_trade": auto_trade_enabled(), "paused": paused(), "halted": halted(), "dry_run": dry_run(), "magic": MAGIC, "magic_by_model": MAGIC_BY_MODEL, "default_server": DEFAULT_SERVER,
+                "margin_mode": (_conn.get("account") or {}).get("margin_mode"), "settings": mt5_settings(), "open_positions": len(_positions()["open"]),
+                "daily": dict(daily_state(), loss_limit_usd=daily_loss_limit_usd(), limit_reached=daily_loss_reached()),
                 "terminal": (B.terminal().get("terminal") if _conn["connected"] else None)}
 
 
@@ -396,7 +574,7 @@ def set_mapping(symbol: str, broker_symbol: Optional[str], source: str = "manual
     if v.get("ok"):
         i = v["info"]
         e.update(volume_min=i.get("volume_min"), volume_max=i.get("volume_max"), volume_step=i.get("volume_step"), digits=i.get("digits"), trade_mode_text=i.get("trade_mode_text"),
-                 filling_ioc=i.get("filling_ioc"), filling_fok=i.get("filling_fok"))
+                 filling_ioc=i.get("filling_ioc"), filling_fok=i.get("filling_fok"), contract_size=i.get("contract_size"))
     with _map_lock:
         m = load_map()
         m["map"][symbol] = e
@@ -553,14 +731,22 @@ def _entry_allowed(ev: dict) -> Optional[str]:
         return "AUTO_TRADE_OFF"
     if paused():
         return "PAUSED"
+    if halted():
+        return "HALTED"
     if not B.available():
         return "NOT_INSTALLED"
     if not _conn["connected"]:
         return "NOT_CONNECTED"
+    if (_conn.get("account") or {}).get("margin_mode") == "NETTING":
+        return "MARGIN_MODE_NETTING"
     if is_excluded(ev["symbol"]):
         return "EXCLUDED"
     if not mapped(ev["symbol"]):
         return "UNMAPPED"
+    if len(_positions()["open"]) >= int(mt5_settings()["max_open_positions"]):
+        return "MAX_OPEN_POSITIONS"
+    if daily_loss_reached():
+        return "DAILY_LOSS_LIMIT"
     return None
 
 
@@ -589,13 +775,7 @@ def _handle_entry(ev: dict) -> dict:
     m = mapped(sym)
     bsym = m["broker_symbol"]
     pos = _positions()
-    same = [p for p in pos["open"].values() if p["symbol"] == sym]
-    if any(p["side"] == side for p in same):
-        audit("SKIPPED", symbol=sym, broker_symbol=bsym, action=side, quantity=ev.get("shares"), trade_id=tid, strategy=strat, reason="SKIPPED_DUPLICATE: an MT5 position for this symbol and side is already open (trade #%s)" % same[0]["trade_id"])
-        return {"ok": False, "reason": "SKIPPED_DUPLICATE"}
-    if same:
-        audit("SKIPPED", symbol=sym, broker_symbol=bsym, action=side, quantity=ev.get("shares"), trade_id=tid, strategy=strat, reason="SKIPPED_OPPOSITE_OPEN: an MT5 position in the other direction is open (trade #%s)" % same[0]["trade_id"])
-        return {"ok": False, "reason": "SKIPPED_OPPOSITE_OPEN"}
+    # A.21: one order per model trigger. Three models buying the same stock = three positions; opposite sides may be open together.
     info = B.symbol(bsym)
     if not info.get("ok"):
         audit("REJECTED", symbol=sym, broker_symbol=bsym, action=side, quantity=ev.get("shares"), trade_id=tid, strategy=strat, reason="%s: %s" % (info.get("reason"), info.get("detail")))
@@ -603,30 +783,51 @@ def _handle_entry(ev: dict) -> dict:
     if info.get("volume_min") is None or info.get("volume_step") is None:
         audit("REJECTED", symbol=sym, broker_symbol=bsym, action=side, quantity=ev.get("shares"), trade_id=tid, strategy=strat, reason="NO_VOLUME_RULES: %s" % info.get("note"), detail={"raw_keys": info.get("raw_keys")})
         return {"ok": False, "reason": "NO_VOLUME_RULES"}
-    lots = shares_to_lots(ev["shares"], info.get("contract_size"))
-    vol = round_volume(lots, info.get("volume_min"), info.get("volume_step"), info.get("volume_max"))
-    if vol is None:
-        audit("SKIPPED", symbol=sym, broker_symbol=bsym, action=side, quantity=ev.get("shares"), trade_id=tid, strategy=strat,
-              reason="BELOW_MIN_VOLUME: %s shares = %.4f lots (contract size %s) rounds below the broker minimum %s lots (step %s)" % (ev.get("shares"), lots, info.get("contract_size"), info.get("volume_min"), info.get("volume_step")))
-        return {"ok": False, "reason": "BELOW_MIN_VOLUME"}
+    shares = int(mt5_settings()["shares_per_trade"])
+    z = sizing(info.get("contract_size"), info.get("volume_min"), info.get("volume_step"), info.get("volume_max"), shares)
+    if not z["valid"]:
+        audit("SKIPPED", symbol=sym, broker_symbol=bsym, action=side, quantity=shares, trade_id=tid, strategy=strat, reason="SKIPPED_SIZE: %s" % z["reason"],
+              detail={"shares_per_trade": shares, "contract_size": info.get("contract_size"), "volume": z["volume"], "shares_sent": z["shares_sent"], "volume_min": info.get("volume_min"), "volume_step": info.get("volume_step")})
+        return {"ok": False, "reason": "SKIPPED_SIZE"}
+    vol = z["volume"]
+    magic = magic_for(strat)
     comment = "TRDGO %s #%s" % ((strat or "")[:6], tid)
-    res = B.market_order(bsym, side, vol, sl=ev.get("stop"), tp=ev.get("target"), deviation_points=DEVIATION_POINTS, magic=MAGIC, comment=comment, sym_info=info)
+    t = B.tick(bsym)
+    ref = (t.get("ask") if side in ("BUY", "LONG") else t.get("bid")) if t.get("ok") else None
+    if dry_run():
+        pos["open"][str(tid)] = {"trade_id": tid, "symbol": sym, "broker_symbol": bsym, "side": side, "volume": vol, "requested": vol, "ticket": None, "deal": None, "price": ref, "sl": ev.get("stop"),
+                                 "tp": ev.get("target"), "opened_at": _now_iso(), "opened_epoch": time.time(), "strategy": strat, "magic": magic, "contract_size": info.get("contract_size"), "shares": shares, "dry": True}
+        _save_positions(pos)
+        audit("ORDER_DRY", symbol=sym, broker_symbol=bsym, action=side, quantity=vol, trade_id=tid, strategy=strat, price=ref, result="NOT_SENT",
+              reason="dry run: would send %s %s lots (= %s shares) magic %s" % (side, vol, shares, magic),
+              detail={"sl": ev.get("stop"), "tp": ev.get("target"), "paper_shares": ev.get("shares"), "shares_per_trade": shares, "lots": vol, "contract_size": info.get("contract_size"), "magic": magic, "comment": comment, "bid": t.get("bid"), "ask": t.get("ask")})
+        return {"ok": True, "dry": True, "volume": vol}
+    res = B.market_order(bsym, side, vol, sl=ev.get("stop"), tp=ev.get("target"), deviation_points=DEVIATION_POINTS, magic=magic, comment=comment, sym_info=info)
     if not res.get("ok") and res.get("retcode_text") == "REPRICE":
         audit("REPRICE", symbol=sym, broker_symbol=bsym, action=side, quantity=vol, trade_id=tid, strategy=strat, reason="%s: %s" % (res.get("retcode_text"), res.get("comment")))
-        res = B.market_order(bsym, side, vol, sl=ev.get("stop"), tp=ev.get("target"), deviation_points=DEVIATION_POINTS, magic=MAGIC, comment=comment, sym_info=info)
+        res = B.market_order(bsym, side, vol, sl=ev.get("stop"), tp=ev.get("target"), deviation_points=DEVIATION_POINTS, magic=magic, comment=comment, sym_info=info)
     if not res.get("ok"):
         audit("REJECTED", symbol=sym, broker_symbol=bsym, action=side, quantity=vol, trade_id=tid, strategy=strat,
               reason="%s (%s): %s" % (res.get("retcode_text") or res.get("reason"), res.get("retcode"), res.get("comment") or res.get("detail")),
-              detail={"stage": res.get("stage"), "request": _safe_request(res.get("request"))})
+              detail={"stage": res.get("stage"), "request": _safe_request(res.get("request")), "magic": magic, "requested_price": ref})
         return {"ok": False, "reason": res.get("retcode_text") or res.get("reason")}
     filled = float(res.get("volume") or vol)
     ticket = res.get("order") or res.get("deal")
+    fill = res.get("price")
+    slip = None
+    if fill is not None and ref:
+        try:
+            sgn = 1 if side in ("BUY", "LONG") else -1
+            slip = {"usd": round((float(fill) - float(ref)) * sgn, 4), "bps": round((float(fill) - float(ref)) * sgn / float(ref) * 1e4, 2), "requested_price": ref}
+        except (TypeError, ValueError, ZeroDivisionError):
+            slip = None
     pos["open"][str(tid)] = {"trade_id": tid, "symbol": sym, "broker_symbol": bsym, "side": side, "volume": filled, "requested": vol, "ticket": ticket, "deal": res.get("deal"),
-                             "price": res.get("price"), "sl": ev.get("stop"), "tp": ev.get("target"), "opened_at": _now_iso(), "opened_epoch": time.time(), "strategy": strat}
+                             "price": fill, "sl": ev.get("stop"), "tp": ev.get("target"), "opened_at": _now_iso(), "opened_epoch": time.time(), "strategy": strat, "magic": magic,
+                             "contract_size": info.get("contract_size"), "shares": shares}
     _save_positions(pos)
-    audit("PARTIAL_FILL" if res.get("partial") else "FILLED", symbol=sym, broker_symbol=bsym, action=side, quantity=filled, trade_id=tid, strategy=strat, ticket=ticket, price=res.get("price"),
+    audit("PARTIAL_FILL" if res.get("partial") else "FILLED", symbol=sym, broker_symbol=bsym, action=side, quantity=filled, trade_id=tid, strategy=strat, ticket=ticket, price=fill,
           result=res.get("retcode_text"), reason=("requested %s lots, filled %s" % (vol, filled)) if res.get("partial") else None,
-          detail={"sl": ev.get("stop"), "tp": ev.get("target"), "paper_shares": ev.get("shares"), "lots": vol, "contract_size": info.get("contract_size")})
+          detail={"sl": ev.get("stop"), "tp": ev.get("target"), "paper_shares": ev.get("shares"), "shares_per_trade": shares, "lots": vol, "contract_size": info.get("contract_size"), "magic": magic, "slippage": slip})
     return {"ok": True, "ticket": ticket, "volume": filled}
 
 
@@ -637,6 +838,18 @@ def _handle_exit(ev: dict) -> dict:
     if not p:
         return {"ok": True, "reason": "NO_MT5_POSITION"}                    # the paper trade never traded on MT5 (switch off, unmapped, skipped ...)
     sym, bsym, ticket = p["symbol"], p["broker_symbol"], p["ticket"]
+    magic = int(p.get("magic") or MAGIC)
+    if p.get("dry"):
+        t = B.tick(bsym) if B.available() else {}
+        px = (t.get("bid") if p["side"] in ("BUY", "LONG") else t.get("ask")) if t.get("ok") else None
+        pnl = _realized_for(p, px) if px is not None else None
+        audit("CLOSE_DRY", symbol=sym, broker_symbol=bsym, action=("SELL" if p["side"] in ("BUY", "LONG") else "BUY"), quantity=p.get("volume"), trade_id=tid, strategy=p.get("strategy"), price=px,
+              result="NOT_SENT", reason="dry run: would close for paper exit %s" % reason, detail={"realized_usd": pnl, "magic": magic})
+        if pnl is not None:
+            _book_realized(pnl)
+        pos["open"].pop(str(tid), None)
+        _save_positions(pos)
+        return {"ok": True, "dry": True}
     # did the broker close it already (server-side SL / TP / stop-out)?
     deals = B.position_exit_deals(int(ticket), p.get("opened_epoch") or 0) if B.available() else {"ok": False}
     exits = (deals.get("deals") or []) if deals.get("ok") else []
@@ -645,18 +858,40 @@ def _handle_exit(ev: dict) -> dict:
     if exits and not still_open:
         why = exits[-1].get("reason")
         audit("CLOSED_BY_BROKER", symbol=sym, broker_symbol=bsym, action=("SELL" if p["side"] in ("BUY", "LONG") else "BUY"), quantity=p.get("volume"), trade_id=tid, strategy=p.get("strategy"),
-              ticket=ticket, price=exits[-1].get("price"), result=why, reason="%s hit on MT5 (paper exit: %s)" % (why, reason), detail={"deals": exits})
+              ticket=ticket, price=exits[-1].get("price"), result=why, reason="%s hit on MT5 (paper exit: %s)" % (why, reason), detail={"deals": exits, "realized_usd": _realized_for(p, exits[-1].get("price"))})
+        pnl = _realized_for(p, exits[-1].get("price"))
+        if pnl is not None:
+            d = _book_realized(pnl)
+            if daily_loss_reached() and not d.get("limit_hit_at"):
+                d["limit_hit_at"] = _now_iso(); _write_json(STATE_DIR / DAILY_FILE, d)
+                audit("DAILY_LOSS_LIMIT", reason="realized %.2f today reached the limit %.2f (%.2f%% of balance): no new orders until the next New York day" % (d["realized"], daily_loss_limit_usd() or 0, mt5_settings()["daily_loss_pct"]))
         pos["open"].pop(str(tid), None)
         _save_positions(pos)
         return {"ok": True, "closed_by": why}
     last = None
+    t0 = B.tick(bsym) if B.available() else {}
+    ref = (t0.get("bid") if p["side"] in ("BUY", "LONG") else t0.get("ask")) if t0.get("ok") else None
     for attempt in range(1, MAX_CLOSE_ATTEMPTS + 1):
-        res = B.close_position(int(ticket), deviation_points=DEVIATION_POINTS * attempt, magic=MAGIC, comment="TRDGO %s #%s" % ((reason or "EXIT")[:10], tid))
+        res = B.close_position(int(ticket), deviation_points=DEVIATION_POINTS * attempt, magic=magic, comment="TRDGO %s #%s" % ((reason or "EXIT")[:10], tid))
         last = res
         if res.get("ok"):
+            fill = res.get("price")
+            slip = None
+            if fill is not None and ref:
+                try:
+                    sgn = 1 if p["side"] in ("BUY", "LONG") else -1                                  # a long closes at the bid: a lower fill is adverse
+                    slip = {"usd": round((float(ref) - float(fill)) * sgn, 4), "bps": round((float(ref) - float(fill)) * sgn / float(ref) * 1e4, 2), "requested_price": ref}
+                except (TypeError, ValueError, ZeroDivisionError):
+                    slip = None
+            pnl = _realized_for(p, fill) if fill is not None else None
             audit("CLOSED", symbol=sym, broker_symbol=bsym, action=("SELL" if p["side"] in ("BUY", "LONG") else "BUY"), quantity=res.get("volume") or p.get("volume"), trade_id=tid,
-                  strategy=p.get("strategy"), ticket=ticket, price=res.get("price"), result=res.get("retcode_text") or ("ALREADY_CLOSED" if res.get("already_closed") else "DONE"),
-                  reason="paper exit %s (attempt %d)" % (reason, attempt))
+                  strategy=p.get("strategy"), ticket=ticket, price=fill, result=res.get("retcode_text") or ("ALREADY_CLOSED" if res.get("already_closed") else "DONE"),
+                  reason="paper exit %s (attempt %d)" % (reason, attempt), detail={"slippage": slip, "realized_usd": pnl, "magic": magic})
+            if pnl is not None:
+                d = _book_realized(pnl)
+                if daily_loss_reached() and not d.get("limit_hit_at"):
+                    d["limit_hit_at"] = _now_iso(); _write_json(STATE_DIR / DAILY_FILE, d)
+                    audit("DAILY_LOSS_LIMIT", reason="realized %.2f today reached the limit %.2f (%.2f%% of balance): no new orders until the next New York day" % (d["realized"], daily_loss_limit_usd() or 0, mt5_settings()["daily_loss_pct"]))
             pos["open"].pop(str(tid), None)
             _save_positions(pos)
             return {"ok": True, "attempts": attempt}
@@ -679,13 +914,17 @@ def reconcile() -> dict:
     while we were not looking and tickets we no longer see."""
     if not _conn["connected"]:
         return {"ok": False, "reason": "NOT_CONNECTED"}
-    broker = B.positions(magic=MAGIC)
+    broker = B.positions()
     if not broker.get("ok"):
         return broker
-    live = {int(p["ticket"]): p for p in broker["positions"]}
+    ours_magic = all_magics()
+    broker["positions"] = [x for x in broker["positions"] if x.get("magic") is None or int(x["magic"]) in ours_magic]
+    live = {int(p["ticket"]): p for p in broker["positions"] if p.get("ticket") is not None}
     pos = _positions()
     gone = []
     for tid, p in list(pos["open"].items()):
+        if p.get("dry") or p.get("ticket") is None:
+            continue                                                                   # dry-run positions exist only in our ledger
         if int(p["ticket"]) not in live:
             deals = B.position_exit_deals(int(p["ticket"]), p.get("opened_epoch") or 0)
             why = ((deals.get("deals") or [{}])[-1].get("reason") if deals.get("ok") and deals.get("deals") else "UNKNOWN")
@@ -693,7 +932,7 @@ def reconcile() -> dict:
             gone.append({"trade_id": p["trade_id"], "ticket": p["ticket"], "reason": why})
             pos["open"].pop(tid, None)
     _save_positions(pos)
-    ours = {int(p["ticket"]) for p in pos["open"].values()}
+    ours = {int(p["ticket"]) for p in pos["open"].values() if p.get("ticket") is not None}
     unknown = [p for t, p in live.items() if t not in ours]
     audit("RECONCILE", detail={"ledger_open": len(pos["open"]), "broker_open": len(live), "closed_meanwhile": len(gone), "unknown_tickets": [p["ticket"] for p in unknown]})
     return {"ok": True, "ledger_open": list(pos["open"].values()), "broker_open": broker["positions"], "closed_meanwhile": gone, "unknown_on_broker": unknown}

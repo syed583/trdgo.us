@@ -167,10 +167,15 @@ def account() -> dict:
         return {"ok": False, "reason": res.get("reason"), "detail": res.get("detail")}
     d = res["data"] if isinstance(res["data"], dict) else {}
     kind = _g(d, "type", "accountType", "tradeMode", "isDemo")
+    mm = _g(d, "marginMode", "margin_mode", "accountMarginMode", "hedgingAllowed", "isHedging", "hedging")
+    margin_mode = None
+    if mm is not None:
+        t = str(mm).lower()
+        margin_mode = "HEDGING" if (mm is True or "hedg" in t or t in ("2", "retail_hedging", "retailhedging")) else "NETTING" if (mm is False or "net" in t or t in ("0", "1", "retail_netting", "retailnetting", "exchange")) else str(mm)
     return {"ok": True, "account": {"login": _session.get("login") or _g(d, "login", "user", "account"), "server": _session.get("server") or _g(d, "server"),
                                     "name": _g(d, "name", "userName"), "company": _g(d, "company"), "currency": _g(d, "currency"),
                                     "balance": _f(_g(d, "balance")), "equity": _f(_g(d, "equity")), "margin": _f(_g(d, "margin")), "margin_free": _f(_g(d, "freeMargin", "marginFree")),
-                                    "leverage": _g(d, "leverage"), "account_kind": ("DEMO" if (kind is True or str(kind).lower() in ("demo", "0", "true")) else "REAL" if kind is not None else None), "raw_keys": sorted(d.keys())[:40]}}
+                                    "leverage": _g(d, "leverage"), "margin_mode": margin_mode, "account_kind": ("DEMO" if (kind is True or str(kind).lower() in ("demo", "0", "true")) else "REAL" if kind is not None else None), "raw_keys": sorted(d.keys())[:40]}}
 
 
 def terminal() -> dict:

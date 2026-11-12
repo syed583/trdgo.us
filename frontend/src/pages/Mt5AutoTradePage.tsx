@@ -30,7 +30,7 @@ function SwitchBanner({ st }: { st: any }) {
     <div className={`sm-q-banner ${st.auto_trade && !st.paused ? '' : 'stale'}`} role="note" data-testid="mt5-switch">
       <Info size={16} />
       <div>
-        <b>AUTO_TRADE = {st.auto_trade ? '1 (ON)' : '0 (OFF)'}</b>{st.paused ? ' · entries PAUSED by the operator' : ''}
+        <b>AUTO_TRADE = {st.auto_trade ? '1 (ON)' : '0 (OFF)'}</b>{st.paused ? ' · entries PAUSED by the operator' : ''}{st.halted ? ' · HALTED (kill switch file present)' : ''}{st.dry_run ? ' · DRY RUN: orders are logged, nothing is sent' : ''}{st.margin_mode === 'NETTING' ? ' · NETTING account: orders refused, HEDGING is required' : ''}
         {' · '}{st.provider || 'mtapi.io MT5 Client REST API'}
         <div className="sm-q-muted">The master switch is the server setting AUTO_TRADE (default 0). With it off nothing is ever sent, whatever this page shows. Only MAPPED symbols trade; quantity = the Strategy Trades share count rounded down to the broker step.</div>
       </div>
@@ -67,7 +67,9 @@ export function Mt5AccountView() {
           <div className="sm-card"><div className="sm-card-k">Account</div><div className="sm-card-v">{d.account?.login ?? '—'}</div><div className="sm-q-muted">{d.account ? `${d.account.account_kind ?? ''} · ${d.account.company ?? ''} · ${d.account.currency ?? ''}` : (d.credentials_saved ? 'credentials saved' : 'no credentials')}</div></div>
           <div className="sm-card"><div className="sm-card-k">Server</div><div className="sm-card-v" style={{ fontSize: 14 }}>{d.server}</div></div>
           <div className="sm-card"><div className="sm-card-k">Balance / equity</div><div className="sm-card-v">{d.account ? `${d.account.balance} / ${d.account.equity}` : '—'}</div></div>
-          <div className="sm-card"><div className="sm-card-k">Open MT5 positions (ours)</div><div className="sm-card-v">{d.open_positions?.length ?? 0}</div></div>
+          <div className="sm-card"><div className="sm-card-k">Open MT5 positions (ours)</div><div className="sm-card-v">{typeof d.open_positions === 'number' ? d.open_positions : (d.open_positions?.length ?? 0)} / {d.settings?.max_open_positions ?? '—'}</div></div>
+          <div className="sm-card"><div className="sm-card-k">Margin mode</div><div className="sm-card-v">{d.margin_mode ? <span className={`sm-q-badge ${d.margin_mode === 'HEDGING' ? 'green' : d.margin_mode === 'NETTING' ? 'red' : 'amber'}`} data-testid="mt5-margin-mode">{d.margin_mode}</span> : <span className="sm-q-badge amber" data-testid="mt5-margin-mode">not reported</span>}</div><div className="sm-q-muted">HEDGING required for one order per model</div></div>
+          <div className="sm-card"><div className="sm-card-k">Realized today</div><div className="sm-card-v" data-testid="mt5-daily">{d.daily ? `${d.daily.realized ?? 0}` : '—'}</div><div className="sm-q-muted">{d.daily?.loss_limit_usd != null ? `limit −${d.daily.loss_limit_usd} (${d.settings?.daily_loss_pct}% of balance)${d.daily.limit_reached ? ' · REACHED: no new orders today' : ''}` : 'limit needs a balance'}</div></div>
         </div>
       )}
       {d?.last_error && !d.connected && <div className="sm-fresh stale" role="alert" data-testid="mt5-last-error"><AlertTriangle size={14} /> Last connection error: {d.last_error}</div>}
@@ -81,6 +83,9 @@ export function Mt5AccountView() {
         <button className="ghost-btn" type="button" disabled={busy || !d?.connected} onClick={() => act(() => mt5.disconnect(false))}>Disconnect</button>
         <button className="ghost-btn" type="button" disabled={busy} onClick={() => { if (window.confirm('Forget the saved MT5 credentials on the server?')) act(() => mt5.disconnect(true)); }}>Disconnect &amp; forget</button>
         <button className="ghost-btn" type="button" disabled={busy} onClick={() => act(() => mt5.pause(!d?.paused))}>{d?.paused ? 'Resume entries' : 'Pause entries'}</button>
+      </form>
+      <Mt5SettingsForm st={d} onSaved={() => st.refresh()} />
+      <form className="sm-filters" style={{ display: 'none' }}>
         <button className="ghost-btn" type="button" disabled={busy || !d?.connected} onClick={() => act(() => mt5.reconcile())}>Reconcile with broker</button>
         <button className="ghost-btn" type="button" onClick={() => st.refresh()}><RefreshCw size={14} /> Refresh</button>
       </form>
@@ -96,9 +101,45 @@ export function Mt5AccountView() {
   );
 }
 
+/** Operator settings (admin / MT5 page, no deploy): shares per MT5 order, max open positions, daily loss % of balance. Validated and audited by the server. */
+export function Mt5SettingsForm({ st, onSaved }: { st: any; onSaved?: () => void }) {
+  const cur = st?.settings || {};
+  const [shares, setShares] = useState<string>('');
+  const [maxOpen, setMaxOpen] = useState<string>('');
+  const [lossPct, setLossPct] = useState<string>('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault(); setBusy(true); setMsg(null);
+    const patch: Record<string, number> = {};
+    if (shares !== '') patch.shares_per_trade = Number(shares);
+    if (maxOpen !== '') patch.max_open_positions = Number(maxOpen);
+    if (lossPct !== '') patch.daily_loss_pct = Number(lossPct);
+    try {
+      const r: any = await mt5.saveSettings(patch);
+      setMsg(r?.ok ? `Saved: ${Object.entries(r.changed || {}).map(([k, v]: any) => `${k} ${v.from} → ${v.to}`).join(', ') || 'no change'}` : `Not saved: ${Object.entries(r?.errors || {}).map(([k, v]) => `${k} ${v}`).join('; ')}`);
+      if (r?.ok) { setShares(''); setMaxOpen(''); setLossPct(''); onSaved?.(); }
+    } catch (err: any) { setMsg(String(err?.message || err)); } finally { setBusy(false); }
+  };
+  return (
+    <form className="sm-filters" onSubmit={save} data-testid="mt5-settings-form">
+      <b>MT5 order settings</b>
+      <label>Shares per trade <input value={shares} placeholder={String(cur.shares_per_trade ?? 10)} onChange={(e) => setShares(e.target.value)} inputMode="numeric" style={{ width: 70 }} data-testid="mt5-shares" /></label>
+      <label>Max open positions <input value={maxOpen} placeholder={String(cur.max_open_positions ?? 20)} onChange={(e) => setMaxOpen(e.target.value)} inputMode="numeric" style={{ width: 70 }} /></label>
+      <label>Daily loss limit % of balance <input value={lossPct} placeholder={String(cur.daily_loss_pct ?? 1)} onChange={(e) => setLossPct(e.target.value)} inputMode="decimal" style={{ width: 70 }} /></label>
+      <button className="ghost-btn" type="submit" disabled={busy || (shares === '' && maxOpen === '' && lossPct === '')}>Save</button>
+      <span className="sm-q-muted">current: {cur.shares_per_trade ?? 10} shares · max {cur.max_open_positions ?? 20} open · daily loss {cur.daily_loss_pct ?? 1}%{st?.dry_run ? ' · DRY RUN' : ''}</span>
+      {msg && <div className="sm-fresh" role="status" data-testid="mt5-settings-msg">{msg}</div>}
+    </form>
+  );
+}
+
 export function Mt5SymbolsView() {
   const [polling, setPolling] = useState(false);
   const sy = useApi<any>((s) => mt5.symbols(s), [], { refreshMs: polling ? 5_000 : 120_000 });
+  const sz = useApi<any>((s) => mt5.sizing(s), [], { refreshMs: 120_000 });
+  const sizingHead = sz.data ? `${sz.data.shares_per_trade} shares per order · ${sz.data.valid} valid / ${sz.data.invalid} invalid of ${sz.data.total}` : '';
+  const sizing: Record<string, any> = Object.fromEntries(((sz.data?.rows || []) as any[]).map((r) => [r.symbol, r]));
   const d = sy.data;
   const job = d?.automap;
   if (job && polling && !job.running) setPolling(false);
@@ -113,7 +154,7 @@ export function Mt5SymbolsView() {
   };
   return (
     <div className="sm" data-testid="mt5-symbols-view">
-      <PageHead title="MT5 auto-trading — Symbol mapping" subtitle="Every Strategy Trades symbol and the broker symbol it trades as. An UNMAPPED, UNVERIFIED or EXCLUDED symbol never sends an order; the auto-map skips excluded symbols." />
+      <PageHead title="MT5 auto-trading — Symbol mapping" subtitle={`Every Strategy Trades symbol and the broker symbol it trades as. An UNMAPPED, UNVERIFIED or EXCLUDED symbol never sends an order; the auto-map skips excluded symbols.${sizingHead ? ` Sizing: ${sizingHead} (volume = shares / contract size, rounded to the step; an inexact share count is never sent).` : ''}`} />
       <Tabs />
       {sy.error && <div className="sm-fresh stale" role="alert"><AlertTriangle size={14} /> {sy.error}</div>}
       {d && (
@@ -127,13 +168,17 @@ export function Mt5SymbolsView() {
           </div>
           {msg && <div className="sm-fresh" role="status" data-testid="mt5-map-msg">{msg}</div>}
           <div className="sm-table-wrap"><table className="sm-table sm-q-table" data-testid="mt5-map-table">
-            <thead><tr><th>Software symbol</th><th>Broker symbol</th><th>Status</th><th>Min / step</th><th>Trade mode</th><th>Note</th><th>Override</th></tr></thead>
+            <thead><tr><th>Software symbol</th><th>Broker symbol</th><th>Status</th><th>Min / step</th><th>Contract size</th><th>Volume sent</th><th>= shares</th><th>Valid</th><th>Trade mode</th><th>Note</th><th>Override</th></tr></thead>
             <tbody>{d.rows.map((r: any) => (
               <tr key={r.symbol} data-testid="mt5-map-row" data-status={r.status}>
                 <td><b>{r.symbol}</b></td>
                 <td>{r.broker_symbol || '—'}</td>
                 <td><span className={`sm-q-badge ${r.status === 'MAPPED' ? 'green' : r.status === 'UNVERIFIED' ? 'amber' : r.status === 'EXCLUDED' ? 'red' : 'gray'}`}>{r.status}</span></td>
                 <td>{r.volume_min != null ? `${r.volume_min} / ${r.volume_step}` : '—'}</td>
+                <td>{sizing[r.symbol]?.contract_size ?? '—'}</td>
+                <td>{sizing[r.symbol]?.volume ?? '—'}</td>
+                <td>{sizing[r.symbol]?.shares_sent ?? '—'}</td>
+                <td data-testid={`mt5-size-${r.symbol}`}>{sizing[r.symbol] ? (sizing[r.symbol].valid ? <span className="sm-q-badge green">yes</span> : <span className="sm-q-badge red" title={sizing[r.symbol].reason || ''}>no</span>) : '—'}</td>
                 <td>{r.trade_mode ?? '—'}</td>
                 <td className="sm-q-muted">{r.note ?? (r.source ? `${r.source}${r.verified_at ? ` · ${r.verified_at}` : ''}` : '')}</td>
                 <td>

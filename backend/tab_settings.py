@@ -450,6 +450,9 @@ PAPER_EXECUTION: dict = {
     "entry_end": "15:00",             # ... until here, and never later than close - 60 min (early-close days)
     "eod_minutes_before_close": 10,   # every open position is closed this long before the official close (15:50 / 12:50)
     "breakeven_at": 0.5,              # stop moves to the entry once profit reaches this share of the target distance
+    "max_stop_pct": 2.5,              # STOP CAP (owner decision 2026-11-12): a trade whose stop sits further than this % from the entry is
+                                      # not opened (logged NO ENTRY STOP_CAP). Back-test 2026-11-07..12: 2.0% blocked 75 closed trades
+                                      # (net -$141), 2.5% blocked 44 (net -$977); the board's own ATR levels are unchanged.
 }
 
 # Life of a live signal row (intraday_signal_v2.py). A signal is a same-day idea; one that is still open from an earlier

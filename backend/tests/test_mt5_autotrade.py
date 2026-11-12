@@ -236,29 +236,36 @@ def test_automap_runs_in_the_background_and_status_keeps_answering(fake):
 
 
 # ---------------------------------------------------------------- entries
-def test_buy_signal_sends_a_market_buy_with_exact_quantity_in_lots_and_server_side_sl_tp(fake):
+def test_buy_signal_sends_the_setting_s_share_count_not_the_paper_shares_with_the_model_s_magic(fake):
+    """A.21: every MT5 order = shares_per_trade (default 10) regardless of the paper book's size; magic per model; slippage logged."""
     _connected(fake)
-    r = AT.on_paper_event(entry(shares=99))
+    r = AT.on_paper_event(entry(shares=99, strategy="grok"))
     assert r["ok"] and len(_sent(fake)) == 1
     q = _sent(fake)[0]
-    assert q["symbol"] == "AAPL" and q["operation"] == "0" and q["volume"] == "99.0" and q["stoploss"] == "98.0" and q["takeprofit"] == "104.0"
-    assert q["expertID"] == str(AT.MAGIC) and "#1" in q["comment"] and q["id"] == TOKEN
+    assert q["symbol"] == "AAPL" and q["operation"] == "0" and q["volume"] == "10.0" and q["stoploss"] == "98.0" and q["takeprofit"] == "104.0"
+    assert q["expertID"] == str(AT.MAGIC_BY_MODEL["grok"]) and "#1" in q["comment"] and q["id"] == TOKEN
     a = _audit()[-1]
-    assert a["event"] == "FILLED" and a["quantity"] == 99.0 and a["ticket"] == r["ticket"] and a["action"] == "LONG" and a["detail"]["paper_shares"] == 99 and a["detail"]["contract_size"] == 1.0
-    assert "1" in AT.open_positions()
+    assert a["event"] == "FILLED" and a["quantity"] == 10.0 and a["ticket"] == r["ticket"] and a["action"] == "LONG" and a["detail"]["paper_shares"] == 99 and a["detail"]["contract_size"] == 1.0
+    assert a["detail"]["shares_per_trade"] == 10 and a["detail"]["magic"] == 240911 and a["detail"]["slippage"]["requested_price"] == 100.1 and "bps" in a["detail"]["slippage"]
+    assert "1" in AT.open_positions() and AT.open_positions()["1"]["magic"] == 240911 and AT.open_positions()["1"]["shares"] == 10
 
 
-def test_sell_signal_converts_shares_to_lots_with_the_contract_size_and_rounds_down(fake):
+def test_sell_signal_uses_the_contract_size_and_an_inexact_share_count_is_skipped_not_rounded(fake):
     _connected(fake)
     r = AT.on_paper_event(entry(trade_id=2, symbol="TSLA", side="SHORT", shares=47, stop=206.0, target=190.0))
     assert r["ok"] and _sent(fake)[-1]["symbol"] == "TSLA.NAS" and _sent(fake)[-1]["operation"] == "1"
-    assert _sent(fake)[-1]["volume"] == "0.4"                                         # 47 shares / contract 100 = 0.47 lots -> step 0.1 -> 0.4
+    assert _sent(fake)[-1]["volume"] == "0.1"                                         # 10 shares / contract 100 = 0.10 lots (step 0.1): exactly 10 shares
     a = _audit()[-1]
-    assert a["quantity"] == 0.4 and a["detail"]["paper_shares"] == 47 and a["detail"]["lots"] == 0.4
-    AT._save_positions({"version": 1, "open": {}})
-    r3 = AT.on_paper_event(entry(trade_id=4, symbol="TSLA", side="SHORT", shares=7))         # 0.07 lots < min 0.1
-    assert r3["reason"] == "BELOW_MIN_VOLUME" and len(_sent(fake)) == 1
-    assert any(a["event"] == "SKIPPED" and "BELOW_MIN_VOLUME" in a["reason"] and "0.0700 lots" in a["reason"] for a in _audit())
+    assert a["quantity"] == 0.1 and a["detail"]["paper_shares"] == 47 and a["detail"]["lots"] == 0.1 and a["detail"]["shares_per_trade"] == 10
+    # 15 shares with contract 100 and step 0.1 would be 0.15 -> 0.2 lots = 20 shares: not exact, so SKIPPED_SIZE and nothing sent
+    assert AT.update_mt5_settings({"shares_per_trade": 15}, who="t")["ok"]
+    r3 = AT.on_paper_event(entry(trade_id=4, symbol="TSLA", side="SHORT", shares=7))
+    assert r3["reason"] == "SKIPPED_SIZE" and len(_sent(fake)) == 1
+    a3 = _audit()[-1]
+    assert a3["event"] == "SKIPPED" and "SKIPPED_SIZE" in a3["reason"] and "not a multiple" in a3["reason"] and a3["detail"]["shares_per_trade"] == 15
+    # 5 shares with contract 100 would be 0.05 lots, below the 0.1 minimum: skipped too
+    assert AT.update_mt5_settings({"shares_per_trade": 5}, who="t")["ok"]
+    assert AT.on_paper_event(entry(trade_id=5, symbol="TSLA", side="SHORT"))["reason"] == "SKIPPED_SIZE" and "SKIPPED_SIZE" in _audit()[-1]["reason"]
 
 
 def test_sizing_rules():
@@ -274,12 +281,20 @@ def test_missing_volume_rules_are_a_logged_rejection_not_a_guess(fake):
     assert r["reason"] == "NO_VOLUME_RULES" and _sent(fake) == [] and _audit()[-1]["event"] == "REJECTED"
 
 
-def test_one_position_per_symbol_and_side_and_no_opposite_direction_while_open(fake):
+def test_one_order_per_model_trigger_same_side_and_opposite_sides_open_together(fake):
+    """A.21: 3 models BUY the same stock = 3 BUY positions of 10 shares; 2 BUY + 1 SELL = three positions at once, each its own magic."""
     _connected(fake)
     assert AT.on_paper_event(entry(trade_id=1, strategy="grok"))["ok"]
-    assert AT.on_paper_event(entry(trade_id=2, strategy="meta"))["reason"] == "SKIPPED_DUPLICATE"
-    assert AT.on_paper_event(entry(trade_id=3, strategy="kimi", side="SHORT", stop=104.0, target=96.0))["reason"] == "SKIPPED_OPPOSITE_OPEN"
-    assert len(_sent(fake)) == 1
+    assert AT.on_paper_event(entry(trade_id=2, strategy="meta"))["ok"]
+    assert AT.on_paper_event(entry(trade_id=3, strategy="kimi", side="SHORT", stop=104.0, target=96.0))["ok"]
+    assert AT.on_paper_event(entry(trade_id=4, strategy="gemini"))["ok"]
+    sent = _sent(fake)
+    assert len(sent) == 4 and [q["operation"] for q in sent] == ["0", "0", "1", "0"] and all(q["volume"] == "10.0" for q in sent)
+    assert [q["expertID"] for q in sent] == ["240911", "240912", "240913", "240914"]
+    assert sorted(AT.open_positions()) == ["1", "2", "3", "4"]
+    # each closes independently by its own paper trade id
+    assert AT.on_paper_event({"type": "EXIT", "trade_id": 2, "reason": "SCORE_EXIT"})["ok"]
+    assert sorted(AT.open_positions()) == ["1", "3", "4"] and _audit()[-1]["event"] == "CLOSED" and _audit()[-1]["trade_id"] == 2 and _audit()[-1]["detail"]["magic"] == 240912
 
 
 def test_a_rejection_is_logged_with_the_full_api_reason_and_not_retried(fake):
@@ -307,10 +322,10 @@ def test_a_partial_fill_is_recorded_with_the_filled_lots(fake):
     _connected(fake)
     fake.fill_fraction = 0.5
     r = AT.on_paper_event(entry(trade_id=7))
-    assert r["ok"] and r["volume"] == 49.5
+    assert r["ok"] and r["volume"] == 5.0
     a = _audit()[-1]
-    assert a["event"] == "PARTIAL_FILL" and a["quantity"] == 49.5 and "requested 99.0 lots, filled 49.5" in a["reason"]
-    assert AT.open_positions()["7"]["volume"] == 49.5
+    assert a["event"] == "PARTIAL_FILL" and a["quantity"] == 5.0 and "requested 10.0 lots, filled 5.0" in a["reason"]
+    assert AT.open_positions()["7"]["volume"] == 5.0
 
 
 def test_the_session_token_is_never_in_an_audit_record_even_on_failure(fake):
@@ -486,3 +501,101 @@ def test_automap_flags_a_mapping_whose_broker_name_vanished(fake, monkeypatch):
     rows = {x["symbol"]: x for x in AT.mapping_rows()["rows"]}
     assert AT.audit_rows(limit=5, event="MAPPING_STALE")[0]["symbol"] == "MSFT"
     assert rows["MSFT"]["status"] == "MAPPED" and rows["MSFT"]["broker_symbol"] == "MSFT"   # re-mapped in the same pass
+
+
+# ------------------------------------------------------------------ A.21: settings, sizing table, safety, margin mode, dry run
+def test_settings_default_validate_persist_and_audit(fake):
+    st = AT.mt5_settings()
+    assert st == {"shares_per_trade": 10, "max_open_positions": 20, "daily_loss_pct": 1.0}
+    r = AT.update_mt5_settings({"shares_per_trade": 25, "daily_loss_pct": 0.5, "max_open_positions": 7}, who="owner")
+    assert r["ok"] and AT.mt5_settings() == {"shares_per_trade": 25, "max_open_positions": 7, "daily_loss_pct": 0.5}
+    assert r["changed"]["shares_per_trade"] == {"from": 10, "to": 25} and _audit()[-1]["event"] == "SETTINGS" and _audit()[-1]["detail"]["by"] == "owner"
+    bad = AT.update_mt5_settings({"shares_per_trade": 0, "daily_loss_pct": "x", "max_open_positions": 2.5}, who="owner")
+    assert bad["ok"] is False and set(bad["errors"]) == {"shares_per_trade", "daily_loss_pct", "max_open_positions"} and AT.mt5_settings()["shares_per_trade"] == 25
+    assert AT.update_mt5_settings({"unknown": 1}, who="owner")["ok"] and AT.update_mt5_settings({}, who="owner")["changed"] == {}
+
+
+def test_sizing_rules_exact_shares_only():
+    assert AT.sizing(1.0, 1.0, 1.0, 10000, 10) == {"shares": 10, "contract_size": 1.0, "volume": 10.0, "shares_sent": 10.0, "valid": True, "reason": None}
+    assert AT.sizing(100.0, 0.1, 0.1, 100, 10)["volume"] == 0.1 and AT.sizing(100.0, 0.01, 0.01, 100, 10)["volume"] == 0.1
+    assert AT.sizing(100.0, 0.1, 0.1, 100, 15)["valid"] is False and "not a multiple" in AT.sizing(100.0, 0.1, 0.1, 100, 15)["reason"]
+    assert AT.sizing(100.0, 0.01, 0.01, 100, 15)["valid"] is True and AT.sizing(100.0, 0.01, 0.01, 100, 15)["volume"] == 0.15
+    assert "below the broker minimum" in AT.sizing(100.0, 0.5, 0.1, 100, 10)["reason"]
+    assert "above the broker maximum" in AT.sizing(1.0, 1.0, 1.0, 5, 10)["reason"]
+    assert AT.sizing(None, 1.0, 1.0, 100, 10)["reason"] == "contract size unknown" and "volume rules unknown" in AT.sizing(1.0, None, None, 100, 10)["reason"]
+    assert AT.sizing(10.0, 1.0, 1.0, 100, 10)["valid"] is True and AT.sizing(10.0, 1.0, 1.0, 100, 10)["volume"] == 1.0
+
+
+def test_sizing_table_covers_every_software_symbol(fake):
+    _connected(fake)
+    t = AT.sizing_table()
+    rows = {r["symbol"]: r for r in t["rows"]}
+    assert t["shares_per_trade"] == 10 and rows["AAPL"]["valid"] and rows["AAPL"]["volume"] == 10.0 and rows["AAPL"]["shares_sent"] == 10.0 and rows["AAPL"]["contract_size"] == 1.0
+    assert rows["TSLA"]["valid"] and rows["TSLA"]["volume"] == 0.1 and rows["NVDA"]["status"] == "UNMAPPED" and rows["NVDA"]["valid"] is False
+    assert t["valid"] == 2 and t["total"] == 3
+
+
+def test_max_open_positions_blocks_new_orders_but_never_exits(fake):
+    _connected(fake)
+    assert AT.update_mt5_settings({"max_open_positions": 2}, who="t")["ok"]
+    assert AT.on_paper_event(entry(trade_id=1, strategy="grok"))["ok"] and AT.on_paper_event(entry(trade_id=2, strategy="meta"))["ok"]
+    assert AT.on_paper_event(entry(trade_id=3, strategy="kimi"))["reason"] == "MAX_OPEN_POSITIONS" and len(_sent(fake)) == 2
+    assert AT.on_paper_event({"type": "EXIT", "trade_id": 1, "reason": "SCORE_EXIT"})["ok"]
+    assert AT.on_paper_event(entry(trade_id=3, strategy="kimi"))["ok"]
+
+
+def test_daily_loss_limit_stops_entries_for_the_rest_of_the_day(fake, monkeypatch):
+    _connected(fake)
+    AT._conn["account"] = dict(AT._conn.get("account") or {}, balance=10000.0)
+    assert AT.update_mt5_settings({"daily_loss_pct": 1.0}, who="t")["ok"]           # limit = $100
+    assert AT.daily_loss_limit_usd() == 100.0 and AT.daily_loss_reached() is False
+    assert AT.on_paper_event(entry(trade_id=1, strategy="grok"))["ok"]
+    fake.quotes["AAPL"] = (88.0, 88.1)                                              # the close fills near 88: 10 shares x -12 = -120
+    assert AT.on_paper_event({"type": "EXIT", "trade_id": 1, "reason": "STOP"})["ok"]
+    d = AT.daily_state()
+    assert d["realized"] <= -100 and d["limit_hit_at"] and AT.daily_loss_reached() is True
+    assert any(a["event"] == "DAILY_LOSS_LIMIT" for a in _audit())
+    assert AT.on_paper_event(entry(trade_id=2, strategy="meta"))["reason"] == "DAILY_LOSS_LIMIT" and len(_sent(fake)) == 1
+    assert AT.status(refresh=False)["daily"]["limit_reached"] is True
+
+
+def test_halt_file_blocks_entries_until_removed_by_hand(fake):
+    _connected(fake)
+    (AT.STATE_DIR / AT.HALT_FILE).write_text("halt", encoding="utf-8")
+    assert AT.halted() and AT.on_paper_event(entry(trade_id=1))["reason"] == "HALTED" and _sent(fake) == []
+    AT.set_paused(False)                                                            # resume never clears a HALT
+    assert AT.halted()
+    (AT.STATE_DIR / AT.HALT_FILE).unlink()
+    assert AT.on_paper_event(entry(trade_id=1))["ok"]
+
+
+def test_netting_account_is_refused_hedging_required(fake):
+    _connected(fake)
+    AT._conn["account"] = dict(AT._conn.get("account") or {}, margin_mode="NETTING")
+    assert AT.on_paper_event(entry(trade_id=1))["reason"] == "MARGIN_MODE_NETTING" and _sent(fake) == []
+    assert AT.status(refresh=False)["margin_mode"] == "NETTING"
+    AT._conn["account"]["margin_mode"] = "HEDGING"
+    assert AT.on_paper_event(entry(trade_id=1))["ok"]
+
+
+def test_dry_run_sends_nothing_and_logs_order_dry_and_close_dry(fake, monkeypatch):
+    monkeypatch.setenv("MT5_DRY_RUN", "1")
+    _connected(fake)
+    r = AT.on_paper_event(entry(trade_id=1, strategy="grok", shares=99))
+    assert r == {"ok": True, "dry": True, "volume": 10.0} and _sent(fake) == []
+    a = _audit()[-1]
+    assert a["event"] == "ORDER_DRY" and a["result"] == "NOT_SENT" and a["quantity"] == 10.0 and a["detail"]["magic"] == 240911 and a["detail"]["ask"] == 100.1
+    assert AT.open_positions()["1"]["dry"] is True and AT.open_positions()["1"]["ticket"] is None
+    assert AT.on_paper_event({"type": "EXIT", "trade_id": 1, "reason": "EOD_CLOSE"})["dry"] is True and _sent(fake) == []
+    assert _audit()[-1]["event"] == "CLOSE_DRY" and AT.open_positions() == {}
+    assert AT.status(refresh=False)["dry_run"] is True
+    rec = AT.reconcile()
+    assert rec["ok"] and rec["closed_meanwhile"] == []
+
+
+def test_close_slippage_is_logged(fake):
+    _connected(fake)
+    assert AT.on_paper_event(entry(trade_id=1, strategy="grok"))["ok"]
+    assert AT.on_paper_event({"type": "EXIT", "trade_id": 1, "reason": "TARGET"})["ok"]
+    a = _audit()[-1]
+    assert a["event"] == "CLOSED" and a["detail"]["slippage"]["requested_price"] == 100.0 and "bps" in a["detail"]["slippage"] and a["detail"]["realized_usd"] is not None

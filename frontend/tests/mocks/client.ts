@@ -5,7 +5,7 @@ export type ProviderStatus = string;
 export const smartMoveEngine20 = { latest: () => ({ __k: 'sm20latest' }), outcomes: () => ({ __k: 'sm20out' }) };
 export const mt5 = { status: () => ({ __k: 'mt5status' }), symbols: () => ({ __k: 'mt5symbols' }), audit: () => ({ __k: 'mt5audit' }),
   connect: async () => ({ status: 'OK' }), reconnect: async () => ({ status: 'OK' }), disconnect: async () => ({ status: 'OK' }), pause: async () => ({ status: 'OK' }),
-  reconcile: async () => ({ status: 'OK' }), mapSymbol: async () => ({ status: 'OK' }), automap: async () => ({ status: 'OK' }), excludeSymbol: async () => ({ status: 'OK' }) };
+  reconcile: async () => ({ status: 'OK' }), mapSymbol: async () => ({ status: 'OK' }), automap: async () => ({ status: 'OK' }), excludeSymbol: async () => ({ status: 'OK' }), settings: () => ({ __k: 'mt5settings' }), saveSettings: async () => ({ status: 'OK', ok: true }), sizing: () => ({ __k: 'mt5sizing' }) };
 export const earningsMonitor = {
   status: () => ({ __k: 'emstatus' }),
   upcoming: () => ({ __k: 'emupcoming' }),

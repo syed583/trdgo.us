@@ -446,6 +446,33 @@ def _with_levels(side: str, entry: float, sl, tp):
     return sl, tp
 
 
+def stop_cap_reason(entry: float, sl) -> Optional[str]:
+    """STOP CAP (owner decision 2026-11-12): the reason not to open when the stop is further than PAPER_EXECUTION['max_stop_pct']
+    from the entry price; None when the trade may open. A missing stop or a cap of 0 / None disables the rule."""
+    try:
+        cap = float(_cfg().get("max_stop_pct") or 0)
+    except (TypeError, ValueError):
+        cap = 0.0
+    if cap <= 0 or sl is None or not entry:
+        return None
+    dist = abs(float(entry) - float(sl)) / float(entry) * 100.0
+    if dist > cap + 1e-9:
+        return "STOP_CAP: stop %.2f is %.2f%% from entry %.2f (cap %.2f%%)" % (float(sl), dist, float(entry), cap)
+    return None
+
+
+_stop_cap_hits: dict = {"count": 0, "last": None}
+
+
+def _note_stop_cap(strat: str, sym: str, why: str) -> None:
+    _stop_cap_hits["count"] += 1
+    _stop_cap_hits["last"] = {"strategy": strat, "symbol": sym, "why": why, "at": datetime.now(timezone.utc).isoformat()}
+
+
+def stop_cap_hits() -> dict:
+    return dict(_stop_cap_hits)
+
+
 def rebase_levels(side: str, board_entry, sl, tp, entry: float):
     """The board's stop / target distances (computed from ITS price) applied to the real entry price."""
     if board_entry and sl is not None and tp is not None:
@@ -671,6 +698,11 @@ def tick(force: bool = False) -> None:
                             continue
                         side = "LONG" if sig == "BUY" else "SHORT"
                         sl, tp = rebase_levels(side, info.get("entry"), info.get("sl"), info.get("tp"), entry)
+                        capped = stop_cap_reason(entry, sl)
+                        if capped:
+                            _log.info("NO ENTRY %s %s: %s", strat, sym, capped)
+                            _note_stop_cap(strat, sym, capped)
+                            continue
                         profit0, pct0 = _pnl(side, entry, entry, shares)
                         row = DemoTrade(strategy=strat, symbol=sym, side=side, shares=shares,
                                         session_date=today, entry_time=et.astimezone(timezone.utc), entry_price=entry,
@@ -913,7 +945,7 @@ def blotter(strategy: str = "", date: str = "") -> dict:
                 "gap_effect_total": gap_total, "realized_on_date": realized, "closed_on_date": len(closed_today),
                 "realized_note": "realized_on_date = P&L of positions CLOSED on this date; total_profit = trades OPENED on it",
                 "open": len(out) - closed, "closed": closed, "wins": wins,
-                "rules": {"notional_usd": _cfg().get("notional_usd"), "entry_window_et": [w[0].strftime("%H:%M"), w[1].strftime("%H:%M")] if w else None,
+                "rules": {"notional_usd": _cfg().get("notional_usd"), "max_stop_pct": _cfg().get("max_stop_pct"), "stop_cap_hits": stop_cap_hits(), "entry_window_et": [w[0].strftime("%H:%M"), w[1].strftime("%H:%M")] if w else None,
                           "eod_close_et": eod_cutoff(et.date()).strftime("%H:%M") if eod_cutoff(et.date()) else None,
                           "quote_max_age_s": _cfg().get("quote_max_age_s"), "breakeven_at": _cfg().get("breakeven_at"),
                           "fill_model": _cfg().get("fill_model")},
