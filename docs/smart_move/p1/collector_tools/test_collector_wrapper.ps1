@@ -31,12 +31,12 @@ function Log($c) { $f = Join-Path $c.state 'live\collection_runs.jsonl'; if (Tes
 $c = NewCase 'dry'; $r = Wrap $c @('-NowOverride', '2026-11-04T15:00:00Z'); $k = Calls $c; $a = if (@($k).Count) { $k[0].args -join ' ' } else { '' }
 Check 'dry run by default: runner called once with --mode dry-run and no live flags' ($r.code -eq 0 -and @($k).Count -eq 1 -and $a -match '--mode dry-run' -and $a -notmatch '--arm' -and $a -notmatch 'attestation')
 Check 'runner receives the publish folder, the 3-day calendar horizon and the deadline policy' ($a -match [regex]::Escape('--publish-dir ' + (Join-Path $c.state 'live')) -and $a -match '--calendar-days-ahead 3' -and $a -match '--select-policy cap|--select-policy deadline')
-Check 'the runner process sees exactly the approved ceilings (150 per run, 700 per day), not higher' ($k[0].run_max -eq '150' -or $k[0].run_max -eq '50')
+Check 'the runner process sees exactly the approved ceilings (500 per run, 700 per day), not higher' ($k[0].run_max -eq '500' -or $k[0].run_max -eq '150' -or $k[0].run_max -eq '50')
 Check 'the wrapper never sets the live environment flag itself' ([string]::IsNullOrEmpty($k[0].live_flag))
 $l = Log $c; Check 'the run log is in the publish folder and records STARTED then FINISHED' (@($l | Where-Object event -eq 'STARTED').Count -eq 1 -and @($l | Where-Object event -eq 'FINISHED').Count -eq 1)
 
 # 2 limits above the approved design are refused before anything runs
-foreach ($case in @(@('151', '700', 3), @('150', '701', 3), @('150', '700', 2), @('0', '700', 3), @('150', '100', 3))) {
+foreach ($case in @(@('501', '700', 3), @('500', '701', 3), @('150', '700', 2), @('0', '700', 3), @('150', '100', 3))) {
   $c = NewCase ('lim' + $case[0] + '_' + $case[1] + '_' + $case[2]); $r = Wrap $c @('-Authorize', $case[0], '-DailyLimit', $case[1], '-CalendarDaysAhead', [string]$case[2])
   Check ("refused: Authorize=$($case[0]) DailyLimit=$($case[1]) CalendarDaysAhead=$($case[2])") ($r.code -eq 2 -and @(Calls $c).Count -eq 0 -and @((Log $c) | Where-Object event -eq 'BLOCKED').Count -eq 1)
 }
@@ -117,7 +117,7 @@ foreach ($bad in @('1', '2', '31', '99', '-5')) { $c = NewCase ('p1bad' + $bad);
 $c = NewCase 'p1settings'; New-Item -ItemType Directory -Force -Path $c.state | Out-Null; $sf = Join-Path $c.dir 's.txt'; [IO.File]::WriteAllText($sf, "Mode=DRY_RUN`nCalendarHorizonDays=30`nSelectPolicy=deadline_priority`n")
 $r = Wrap $c @('-SettingsFile', $sf, '-NowOverride', '2026-11-04T15:00:00Z'); $k = Calls $c; Check 'P1: the settings file can carry CalendarHorizonDays and the new policy' ($r.code -eq 0 -and ($k[0].args -join ' ') -match '--calendar-horizon-days 30')
 $k = Calls (NewCase 'p1ceil'); $c = NewCase 'p1ceil2'; $r = Wrap $c @('-Authorize', '150', '-DailyLimit', '700', '-CalendarHorizonDays', '30'); $k = Calls $c; Check 'P1: the design ceilings are unchanged with the horizon option (150 / 700)' ($k[0].run_max -eq '150' -and $k[0].daily_max -eq '700')
-$c = NewCase 'p1over'; $r = Wrap $c @('-Authorize', '151', '-CalendarHorizonDays', '30'); Check 'P1: limits above the design are still refused with the horizon option' ($r.code -eq 2 -and @(Calls $c).Count -eq 0)
+$c = NewCase 'p1over'; $r = Wrap $c @('-Authorize', '501', '-CalendarHorizonDays', '30'); Check 'P1: limits above the design are still refused with the horizon option' ($r.code -eq 2 -and @(Calls $c).Count -eq 0)
 
 # 10 profile switch: the default is the unchanged engine20 profile; -Profile monday_bmo_friday reaches the runner unchanged and is recorded in the run log
 $c = NewCase 'prof_default'; $r = Wrap $c; $k = Calls $c; $a = if (@($k).Count) { $k[0].args -join ' ' } else { '' }

@@ -57,8 +57,8 @@ $nowUtc = if ($NowOverride) { [DateTime]::Parse($NowOverride).ToUniversalTime() 
 try { $et = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId($nowUtc, 'Eastern Standard Time') } catch { $et = $nowUtc.AddHours(-5) }
 function Log([hashtable]$o) { $o.at = (Get-Date).ToUniversalTime().ToString('o'); $o.mode = $(if ($Live) { 'LIVE' } else { 'DRY_RUN' }); $o.et = $et.ToString('yyyy-MM-dd HH:mm'); if ($Profile -ne 'engine20') { $o.profile = $Profile }; Add-Content -LiteralPath $LogFile -Value ($o | ConvertTo-Json -Compress) -Encoding ascii }
 function Skip([string]$why) { Log @{ event = 'SKIPPED'; reason = $why }; Write-Host "SKIPPED: $why"; exit 0 }
-# The design limits the owner approved (700 provider requests per New York day, 150 per run, one request at a time). A settings file cannot raise them; changing them means editing this script, i.e. a new approval.
-$MaxRun = 150; $MaxDaily = 700
+# The design limits the owner approved (700 provider requests per New York day, 500 per run since 2026-11-11 (was 150), one request at a time). A settings file cannot raise them; changing them means editing this script, i.e. a new approval.
+$MaxRun = 500; $MaxDaily = 700
 if ($Authorize -lt 1 -or $Authorize -gt $MaxRun -or $DailyLimit -lt $Authorize -or $DailyLimit -gt $MaxDaily) { Log @{ event = 'BLOCKED'; reason = ('limits outside the approved design (per run 1..{0}, per day up to {1}): Authorize={2} DailyLimit={3}' -f $MaxRun, $MaxDaily, $Authorize, $DailyLimit) }; Write-Host 'BLOCKED: Authorize/DailyLimit are outside the approved limits'; exit 2 }
 if ($CalendarHorizonDays -ne 0 -and ($CalendarHorizonDays -lt 3 -or $CalendarHorizonDays -gt 30)) { Log @{ event = 'BLOCKED'; reason = "CalendarHorizonDays must be 0 (off) or 3..30, was $CalendarHorizonDays" }; Write-Host 'BLOCKED: CalendarHorizonDays must be 0 or between 3 and 30'; exit 2 }
 if ($CalendarDaysAhead -lt 3 -or $CalendarDaysAhead -gt 7) { Log @{ event = 'BLOCKED'; reason = "CalendarDaysAhead must be 3..7, was $CalendarDaysAhead" }; Write-Host 'BLOCKED: CalendarDaysAhead must be between 3 and 7'; exit 2 }
