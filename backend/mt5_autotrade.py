@@ -282,8 +282,67 @@ def _software_symbols_uncached() -> list:
     return sorted(syms)
 
 
+# Symbols the operator ruled out for this broker (2026-11-11: "not on this broker / LP ... must stay UNMAPPED. Do not force-map
+# them"). Seeded into the map file's "excluded" list the first time it is read without one; MT5_EXCLUDED_SYMBOLS overrides the seed.
+# 2026-11-11 afternoon the broker's symbol list changed (65 -> 1,029 names) and the startup auto-map mapped these twelve by their
+# plain names; four of them then traded on the demo account. An excluded symbol is never auto-mapped, never mapped by hand
+# without un-excluding it first, and never sent as an order.
+DEFAULT_EXCLUDED = ("ADBE", "AMD", "AVGO", "CAT", "COP", "COST", "LLY", "MU", "ORACLE", "ORCL", "QQQ", "SPY", "UNH")
+
+
+def _seed_excluded() -> list:
+    raw = (os.getenv("MT5_EXCLUDED_SYMBOLS") or "").strip()
+    src = [x for x in raw.replace(";", ",").split(",")] if raw else list(DEFAULT_EXCLUDED)
+    return sorted({x.strip().upper() for x in src if x and x.strip()})
+
+
 def load_map() -> dict:
-    return _read_json(STATE_DIR / MAP_FILE, {"version": 1, "map": {}})
+    m = _read_json(STATE_DIR / MAP_FILE, {"version": 1, "map": {}})
+    if "excluded" not in m:
+        m["excluded"] = _seed_excluded()                                        # first read after A.18: the owner's list
+    return m
+
+
+def excluded_symbols() -> list:
+    return sorted(set(load_map().get("excluded") or []))
+
+
+def is_excluded(symbol: str) -> bool:
+    return (symbol or "").upper().strip() in set(load_map().get("excluded") or [])
+
+
+def set_excluded(symbol: str, flag: bool, who: str = "operator") -> dict:
+    """Operator switch. Excluding a symbol also drops its mapping (so it shows UNMAPPED/EXCLUDED at once and can never trade)."""
+    symbol = (symbol or "").upper().strip()
+    if not symbol:
+        return {"ok": False, "reason": "NO_SYMBOL"}
+    with _map_lock:
+        m = load_map()
+        ex = set(m.get("excluded") or [])
+        if flag:
+            ex.add(symbol)
+            m["map"].pop(symbol, None)
+        else:
+            ex.discard(symbol)
+        m["excluded"] = sorted(ex)
+        save_map(m)
+    audit("EXCLUDED" if flag else "UNEXCLUDED", symbol=symbol, detail={"by": who})
+    return {"ok": True, "symbol": symbol, "excluded": flag}
+
+
+def apply_exclusions(who: str = "startup") -> list:
+    """Drop any mapping that exists for an excluded symbol (the seed arriving after mappings were made). Returns what was dropped."""
+    dropped = []
+    with _map_lock:
+        m = load_map()
+        for s in sorted(set(m.get("excluded") or [])):
+            if s in m["map"]:
+                dropped.append({"symbol": s, "broker_symbol": (m["map"].get(s) or {}).get("broker_symbol")})
+                m["map"].pop(s, None)
+        save_map(m)                                                               # also persists the seeded list
+    for d in dropped:
+        audit("EXCLUDED", symbol=d["symbol"], broker_symbol=d["broker_symbol"], detail={"by": who, "note": "mapping dropped: symbol is on the exclusion list"})
+    return dropped
 
 
 def save_map(m: dict) -> None:
@@ -291,14 +350,18 @@ def save_map(m: dict) -> None:
 
 
 def mapping_rows() -> dict:
-    m = load_map()["map"]
+    full = load_map()
+    m, ex = full["map"], set(full.get("excluded") or [])
     rows = []
     for s in software_symbols():
         e = m.get(s) or {}
-        rows.append({"symbol": s, "broker_symbol": e.get("broker_symbol"), "status": "MAPPED" if e.get("broker_symbol") and e.get("verified") else ("UNVERIFIED" if e.get("broker_symbol") else "UNMAPPED"),
+        st = "EXCLUDED" if s in ex else ("MAPPED" if e.get("broker_symbol") and e.get("verified") else ("UNVERIFIED" if e.get("broker_symbol") else "UNMAPPED"))
+        rows.append({"symbol": s, "broker_symbol": e.get("broker_symbol"), "status": st, "excluded": s in ex,
                      "verified_at": e.get("verified_at"), "source": e.get("source"), "volume_min": e.get("volume_min"), "volume_step": e.get("volume_step"), "trade_mode": e.get("trade_mode_text"), "note": e.get("note")})
     mapped = sum(1 for r in rows if r["status"] == "MAPPED")
-    return {"rows": rows, "mapped": mapped, "total": len(rows), "summary": "%d of %d symbols mapped" % (mapped, len(rows)), "automap": automap_state()}
+    tradable = [r for r in rows if not r["excluded"]]
+    return {"rows": rows, "mapped": mapped, "total": len(tradable), "excluded": sorted(ex),
+            "summary": "%d of %d symbols mapped (%d excluded)" % (mapped, len(tradable), len(ex)), "automap": automap_state()}
 
 
 def verify_broker_symbol(broker_symbol: str) -> dict:
@@ -325,6 +388,9 @@ def set_mapping(symbol: str, broker_symbol: Optional[str], source: str = "manual
             save_map(m)
         audit("UNMAPPED", symbol=symbol, detail={"source": source})
         return {"ok": True, "symbol": symbol, "status": "UNMAPPED"}
+    if is_excluded(symbol):
+        audit("MAP_REFUSED", symbol=symbol, broker_symbol=broker_symbol, reason="EXCLUDED: on the operator's exclusion list (un-exclude it first)", detail={"source": source})
+        return {"ok": False, "symbol": symbol, "status": "EXCLUDED", "reason": "EXCLUDED", "note": "on the operator's exclusion list; un-exclude it first"}
     v = verify_broker_symbol(broker_symbol) if _conn["connected"] else {"ok": False, "reason": "NOT_CONNECTED"}   # network, no lock held
     e = {"broker_symbol": broker_symbol, "source": source, "verified": bool(v.get("ok")), "verified_at": _now_iso() if v.get("ok") else None, "note": None if v.get("ok") else "%s: %s" % (v.get("reason"), v.get("detail", ""))}
     if v.get("ok"):
@@ -386,8 +452,22 @@ def run_automap() -> dict:
             return {"ok": False, "reason": lst.get("reason"), "detail": lst.get("detail")}
         names = lst["symbols"]
         _automap["broker_symbols"] = len(names)
-        m = load_map()
-        todo = [s for s in software_symbols() if not (m["map"].get(s) or {}).get("verified")]
+        offered = set(names)
+        stale = []
+        with _map_lock:                                                           # a verified mapping whose broker name vanished is stale
+            m = load_map()
+            for s, e in list(m["map"].items()):
+                if e.get("verified") and e.get("broker_symbol") and e["broker_symbol"] not in offered:
+                    e.update(verified=False, verified_at=None, note="STALE: the broker no longer offers %s" % e["broker_symbol"])
+                    stale.append({"symbol": s, "broker_symbol": e["broker_symbol"]})
+            if stale:
+                save_map(m)
+        for d in stale:
+            audit("MAPPING_STALE", symbol=d["symbol"], broker_symbol=d["broker_symbol"], reason="the broker no longer offers this name; re-map or auto-map")
+        _automap["stale"] = len(stale)
+        ex = set(m.get("excluded") or [])
+        skipped_excluded = [s for s in software_symbols() if s in ex]
+        todo = [s for s in software_symbols() if s not in ex and not (m["map"].get(s) or {}).get("verified")]
         _automap["total"] = len(todo)
         for s in todo:
             prev = (m["map"].get(s) or {}).get("broker_symbol")
@@ -401,7 +481,7 @@ def run_automap() -> dict:
         res = {"ok": True, "mapped": list(_automap["mapped"]), "unmapped": list(_automap["unmapped"])}
         mr = mapping_rows()
         res.update(mapped_count=mr["mapped"], total=mr["total"], summary=mr["summary"])
-        audit("AUTOMAP", detail={"broker_symbols": len(names), "mapped": len(_automap["mapped"]), "unmapped": len(_automap["unmapped"]), "summary": mr["summary"]})
+        audit("AUTOMAP", detail={"broker_symbols": len(names), "mapped": len(_automap["mapped"]), "unmapped": len(_automap["unmapped"]), "stale": len(stale), "excluded_skipped": len(skipped_excluded), "summary": mr["summary"]})
         return res
     except Exception as exc:  # noqa: BLE001
         _automap["error"] = "%s: %s" % (type(exc).__name__, exc)
@@ -477,6 +557,8 @@ def _entry_allowed(ev: dict) -> Optional[str]:
         return "NOT_INSTALLED"
     if not _conn["connected"]:
         return "NOT_CONNECTED"
+    if is_excluded(ev["symbol"]):
+        return "EXCLUDED"
     if not mapped(ev["symbol"]):
         return "UNMAPPED"
     return None
@@ -617,8 +699,19 @@ def reconcile() -> dict:
     return {"ok": True, "ledger_open": list(pos["open"].values()), "broker_open": broker["positions"], "closed_meanwhile": gone, "unknown_on_broker": unknown}
 
 
+_started = {"done": False}
+
+
 def startup() -> None:
-    """At service start: reconnect from saved credentials when the switch is on (never sends an order by itself)."""
+    """At service start: reconnect from saved credentials when the switch is on (never sends an order by itself). Runs once per
+    process (the hook was firing twice and every STARTUP line was duplicated)."""
+    if _started["done"]:
+        return
+    _started["done"] = True
+    try:
+        apply_exclusions(who="startup")
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("MT5 auto-trade: exclusion list not applied: %s", exc)
     if not auto_trade_enabled():
         _log.info("MT5 auto-trade: switch AUTO_TRADE is off")
         return

@@ -89,6 +89,17 @@ def mt5_symbols_map(request: Request, payload: dict = Body(...)) -> dict:
     return {**res, "map_status": res.get("status"), "status": "OK"}
 
 
+@router.post("/symbols/exclude")
+def mt5_symbols_exclude(request: Request, payload: dict = Body(...)) -> dict:
+    """Operator switch: {"symbol": "CAT", "excluded": true|false}. Excluding drops the mapping; the symbol never trades."""
+    user = _require_operator(request)
+    sym = str(payload.get("symbol") or "").strip().upper()
+    if not sym:
+        raise HTTPException(status_code=422, detail="symbol is required")
+    res = AT.set_excluded(sym, bool(payload.get("excluded", True)), who=str((user or {}).get("username") or (user or {}).get("email") or "operator"))
+    return {"status": "OK" if res.get("ok") else "FAILED", **res, "map_status": AT.mapping_rows()}
+
+
 @router.post("/symbols/automap")
 def mt5_symbols_automap(request: Request) -> dict:
     _require_operator(request)

@@ -1009,6 +1009,7 @@ export const mt5 = {
   symbols: (s?: AbortSignal) => request<any>('/api/mt5/symbols', s),
   mapSymbol: (symbol: string, broker_symbol: string) => send<any>('/api/mt5/symbols/map', 'POST', { symbol, broker_symbol }),
   automap: () => send<any>('/api/mt5/symbols/automap', 'POST', {}),
+  excludeSymbol: (symbol: string, excluded: boolean) => send<any>('/api/mt5/symbols/exclude', 'POST', { symbol, excluded }),
   audit: (limit: number, event: string, s?: AbortSignal) => request<any>(`/api/mt5/audit?limit=${limit}${event ? `&event=${encodeURIComponent(event)}` : ''}`, s),
 };
 

@@ -113,7 +113,7 @@ export function Mt5SymbolsView() {
   };
   return (
     <div className="sm" data-testid="mt5-symbols-view">
-      <PageHead title="MT5 auto-trading — Symbol mapping" subtitle="Every Strategy Trades symbol and the broker symbol it trades as. An UNMAPPED or UNVERIFIED symbol never sends an order." />
+      <PageHead title="MT5 auto-trading — Symbol mapping" subtitle="Every Strategy Trades symbol and the broker symbol it trades as. An UNMAPPED, UNVERIFIED or EXCLUDED symbol never sends an order; the auto-map skips excluded symbols." />
       <Tabs />
       {sy.error && <div className="sm-fresh stale" role="alert"><AlertTriangle size={14} /> {sy.error}</div>}
       {d && (
@@ -132,7 +132,7 @@ export function Mt5SymbolsView() {
               <tr key={r.symbol} data-testid="mt5-map-row" data-status={r.status}>
                 <td><b>{r.symbol}</b></td>
                 <td>{r.broker_symbol || '—'}</td>
-                <td><span className={`sm-q-badge ${r.status === 'MAPPED' ? 'green' : r.status === 'UNVERIFIED' ? 'amber' : 'gray'}`}>{r.status}</span></td>
+                <td><span className={`sm-q-badge ${r.status === 'MAPPED' ? 'green' : r.status === 'UNVERIFIED' ? 'amber' : r.status === 'EXCLUDED' ? 'red' : 'gray'}`}>{r.status}</span></td>
                 <td>{r.volume_min != null ? `${r.volume_min} / ${r.volume_step}` : '—'}</td>
                 <td>{r.trade_mode ?? '—'}</td>
                 <td className="sm-q-muted">{r.note ?? (r.source ? `${r.source}${r.verified_at ? ` · ${r.verified_at}` : ''}` : '')}</td>
@@ -140,6 +140,7 @@ export function Mt5SymbolsView() {
                   <input value={edit[r.symbol] ?? ''} placeholder={r.broker_symbol || r.symbol} onChange={(e) => setEdit({ ...edit, [r.symbol]: e.target.value })} style={{ width: 110 }} />
                   {' '}<button className="ghost-btn" disabled={busy} onClick={() => act(() => mt5.mapSymbol(r.symbol, edit[r.symbol] || r.broker_symbol || r.symbol), `${r.symbol} saved`)}>Save</button>
                   {r.broker_symbol && <> <button className="ghost-btn" disabled={busy} onClick={() => act(() => mt5.mapSymbol(r.symbol, ''), `${r.symbol} unmapped`)}>Unmap</button></>}
+                  {' '}<button className="ghost-btn" disabled={busy} data-testid={`mt5-exclude-${r.symbol}`} title={r.excluded ? 'Allow this symbol to be mapped and traded again' : 'Never map or trade this symbol (the auto-map skips it)'} onClick={() => act(() => mt5.excludeSymbol(r.symbol, !r.excluded), r.excluded ? `${r.symbol} allowed again` : `${r.symbol} excluded`)}>{r.excluded ? 'Allow' : 'Exclude'}</button>
                 </td>
               </tr>
             ))}</tbody>

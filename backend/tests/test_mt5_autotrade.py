@@ -165,10 +165,10 @@ def test_a_transport_error_is_a_result_not_an_exception(fake, monkeypatch):
 
 # ---------------------------------------------------------------- mapping
 def test_mapping_verifies_against_the_broker_and_unmapped_never_trades(fake):
-    assert AT.mapping_rows()["summary"] == "0 of 3 symbols mapped"
+    assert AT.mapping_rows()["summary"] == "0 of 3 symbols mapped (13 excluded)"
     _connected(fake)
     m = AT.mapping_rows()
-    assert m["summary"] == "2 of 3 symbols mapped" and {r["symbol"]: r["status"] for r in m["rows"]} == {"AAPL": "MAPPED", "TSLA": "MAPPED", "NVDA": "UNMAPPED"}
+    assert m["summary"] == "2 of 3 symbols mapped (13 excluded)" and {r["symbol"]: r["status"] for r in m["rows"]} == {"AAPL": "MAPPED", "TSLA": "MAPPED", "NVDA": "UNMAPPED"}
     assert AT.set_mapping("NVDA", "NVDA.XYZ")["status"] == "UNVERIFIED"
     assert AT.on_paper_event(entry(symbol="NVDA"))["reason"] == "UNMAPPED" and _sent(fake) == []
     assert any(a["event"] == "SKIPPED" and a["symbol"] == "NVDA" and a["reason"] == "UNMAPPED" for a in _audit())
@@ -180,7 +180,7 @@ def test_automap_uses_one_symbols_call_then_verifies_only_the_matches(fake):
     n0 = len(fake.calls)
     r = AT.automap()
     assert {x["symbol"]: x["broker_symbol"] for x in r["mapped"]} == {"AAPL": "AAPL", "TSLA": "TSLA.NAS"}
-    assert [x["symbol"] for x in r["unmapped"]] == ["NVDA"] and r["unmapped"][0]["note"] == "not offered by the broker" and r["summary"] == "2 of 3 symbols mapped"
+    assert [x["symbol"] for x in r["unmapped"]] == ["NVDA"] and r["unmapped"][0]["note"] == "not offered by the broker" and r["summary"] == "2 of 3 symbols mapped (13 excluded)"
     paths = [pp for pp, q in fake.calls[n0:]]
     assert paths.count("Symbols") == 1 and paths.count("SymbolParams") == 2                  # never one call per candidate suffix
     st = AT.automap_state()
@@ -231,7 +231,7 @@ def test_automap_runs_in_the_background_and_status_keeps_answering(fake):
         if not AT.automap_state()["running"]:
             break
         _t.sleep(0.02)
-    assert AT.automap_state()["running"] is False and AT.mapping_rows()["summary"] == "2 of 3 symbols mapped"
+    assert AT.automap_state()["running"] is False and AT.mapping_rows()["summary"] == "2 of 3 symbols mapped (13 excluded)"
     assert AT.status()["connected"] is True
 
 
@@ -428,3 +428,61 @@ def test_the_tracker_emits_entry_and_exit_events_to_registered_hooks(fake):
         assert len(seen) == 2
     finally:
         dts.HOOKS[:] = [h for h in dts.HOOKS if h is not seen.append and h is not bad]
+
+
+def _offer(fake, *names):
+    """The broker offers exactly these names (SymbolParams answers from the AAPL template)."""
+    import copy
+    tpl = fake.symbols["AAPL"]
+    fake.symbols = {n: copy.deepcopy(dict(tpl, symbol=n)) for n in names}
+
+
+# ------------------------------------------------------------------ A.18: the operator's exclusion list ---
+def test_excluded_symbols_are_seeded_never_automapped_never_mapped_by_hand_and_never_trade(fake, monkeypatch):
+    monkeypatch.setattr(AT, "software_symbols", lambda: ["AAPL", "CAT", "QQQ"])
+    _offer(fake, "AAPL", "CAT", "QQQ", "COP")
+    assert {"CAT", "QQQ", "COP", "SPY", "LLY"} <= set(AT.excluded_symbols())             # the owner's list is the seed
+    AT.connect(123, "p", "STGlobalMarketsLtd-Live-1")
+    r = AT.automap()
+    assert {x["symbol"] for x in r["mapped"]} == {"AAPL"}                                # CAT / QQQ skipped although the broker offers them
+    rows = {x["symbol"]: x for x in AT.mapping_rows()["rows"]}
+    assert rows["CAT"]["status"] == "EXCLUDED" and rows["QQQ"]["excluded"] is True and rows["AAPL"]["status"] == "MAPPED"
+    m = AT.set_mapping("CAT", "CAT", source="manual")
+    assert m["ok"] is False and m["reason"] == "EXCLUDED" and AT.mapped("CAT") is None
+    n0 = [p for p, q in fake.calls].count("OrderSendSafe")
+    out = AT.on_paper_event({"type": "ENTRY", "trade_id": 9001, "strategy": "grok", "symbol": "CAT", "side": "LONG", "shares": 16, "entry": 600.0, "stop": 590.0, "target": 620.0})
+    assert out["reason"] == "EXCLUDED" and [p for p, q in fake.calls].count("OrderSendSafe") == n0
+    assert AT.audit_rows(limit=5, symbol="CAT")[0]["reason"] == "EXCLUDED"
+    # un-exclude -> ordinary symbol again; re-exclude drops the mapping
+    assert AT.set_excluded("CAT", False)["ok"] and "CAT" not in AT.excluded_symbols()
+    assert AT.set_mapping("CAT", "CAT", source="manual")["status"] == "MAPPED"
+    assert AT.set_excluded("CAT", True)["ok"] and AT.mapped("CAT") is None and {x["symbol"]: x for x in AT.mapping_rows()["rows"]}["CAT"]["status"] == "EXCLUDED"
+
+
+def test_startup_applies_the_exclusion_list_to_existing_mappings_and_runs_once(fake, monkeypatch):
+    monkeypatch.setattr(AT, "software_symbols", lambda: ["AAPL", "COST"])
+    _offer(fake, "AAPL", "COST")
+    AT.connect(123, "p", "STGlobalMarketsLtd-Live-1")
+    with AT._map_lock:
+        m = AT.load_map(); m["map"]["COST"] = {"broker_symbol": "COST", "verified": True, "source": "auto"}; AT.save_map(m)   # mapped before A.18
+    assert AT.mapped("COST") is not None
+    monkeypatch.setattr(AT, "_started", {"done": False})
+    monkeypatch.setattr(AT, "reconnect_from_saved", lambda: {"ok": True})
+    AT.startup()
+    assert AT.mapped("COST") is None and AT.audit_rows(limit=3, event="EXCLUDED")[0]["symbol"] == "COST"
+    n = len(AT.audit_rows(limit=50, event="STARTUP"))
+    AT.startup()                                                                           # second call: nothing (the hook fired twice)
+    assert len(AT.audit_rows(limit=50, event="STARTUP")) == n
+
+
+def test_automap_flags_a_mapping_whose_broker_name_vanished(fake, monkeypatch):
+    monkeypatch.setattr(AT, "software_symbols", lambda: ["AAPL", "MSFT"])
+    _offer(fake, "AAPL", "MSFTUS.m")
+    AT.connect(123, "p", "STGlobalMarketsLtd-Live-1")
+    AT.automap()
+    assert AT.mapped("MSFT")["broker_symbol"] == "MSFTUS.m"
+    _offer(fake, "AAPL", "MSFT")                                                           # the broker renamed its list
+    r = AT.automap()
+    rows = {x["symbol"]: x for x in AT.mapping_rows()["rows"]}
+    assert AT.audit_rows(limit=5, event="MAPPING_STALE")[0]["symbol"] == "MSFT"
+    assert rows["MSFT"]["status"] == "MAPPED" and rows["MSFT"]["broker_symbol"] == "MSFT"   # re-mapped in the same pass
