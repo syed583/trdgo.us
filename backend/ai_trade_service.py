@@ -15,4 +15,11 @@ UNIVERSE: list[str] = [
     "WMT", "COST", "HD", "NKE", "DIS",
     "CAT", "BA", "GE",
     "SPY", "QQQ",
+    # Added 2026-11-12 (owner decision): the 17 strongest EQUITY names (common stock / ADR; no ETFs, index, inverse or
+    # leveraged funds) by options volume (Unusual Whales screener, 2026-11-12) among the broker's USD symbols not already
+    # listed. 55 in total so one full feed pass (6 symbols a minute) takes ~9 min, inside the 10-minute options-flow
+    # freshness window. The 38 above are unchanged and keep their order.
+    "SPCX", "MSTR", "MRVL", "PLTR", "SMCI", "HOOD", "TSM", "GOOG",
+    "UMC", "DELL", "UBER", "GME", "BABA", "TTD", "MRNA", "NOW",
+    "PCG",
 ]
