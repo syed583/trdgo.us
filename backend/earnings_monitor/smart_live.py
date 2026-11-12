@@ -283,8 +283,11 @@ def load_alerts(live_dir: Optional[str], now: datetime, *, schedule_log_dir: Opt
     blocked_same = [r for r in runs if r.get("event") == "BLOCKED" and _variant_of(r) == variant]
     blocked_confirmed = any(_near(_dt(r.get("at")), at, 120) for r in blocked_same)
     sched = _schedule_records(schedule_log_dir, variant)
-    exit3 = [r for r in sched if r.get("event") == "FINISHED" and str(r.get("exit_code")) == "3" and _dt(r.get("at")) and at - timedelta(minutes=2) <= _dt(r["at"]) <= at + timedelta(minutes=15)]
-    exit_code = int(exit3[-1]["exit_code"]) if exit3 else None
+    # The scheduled script writes a SKIPPED record (with the gate reasons) to its own log and exits 3 straight after it; no
+    # FINISHED record follows a refusal. Either shape within the window confirms the exit code.
+    win = [r for r in sched if _dt(r.get("at")) and at - timedelta(minutes=2) <= _dt(r["at"]) <= at + timedelta(minutes=15)]
+    exit3 = [r for r in win if (r.get("event") == "FINISHED" and str(r.get("exit_code")) == "3") or (r.get("event") == "SKIPPED" and (r.get("failed") or r.get("reasons")))]
+    exit_code = 3 if exit3 else None
     # cleared only by a later SUCCESSFUL pass of the same variant (status stamp, cross-checked by the schedule log's exit 0)
     sched_ok_after = any(r.get("event") == "FINISHED" and str(r.get("exit_code")) == "0" and _dt(r.get("at")) and _dt(r["at"]) > at for r in sched)
     cleared_by_status = bool(last_ok and last_ok > at)

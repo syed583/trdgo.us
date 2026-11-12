@@ -53,7 +53,10 @@ def _schedule_log(tmp_path: Path, at: datetime, exit_code: int, variant_sub=""):
     sd.mkdir(parents=True, exist_ok=True)
     with open(sd / "scheduled_live_runs.jsonl", "a", encoding="utf-8") as fh:
         fh.write(json.dumps({"event": "STARTED", "at": (at - timedelta(seconds=5)).isoformat()}) + "\n")
-        fh.write(json.dumps({"event": "FINISHED", "at": (at + timedelta(seconds=20)).isoformat(), "exit_code": exit_code, "attempts": 0}) + "\n")
+        if exit_code == 3:                                                                 # the real script on a refusal: SKIPPED + reasons, then exit 3 (no FINISHED)
+            fh.write(json.dumps({"event": "SKIPPED", "at": (at + timedelta(seconds=1)).isoformat(), "failed": 1, "reasons": "owner attestation valid"}) + "\n")
+        else:
+            fh.write(json.dumps({"event": "FINISHED", "at": (at + timedelta(seconds=20)).isoformat(), "exit_code": exit_code, "attempts": 0}) + "\n")
     (sd / ("sched_run_%s.txt" % (at - timedelta(seconds=5)).strftime("%Y%m%d_%H%M%S"))).write_text("=== 1. gates\n   FAIL  owner attestation valid\nREFUSED: gates failed (1)\n", encoding="utf-8")
     return str(tmp_path / "live_schedule")
 
