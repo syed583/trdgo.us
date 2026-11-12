@@ -36,8 +36,9 @@ from smvshadow import scorer as sc  # noqa: E402
 from smvshadow.freshness import missing  # noqa: E402
 from smvshadow.store import PayloadStore  # noqa: E402
 
-# Market-cap floor (owner decision 2026-11-12, kit v6.6): a symbol whose best known market cap is below this, or unknown on every
-# observation, is dropped from the calendar observations before anything looks at it. The threshold is a constant, not a setting.
+# Market-cap floor (owner decision 2026-11-12, kit v6.6): a symbol whose best known market cap is BELOW this is dropped from the
+# calendar observations before anything looks at it. A symbol with no market cap on any observation is KEPT (owner decision after
+# the real count: 2,044 of 3,263 calendar symbols carry no cap because only the UW calendar rows have one). Constant, not a setting.
 MIN_MARKET_CAP_USD = 7_000_000.0
 
 
@@ -58,23 +59,13 @@ def symbol_market_caps(cal_rows) -> dict:
 
 
 def excluded_by_market_cap(cal_rows, floor: float = MIN_MARKET_CAP_USD) -> dict:
-    """symbol -> reason ("below floor" with the value, or "unknown") for every symbol the floor removes. Pure; reads nothing else."""
+    """symbol -> reason for every symbol the floor removes (a known market cap below the floor). Unknown caps are kept. Pure."""
     caps = symbol_market_caps(cal_rows)
-    out: dict = {}
-    for r in cal_rows:
-        s = r["symbol"]
-        if s in out:
-            continue
-        c = caps.get(s)
-        if c is None:
-            out[s] = "market cap unknown on every calendar observation"
-        elif c < floor:
-            out[s] = "market cap %.0f USD below the %.0f USD floor" % (c, floor)
-    return out
+    return {s: "market cap %.0f USD below the %.0f USD floor" % (c, floor) for s, c in caps.items() if c < floor}
 
 
 def filter_cal_obs(cal_rows, floor: float = MIN_MARKET_CAP_USD) -> list:
-    """The calendar observations minus every symbol below the floor or without a market cap. Order preserved."""
+    """The calendar observations minus every symbol whose known market cap is below the floor. Order preserved."""
     rows = list(cal_rows)
     drop = excluded_by_market_cap(rows, floor)
     return [r for r in rows if r["symbol"] not in drop] if drop else rows

@@ -1,5 +1,5 @@
-"""Kit v6.6: the market-cap floor (7,000,000 USD). A symbol whose best known market cap is below the floor, or unknown on every
-calendar observation, is dropped from the calendar observations at the one place every consumer reads them: never scanned,
+"""Kit v6.6: the market-cap floor (7,000,000 USD). A symbol whose best known market cap is below the floor is dropped (a symbol
+with no market cap on any observation is KEPT: owner decision 2026-11-12 after the real count) from the calendar observations at the one place every consumer reads them: never scanned,
 never counted (not even as skipped), never displayed in the universe table, never selected for capture. Simulated provider only."""
 import json
 import sys
@@ -42,10 +42,9 @@ def test_pure_filter_rules():
     caps = L.symbol_market_caps(rows)
     assert caps == {"BIG": 25e9, "TINY": 6999999.0, "EDGE": 7e6, "MIXED": 9e6}
     ex = L.excluded_by_market_cap(rows)
-    assert set(ex) == {"TINY", "NONE", "BLANK", "BAD", "ZERO", "NEG"}
-    assert "below the 7000000 USD floor" in ex["TINY"] and ex["NONE"] == "market cap unknown on every calendar observation"
+    assert set(ex) == {"TINY"} and "below the 7000000 USD floor" in ex["TINY"]
     kept = L.filter_cal_obs(rows)
-    assert [r["symbol"] for r in kept] == ["BIG", "EDGE", "MIXED", "MIXED"]              # order preserved; the FINVIZ row of MIXED stays because the company row knows its cap
+    assert [r["symbol"] for r in kept] == ["BIG", "EDGE", "NONE", "BLANK", "BAD", "MIXED", "MIXED", "ZERO", "NEG"]   # order preserved; unknown / unparsable caps are kept
     assert L.filter_cal_obs([]) == [] and L.MIN_MARKET_CAP_USD == 7_000_000.0
 
 
@@ -54,17 +53,18 @@ def test_excluded_symbols_are_absent_from_scanning_counts_universe_selection_and
     svc.refresh_calendar([1700])                                                           # the simulated calendar: every symbol has a large cap
     before = sorted(svc._calobs())
     assert len(before) >= 5
-    victims = before[:2]                                                                   # one below the floor, one with no market cap at all (a FINVIZ-only name)
+    victims = before[:2]                                                                   # both below the floor; a third name loses its cap and must be KEPT
+    kept_unknown = before[2]
     rows = svc.store.read("cal_obs")
     for r in rows:
-        if r["symbol"] == victims[0]:
+        if r["symbol"] in victims:
             r["marketcap"] = "6500000"
-        elif r["symbol"] == victims[1]:
+        elif r["symbol"] == kept_unknown:
             r["marketcap"] = None
     _rewrite(svc, rows)
     assert {r["symbol"] for r in svc.store.read("cal_obs")} >= set(victims), "the raw store still holds the victims: nothing is deleted"
     seen = sorted(svc._calobs())
-    assert victims[0] not in seen and victims[1] not in seen and len(seen) == len(before) - 2
+    assert victims[0] not in seen and victims[1] not in seen and kept_unknown in seen and len(seen) == len(before) - 2
     assert not {e["symbol"] for e in svc.eligible_events(clock.now())} & set(victims)      # never selected -> never captured
     scored = L.LiveScorer(svc).score_all(clock.now())
     assert not {r["symbol"] for r in scored} & set(victims)                               # never scored
