@@ -116,6 +116,23 @@ def mt5_settings_set(request: Request, payload: dict = Body(...)) -> dict:
     return dict(res, status="OK" if res.get("ok") else "FAILED", sizing=AT.sizing_table())
 
 
+@router.post("/close-all")
+def mt5_close_all(request: Request) -> dict:
+    """Operator button: close every open MT5 position of ours now; closes the broker refuses (market closed) are queued."""
+    user = _require_operator(request)
+    who = str((user or {}).get("username") or (user or {}).get("email") or "operator")
+    res = AT.close_all(who=who)
+    return dict(res, status="OK" if res.get("ok") else "FAILED")
+
+
+@router.post("/symbols/refresh")
+def mt5_symbols_refresh(request: Request) -> dict:
+    """Re-read contract sizes and volume rules for every mapped symbol from the broker (fills the sizing table)."""
+    _require_operator(request)
+    res = AT.refresh_broker_rules()
+    return dict(res, status="OK" if res.get("ok") else "FAILED")
+
+
 @router.get("/symbols/sizing")
 def mt5_symbols_sizing(request: Request) -> dict:
     """The per-symbol volume table for the current shares-per-trade setting (from the stored mapping; no broker call)."""

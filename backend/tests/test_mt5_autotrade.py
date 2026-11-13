@@ -94,6 +94,9 @@ def fake(tmp_path, monkeypatch):
     monkeypatch.setattr(AT, "_software_symbols_uncached", lambda: ["AAPL", "TSLA", "NVDA"])
     monkeypatch.setattr(AT, "_symbols_cache", {"at": 0.0, "symbols": None})
     monkeypatch.setattr(AT, "_ignore_automap_on_connect", True)
+    monkeypatch.setattr(AT, "_sweeper_started", {"done": True})                       # never start the real sweeper thread from a test
+    monkeypatch.setattr(AT, "_sweep_state", {"last_sweep_date": None, "last_sweep_at": None, "last_retry_at": None, "closed_today": 0, "pending_retried": 0})
+    AT._automap.update(running=False, error=None)
     AT._conn.update(connected=False, account=None, since=None, last_error=None, server=None, base_url=None)
     yield m
     B._reset_for_tests(None)
@@ -599,3 +602,100 @@ def test_close_slippage_is_logged(fake):
     assert AT.on_paper_event({"type": "EXIT", "trade_id": 1, "reason": "TARGET"})["ok"]
     a = _audit()[-1]
     assert a["event"] == "CLOSED" and a["detail"]["slippage"]["requested_price"] == 100.0 and "bps" in a["detail"]["slippage"] and a["detail"]["realized_usd"] is not None
+
+
+# ------------------------------------------------------------------ A.22: EOD sweep on our own clock, pending-close queue, close-all, loss basis, rules refresh
+from datetime import datetime as _dt
+from zoneinfo import ZoneInfo as _ZI
+_ET = _ZI("America/New_York")
+
+
+def _et(h, m, day=12):
+    return _dt(2026, 11, day, h, m, tzinfo=_ET)                                       # a Thursday
+
+
+def test_eod_sweep_closes_every_open_position_at_1545_et_independent_of_the_paper_book(fake):
+    _connected(fake)
+    assert AT.on_paper_event(entry(trade_id=1, strategy="grok"))["ok"] and AT.on_paper_event(entry(trade_id=2, strategy="meta"))["ok"]
+    assert AT.sweeper_tick(_et(15, 44)) is None and len(_closes(fake)) == 0                   # not yet
+    assert AT.sweeper_tick(_et(15, 45)) == "sweep"
+    assert len(_closes(fake)) == 2 and AT.open_positions() == {} and fake.positions == {}
+    ev = [a["event"] for a in _audit()]
+    assert ev.count("CLOSED") == 2 and ev[-1] == "EOD_SWEEP" and _audit()[-1]["detail"]["closed"] == ["1", "2"]
+    assert AT.sweeper_tick(_et(15, 50)) is None                                            # nothing left: no second sweep
+    assert AT.sweeper_tick(_et(15, 59)) is None
+
+
+def test_market_closed_refusal_is_queued_and_retried_from_0931_next_session(fake):
+    _connected(fake)
+    assert AT.on_paper_event(entry(trade_id=1, strategy="grok"))["ok"]
+    fake.close_script = [{"code": 10018, "message": "Market is closed", "nodeName": "mt5-1"}]
+    assert AT.sweeper_tick(_et(15, 46)) == "sweep"
+    st = AT.status(refresh=False)
+    assert AT.open_positions() == {} and [p["trade_id"] for p in st["pending_close"]] == [1] and _audit()[-2]["event"] == "CLOSE_PENDING"
+    assert fake.positions, "the broker still holds it"
+    assert AT.sweeper_tick(_et(9, 30, day=13)) is None                                      # before 09:31: no retry
+    assert AT.sweeper_tick(_et(9, 31, day=13)) == "retry"
+    assert AT.status(refresh=False)["pending_close"] == [] and fake.positions == {} and any(a["event"] == "CLOSED" and "PENDING_CLOSE_RETRY" in a["reason"] for a in _audit())
+    assert AT.sweeper_tick(_et(9, 32, day=13)) is None
+
+
+def test_pending_retry_keeps_trying_and_logs_each_attempt(fake, monkeypatch):
+    _connected(fake)
+    assert AT.on_paper_event(entry(trade_id=1, strategy="kimi"))["ok"]
+    fake.close_script = [{"code": 10018, "message": "Market is closed", "nodeName": "mt5-1"}, {"code": 10018, "message": "Market is closed", "nodeName": "mt5-1"}]
+    AT.sweeper_tick(_et(15, 47))
+    monkeypatch.setattr(AT, "_sweep_state", dict(AT._sweep_state, last_retry_at=None))
+    assert AT.sweeper_tick(_et(9, 35, day=13)) == "retry"                                   # still closed -> stays pending, attempt logged
+    assert AT.status(refresh=False)["pending_close"][0]["attempts"] == 2 and _audit()[-1]["event"] == "CLOSE_RETRY_PENDING"
+    monkeypatch.setattr(AT, "_sweep_state", dict(AT._sweep_state, last_retry_at=None))
+    assert AT.sweeper_tick(_et(9, 37, day=13)) == "retry" and AT.status(refresh=False)["pending_close"] == []
+
+
+def test_sweeper_does_nothing_on_weekends_or_when_disconnected(fake):
+    _connected(fake)
+    assert AT.on_paper_event(entry(trade_id=1))["ok"]
+    assert AT.sweeper_tick(_dt(2026, 11, 14, 15, 50, tzinfo=_ET)) is None                  # Saturday
+    AT._conn["connected"] = False
+    assert AT.sweeper_tick(_et(15, 50)) is None and len(_closes(fake)) == 0
+
+
+def test_close_all_button_closes_ours_including_unknown_tickets_with_our_magic(fake):
+    _connected(fake)
+    assert AT.on_paper_event(entry(trade_id=1, strategy="grok"))["ok"]
+    fake.positions[999] = {"ticket": 999, "symbol": "AAPL", "orderType": "Buy", "lots": 0.1, "openPrice": 100.0, "stopLoss": 0, "takeProfit": 0, "profit": 0.0, "expertId": 240912, "comment": "TRDGO meta #77"}
+    fake.positions[1000] = {"ticket": 1000, "symbol": "AAPL", "orderType": "Buy", "lots": 0.1, "openPrice": 100.0, "stopLoss": 0, "takeProfit": 0, "profit": 0.0, "expertId": 555, "comment": "someone else"}
+    r = AT.close_all(who="owner")
+    assert r["ok"] and r["closed"] == ["1"] and r["unknown_tickets_closed"] == [999] and sorted(fake.positions) == [1000]   # a foreign magic is never touched
+    assert _audit()[-1]["event"] == "CLOSE_ALL" and _audit()[-1]["detail"]["by"] == "close-all:owner"
+
+
+def test_daily_loss_basis_is_equity_when_the_balance_is_not_positive(fake):
+    _connected(fake)
+    AT._conn["account"] = dict(AT._conn.get("account") or {}, balance=-1491.57, equity=98141.28)
+    assert AT.update_mt5_settings({"daily_loss_pct": 1.0}, who="t")["ok"]
+    assert AT.daily_loss_basis() == ("equity", 98141.28) and AT.daily_loss_limit_usd() == 981.41 and AT.daily_loss_reached() is False
+    st = AT.status(refresh=False)["daily"]
+    assert st["loss_basis"] == "equity" and st["limit_reached"] is False and st["loss_limit_usd"] == 981.41
+    AT._conn["account"]["balance"] = 5000.0
+    assert AT.daily_loss_basis() == ("balance", 5000.0) and AT.daily_loss_limit_usd() == 50.0
+    AT._conn["account"].update(balance=0, equity=None)
+    assert AT.daily_loss_basis() == ("none", None) and AT.daily_loss_limit_usd() is None and AT.daily_loss_reached() is False
+
+
+def test_refresh_broker_rules_fills_contract_sizes_with_the_100_fallback(fake):
+    _connected(fake)
+    m = AT.load_map()
+    for s in ("AAPL", "TSLA"):
+        m["map"][s].pop("contract_size", None)                                             # mapped before A.21: no contract size stored
+    AT.save_map(m)
+    assert AT.sizing_table()["valid"] == 0
+    fake.symbols["AAPL"]["symbolInfo"].pop("contractSize")                                  # the broker answers no contract size -> fallback 100
+    fake.symbols["AAPL"]["symbolGroup"].update(minLots=0.1, lotsStep=0.1)
+    r = AT.refresh_broker_rules()
+    assert r["ok"] and sorted(r["refreshed"]) == ["AAPL", "TSLA"] and r["failed"] == []
+    rows = {x["symbol"]: x for x in r["sizing"]["rows"]}
+    assert rows["AAPL"]["contract_size"] == 100.0 and rows["AAPL"]["volume"] == 0.1 and rows["AAPL"]["valid"] is True
+    assert rows["TSLA"]["contract_size"] == 100.0 and rows["TSLA"]["volume"] == 0.1 and rows["TSLA"]["valid"] is True
+    assert AT.load_map()["map"]["AAPL"]["contract_size_source"] == "fallback-100" and AT.load_map()["map"]["TSLA"]["contract_size_source"] == "broker"
+    assert _audit()[-1]["event"] == "RULES_REFRESHED" and _audit()[-1]["detail"]["refreshed"] == 2

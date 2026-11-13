@@ -50,6 +50,11 @@ SETTINGS_FILE, HALT_FILE, DAILY_FILE = "settings.json", "HALT", "daily.json"
 MAGIC_BY_MODEL = {"grok": 240911, "meta": 240912, "kimi": 240913, "gemini": 240914}
 MAGIC_OTHER = 240919
 SETTINGS_DEFAULTS = {"shares_per_trade": 10, "max_open_positions": 20, "daily_loss_pct": 1.0}
+# A.22: the MT5 engine closes on its OWN clock (owner decision 2026-11-13 after the 2026-11-12 paper close ran 19-27 min late and
+# the broker refused every close with "Market is closed"): sweep every open position of ours from EOD_SWEEP_START, retrying
+# until EOD_SWEEP_END; a close refused with MARKET_CLOSED waits in the pending-close queue and is retried from PENDING_RETRY_FROM.
+EOD_SWEEP_START, EOD_SWEEP_END, PENDING_RETRY_FROM = (15, 45), (15, 58), (9, 31)
+SWEEP_POLL_S = 30.0
 SETTINGS_LIMITS = {"shares_per_trade": (1, 10000), "max_open_positions": (1, 500), "daily_loss_pct": (0.1, 25.0)}
 MAX_CLOSE_ATTEMPTS = 3
 DEVIATION_POINTS = int(os.getenv("MT5_DEVIATION_POINTS") or 50)       # max slippage for a market order, in broker points
@@ -213,10 +218,30 @@ def _book_realized(pnl: float) -> dict:
     return d
 
 
-def daily_loss_limit_usd() -> Optional[float]:
-    bal = ((_conn.get("account") or {}).get("balance"))
+def daily_loss_basis() -> tuple:
+    """(basis name, value): the balance when positive, else the equity (a credit-funded demo shows a negative balance)."""
+    acct = _conn.get("account") or {}
     try:
-        return round(float(bal) * float(mt5_settings()["daily_loss_pct"]) / 100.0, 2) if bal else None
+        bal = float(acct.get("balance")) if acct.get("balance") is not None else None
+    except (TypeError, ValueError):
+        bal = None
+    try:
+        eq = float(acct.get("equity")) if acct.get("equity") is not None else None
+    except (TypeError, ValueError):
+        eq = None
+    if bal is not None and bal > 0:
+        return "balance", bal
+    if eq is not None and eq > 0:
+        return "equity", eq
+    return "none", None
+
+
+def daily_loss_limit_usd() -> Optional[float]:
+    name, value = daily_loss_basis()
+    if value is None:
+        return None
+    try:
+        return round(float(value) * float(mt5_settings()["daily_loss_pct"]) / 100.0, 2)
     except (TypeError, ValueError):
         return None
 
@@ -421,7 +446,8 @@ def status(refresh: bool = True) -> dict:
                 "last_error": _conn["last_error"], "credentials_saved": CRED_FILE.exists() or bool(os.getenv("MT5_LOGIN")),
                 "auto_trade": auto_trade_enabled(), "paused": paused(), "halted": halted(), "dry_run": dry_run(), "magic": MAGIC, "magic_by_model": MAGIC_BY_MODEL, "default_server": DEFAULT_SERVER,
                 "margin_mode": (_conn.get("account") or {}).get("margin_mode"), "settings": mt5_settings(), "open_positions": len(_positions()["open"]),
-                "daily": dict(daily_state(), loss_limit_usd=daily_loss_limit_usd(), limit_reached=daily_loss_reached()),
+                "daily": dict(daily_state(), loss_limit_usd=daily_loss_limit_usd(), limit_reached=daily_loss_reached(), loss_basis=daily_loss_basis()[0], loss_basis_value=daily_loss_basis()[1]),
+                "pending_close": list(_positions().get("pending_close", {}).values()), "sweep": dict(_sweep_state),
                 "terminal": (B.terminal().get("terminal") if _conn["connected"] else None)}
 
 
@@ -574,7 +600,7 @@ def set_mapping(symbol: str, broker_symbol: Optional[str], source: str = "manual
     if v.get("ok"):
         i = v["info"]
         e.update(volume_min=i.get("volume_min"), volume_max=i.get("volume_max"), volume_step=i.get("volume_step"), digits=i.get("digits"), trade_mode_text=i.get("trade_mode_text"),
-                 filling_ioc=i.get("filling_ioc"), filling_fok=i.get("filling_fok"), contract_size=i.get("contract_size"))
+                 filling_ioc=i.get("filling_ioc"), filling_fok=i.get("filling_fok"), contract_size=i.get("contract_size"), contract_size_source=("broker" if i.get("raw_contract") else "fallback-100"))
     with _map_lock:
         m = load_map()
         m["map"][symbol] = e
@@ -905,6 +931,212 @@ def _handle_exit(ev: dict) -> dict:
     return {"ok": False, "reason": "CLOSE_FAILED"}
 
 
+def _attempt_close(p: dict, reason: str, *, attempts: int = MAX_CLOSE_ATTEMPTS) -> dict:
+    """Close one ledger position on the broker (or log CLOSE_DRY for a dry-run position). Returns the last broker result with
+    ``ok``; a refusal whose text says the market is closed carries ``market_closed=True``."""
+    sym, bsym, ticket, tid = p["symbol"], p["broker_symbol"], p.get("ticket"), p["trade_id"]
+    magic = int(p.get("magic") or MAGIC)
+    if p.get("dry") or ticket is None:
+        t = B.tick(bsym) if B.available() else {}
+        px = (t.get("bid") if p["side"] in ("BUY", "LONG") else t.get("ask")) if t.get("ok") else None
+        pnl = _realized_for(p, px) if px is not None else None
+        audit("CLOSE_DRY", symbol=sym, broker_symbol=bsym, action=("SELL" if p["side"] in ("BUY", "LONG") else "BUY"), quantity=p.get("volume"), trade_id=tid, strategy=p.get("strategy"), price=px,
+              result="NOT_SENT", reason="dry run: would close (%s)" % reason, detail={"realized_usd": pnl, "magic": magic})
+        if pnl is not None:
+            _book_realized(pnl)
+        return {"ok": True, "dry": True, "price": px}
+    t0 = B.tick(bsym) if B.available() else {}
+    ref = (t0.get("bid") if p["side"] in ("BUY", "LONG") else t0.get("ask")) if t0.get("ok") else None
+    last = {}
+    for attempt in range(1, attempts + 1):
+        res = B.close_position(int(ticket), deviation_points=DEVIATION_POINTS * attempt, magic=magic, comment="TRDGO %s #%s" % ((reason or "EXIT")[:10], tid))
+        last = res
+        if res.get("ok"):
+            fill = res.get("price")
+            slip = None
+            if fill is not None and ref:
+                try:
+                    sgn = 1 if p["side"] in ("BUY", "LONG") else -1
+                    slip = {"usd": round((float(ref) - float(fill)) * sgn, 4), "bps": round((float(ref) - float(fill)) * sgn / float(ref) * 1e4, 2), "requested_price": ref}
+                except (TypeError, ValueError, ZeroDivisionError):
+                    slip = None
+            pnl = _realized_for(p, fill) if fill is not None else None
+            audit("CLOSED", symbol=sym, broker_symbol=bsym, action=("SELL" if p["side"] in ("BUY", "LONG") else "BUY"), quantity=res.get("volume") or p.get("volume"), trade_id=tid,
+                  strategy=p.get("strategy"), ticket=ticket, price=fill, result=res.get("retcode_text") or ("ALREADY_CLOSED" if res.get("already_closed") else "DONE"),
+                  reason="%s (attempt %d)" % (reason, attempt), detail={"slippage": slip, "realized_usd": pnl, "magic": magic})
+            if pnl is not None:
+                d = _book_realized(pnl)
+                if daily_loss_reached() and not d.get("limit_hit_at"):
+                    d["limit_hit_at"] = _now_iso(); _write_json(STATE_DIR / DAILY_FILE, d)
+                    audit("DAILY_LOSS_LIMIT", reason="realized %.2f today reached the limit %.2f (%.2f%% of %s): no new orders until the next New York day" % (d["realized"], daily_loss_limit_usd() or 0, mt5_settings()["daily_loss_pct"], daily_loss_basis()[0]))
+            return dict(res, price=fill, realized_usd=pnl)
+        text = ("%s %s %s" % (res.get("retcode_text"), res.get("comment"), res.get("detail"))).lower()
+        if "market is closed" in text or "market closed" in text or "trade_market_closed" in text:
+            res["market_closed"] = True
+            return res
+        audit("CLOSE_RETRY", symbol=sym, broker_symbol=bsym, trade_id=tid, strategy=p.get("strategy"), ticket=ticket,
+              reason="attempt %d/%d: %s (%s): %s" % (attempt, attempts, res.get("retcode_text") or res.get("reason"), res.get("retcode"), res.get("comment") or res.get("detail")))
+        if res.get("retcode_text") == "NO_RETRY":
+            break
+        time.sleep(0.5 * attempt)
+    return last or {"ok": False, "reason": "NO_ATTEMPT"}
+
+
+def _queue_pending(pos: dict, tid: str, p: dict, res: dict, source: str) -> None:
+    q = pos.setdefault("pending_close", {})
+    entry = dict(p, pending_since=p.get("pending_since") or _now_iso(), attempts=int((q.get(tid) or {}).get("attempts", 0)) + 1, last_reason="%s: %s" % (res.get("retcode_text") or res.get("reason"), res.get("comment") or res.get("detail")), source=source)
+    q[tid] = entry
+    pos["open"].pop(tid, None)
+    audit("CLOSE_PENDING", symbol=p["symbol"], broker_symbol=p["broker_symbol"], trade_id=p["trade_id"], strategy=p.get("strategy"), ticket=p.get("ticket"),
+          reason="%s: the broker refused the close (market closed); queued, retried from %02d:%02d ET next session" % (source, PENDING_RETRY_FROM[0], PENDING_RETRY_FROM[1]), detail={"attempts": entry["attempts"]})
+
+
+def _et_now():
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo("America/New_York"))
+
+
+_sweep_state: dict = {"last_sweep_date": None, "last_sweep_at": None, "last_retry_at": None, "closed_today": 0, "pending_retried": 0}
+
+
+def eod_sweep(now_et=None, who: str = "eod-sweep") -> dict:
+    """Close every open ledger position (and any broker position carrying one of our magic numbers that the ledger does not know)."""
+    now_et = now_et or _et_now()
+    with _lock:
+        pos = _positions()
+        closed, pending, failed, dry = [], [], [], []
+        for tid, p in list(pos["open"].items()):
+            res = _attempt_close(p, "EOD_SWEEP" if who == "eod-sweep" else who)
+            if res.get("dry"):
+                dry.append(tid); pos["open"].pop(tid, None)
+            elif res.get("ok"):
+                closed.append(tid); pos["open"].pop(tid, None)
+            elif res.get("market_closed"):
+                _queue_pending(pos, tid, p, res, who); pending.append(tid)
+            else:
+                failed.append(tid)
+                audit("CLOSE_FAILED", symbol=p["symbol"], broker_symbol=p["broker_symbol"], trade_id=p["trade_id"], strategy=p.get("strategy"), ticket=p.get("ticket"),
+                      reason="%s: %s (%s): %s -- POSITION STILL OPEN ON MT5" % (who, res.get("retcode_text") or res.get("reason"), res.get("retcode"), res.get("comment") or res.get("detail")))
+        _save_positions(pos)
+        # broker positions with our magic numbers that the ledger does not know (e.g. left over after a restart)
+        extra = []
+        if _conn["connected"] and not dry_run():
+            br = B.positions()
+            if br.get("ok"):
+                ours = {int(x["ticket"]) for x in pos["open"].values() if x.get("ticket") is not None} | {int(x["ticket"]) for x in pos.get("pending_close", {}).values() if x.get("ticket") is not None}
+                for x in br["positions"]:
+                    if x.get("magic") is not None and int(x["magic"]) in all_magics() and x.get("ticket") is not None and int(x["ticket"]) not in ours:
+                        p2 = {"trade_id": "ext-%s" % x["ticket"], "symbol": x.get("symbol"), "broker_symbol": x.get("symbol"), "side": ("LONG" if str(x.get("type", "")).lower() in ("0", "buy", "long") else "SHORT"),
+                              "volume": x.get("volume"), "ticket": x["ticket"], "price": x.get("price_open") or x.get("price"), "magic": int(x["magic"]), "strategy": None, "contract_size": None}
+                        res = _attempt_close(p2, who + "-unknown-ticket")
+                        if res.get("ok"):
+                            extra.append(x["ticket"])
+                        elif res.get("market_closed"):
+                            pos = _positions(); _queue_pending(pos, str(p2["trade_id"]), p2, res, who); _save_positions(pos)
+        _sweep_state.update(last_sweep_date=now_et.date().isoformat(), last_sweep_at=_now_iso(), closed_today=len(closed) + len(extra))
+        audit("EOD_SWEEP" if who == "eod-sweep" else "CLOSE_ALL", detail={"by": who, "closed": closed, "dry": dry, "pending": pending, "failed": failed, "unknown_tickets_closed": extra, "at_et": now_et.strftime("%H:%M")})
+        return {"ok": not failed, "closed": closed, "dry": dry, "pending": pending, "failed": failed, "unknown_tickets_closed": extra}
+
+
+def retry_pending(now_et=None) -> dict:
+    """Retry every queued close (market was closed when the close was due). Called from the sweeper from PENDING_RETRY_FROM."""
+    now_et = now_et or _et_now()
+    with _lock:
+        pos = _positions()
+        q = pos.get("pending_close", {})
+        done, still = [], []
+        for tid, p in list(q.items()):
+            res = _attempt_close(p, "PENDING_CLOSE_RETRY", attempts=1)
+            if res.get("ok") or res.get("dry"):
+                done.append(tid); q.pop(tid, None)
+            else:
+                p["attempts"] = int(p.get("attempts", 0)) + 1
+                p["last_reason"] = "%s: %s" % (res.get("retcode_text") or res.get("reason"), res.get("comment") or res.get("detail"))
+                still.append(tid)
+                audit("CLOSE_RETRY_PENDING", symbol=p["symbol"], broker_symbol=p["broker_symbol"], trade_id=p["trade_id"], strategy=p.get("strategy"), ticket=p.get("ticket"),
+                      reason="pending close attempt %d: %s" % (p["attempts"], p["last_reason"]))
+        _save_positions(pos)
+        _sweep_state.update(last_retry_at=_now_iso(), pending_retried=_sweep_state.get("pending_retried", 0) + len(done))
+        return {"ok": True, "closed": done, "still_pending": still}
+
+
+def close_all(who: str = "operator") -> dict:
+    """Operator button: close every open position of ours now (ledger and broker), queue the refused ones."""
+    if not _conn["connected"]:
+        return {"ok": False, "reason": "NOT_CONNECTED"}
+    return eod_sweep(who="close-all:%s" % who)
+
+
+def sweeper_tick(now_et=None) -> Optional[str]:
+    """One decision of the background sweeper (pure: tests call it with a clock). Returns what it did, or None."""
+    now_et = now_et or _et_now()
+    if now_et.weekday() >= 5 or not _conn["connected"]:
+        return None
+    hm = (now_et.hour, now_et.minute)
+    today = now_et.date().isoformat()
+    if EOD_SWEEP_START <= hm < EOD_SWEEP_END:
+        if _positions()["open"]:
+            eod_sweep(now_et)
+            return "sweep"
+        if _sweep_state.get("last_sweep_date") != today:
+            _sweep_state["last_sweep_date"] = today
+        return None
+    if PENDING_RETRY_FROM <= hm < EOD_SWEEP_START and _positions().get("pending_close"):
+        last = _sweep_state.get("last_retry_at")
+        if last and (time.time() - datetime.fromisoformat(last).timestamp()) < 55:
+            return None
+        retry_pending(now_et)
+        return "retry"
+    return None
+
+
+_sweeper_started = {"done": False}
+
+
+def start_sweeper() -> None:
+    if _sweeper_started["done"]:
+        return
+    _sweeper_started["done"] = True
+
+    def loop() -> None:
+        time.sleep(20)
+        while True:
+            try:
+                sweeper_tick()
+            except Exception as exc:  # noqa: BLE001 - the sweeper must never die
+                try:
+                    audit("ERROR", reason="sweeper: %s: %s" % (type(exc).__name__, exc))
+                except Exception:  # noqa: BLE001
+                    pass
+            time.sleep(SWEEP_POLL_S)
+    threading.Thread(target=loop, name="mt5-sweeper", daemon=True).start()
+
+
+def refresh_broker_rules() -> dict:
+    """Re-read every verified mapping from the broker: contract size (fallback 100 when the broker answers none) and volume rules."""
+    if not _conn["connected"]:
+        return {"ok": False, "reason": "NOT_CONNECTED"}
+    m = load_map()
+    done, failed = [], []
+    for s, e in list(m["map"].items()):
+        if not (e.get("broker_symbol") and e.get("verified")):
+            continue
+        info = B.symbol(e["broker_symbol"])
+        if not info.get("ok"):
+            failed.append({"symbol": s, "reason": "%s: %s" % (info.get("reason"), info.get("detail"))})
+            continue
+        with _map_lock:
+            m2 = load_map()
+            ent = m2["map"].get(s)
+            if ent:
+                ent.update(contract_size=info.get("contract_size"), contract_size_source=("broker" if info.get("raw_contract") else "fallback-100"), volume_min=info.get("volume_min"), volume_max=info.get("volume_max"),
+                           volume_step=info.get("volume_step"), digits=info.get("digits"), trade_mode_text=info.get("trade_mode_text"), verified_at=_now_iso())
+                save_map(m2)
+        done.append(s)
+    audit("RULES_REFRESHED", detail={"refreshed": len(done), "failed": failed})
+    return {"ok": True, "refreshed": done, "failed": failed, "sizing": sizing_table()}
+
+
 def _safe_request(req: Optional[dict]) -> Optional[dict]:
     return {k: v for k, v in (req or {}).items()} if req else None
 
@@ -932,7 +1164,7 @@ def reconcile() -> dict:
             gone.append({"trade_id": p["trade_id"], "ticket": p["ticket"], "reason": why})
             pos["open"].pop(tid, None)
     _save_positions(pos)
-    ours = {int(p["ticket"]) for p in pos["open"].values() if p.get("ticket") is not None}
+    ours = {int(p["ticket"]) for p in pos["open"].values() if p.get("ticket") is not None} | {int(p["ticket"]) for p in pos.get("pending_close", {}).values() if p.get("ticket") is not None}
     unknown = [p for t, p in live.items() if t not in ours]
     audit("RECONCILE", detail={"ledger_open": len(pos["open"]), "broker_open": len(live), "closed_meanwhile": len(gone), "unknown_tickets": [p["ticket"] for p in unknown]})
     return {"ok": True, "ledger_open": list(pos["open"].values()), "broker_open": broker["positions"], "closed_meanwhile": gone, "unknown_on_broker": unknown}
@@ -951,6 +1183,7 @@ def startup() -> None:
         apply_exclusions(who="startup")
     except Exception as exc:  # noqa: BLE001
         _log.warning("MT5 auto-trade: exclusion list not applied: %s", exc)
+    start_sweeper()
     if not auto_trade_enabled():
         _log.info("MT5 auto-trade: switch AUTO_TRADE is off")
         return

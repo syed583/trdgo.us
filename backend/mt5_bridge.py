@@ -26,6 +26,7 @@ _lock = threading.RLock()
 
 DEFAULT_BASE_URL = "https://mt5.mtapi.io/"
 TIMEOUT_S = 12
+CONTRACT_SIZE_FALLBACK = 100.0        # used only when the broker answers no contract size (owner: AAPL = 100 in the terminal, 2026-11-13)
 _session: dict = {"base_url": DEFAULT_BASE_URL, "token": None, "login": None, "server": None}
 
 OP_BUY, OP_SELL = 0, 1
@@ -201,12 +202,13 @@ def symbol(sym: str, select: bool = True) -> dict:
     tm = _g(inner, "tradeMode", "trade_mode", "tradeMod")
     if isinstance(tm, str):
         tm = {"disabled": 0, "longonly": 1, "shortonly": 2, "closeonly": 3, "full": 4}.get(tm.replace("_", "").lower(), tm)
-    contract = _f(_g(inner, "contractSize", "contract_size", "tradeContractSize", "lotSize"), 1.0) or 1.0
+    raw_contract = _f(_g(inner, "contractSize", "contract_size", "tradeContractSize", "lotSize"))
+    contract = raw_contract if raw_contract else CONTRACT_SIZE_FALLBACK            # the broker's US shares trade in lots of 100 (owner-checked 2026-11-13)
     out = {"ok": True, "symbol": sym, "description": _g(inner, "description"), "visible": True, "trade_mode": tm,
            "trade_mode_text": {0: "DISABLED", 1: "LONG_ONLY", 2: "SHORT_ONLY", 3: "CLOSE_ONLY", 4: "FULL"}.get(tm, str(tm)),
            "volume_min": _f(_g(inner, "minLots", "volumeMin", "minVolume", "volume_min", "lotMin", "minLot")), "volume_max": _f(_g(inner, "maxLots", "volumeMax", "maxVolume", "volume_max", "lotMax", "maxLot")),
            "volume_step": _f(_g(inner, "lotsStep", "volumeStep", "stepVolume", "volume_step", "lotStep", "stepLot")), "digits": _g(inner, "digits"), "point": _f(_g(inner, "point", "points")),
-           "tick_size": _f(_g(inner, "tickSize", "tick_size")), "contract_size": contract, "stops_level": _g(inner, "stopsLevel", "tradeStopsLevel"),
+           "tick_size": _f(_g(inner, "tickSize", "tick_size")), "contract_size": contract, "raw_contract": raw_contract, "stops_level": _g(inner, "stopsLevel", "tradeStopsLevel"),
            "currency_profit": _g(inner, "currencyProfit", "profitCurrency"), "raw_keys": sorted(inner.keys())[:80] if isinstance(inner, dict) else None, "group": _g(inner, "groupName")}
     if out["volume_min"] is None or out["volume_step"] is None:
         out["note"] = "volume rules not found in SymbolParams (keys: %s)" % out["raw_keys"]

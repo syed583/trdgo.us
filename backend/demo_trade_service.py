@@ -551,10 +551,15 @@ def _close_due_fast(s, et: datetime) -> int:
         return 0
     quotes: dict[str, Optional[float]] = {}
     n = 0
+    wait_s = float(_cfg().get("eod_quote_wait_s") or 3.0)
+    fallback = bool(_cfg().get("eod_last_known_fill", True))
     for t in rows:
         if t.symbol not in quotes:
-            quotes[t.symbol] = _quote_price(t.symbol)
+            quotes[t.symbol] = _eod_quote(t.symbol, wait_s)                 # at most wait_s for a provider slot: the close must not wait 45 s per name
         last = quotes[t.symbol]
+        source = "quote"
+        if last is None and fallback and t.last_price is not None:
+            last, source = float(t.last_price), "last-known"               # no fresh quote in time: the position's last known price (owner decision 2026-11-13)
         if last is None:
             continue
         stop, target = t.stop, t.target
@@ -565,16 +570,30 @@ def _close_due_fast(s, et: datetime) -> int:
             continue
         exit_px = pf.fill_price(t.side, reason, stop, target, float(last), False)
         profit, pct = _pnl(t.side, t.entry_price, exit_px, t.shares)
-        res = s.execute(update(DemoTrade).where(DemoTrade.id == t.id, DemoTrade.status == "OPEN").values(
-            stop=stop, target=target, exit_price=exit_px, last_price=exit_px, profit=profit, profit_pct=pct,
-            status=reason, exit_time=et.astimezone(timezone.utc)))
+        vals = dict(stop=stop, target=target, exit_price=exit_px, last_price=exit_px, profit=profit, profit_pct=pct, status=reason, exit_time=et.astimezone(timezone.utc))
+        if hasattr(DemoTrade, "exit_price_source"):
+            vals["exit_price_source"] = "quote" if source == "quote" else "last_known"
+        if source != "quote" and hasattr(DemoTrade, "fill_assumption"):
+            vals["fill_assumption"] = "EOD close at the last known price: no fresh quote within %.0fs (provider slots busy)" % wait_s
+        res = s.execute(update(DemoTrade).where(DemoTrade.id == t.id, DemoTrade.status == "OPEN").values(**vals))
         if res.rowcount:
             n += 1
             _pending_events.append({"type": "EXIT", "trade_id": t.id, "strategy": t.strategy, "symbol": t.symbol, "side": t.side, "shares": t.shares,
                                     "exit_price": exit_px, "reason": reason, "at": et.isoformat()})
-            _log.info("EXIT %s %s %s #%s: %s at %.4f (level stop %.4f target %.4f, source quote, eod-fast) P&L %.2f",
-                      reason, t.strategy, t.symbol, t.id, t.side, exit_px, stop or 0.0, target or 0.0, profit)
+            _log.info("EXIT %s %s %s #%s: %s at %.4f (level stop %.4f target %.4f, source %s, eod-fast) P&L %.2f",
+                      reason, t.strategy, t.symbol, t.id, t.side, exit_px, stop or 0.0, target or 0.0, source, profit)
     return n
+
+
+def _eod_quote(symbol: str, wait_s: float) -> Optional[float]:
+    """The EOD close's quote: the same cached quote as every exit, but a provider call made for it waits at most ``wait_s`` for
+    a connection (the tracker's own class may wait 45 s per request; on 2026-11-12 that pushed the close past the bell)."""
+    try:
+        import uw_priority
+        with uw_priority.capped_wait(wait_s):
+            return _quote_price(symbol)
+    except Exception:  # noqa: BLE001
+        return _quote_price(symbol)
 
 
 def tick(force: bool = False) -> None:

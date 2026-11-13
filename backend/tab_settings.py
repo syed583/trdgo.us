@@ -448,7 +448,10 @@ PAPER_EXECUTION: dict = {
     "quote_max_age_s": 60.0,          # the live quote an ENTRY is priced at must be younger than this (else no entry)
     "entry_start": "10:00",           # new entries only from here (ET) ...
     "entry_end": "15:00",             # ... until here, and never later than close - 60 min (early-close days)
-    "eod_minutes_before_close": 10,   # every open position is closed this long before the official close (15:50 / 12:50)
+    "eod_minutes_before_close": 15,   # every open position is closed this long before the official close (15:45 / 12:45; owner decision
+                                      # 2026-11-13 after the 2026-11-12 close ran 19-27 min late under provider slot starvation)
+    "eod_quote_wait_s": 3.0,          # the EOD close waits at most this long for a provider slot per quote ...
+    "eod_last_known_fill": True,      # ... and when no fresh quote arrives, closes at the position's last known price (fill assumption recorded)
     "breakeven_at": 0.5,              # stop moves to the entry once profit reaches this share of the target distance
     "max_stop_pct": 2.5,              # STOP CAP (owner decision 2026-11-12): a trade whose stop sits further than this % from the entry is
                                       # not opened (logged NO ENTRY STOP_CAP). Back-test 2026-11-07..12: 2.0% blocked 75 closed trades

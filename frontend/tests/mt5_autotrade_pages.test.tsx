@@ -56,7 +56,7 @@ test('account page shows the order settings form, margin mode, dry run and the d
   const h = render(<Mt5AccountView />);
   assert.match(h, /data-testid="mt5-settings-form"/); assert.match(h, /placeholder="10"/); assert.match(h, /placeholder="20"/); assert.match(h, /placeholder="1"/);
   assert.match(h, /DRY RUN: orders are logged, nothing is sent/); assert.match(h, /data-testid="mt5-margin-mode"[^>]*>HEDGING</); assert.match(h, /3 \/ 20/);
-  assert.match(h, /data-testid="mt5-daily">-45.5</); assert.match(h, /limit −300 \(1% of balance\)/);
+  assert.match(h, /data-testid="mt5-daily">-45.5</); assert.match(h, /limit −300 \(1% of balance /);
   const n = render(<Mt5AccountView />);
   g.__apiState = { mt5status: { data: { installed: true, connected: true, auto_trade: true, halted: true, margin_mode: 'NETTING', account: { login: 1, balance: 1000 }, open_positions: 0, settings: { shares_per_trade: 10, max_open_positions: 20, daily_loss_pct: 1 }, daily: { realized: -20, loss_limit_usd: 10, limit_reached: true } } } };
   const bad = render(<Mt5AccountView />);
@@ -73,4 +73,20 @@ test('symbol mapping page shows contract size, volume sent, resulting shares and
   assert.match(h, /10 shares per order · 1 valid \/ 1 invalid of 3/); assert.match(h, /<th>Contract size<\/th><th>Volume sent<\/th><th>= shares<\/th><th>Valid<\/th>/);
   assert.match(h, /data-testid="mt5-size-AAPL"><span class="sm-q-badge green">yes/); assert.match(h, /data-testid="mt5-size-TSLA"><span class="sm-q-badge red" title="10 shares is not a multiple[^"]*">no/);
   assert.match(h, /<td>100<\/td><td>0.2<\/td><td>20<\/td>/);
+});
+
+
+// ------------------------------------------------------------ A.22: close-all button, pending closes, loss basis, refresh-rules button
+test('account page shows the close-all button, pending closes and the equity loss basis', () => {
+  g.__apiState = { mt5status: { data: { installed: true, connected: true, auto_trade: true, dry_run: false, margin_mode: 'HEDGING', server: 'S', default_server: 'S',
+    account: { login: 250086, account_kind: 'DEMO', balance: -1491.57, equity: 98141.28 }, open_positions: 0, settings: { shares_per_trade: 10, max_open_positions: 20, daily_loss_pct: 1 },
+    pending_close: [{ trade_id: 2823, symbol: 'GOOG', attempts: 3 }], daily: { realized: 0, loss_limit_usd: 981.41, limit_reached: false, loss_basis: 'equity', loss_basis_value: 98141.28 } } } };
+  const h = render(<Mt5AccountView />);
+  assert.match(h, /data-testid="mt5-close-all"[^>]*>Close our open MT5 positions/); assert.match(h, /data-testid="mt5-pending">1</); assert.match(h, /retried from 09:31 ET: GOOG/);
+  assert.match(h, /limit −981.41 \(1% of equity 98141.28\)/);
+});
+
+test('symbol mapping page has the refresh-rules button', () => {
+  g.__apiState = { mt5symbols: { data: { connected: true, mapped: 1, total: 1, summary: '1 of 1', rows: [{ symbol: 'AAPL', broker_symbol: 'AAPL', status: 'MAPPED' }] } }, mt5sizing: { data: { shares_per_trade: 10, valid: 0, invalid: 1, total: 1, rows: [] } } };
+  assert.match(render(<Mt5SymbolsView />, '/mt5/symbols'), /data-testid="mt5-refresh-rules"[^>]*>Refresh broker rules/);
 });

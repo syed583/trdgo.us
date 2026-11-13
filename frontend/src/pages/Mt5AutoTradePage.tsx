@@ -69,7 +69,8 @@ export function Mt5AccountView() {
           <div className="sm-card"><div className="sm-card-k">Balance / equity</div><div className="sm-card-v">{d.account ? `${d.account.balance} / ${d.account.equity}` : '—'}</div></div>
           <div className="sm-card"><div className="sm-card-k">Open MT5 positions (ours)</div><div className="sm-card-v">{typeof d.open_positions === 'number' ? d.open_positions : (d.open_positions?.length ?? 0)} / {d.settings?.max_open_positions ?? '—'}</div></div>
           <div className="sm-card"><div className="sm-card-k">Margin mode</div><div className="sm-card-v">{d.margin_mode ? <span className={`sm-q-badge ${d.margin_mode === 'HEDGING' ? 'green' : d.margin_mode === 'NETTING' ? 'red' : 'amber'}`} data-testid="mt5-margin-mode">{d.margin_mode}</span> : <span className="sm-q-badge amber" data-testid="mt5-margin-mode">not reported</span>}</div><div className="sm-q-muted">HEDGING required for one order per model</div></div>
-          <div className="sm-card"><div className="sm-card-k">Realized today</div><div className="sm-card-v" data-testid="mt5-daily">{d.daily ? `${d.daily.realized ?? 0}` : '—'}</div><div className="sm-q-muted">{d.daily?.loss_limit_usd != null ? `limit −${d.daily.loss_limit_usd} (${d.settings?.daily_loss_pct}% of balance)${d.daily.limit_reached ? ' · REACHED: no new orders today' : ''}` : 'limit needs a balance'}</div></div>
+          <div className="sm-card"><div className="sm-card-k">Pending closes</div><div className="sm-card-v" data-testid="mt5-pending">{d.pending_close?.length ?? 0}</div><div className="sm-q-muted">{d.pending_close?.length ? `broker refused (market closed); retried from 09:31 ET: ${d.pending_close.map((p: any) => p.symbol).join(', ')}` : 'EOD sweep 15:45-15:58 ET on the MT5 clock'}</div></div>
+          <div className="sm-card"><div className="sm-card-k">Realized today</div><div className="sm-card-v" data-testid="mt5-daily">{d.daily ? `${d.daily.realized ?? 0}` : '—'}</div><div className="sm-q-muted">{d.daily?.loss_limit_usd != null ? `limit −${d.daily.loss_limit_usd} (${d.settings?.daily_loss_pct}% of ${d.daily.loss_basis ?? 'balance'} ${d.daily.loss_basis_value ?? ''})${d.daily.limit_reached ? ' · REACHED: no new orders today' : ''}` : 'limit needs a positive balance or equity'}</div></div>
         </div>
       )}
       {d?.last_error && !d.connected && <div className="sm-fresh stale" role="alert" data-testid="mt5-last-error"><AlertTriangle size={14} /> Last connection error: {d.last_error}</div>}
@@ -83,6 +84,7 @@ export function Mt5AccountView() {
         <button className="ghost-btn" type="button" disabled={busy || !d?.connected} onClick={() => act(() => mt5.disconnect(false))}>Disconnect</button>
         <button className="ghost-btn" type="button" disabled={busy} onClick={() => { if (window.confirm('Forget the saved MT5 credentials on the server?')) act(() => mt5.disconnect(true)); }}>Disconnect &amp; forget</button>
         <button className="ghost-btn" type="button" disabled={busy} onClick={() => act(() => mt5.pause(!d?.paused))}>{d?.paused ? 'Resume entries' : 'Pause entries'}</button>
+        <button className="ghost-btn" type="button" disabled={busy || !d?.connected} data-testid="mt5-close-all" onClick={() => { if (window.confirm('Close every open MT5 position of ours now? Closes the broker refuses (market closed) are queued and retried from 09:31 ET.')) act(() => mt5.closeAll()); }}>Close our open MT5 positions</button>
       </form>
       <Mt5SettingsForm st={d} onSaved={() => st.refresh()} />
       <form className="sm-filters" style={{ display: 'none' }}>
@@ -164,6 +166,7 @@ export function Mt5SymbolsView() {
             <button className="ghost-btn" disabled={busy || !d.connected || job?.running} onClick={() => { setPolling(true); act(() => mt5.automap(), 'Auto-map started'); }} title={d.connected ? '' : 'connect the account first'}>{job?.running ? `Auto-mapping ${job.done}/${job.total}…` : 'Auto-map with the broker'}</button>
             {job?.finished_at && !job.running && <span className="sm-q-muted" data-testid="mt5-automap-result">Last auto-map: {job.mapped?.length ?? 0} mapped, {job.unmapped?.length ?? 0} not on the broker{job.broker_symbols != null ? ` (broker lists ${job.broker_symbols} symbols)` : ''}{job.error ? ` · ${job.error}` : ''}</span>}
             <button className="ghost-btn" onClick={() => sy.refresh()}><RefreshCw size={14} /> Reload</button>
+            <button className="ghost-btn" disabled={busy || !d?.connected} data-testid="mt5-refresh-rules" onClick={() => act(async () => { const r: any = await mt5.refreshRules(); sz.refresh(); return r; }, 'broker rules refreshed')}>Refresh broker rules</button>
             {!d.connected && <span className="sm-q-muted">Not connected: new mappings are saved UNVERIFIED and will not trade until verified.</span>}
           </div>
           {msg && <div className="sm-fresh" role="status" data-testid="mt5-map-msg">{msg}</div>}

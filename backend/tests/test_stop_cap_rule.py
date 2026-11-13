@@ -36,3 +36,16 @@ def test_hits_are_counted_for_the_status_page(monkeypatch):
     D._note_stop_cap("meta", "AMD", "STOP_CAP: y")
     h = D.stop_cap_hits()
     assert h["count"] == 2 and h["last"]["symbol"] == "AMD" and h["last"]["strategy"] == "meta"
+
+
+# ------------------------------------------------------------------ A.22 part 5: EOD close at 15:45 ET, capped quote wait, last-known-price fill
+def test_eod_close_is_fifteen_minutes_before_the_bell_with_a_capped_quote_wait_and_last_known_fallback(monkeypatch):
+    assert cfg.PAPER_EXECUTION["eod_minutes_before_close"] == 15 and cfg.PAPER_EXECUTION["eod_quote_wait_s"] == 3.0 and cfg.PAPER_EXECUTION["eod_last_known_fill"] is True
+    import datetime as _d
+    cut = D.eod_cutoff(_d.date(2026, 11, 13))                                            # a normal Friday: 16:00 ET close -> 15:45 ET
+    assert cut is not None and cut.astimezone(D.ET).strftime("%H:%M") == "15:45"
+    import uw_priority
+    seen = {}
+    monkeypatch.setattr(D, "_quote_price", lambda sym: seen.__setitem__("cap", uw_priority.wait_cap()) or 123.4)
+    assert D._eod_quote("AAPL", 3.0) == 123.4 and seen["cap"] == 3.0                     # the EOD quote never waits the class's 45 s
+    assert uw_priority.wait_cap() is None

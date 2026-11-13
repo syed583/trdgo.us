@@ -1013,6 +1013,8 @@ export const mt5 = {
   settings: (s?: AbortSignal) => request<any>('/api/mt5/settings', s),
   saveSettings: (patch: Record<string, number>) => send<any>('/api/mt5/settings', 'POST', patch),
   sizing: (s?: AbortSignal) => request<any>('/api/mt5/symbols/sizing', s),
+  closeAll: () => send<any>('/api/mt5/close-all', 'POST', {}),
+  refreshRules: () => send<any>('/api/mt5/symbols/refresh', 'POST', {}),
   audit: (limit: number, event: string, s?: AbortSignal) => request<any>(`/api/mt5/audit?limit=${limit}${event ? `&event=${encodeURIComponent(event)}` : ''}`, s),
 };
 
