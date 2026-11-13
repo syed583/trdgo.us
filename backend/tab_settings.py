@@ -310,6 +310,12 @@ UA_SCAN_LIMIT = 500               # rows to pull from the market-wide unusual sc
 UA_NORMAL_SESSIONS = 20           # "normal ratio" = avg call/put premium ratio over this many sessions
 UA_CALL_HEAVY = 2.0               # disparity (today ratio / normal) >= this -> CALL HEAVY
 UA_PUT_HEAVY = 0.5                # disparity <= this -> PUT HEAVY
+UA_OV_TTL_SEC = 900.0             # per-stock options-volume series cache (A.25: 300 -> 900 s, owner decision 2026-11-13).
+                                  # Part B's steady provider rate is (universe size / UA_OV_TTL_SEC): at 900 s it is a third of what it was.
+UA_PRIORITY = "dashboard"         # A.25: this tab's provider calls are labelled and sit BELOW the live intraday boards.
+                                  # "essential" restores the old behaviour (promoted page traffic competing for the same slots).
+                                  # While the market is open the dashboard class holds no connections, so the tab serves its
+                                  # cached scan and says so: it never shows a stale number as if it were fresh.
 UA_PARTB_MIN_PREMIUM = 500_000    # skip a stock whose total (call + put) premium today is below this
 
 
@@ -387,6 +393,9 @@ UW_BUDGET: dict = {
     "live_hard_cap": 30000,        # priority 1 HARD LIMIT per provider day = live share + reserve (needs ~12.6k)
     "live_hourly_cap": 4000,       # priority 1 per clock hour (needs ~1.95k)
     "candles15_hourly_cap": 400,   # the 15-minute candle refresh (module "candles_15m") per clock hour (needs ~160)
+    "module_hourly_caps": {"unusual_activity": 600},   # A.25: a NAMED per-module ceiling, checked at every priority. The
+                                  # Unusual Activity tab gets its own small hourly allowance instead of sharing the
+                                  # anonymous "market_data" bucket with the live boards.
     "other_budget": 100000,        # priority 3: everything else a page asks for
     "other_session_hourly_cap": 6000,   # ...and at most this per hour while the market is open
     "warmer_budget": 60000,        # priority 4: historical warming, per provider day

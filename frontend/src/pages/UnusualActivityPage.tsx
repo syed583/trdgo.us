@@ -59,6 +59,13 @@ export default function UnusualActivityPage({ ctx }: { ctx: PageContext }) {
         <p>Unusual option prints and call/put premium skews across every name reporting in the
           next ~10 trading days ({universe || '…'} names). Read-only.
           <b> Now New York {clock('America/New_York')} · Dubai {clock('Asia/Dubai')}</b></p>
+        {/* A.25: this tab runs below the live intraday boards, so while the market is open it shows its last completed
+            scan rather than taking a connection the boards are waiting for. Say so plainly: never a cached number
+            presented as a live one. */}
+        {resp.data?.refresh?.paused ? (
+          <p className="at-note">Refresh paused while the market is open: this tab runs below the live intraday
+            boards. Showing the last completed scan from {resp.data?.asof || '—'}. It refreshes after the close.</p>
+        ) : null}
       </div>
 
       {/* Part A — Unusual Activity (one row per contract). */}

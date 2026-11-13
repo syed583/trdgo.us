@@ -54,13 +54,10 @@ const NAV_GROUPS: NavGroup[] = [
   ] },
   { heading: 'Earnings & news', items: [
     { to: '/earnings-calendar', label: 'Earnings Calendar', icon: <CalendarDays size={S} /> },
-    { to: '/claude-last', label: 'Claude', icon: <Crosshair size={S} /> },
-    { to: '/grok', label: 'Grok', icon: <Sparkles size={S} /> },
-    { to: '/meta', label: 'Meta', icon: <Layers size={S} /> },
-    { to: '/chatgpt', label: 'ChatGPT', icon: <Brain size={S} /> },
-    { to: '/kimi', label: 'Kimi', icon: <Compass size={S} /> },
-    { to: '/gemini', label: 'Gemini', icon: <Waypoints size={S} /> },
-    { to: '/claude-pro', label: 'Claude Pro', icon: <Star size={S} /> },
+    // A.25 (owner decision 2026-11-13): the seven per-model boards left the menu. Earnings calls are made by Smart Money
+    // Move now, and these seven were one component over the same cached data. The ROUTES still work (/claude-last, /grok,
+    // /meta, /chatgpt, /kimi, /gemini, /claude-pro) and every module stays on disk, because All Models, the backtests, the
+    // monitor registry and the four intraday boards import them. Nothing was deleted.
     { to: '/all-models', label: 'All Models', icon: <ListOrdered size={S} /> },
     { to: '/model-accuracy', label: 'Model Accuracy', icon: <BarChart3 size={S} /> },
     { to: '/option-scanner', label: 'IV Crush Check', icon: <Flame size={S} /> },

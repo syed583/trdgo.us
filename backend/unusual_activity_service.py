@@ -30,6 +30,7 @@ filled progressively (like the IV Crush tab), so a scan request never blocks.
 """
 from __future__ import annotations
 
+import os
 from datetime import date
 from typing import Optional
 
@@ -38,6 +39,22 @@ import tab_b_service as tb
 import unusualwhales_service as uw
 
 SOURCE = "Table 2 — Unusual Activity"
+MODULE = "unusual_activity"       # A.25: this tab's own name in the provider budget (tab_settings.UW_BUDGET["module_hourly_caps"])
+
+
+def _priority() -> int:
+    """The class this tab's provider calls run in. Owner decision 2026-11-13: BELOW the live intraday boards, so the tab can
+    never take a connection the boards are waiting for. Anonymous page calls would otherwise be promoted to ESSENTIAL because
+    their paths are options flow / options volume (unusualwhales_service._ESSENTIAL_TYPES)."""
+    import uw_priority as pri
+    name = str(getattr(cfg, "UA_PRIORITY", "dashboard") or "dashboard").strip().lower()
+    return {"essential": pri.ESSENTIAL, "dashboard": pri.DASHBOARD, "warmer": pri.WARMER}.get(name, pri.DASHBOARD)
+
+
+def _labelled():
+    """Every provider call of this tab carries (priority, module), so it is counted and capped under its own name."""
+    import uw_priority as pri
+    return pri.use(_priority(), MODULE)
 
 _f = uw._f
 
@@ -52,7 +69,8 @@ def _avg_volume(occ: str) -> Optional[float]:
     """Mean of the last UA_AVG_SESSIONS prior-session volumes for one contract,
     from its historic tape (today excluded). None if there is no prior history."""
     n = int(getattr(cfg, "UA_AVG_SESSIONS", 20))
-    payload = uw.get(f"/api/option-contract/{occ}/historic", {"limit": n + 5})
+    with _labelled():
+        payload = uw.get(f"/api/option-contract/{occ}/historic", {"limit": n + 5})
     today = _today()
     vols = []
     for r in uw._rows(payload):
@@ -106,7 +124,8 @@ def _part_a(universe: set[str]) -> tuple[list[dict], list[str]]:
     floor = int(getattr(cfg, "UA_SCAN_PREMIUM_FLOOR", 90_000))
     lim = int(getattr(cfg, "UA_SCAN_LIMIT", 500))
 
-    pull = uw.unusual_activity("", min_premium=floor, limit=lim)
+    with _labelled():
+        pull = uw.unusual_activity("", min_premium=floor, limit=lim)
 
     # Pre-filter to the three hard gates we can check without the average, inside
     # our universe, then rank by premium so we only ever need the average for the
@@ -174,7 +193,8 @@ def _part_a(universe: set[str]) -> tuple[list[dict], list[str]]:
 
 def _ov_series(sym: str) -> list[dict]:
     n = int(getattr(cfg, "UA_NORMAL_SESSIONS", 20))
-    payload = uw.get(f"/api/stock/{sym}/options-volume", {"limit": n + 5})
+    with _labelled():
+        payload = uw.get(f"/api/stock/{sym}/options-volume", {"limit": n + 5})
     return uw._rows(payload)
 
 
@@ -192,9 +212,10 @@ def _ov_series_peek_many(syms: list[str]) -> dict:
 
 def _ov_series_warm(sym: str) -> list[dict]:
     import swr
-    # Today's row moves intraday; refresh on the tab's cadence.
+    # Today's row moves intraday, but a 5-minute refresh of the whole universe is what made this tab the heaviest
+    # consumer on the wire (A.25: 300 -> 900 s, owner decision 2026-11-13).
     return swr.serve(f"ua:ov:{sym}", lambda: _ov_series(sym),
-                     float(getattr(cfg, "UA_REFRESH_SEC", 300.0)))
+                     float(getattr(cfg, "UA_OV_TTL_SEC", getattr(cfg, "UA_REFRESH_SEC", 300.0))))
 
 
 def _disparity_row(sym: str, rows: list[dict]) -> Optional[dict]:
@@ -261,7 +282,8 @@ def scan(days: int = 15) -> dict:
     import swr
     # The calendar lookup is the slow part; cache the universe so a recompute
     # doesn't re-pull it every cycle.
-    universe = swr.serve("ua:universe", lambda: tb.universe_symbols(days), 600.0)
+    with _labelled():
+        universe = swr.serve("ua:universe", lambda: tb.universe_symbols(days), 600.0)
     uset = set(universe)
     part_a, miss_a = _part_a(uset)
     part_b, miss_b = _part_b(universe)
@@ -274,7 +296,28 @@ def scan(days: int = 15) -> dict:
         "part_b": part_b,
         "warm_occs": miss_a[:120],
         "warm_syms": miss_b[:200],
+        "refresh": refresh_state(),
     }
+
+
+def refresh_state() -> dict:
+    """What the tab may do right now, in plain words, so the page never shows a cached number as if it were live (A.25)."""
+    import uw_priority as pri
+    import uw_budget
+    prio = _priority()
+    try:
+        in_session = uw_budget.get().in_session()
+    except Exception:  # noqa: BLE001
+        in_session = False
+    production = (os.environ.get("APP_ENV") or "").strip().lower() == "production"
+    paused = bool(in_session and production and prio >= pri.DASHBOARD)
+    return {"module": MODULE, "priority": pri.NAMES.get(prio, str(prio)), "in_session": in_session,
+            "series_ttl_s": float(getattr(cfg, "UA_OV_TTL_SEC", 900.0)),
+            "hourly_cap": (getattr(cfg, "UW_BUDGET", {}).get("module_hourly_caps") or {}).get(MODULE),
+            "paused": paused,
+            "note": ("the market is open and this tab runs below the live intraday boards: it is showing its last "
+                     "completed scan and will refresh after the close" if paused else
+                     "refreshing normally")}
 
 
 def warm(occs: list[str], syms: list[str]) -> None:

@@ -283,6 +283,12 @@ class Controller:
             if d.ok and cap and priority >= pri.DASHBOARD and self.module_hour_calls(module) >= cap:
                 d = Decision(False, f"module '{module}' made {cap} requests this hour: runaway guard",
                              "RUNAWAY_MODULE")
+            # A NAMED ceiling for one module, at every priority (A.25): a tab with its own allowance can never take the
+            # share the live boards need, whatever class it runs in.
+            named = (self.s.get("module_hourly_caps") or {}).get(module)
+            if d.ok and named and self.module_hour_calls(module) >= int(named):
+                d = Decision(False, f"module '{module}' has its own limit of {int(named)} requests an hour and has "
+                                    f"reached it", "MODULE_HOUR_CAP")
             if not d.ok:
                 m = self._mod(module)
                 m["denied"] += 1

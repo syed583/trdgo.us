@@ -20,7 +20,7 @@ PINS = {
     "earnings_engine.py": "d2da225e84ecae07e3da3429639828e38fa7b87db033b067d45e22cdc1cd9039",
     "earnings_equity_service.py": "516f87dbdca1acf76e7cdeb08053295f17231f6fee85ee908054ac93527d23f3",
     "earnings_trade_service.py": "32e7db8f5a2ac1719764884f2390af9d9c0cb74500aa159de2fbfbad920cd931",
-    "tab_settings.py": "403957a26cf49038750ab32d7f59667b5c2232257bfc2447d504c91b27d98483",   # re-pinned 2026-11-13 (A.22): PAPER_EXECUTION eod 15 min / eod_quote_wait_s / eod_last_known_fill (owner); no weight or threshold
+    "tab_settings.py": "cc104bacc6991086cb6f775ed37c0721f1d369571378ebc1e28efbda8cf3fe1d",   # re-pinned 2026-11-13 (A.25): UA_OV_TTL_SEC 900 + UA_PRIORITY + the named module_hourly_caps entry (owner); purely additive, no weight or threshold
     "gemini_intraday_service.py": "5b0ba43b68b60ef58de116123e4497924046e5639e0ddaced1685566b84cac20",
     "intraday_grok_service.py": "f23e8626543a3764bba25a56e5b988792b6b96c4ee6391fda463764f604ae6dc",
     "kimi_intraday_service.py": "03ad3db52a75e7fb193a9226b68ceba06c41926391ad830387b21a56fc4a2e90",

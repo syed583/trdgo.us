@@ -308,18 +308,10 @@ def claude_last_scan(days: int = 15) -> dict:
         return {"status": "WARMING", "source": v3.SOURCE, "rows": [],
                 "universe": 0, "scored": 0, "missing": []}
 
-    miss = res.get("missing") or []
-    if miss and not (os.getenv("DISABLE_WARMERS") or "").strip():
-        batch = miss[:12]
-
-        def _warm() -> None:
-            try:
-                import signal_history_service as sh
-                sh.warm_earnings(batch)
-            except Exception:  # noqa: BLE001
-                pass
-
-        threading.Thread(target=_warm, daemon=True).start()
+    # A.25 (owner decision 2026-11-13): this board left the menu, so it no longer warms 12 missing symbols on every page
+    # load. Each of those symbols fanned out over ten provider services, and it was the only uncapped provider spend the
+    # board caused. The shared universe warmer still fills the same caches, so the board shows whatever is warm.
+    # The identical warm in the Pre-Earnings Direction route is deliberately left in place.
     return res
 
 
