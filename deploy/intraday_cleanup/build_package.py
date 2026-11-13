@@ -51,6 +51,12 @@ def main() -> int:
     dist = ROOT / "frontend" / "dist"
     if not (dist / "index.html").is_file():
         print("frontend/dist/index.html missing: run `npm run build` in frontend/ first"); return 2
+    # A.23 guard (2026-11-13): the built frontend must be newer than every source file under frontend/src, or the package
+    # ships a stale UI (A.18..A.22 pages never reached the server because dist was last built for A.14).
+    src_dir = ROOT / "frontend" / "src"
+    newest_src = max((f.stat().st_mtime for f in src_dir.rglob("*") if f.is_file()), default=0.0)
+    if (dist / "index.html").stat().st_mtime < newest_src:
+        print("frontend/dist is OLDER than frontend/src: run `npm run build` in frontend/ first (stale UI would ship)"); return 2
     tracked = subprocess.run(["git", "-C", str(ROOT), "ls-files", "backend"], capture_output=True, text=True, check=True).stdout.split()
     files = sorted(f for f in tracked if not f.startswith("backend/tests/") and not protected(f)
                    and (f.endswith((".py", ".sql", ".txt", ".ini", ".json")) or f == "backend/requirements.txt"))
