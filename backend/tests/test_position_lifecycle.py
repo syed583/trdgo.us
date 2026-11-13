@@ -1,6 +1,7 @@
 """The pure-intraday paper tracker's position lifecycle.
 
-Every open position is closed before the bell (EOD_CLOSE at close - 10 min: 15:50 ET, 12:50 on an early-close day);
+Every open position is closed before the bell (EOD_CLOSE at close - 15 min: 15:45 ET, 12:45 on an early-close day,
+since A.22);
 a position still OPEN from an earlier date is a leftover and is closed as CLEANUP at the first reliable price, never
 carried and never managed; STOP / TARGET / SCORE_EXIT are booked at the OBSERVED price; every close happens exactly
 once; a DB failure mid-tick loses nothing; the entry lock blocks new entries and never monitoring or exits; a restart
@@ -58,28 +59,28 @@ def trade(entry, **kw):
 
 
 @pytest.mark.parametrize("entered, now, expect", [
-    (et(*TUE, 10), et(*TUE, 15, 49), False),                  # not before close - 10 min
-    (et(*TUE, 10), et(*TUE, 15, 50), True),                   # ...from 15:50
+    (et(*TUE, 10), et(*TUE, 15, 44), False),                  # not before close - 15 min
+    (et(*TUE, 10), et(*TUE, 15, 45), True),                   # ...from 15:45 (A.22)
     (et(*TUE, 10), et(*TUE, 16, 0), True),
     (et(*TUE, 10), et(*TUE, 16, 30), True),
     (et(*MON, 10), et(*TUE, 9, 31), True),                    # a leftover from an EARLIER date is always due
     (et(*MON, 10), et(*TUE, 10), True),
     (et(*FRI, 10), et(*SAT, 10), True),                       # ...even on a Saturday (it is cleaned up, not carried)
     (et(2026, 11, 25, 10), et(2026, 11, 26, 10), True),       # ...even on Thanksgiving
-    (et(*BLACK_FRI, 10), et(*BLACK_FRI, 12, 49), False),      # early close 13:00: the cutoff is 12:50
-    (et(*BLACK_FRI, 10), et(*BLACK_FRI, 12, 50), True),
-    (et(2026, 12, 24, 10), et(2026, 12, 24, 12, 50), True),   # Christmas Eve: 13:00 close
-    (et(*TUE, 10), et(*TUE, 12, 50), False),                  # a regular day is not an early-close day
+    (et(*BLACK_FRI, 10), et(*BLACK_FRI, 12, 44), False),      # early close 13:00: the cutoff is 12:45
+    (et(*BLACK_FRI, 10), et(*BLACK_FRI, 12, 45), True),
+    (et(2026, 12, 24, 10), et(2026, 12, 24, 12, 45), True),   # Christmas Eve: 13:00 close
+    (et(*TUE, 10), et(*TUE, 12, 45), False),                  # a regular day is not an early-close day
     (None, et(*TUE, 16, 5), False),                           # no session date: nothing to be due
 ])
-def test_the_eod_close_is_due_ten_minutes_before_the_sessions_close_and_a_leftover_is_always_due(entered, now, expect):
+def test_the_eod_close_is_due_fifteen_minutes_before_the_sessions_close_and_a_leftover_is_always_due(entered, now, expect):
     assert dts._eod_due(trade(entered), now) is expect
     assert dts._exit_timed(trade(entered), now) is expect                  # the older name is the same rule
 
 
 def test_the_eod_cutoff_follows_the_calendar():
-    assert dts.eod_cutoff(date(*TUE)) == et(*TUE, 15, 50)
-    assert dts.eod_cutoff(date(*BLACK_FRI)) == et(*BLACK_FRI, 12, 50)
+    assert dts.eod_cutoff(date(*TUE)) == et(*TUE, 15, 45)
+    assert dts.eod_cutoff(date(*BLACK_FRI)) == et(*BLACK_FRI, 12, 45)
     assert dts.eod_cutoff(date(*SAT)) is None and dts.eod_cutoff(date(2026, 11, 26)) is None
 
 
@@ -145,21 +146,24 @@ def count(book, **flt):
 
 
 # ------------------------------------------------------------------ the EOD close ---
-def test_every_open_position_is_closed_at_15_50_at_the_observed_price_and_not_a_minute_earlier(book, monkeypatch):
+def test_every_open_position_is_closed_at_15_45_at_the_observed_price_and_not_a_minute_earlier(book, monkeypatch):
     long_, short = put(book, "AAA", "LONG"), put(book, "BBB", "SHORT", stop=101.0, target=98.0)
-    run(book, monkeypatch, et(*TUE, 15, 49), price=100.6, score=69, extra=[brow("BBB", 99.6)])
+    run(book, monkeypatch, et(*TUE, 15, 44), price=100.6, score=69, extra=[brow("BBB", 99.6)])
     assert row(book, long_).status == "OPEN" and row(book, short).status == "OPEN"
-    run(book, monkeypatch, et(*TUE, 15, 50), price=100.8, score=69, extra=[brow("BBB", 99.5)])
+    run(book, monkeypatch, et(*TUE, 15, 45), price=100.8, score=69, extra=[brow("BBB", 99.5)])
     a, b = row(book, long_), row(book, short)
-    assert (a.status, a.exit_price, a.profit) == ("EOD_CLOSE", 100.8, 80.0)
-    assert (b.status, b.exit_price, b.profit) == ("EOD_CLOSE", 99.5, 50.0)
-    assert a.exit_time.astimezone(ET) == et(*TUE, 15, 50)
+    # A.22 (owner decision 2026-11-13): the close runs BEFORE the boards are rebuilt and prices from a live quote,
+    # falling back to the position's last known price when no quote arrives in time. There is no quote in this
+    # harness, so both book at the last price they saw (the 15:44 tick), not at the board built in this same tick.
+    assert (a.status, a.exit_price, a.profit) == ("EOD_CLOSE", 100.6, 60.0)
+    assert (b.status, b.exit_price, b.profit) == ("EOD_CLOSE", 99.6, 40.0)
+    assert a.exit_time.astimezone(ET) == et(*TUE, 15, 45)
     assert count(book, status="OPEN") == 0
 
 
 def test_nothing_happens_at_16_00_to_a_position_already_closed_at_15_50(book, monkeypatch):
     tid = put(book)
-    run(book, monkeypatch, et(*TUE, 15, 50), price=100.8, score=69)
+    run(book, monkeypatch, et(*TUE, 15, 45), price=100.8, score=69)
     first = row(book, tid)
     assert first.status == "EOD_CLOSE"
     for hh, mm in ((16, 0), (16, 1), (16, 30)):
@@ -170,19 +174,19 @@ def test_nothing_happens_at_16_00_to_a_position_already_closed_at_15_50(book, mo
     assert count(book, status="TIMED_EXIT") == 0 and count(book, status="MARKET_CLOSE") == 0
 
 
-def test_an_early_close_day_closes_at_12_50(book, monkeypatch):
+def test_an_early_close_day_closes_at_12_45(book, monkeypatch):
     tid = put(book, entered=et(*BLACK_FRI, 10))
-    run(book, monkeypatch, et(*BLACK_FRI, 12, 49), price=100.5, score=69)
+    run(book, monkeypatch, et(*BLACK_FRI, 12, 44), price=100.5, score=69)
     assert row(book, tid).status == "OPEN"
-    run(book, monkeypatch, et(*BLACK_FRI, 12, 50), price=100.6, score=69)
+    run(book, monkeypatch, et(*BLACK_FRI, 12, 45), price=100.6, score=69)
     r = row(book, tid)
-    assert (r.status, r.exit_price) == ("EOD_CLOSE", 100.6)
-    assert r.exit_time.astimezone(ET) == et(*BLACK_FRI, 12, 50)
+    assert (r.status, r.exit_price) == ("EOD_CLOSE", 100.5)      # last known price: no quote in this harness (A.22)
+    assert r.exit_time.astimezone(ET) == et(*BLACK_FRI, 12, 45)
 
 
 def test_a_stop_takes_precedence_over_the_eod_close_at_the_cutoff(book, monkeypatch):
     tid = put(book, stop=99.0)
-    run(book, monkeypatch, et(*TUE, 15, 50), price=98.7, score=69)
+    run(book, monkeypatch, et(*TUE, 15, 45), price=98.7, score=69)
     r = row(book, tid)
     assert (r.status, r.exit_price) == ("STOP", 98.7)
 
@@ -390,7 +394,7 @@ def test_a_live_quote_is_an_executable_price_when_no_board_has_one(book, monkeyp
 
 def test_todays_position_with_no_price_at_the_cutoff_waits_and_is_closed_at_the_first_reliable_price(book, monkeypatch):
     tid = put(book, last=None)
-    run(book, monkeypatch, et(*TUE, 15, 50))                                       # the close is due and there is no price
+    run(book, monkeypatch, et(*TUE, 15, 45))                                       # the close is due and there is no price
     r = row(book, tid)
     assert r.status == "OPEN" and r.exit_price is None and r.last is None
     run(book, monkeypatch, et(*TUE, 16, 10), price=100.8, score=69)                # a reliable price arrives: closed at it
@@ -519,7 +523,7 @@ def test_a_rollback_is_refused_while_any_position_is_open_and_allowed_when_flat(
     run(book, monkeypatch, et(*TUE, 11), price=100.5, score=69, extra=[brow("OLD", 97.0)])   # monitoring continues while locked
     assert row(book, left).status == "CLEANUP" and row(book, tid).status == "OPEN"
     assert rt.rollback_prepare(engine=book.engine)["ok"] is False                  # today's position still blocks it
-    run(book, monkeypatch, et(*TUE, 15, 50), price=100.5, score=69)
+    run(book, monkeypatch, et(*TUE, 15, 45), price=100.5, score=69)
     assert row(book, tid).status == "EOD_CLOSE"
     assert rt.rollback_prepare(engine=book.engine)["ok"] is True                   # flat after the bell: allowed
 
@@ -536,7 +540,7 @@ def test_the_blotter_lists_leftovers_apart_from_todays_rows_and_totals(book, mon
     assert [r["symbol"] for r in out["rows"]] == ["TDY"] and out["total_profit"] == 100.0 and out["open"] == 1
     assert out["carried_open_count"] == 1 and out["carried_open"][0]["symbol"] == "AAA"
     assert out["carried_open"][0]["opened_on"] == "2026-10-19"
-    assert out["rules"]["eod_close_et"] == "15:50" and out["rules"]["entry_window_et"] == ["10:00", "15:00"]
+    assert out["rules"]["eod_close_et"] == "15:45" and out["rules"]["entry_window_et"] == ["10:00", "15:00"]
     past = dts.blotter(date="2026-10-19")                                          # a past date's blotter is its own day
     assert [r["symbol"] for r in past["rows"]] == ["AAA"] and past["carried_open"] == []
 

@@ -1,4 +1,4 @@
-"""The pure-intraday paper tracker: entry window, fresh-quote entries, $10k sizing, breakeven trail, the 15:50 ET close,
+"""The pure-intraday paper tracker: entry window, fresh-quote entries, $10k sizing, breakeven trail, the 15:45 ET close,
 observed (gap-aware) fills, prior-day cleanup, retired models never trading, and a whole simulated trading day.
 Everything is mocked: no provider call, no production database (SQLite built here)."""
 import json
@@ -37,12 +37,13 @@ def test_entries_open_only_10_to_15_et_on_a_trading_day(now, expect):
     assert dts._can_open(now) is expect
 
 
-def test_the_eod_cutoff_is_ten_minutes_before_the_official_close():
-    assert dts.eod_cutoff(date(*DAY)) == et(15, 50)
-    assert dts.eod_cutoff(date(*EARLY)) == et(12, 50, EARLY)
+def test_the_eod_cutoff_is_fifteen_minutes_before_the_official_close():
+    # A.22 (owner decision 2026-11-13): the close moved to 15 minutes before the bell (15:45 ET, 12:45 on an early-close day) in A.22, after the 2026-11-12 session closed late.
+    assert dts.eod_cutoff(date(*DAY)) == et(15, 45)
+    assert dts.eod_cutoff(date(*EARLY)) == et(12, 45, EARLY)
     assert dts.eod_cutoff(date(2026, 11, 7)) is None
     t = types.SimpleNamespace(session_date=date(*DAY))
-    assert dts._eod_due(t, et(15, 49)) is False and dts._eod_due(t, et(15, 50)) is True
+    assert dts._eod_due(t, et(15, 44)) is False and dts._eod_due(t, et(15, 45)) is True
     assert dts._eod_due(types.SimpleNamespace(session_date=date(2026, 11, 4)), et(10, 0)) is True   # a leftover is always due
 
 
@@ -238,7 +239,7 @@ def test_a_gap_through_the_stop_costs_what_it_cost(sim):
     assert r.status == "STOP" and r.exit_price == 96.5 and r.profit == -350.0 and r.shares == 100
 
 
-def test_everything_open_is_closed_at_15_50_and_nothing_opens_after(sim):
+def test_everything_open_is_closed_at_15_45_and_nothing_opens_after(sim):
     sim.quote("AAA", 100.0)
     sim.quote("BBB", 40.0)
     sim.signal("grok", "AAA", "BUY", 100.0)
@@ -247,24 +248,24 @@ def test_everything_open_is_closed_at_15_50_and_nothing_opens_after(sim):
     assert sorted(r.symbol for r in sim.rows()) == ["AAA", "BBB"]
     sim.price("grok", "AAA", 100.8)
     sim.price("kimi", "BBB", 39.8)
-    sim.tick(15, 49)
+    sim.tick(15, 44)
     assert all(r.status == "OPEN" for r in sim.rows())
-    sim.tick(15, 50)
+    sim.tick(15, 45)
     rows = sim.rows()
     assert all(r.status == "EOD_CLOSE" for r in rows)
     a = next(r for r in rows if r.symbol == "AAA")
-    assert a.exit_price == 100.8 and a.profit == pytest.approx(80.0) and a.exit_time.astimezone(ET).time().strftime("%H:%M") == "15:50"
+    assert a.exit_price == 100.8 and a.profit == pytest.approx(80.0) and a.exit_time.astimezone(ET).time().strftime("%H:%M") == "15:45"
     b = next(r for r in rows if r.symbol == "BBB")
     assert b.shares == 250 and b.profit == pytest.approx(50.0)
 
 
-def test_early_close_day_closes_at_12_50(sim):
+def test_early_close_day_closes_at_12_45(sim):
     sim.quote("AAA", 100.0)
     sim.signal("grok", "AAA", "BUY", 100.0)
     sim.tick(10, 30, EARLY)
-    sim.tick(12, 49, EARLY)
+    sim.tick(12, 44, EARLY)
     assert sim.rows()[0].status == "OPEN"
-    sim.tick(12, 50, EARLY)
+    sim.tick(12, 45, EARLY)
     assert sim.rows()[0].status == "EOD_CLOSE"
 
 
@@ -285,7 +286,7 @@ def test_a_leftover_with_no_price_is_not_invented(sim):
 
 
 def test_a_full_simulated_day(sim):
-    """09:30 signals ignored, 10:00 entries, trail, a target, the 15:50 sweep, no entry after 15:00."""
+    """09:30 signals ignored, 10:00 entries, trail, a target, the 15:45 sweep, no entry after 15:00."""
     for sym, px in (("AAA", 100.0), ("BBB", 200.0), ("CCC", 25.0)):
         sim.quote(sym, px)
     sim.signal("grok", "AAA", "BUY", 100.0, sl=99.0, tp=102.0)
@@ -304,7 +305,7 @@ def test_a_full_simulated_day(sim):
     sim.tick(15, 10)                                          # too late: CCC never opens
     assert "CCC" not in {r.symbol for r in sim.rows()}
     sim.price("grok", "AAA", 101.0)
-    sim.tick(15, 50)
+    sim.tick(15, 45)
     rows = {r.symbol: r for r in sim.rows()}
     assert rows["AAA"].status == "EOD_CLOSE" and rows["AAA"].exit_price == 101.0 and rows["AAA"].profit == 100.0
     sim.tick(16, 30)
@@ -325,12 +326,13 @@ def test_the_blotter_reports_sizing_quote_fields_and_rules(sim):
     assert r["exit_reason_label"] == "Open" and r["bid"] == 99.98 and r["ask"] == 100.02 and r["spread_pct"] == pytest.approx(0.04, abs=0.001)
     assert {s["key"] for s in b["strategies"]} == set(dts.MODELS) | set(dts.RETIRED)
     assert {s["label"] for s in b["strategies"]} >= {"ChatGPT Intraday (retired)", "Claude Pro Intraday (retired)"}
-    assert b["rules"]["entry_window_et"] == ["10:00", "15:00"] and b["rules"]["eod_close_et"] == "15:50"
+    assert b["rules"]["entry_window_et"] == ["10:00", "15:00"] and b["rules"]["eod_close_et"] == "15:45"
     assert b["total_pct"] == 0.0
 
 
 def test_eod_close_happens_before_any_board_is_rebuilt(sim):
-    """2026-11-09/10: the 15:50 tick reached the exits at 16:01 because the four board rebuilds ran first. At the cutoff
+    """2026-11-09/10: the 15:50 tick reached the exits at 16:01 because the four board rebuilds ran first. The cutoff is
+    now 15:45 (A.22), and at the cutoff
     the due positions are priced from a direct quote and closed before a single board is built."""
     sim.quote("AAA", 100.0)
     sim.signal("grok", "AAA", "BUY", 100.0)
@@ -345,9 +347,9 @@ def test_eod_close_happens_before_any_board_is_rebuilt(sim):
             seen.setdefault("open_when_boards_built", s.query(DemoTrade).filter_by(status="OPEN").count())
         return real_board(spec)
     sim.m.setattr(dts, "_board", slow_board)
-    sim.tick(15, 50)
+    sim.tick(15, 45)
     r = sim.rows()[0]
-    assert r.status == "EOD_CLOSE" and r.exit_price == 100.5 and r.exit_time.astimezone(ET).time().strftime("%H:%M") == "15:50"
+    assert r.status == "EOD_CLOSE" and r.exit_price == 100.5 and r.exit_time.astimezone(ET).time().strftime("%H:%M") == "15:45"
     assert seen["open_when_boards_built"] == 0            # already closed when the boards were first touched
 
 
@@ -358,18 +360,20 @@ def test_eod_fast_close_keeps_stop_and_target_precedence_and_skips_unquoted(sim)
     sim.signal("kimi", "BBB", "SELL", 50.0)
     sim.tick(11, 0)
     sim.quote("AAA", 103.0)                                 # through the target at the cutoff
-    del sim.quotes["BBB"]                                   # no quote at all: left for the normal path
-    sim.price("kimi", "BBB", 49.5)                          # ...which prices it from the board
-    sim.tick(15, 50)
+    del sim.quotes["BBB"]                                   # no quote at all
+    sim.price("kimi", "BBB", 49.5)
+    sim.tick(15, 45)
     rows = {r.symbol: r for r in sim.rows()}
     assert rows["AAA"].status == "TARGET" and rows["AAA"].exit_price == 103.0     # observed fill, as everywhere else
-    assert rows["BBB"].status == "EOD_CLOSE" and rows["BBB"].exit_price == 49.5
+    # A.22: a position with no fresh quote is no longer left for the normal path (that is what ran late on
+    # 2026-11-12); it is closed now at its last known price, with the assumption recorded.
+    assert rows["BBB"].status == "EOD_CLOSE" and rows["BBB"].exit_price == 50.0
 
 
 def test_tracker_loop_wakes_exactly_at_the_cutoff(sim):
-    sim.now = et(15, 49, DAY).replace(second=30)
+    sim.now = et(15, 44, DAY).replace(second=30)
     assert 30.0 <= dts.sleep_seconds() <= 32.0
     sim.now = et(12, 0, DAY)
     assert dts.sleep_seconds() == 60.0
-    sim.now = et(15, 50, DAY).replace(second=5)
+    sim.now = et(15, 45, DAY).replace(second=5)
     assert dts.sleep_seconds() == 60.0

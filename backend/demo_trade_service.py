@@ -571,9 +571,12 @@ def _close_due_fast(s, et: datetime) -> int:
         exit_px = pf.fill_price(t.side, reason, stop, target, float(last), False)
         profit, pct = _pnl(t.side, t.entry_price, exit_px, t.shares)
         vals = dict(stop=stop, target=target, exit_price=exit_px, last_price=exit_px, profit=profit, profit_pct=pct, status=reason, exit_time=et.astimezone(timezone.utc))
-        if hasattr(DemoTrade, "exit_price_source"):
+        # A.25: ask the MAPPER, not the class. The legacy DemoTrade mapper excludes the V2 evidence columns, yet the
+        # attribute still exists on the class as a plain Column, so hasattr() said yes and .values() raised on every
+        # single close - the fast path has been failing into the slow one since A.22.
+        if "exit_price_source" in _mapped_columns():
             vals["exit_price_source"] = "quote" if source == "quote" else "last_known"
-        if source != "quote" and hasattr(DemoTrade, "fill_assumption"):
+        if source != "quote" and "fill_assumption" in _mapped_columns():
             vals["fill_assumption"] = "EOD close at the last known price: no fresh quote within %.0fs (provider slots busy)" % wait_s
         res = s.execute(update(DemoTrade).where(DemoTrade.id == t.id, DemoTrade.status == "OPEN").values(**vals))
         if res.rowcount:
@@ -583,6 +586,22 @@ def _close_due_fast(s, et: datetime) -> int:
             _log.info("EXIT %s %s %s #%s: %s at %.4f (level stop %.4f target %.4f, source %s, eod-fast) P&L %.2f",
                       reason, t.strategy, t.symbol, t.id, t.side, exit_px, stop or 0.0, target or 0.0, source, profit)
     return n
+
+
+def _mapped_columns() -> frozenset:
+    """The column names the DemoTrade mapper actually writes. The legacy mapper excludes the V2 evidence columns while
+    leaving them on the class, so only the mapper can answer this (A.25)."""
+    global _MAPPED
+    if _MAPPED is None:
+        try:
+            from sqlalchemy import inspect as _sa_inspect
+            _MAPPED = frozenset(_sa_inspect(DemoTrade).columns.keys())
+        except Exception:  # noqa: BLE001 - never let a close fail over an introspection problem
+            _MAPPED = frozenset()
+    return _MAPPED
+
+
+_MAPPED: Optional[frozenset] = None
 
 
 def _eod_quote(symbol: str, wait_s: float) -> Optional[float]:

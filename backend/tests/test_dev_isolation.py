@@ -64,6 +64,7 @@ def test_rejects_missing_config(monkeypatch):
 
 def test_adds_ssl_when_missing(monkeypatch):
     monkeypatch.setenv("TRDGO_ENV", "development")
+    monkeypatch.setenv("SESSION_SECRET", "test-only-dev-secret")   # the dev guard requires its own signing key
     monkeypatch.setenv("INSTITUTIONAL_DATABASE_URL",
                        f"postgresql://postgres.{DEV_REF}:pw@host.pooler.supabase.com:5432/postgres")
     import dev_config
@@ -75,6 +76,7 @@ def test_never_falls_back_to_production_env(monkeypatch):
     # A production DATABASE_URL in the environment must NOT be used by the dev
     # loader: it reads only INSTITUTIONAL_DATABASE_URL / .env.dev.
     monkeypatch.setenv("TRDGO_ENV", "development")
+    monkeypatch.setenv("SESSION_SECRET", "test-only-dev-secret")   # the dev guard requires its own signing key
     monkeypatch.setenv("DATABASE_URL", PROD_URL)          # the prod .env value
     monkeypatch.setenv("INSTITUTIONAL_DATABASE_URL", DEV_URL)
     import dev_config
