@@ -124,10 +124,15 @@ def test_the_pre_earnings_direction_warm_is_deliberately_untouched():
 
 
 def test_nothing_in_this_change_touches_smart_move_mt5_or_the_intraday_boards():
+    """Everything A.25 changed, measured against the release it replaces (A.24 = 38a030fd), plus anything still
+    uncommitted. Independent of whether the work has been committed yet."""
     import subprocess
-    out = subprocess.run(["git", "-C", str(ROOT.parent), "diff", "--name-only"], capture_output=True, text=True).stdout
-    changed = [l for l in out.splitlines() if l.strip()]
-    assert changed, "expected a working-tree diff to inspect"
+    names = set()
+    for args in (["diff", "--name-only", "38a030fd..HEAD"], ["diff", "--name-only"]):
+        out = subprocess.run(["git", "-C", str(ROOT.parent), *args], capture_output=True, text=True).stdout
+        names.update(l.strip() for l in out.splitlines() if l.strip())
+    changed = sorted(n for n in names if not n.startswith("deploy/intraday_cleanup/"))   # the built package mirrors the source
+    assert changed, "expected a diff against A.24 to inspect"
     for f in changed:
         low = f.lower()
         assert "smart_move" not in low and "smlive" not in low, f
