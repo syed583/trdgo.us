@@ -178,7 +178,7 @@ export function Mt5SymbolsView() {
                 <td>{r.broker_symbol || '—'}</td>
                 <td><span className={`sm-q-badge ${r.status === 'MAPPED' ? 'green' : r.status === 'UNVERIFIED' ? 'amber' : r.status === 'EXCLUDED' ? 'red' : 'gray'}`}>{r.status}</span></td>
                 <td>{r.volume_min != null ? `${r.volume_min} / ${r.volume_step}` : '—'}</td>
-                <td>{sizing[r.symbol]?.contract_size ?? '—'}</td>
+                <td>{sizing[r.symbol]?.contract_size != null ? `${sizing[r.symbol].contract_size}${sizing[r.symbol].contract_size_source === 'fallback-100' ? ' (fallback)' : ''}` : '—'}</td>
                 <td>{sizing[r.symbol]?.volume ?? '—'}</td>
                 <td>{sizing[r.symbol]?.shares_sent ?? '—'}</td>
                 <td data-testid={`mt5-size-${r.symbol}`}>{sizing[r.symbol] ? (sizing[r.symbol].valid ? <span className="sm-q-badge green">yes</span> : <span className="sm-q-badge red" title={sizing[r.symbol].reason || ''}>no</span>) : '—'}</td>

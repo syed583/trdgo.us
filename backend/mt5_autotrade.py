@@ -38,6 +38,11 @@ from typing import Any, Optional
 import mt5_bridge as B
 
 _log = logging.getLogger("mt5")
+try:
+    import app_logging as _al
+    _al.file_logger("mt5")                                                   # logs/mt5.log: every audit line is mirrored here (A.24)
+except Exception:  # noqa: BLE001
+    pass
 _lock = threading.RLock()
 
 DEFAULT_SERVER = "STGlobalMarketsLtd-Live-1"
@@ -191,8 +196,8 @@ def sizing_table() -> dict:
             rows.append({"symbol": s, "broker_symbol": e.get("broker_symbol"), "status": "UNMAPPED", "contract_size": None, "volume": None, "shares_sent": None, "valid": False, "reason": "not mapped"})
             continue
         z = sizing(e.get("contract_size"), e.get("volume_min"), e.get("volume_step"), e.get("volume_max"), shares)
-        rows.append({"symbol": s, "broker_symbol": e.get("broker_symbol"), "status": "MAPPED", "contract_size": e.get("contract_size"), "volume_min": e.get("volume_min"), "volume_step": e.get("volume_step"),
-                     "volume": z["volume"], "shares_sent": z["shares_sent"], "valid": z["valid"], "reason": z["reason"]})
+        rows.append({"symbol": s, "broker_symbol": e.get("broker_symbol"), "status": "MAPPED", "contract_size": e.get("contract_size"), "contract_size_source": e.get("contract_size_source"),
+                     "volume_min": e.get("volume_min"), "volume_step": e.get("volume_step"), "volume": z["volume"], "shares_sent": z["shares_sent"], "valid": z["valid"], "reason": z["reason"]})
     return {"shares_per_trade": shares, "rows": rows, "valid": sum(1 for r in rows if r["valid"]), "invalid": sum(1 for r in rows if r["status"] == "MAPPED" and not r["valid"]), "total": len(rows)}
 
 
@@ -1112,10 +1117,13 @@ def start_sweeper() -> None:
     threading.Thread(target=loop, name="mt5-sweeper", daemon=True).start()
 
 
-def refresh_broker_rules() -> dict:
-    """Re-read every verified mapping from the broker: contract size (fallback 100 when the broker answers none) and volume rules."""
+def refresh_broker_rules(who: str = "operator") -> dict:
+    """Re-read every verified mapping from the broker: contract size (fallback 100 when the broker answers none) and volume rules.
+    Audits REQUESTED first, then RULES_REFRESHED or ERROR: a click can never vanish silently (A.24)."""
+    audit("RULES_REFRESH_REQUESTED", detail={"by": who, "connected": bool(_conn["connected"])})
     if not _conn["connected"]:
-        return {"ok": False, "reason": "NOT_CONNECTED"}
+        audit("ERROR", reason="rules refresh refused: NOT_CONNECTED (connect the MT5 account first)", detail={"by": who})
+        return {"ok": False, "reason": "NOT_CONNECTED", "detail": "connect the MT5 account first"}
     m = load_map()
     done, failed = [], []
     for s, e in list(m["map"].items()):
@@ -1133,8 +1141,24 @@ def refresh_broker_rules() -> dict:
                            volume_step=info.get("volume_step"), digits=info.get("digits"), trade_mode_text=info.get("trade_mode_text"), verified_at=_now_iso())
                 save_map(m2)
         done.append(s)
-    audit("RULES_REFRESHED", detail={"refreshed": len(done), "failed": failed})
+    audit("RULES_REFRESHED", detail={"by": who, "refreshed": len(done), "failed": failed, "sizing_valid": sizing_table()["valid"]})
     return {"ok": True, "refreshed": done, "failed": failed, "sizing": sizing_table()}
+
+
+def raw_symbol_params(symbol: str) -> dict:
+    """Operator diagnostics: the broker's raw SymbolParams answer for one software symbol (or broker symbol), plus what the bridge
+    reads from it. Read-only; the session token never appears in the output."""
+    sym = (symbol or "").upper().strip()
+    if not sym:
+        return {"ok": False, "reason": "NO_SYMBOL"}
+    e = (load_map()["map"].get(sym) or {})
+    bsym = e.get("broker_symbol") or sym
+    if not _conn["connected"]:
+        return {"ok": False, "reason": "NOT_CONNECTED", "broker_symbol": bsym}
+    raw = B._call("SymbolParams", {"symbol": bsym})
+    parsed = B.symbol(bsym)
+    return {"ok": bool(raw.get("ok")), "symbol": sym, "broker_symbol": bsym, "raw": raw.get("data") if raw.get("ok") else {"reason": raw.get("reason"), "detail": raw.get("detail")},
+            "parsed": {k: parsed.get(k) for k in ("contract_size", "raw_contract", "volume_min", "volume_max", "volume_step", "digits", "trade_mode_text", "raw_keys")}, "stored": {k: e.get(k) for k in ("contract_size", "contract_size_source", "volume_min", "volume_step", "verified_at")}}
 
 
 def _safe_request(req: Optional[dict]) -> Optional[dict]:

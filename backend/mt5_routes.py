@@ -127,9 +127,22 @@ def mt5_close_all(request: Request) -> dict:
 
 @router.post("/symbols/refresh")
 def mt5_symbols_refresh(request: Request) -> dict:
-    """Re-read contract sizes and volume rules for every mapped symbol from the broker (fills the sizing table)."""
+    """Re-read contract sizes and volume rules for every mapped symbol from the broker (fills the sizing table). Always audited."""
+    user = _require_operator(request)
+    who = str((user or {}).get("username") or (user or {}).get("email") or "operator")
+    try:
+        res = AT.refresh_broker_rules(who=who)
+    except Exception as exc:  # noqa: BLE001
+        AT.audit("ERROR", reason="rules refresh crashed: %s: %s" % (type(exc).__name__, exc), detail={"by": who})
+        return {"status": "FAILED", "ok": False, "reason": type(exc).__name__, "detail": str(exc)[:300]}
+    return dict(res, status="OK" if res.get("ok") else "FAILED")
+
+
+@router.get("/symbols/raw")
+def mt5_symbols_raw(request: Request, symbol: str = "AAPL") -> dict:
+    """Operator diagnostics: the broker's raw SymbolParams answer for one symbol and what the bridge reads from it (read-only)."""
     _require_operator(request)
-    res = AT.refresh_broker_rules()
+    res = AT.raw_symbol_params(symbol)
     return dict(res, status="OK" if res.get("ok") else "FAILED")
 
 

@@ -569,6 +569,26 @@ def _capture_earnings_signals() -> None:
 
 
 @_bg
+@_startup
+def _start_file_logging() -> None:
+    """A.24: the service's own log in a file the operator can read: logs/app.log (root logger + uvicorn), logs/mt5.log (engine)."""
+    try:
+        import app_logging
+        app_logging.file_logger("app")
+        h = [x for x in logging.getLogger("app").handlers if hasattr(x, "baseFilename")]
+        if h:
+            for name in ("", "uvicorn", "uvicorn.error", "uvicorn.access", "fastapi"):
+                lg = logging.getLogger(name)
+                if not any(getattr(x, "baseFilename", None) == h[0].baseFilename for x in lg.handlers):
+                    lg.addHandler(h[0])
+                if name == "" and lg.level in (logging.NOTSET, logging.WARNING):
+                    lg.setLevel(logging.INFO)
+        app_logging.file_logger("mt5")
+        logging.getLogger("app").info("file logging active: app.log + mt5.log")
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _start_smart_move_alert_webhook() -> None:
     """Gate-refusal webhook (owner decision 2026-11-12): OFF unless SM_ALERT_WEBHOOK_URL is set. Posts each new refusal once
     (marker file beside the refusal record), checking once a minute. Never posts on a poll without a new refusal."""

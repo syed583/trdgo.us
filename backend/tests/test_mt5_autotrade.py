@@ -699,3 +699,22 @@ def test_refresh_broker_rules_fills_contract_sizes_with_the_100_fallback(fake):
     assert rows["TSLA"]["contract_size"] == 100.0 and rows["TSLA"]["volume"] == 0.1 and rows["TSLA"]["valid"] is True
     assert AT.load_map()["map"]["AAPL"]["contract_size_source"] == "fallback-100" and AT.load_map()["map"]["TSLA"]["contract_size_source"] == "broker"
     assert _audit()[-1]["event"] == "RULES_REFRESHED" and _audit()[-1]["detail"]["refreshed"] == 2
+
+
+# ------------------------------------------------------------------ A.24: refresh always audited, raw symbol params, fallback marked
+def test_refresh_is_audited_even_when_refused_and_raw_params_route_reads_the_broker(fake):
+    r = AT.refresh_broker_rules(who="owner")                                               # not connected yet
+    assert r["ok"] is False and r["reason"] == "NOT_CONNECTED"
+    ev = [a["event"] for a in _audit()]
+    assert ev[-2:] == ["RULES_REFRESH_REQUESTED", "ERROR"] and _audit()[-1]["detail"]["by"] == "owner"
+    _connected(fake)
+    r2 = AT.refresh_broker_rules(who="owner")
+    assert r2["ok"] and _audit()[-1]["event"] == "RULES_REFRESHED" and _audit()[-1]["detail"]["by"] == "owner" and _audit()[-1]["detail"]["sizing_valid"] == 2
+    raw = AT.raw_symbol_params("AAPL")
+    assert raw["ok"] and raw["broker_symbol"] == "AAPL" and raw["raw"]["symbolInfo"]["contractSize"] == 1.0 and raw["parsed"]["contract_size"] == 1.0 and raw["stored"]["contract_size_source"] == "broker"
+    fake.symbols["AAPL"]["symbolInfo"].pop("contractSize")
+    fake.symbols["AAPL"]["symbolGroup"].update(minLots=0.1, lotsStep=0.1)
+    AT.refresh_broker_rules(who="owner")
+    rows = {x["symbol"]: x for x in AT.sizing_table()["rows"]}
+    assert rows["AAPL"]["contract_size"] == 100.0 and rows["AAPL"]["contract_size_source"] == "fallback-100" and rows["AAPL"]["valid"] is True
+    assert AT.raw_symbol_params("ZZZZ")["ok"] is False and AT.raw_symbol_params("")["reason"] == "NO_SYMBOL"
