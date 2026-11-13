@@ -193,7 +193,9 @@ def quick_levels(symbol: str, horizon: str = "SWING",
     return {"spot": _r(spot), "target": _r(target), "stop": _r(stop)}
 
 
-def get_plan(symbol: str, horizon: str = "SWING", with_read: bool = True) -> dict:
+def get_plan(symbol: str, horizon: str = "SWING", with_read: bool = False) -> dict:
+    # A.25 (owner decision 2026-11-13): the written read is OFF by default. It called Claude on every fresh plan - the
+    # only unprompted AI spend in the app - and the page has left the menu. Pass with_read=True to ask for it explicitly.
     """A data-derived trade plan for the underlying stock."""
     symbol = (symbol or "").upper().strip()
     horizon = (horizon or "SWING").upper()

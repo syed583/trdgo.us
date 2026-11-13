@@ -749,6 +749,9 @@ function LivePrice({ symbol }: { symbol: string }) {
 
 /* ------------------------------------------------------------ 6. result */
 
+// A.25: the tabs whose whole content is the scored parameters. Hidden from anyone the server does not send them to.
+const MODEL_TABS = ['all', 'price', 'earnings', 'institutional', 'news'];
+
 const TABS: [string, string][] = [
   ['overview', 'Overview'],
   // Every scored parameter in one list. The grouped tabs below are for
@@ -915,6 +918,10 @@ function ResultScreen({
       : result.decision?.includes('SELL') ? RED : AMBER;
 
   const signals: DirSignalLike[] = result.signals || [];
+  // A.25 (owner decision 2026-11-13): the scored parameters and their weights are the model itself, and the server now
+  // sends them to administrators only. With none present the screen keeps the verdict and the insights and drops the
+  // working: no category breakdown, no parameter list, no parameter tabs. Nothing below this panel changes.
+  const showModel = signals.length > 0;
   // The categories carry parameter names; this is how a row finds its own.
   const byName: Record<string, DirSignalLike> = Object.fromEntries(
     signals.map((s) => [s.name, s]));
@@ -937,7 +944,7 @@ function ResultScreen({
         </span>
         <LivePrice symbol={symbol} />
         <span className="an-elapsed">
-          {sources} sources answered · {signals.length} parameters ·
+          {sources} sources answered{showModel ? ` · ${signals.length} parameters` : ''} ·
           {' '}{elapsed.toFixed(1)}s
         </span>
       </div>
@@ -969,6 +976,7 @@ function ResultScreen({
           )}
         </Panel>
 
+        {showModel && (
         <Panel title="Category Breakdown" noBody
           right={<span className="ac-total">100 pts</span>}>
           <div className="ai-cats">
@@ -1053,10 +1061,11 @@ function ResultScreen({
             ))}
           </div>
         </Panel>
+        )}
       </div>
 
       <div className="an-tabs">
-        {TABS.map(([k, label]) => (
+        {(showModel ? TABS : TABS.filter(([k]) => !MODEL_TABS.includes(k))).map(([k, label]) => (
           <button key={k} className={`ai-tab ${tab === k ? 'on' : ''}`}
             onClick={() => onTab(k)}>{label}</button>
         ))}
@@ -1103,6 +1112,7 @@ function ResultScreen({
             )}
             <div className="hint">{result.note}</div>
 
+            {showModel && (<>
             <div className="an-all-head">
               <b>All {signals.length} parameters</b>
               <span>
@@ -1148,7 +1158,10 @@ function ResultScreen({
                   </div>
                 ))}
             </div>
+            </>)}
           </div>
+        ) : !showModel ? (
+          <div className="hint">The scored parameters are not shown here.</div>
         ) : (
           <div className="an-params">
             {shown.map((s) => (

@@ -462,9 +462,11 @@ def _start_slow_screen_warmer() -> None:
     threading.Thread(target=warm, daemon=True, name="slow-screen-warmer").start()
 
 
-@_bg
+# A.25 (owner decision 2026-11-13): NOT registered with @_bg any more. This scanner rebuilt a full trade plan for up to
+# sixty watchlist symbols every five minutes, and the page it served has left the menu. The function is kept, so turning
+# it back on is one decorator.
 def _start_signal_scanner() -> None:
-    """Watch the watchlist for view-flips and plan hits, in the background."""
+    """Watch the watchlist for view-flips and plan hits, in the background (A.25: not started)."""
     try:
         import trade_plan_service as tp
         tp.start_scanner(every=300.0)

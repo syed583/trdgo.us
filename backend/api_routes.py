@@ -1559,7 +1559,7 @@ def snapshot_evaluate(horizon: int = 10) -> dict:
 
 
 @router.get("/analyze/{symbol}/stream")
-def analyze_stream(symbol: str, refresh: bool = False,
+def analyze_stream(request: Request, symbol: str, refresh: bool = False,
                    horizon: Optional[str] = None):
     """
     Stream the analysis as each provider answers.
@@ -1573,10 +1573,16 @@ def analyze_stream(symbol: str, refresh: bool = False,
     from fastapi.responses import StreamingResponse
 
     import analysis_stream_service as stream
+    import auth_service as auth
+
+    # A.25: only an administrator receives the scored parameters and the category breakdown (the model's own working).
+    user = auth.current_user(request) or {}
+    is_admin = str(user.get("role") or "").strip().lower() == "admin"
 
     return StreamingResponse(
         stream.stream_analysis(symbol, refresh=refresh,
-                               horizon=(horizon or "SWING").upper()),
+                               horizon=(horizon or "SWING").upper(),
+                               include_params=is_admin),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

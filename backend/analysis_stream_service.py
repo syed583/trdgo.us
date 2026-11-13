@@ -206,7 +206,7 @@ SLOW_MOVING = ("sec", "form4", "ownership", "institutional", "profile",
 
 
 def stream_analysis(symbol: str, refresh: bool = False,
-                    horizon: str = "SWING") -> Iterator[str]:
+                    horizon: str = "SWING", include_params: bool = False) -> Iterator[str]:
     """
     Run the analysis, emitting an event whenever a provider lands.
 
@@ -324,9 +324,14 @@ def stream_analysis(symbol: str, refresh: bool = False,
             })
         elif item["type"] == "result":
             result = item["result"]
+            # A.25 (owner decision 2026-11-13): the parameter list, its weights and the category breakdown are the model
+            # itself. Ordinary users get the verdict, the score, the confidence, the coverage and the key insights; the
+            # working is sent only to an administrator. Stripped HERE, on the way out, so it never reaches the browser.
+            if not include_params:
+                result = {k: v for k, v in result.items() if k != "signals"}
             yield _event("result", {
                 "result": result,
-                "categories": categorise(result.get("signals") or []),
+                "categories": categorise(item["result"].get("signals") or []) if include_params else [],
                 "elapsed": round(time.time() - started, 2),
                 "sources_complete": completed,
                 "sources_total": TOTAL_STAGES,

@@ -39,18 +39,18 @@ const MT5_ITEMS: NavEntry[] = [
 
 const NAV_GROUPS: NavGroup[] = [
   { heading: 'Analysis', items: [
-    { to: '/ai-insights', label: 'Analysis', icon: <Brain size={S} /> },
+    { to: '/ai-insights', label: 'Analysis Intraday', icon: <Brain size={S} /> },
     { to: '/grok-intraday', label: 'Grok Intraday', icon: <Zap size={S} /> },
     { to: '/meta-intraday', label: 'Meta Intraday', icon: <Layers size={S} /> },
     { to: '/kimi-intraday', label: 'Kimi Intraday', icon: <Compass size={S} /> },
     { to: '/gemini-intraday', label: 'Gemini Intraday', icon: <Waypoints size={S} /> },
     { to: '/all-intraday-models', label: 'All Intraday', icon: <ListOrdered size={S} /> },
     { to: '/strategy-trades', label: 'Strategy Trades', icon: <Receipt size={S} /> },
-    { to: '/tradgo-call', label: 'Tradgo Call', icon: <Gauge size={S} /> },
-    { to: '/trade-plan', label: 'Trade Plan', icon: <Crosshair size={S} /> },
-    { to: '/signal-history', label: 'Signal History', icon: <History size={S} /> },
+    // A.25 (owner decision 2026-11-13, after the intraday audit): Tradgo Call, Trade Plan, Signal History and Sector
+    // Comparison left the menu. Their ROUTES still work (/tradgo-call, /trade-plan, /signal-history, /peers) and every
+    // module stays on disk, because the earnings pages, the signal-colouring route and the snapshot warmer import them.
+    // Nothing was deleted. Trade Plan's background scanner and its Claude read are off (main.py, trade_plan_service).
     { to: '/smart-move/engine20', label: 'Smart Money Move (LIVE)', icon: <Gauge size={S} /> },
-    { to: '/peers', label: 'Sector Comparison', icon: <Scale size={S} /> },
   ] },
   { heading: 'Earnings & news', items: [
     { to: '/earnings-calendar', label: 'Earnings Calendar', icon: <CalendarDays size={S} /> },
