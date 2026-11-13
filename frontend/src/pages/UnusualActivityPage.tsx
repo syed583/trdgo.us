@@ -62,9 +62,9 @@ export default function UnusualActivityPage({ ctx }: { ctx: PageContext }) {
         {/* A.25: this tab runs below the live intraday boards, so while the market is open it shows its last completed
             scan rather than taking a connection the boards are waiting for. Say so plainly: never a cached number
             presented as a live one. */}
-        {resp.data?.refresh?.paused ? (
-          <p className="at-note">Refresh paused while the market is open: this tab runs below the live intraday
-            boards. Showing the last completed scan from {resp.data?.asof || '—'}. It refreshes after the close.</p>
+        {resp.data?.refresh && resp.data.refresh.note !== 'refreshing normally' ? (
+          <p className="at-note">{resp.data.refresh.note}. Showing the last completed scan
+            from {resp.data?.asof || '—'}.</p>
         ) : null}
       </div>
 

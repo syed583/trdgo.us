@@ -312,10 +312,9 @@ UA_CALL_HEAVY = 2.0               # disparity (today ratio / normal) >= this -> 
 UA_PUT_HEAVY = 0.5                # disparity <= this -> PUT HEAVY
 UA_OV_TTL_SEC = 900.0             # per-stock options-volume series cache (A.25: 300 -> 900 s, owner decision 2026-11-13).
                                   # Part B's steady provider rate is (universe size / UA_OV_TTL_SEC): at 900 s it is a third of what it was.
-UA_PRIORITY = "dashboard"         # A.25: this tab's provider calls are labelled and sit BELOW the live intraday boards.
-                                  # "essential" restores the old behaviour (promoted page traffic competing for the same slots).
-                                  # While the market is open the dashboard class holds no connections, so the tab serves its
-                                  # cached scan and says so: it never shows a stale number as if it were fresh.
+UA_PRIORITY = "essential"         # A.25 option B (owner decision 2026-11-13): the tab keeps refreshing while the market is open,
+                                  # but it is BOUNDED - see module_max_inflight, module_yields_to_live and module_hourly_caps
+                                  # below. "dashboard" would stop it refreshing in session altogether.
 UA_PARTB_MIN_PREMIUM = 500_000    # skip a stock whose total (call + put) premium today is below this
 
 
@@ -396,6 +395,10 @@ UW_BUDGET: dict = {
     "module_hourly_caps": {"unusual_activity": 600},   # A.25: a NAMED per-module ceiling, checked at every priority. The
                                   # Unusual Activity tab gets its own small hourly allowance instead of sharing the
                                   # anonymous "market_data" bucket with the live boards.
+    "module_max_inflight": {"unusual_activity": 1},    # A.25 option B: this module may hold at most ONE of the connections, so a
+                                  # slot is always free for the live boards and for the quotes the tracker and MT5 depend on.
+    "module_yields_to_live": ["unusual_activity"],     # A.25 option B: the stand-aside rule applies to these modules even in the
+                                  # ESSENTIAL class - when live or essential requests are queueing, they wait, the boards do not.
     "other_budget": 100000,        # priority 3: everything else a page asks for
     "other_session_hourly_cap": 6000,   # ...and at most this per hour while the market is open
     "warmer_budget": 60000,        # priority 4: historical warming, per provider day

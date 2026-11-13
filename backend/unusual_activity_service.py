@@ -31,6 +31,8 @@ filled progressively (like the IV Crush tab), so a scan request never blocks.
 from __future__ import annotations
 
 import os
+import threading
+from contextlib import contextmanager
 from datetime import date
 from typing import Optional
 
@@ -43,18 +45,47 @@ MODULE = "unusual_activity"       # A.25: this tab's own name in the provider bu
 
 
 def _priority() -> int:
-    """The class this tab's provider calls run in. Owner decision 2026-11-13: BELOW the live intraday boards, so the tab can
-    never take a connection the boards are waiting for. Anonymous page calls would otherwise be promoted to ESSENTIAL because
-    their paths are options flow / options volume (unusualwhales_service._ESSENTIAL_TYPES)."""
+    """The class this tab's provider calls run in (owner decision 2026-11-13, option B: ESSENTIAL, so the tab keeps
+    refreshing while the market is open - bounded by _GATE below and by its own hourly ceiling). Anonymous page calls
+    would be promoted to ESSENTIAL anyway because their paths are options flow / options volume
+    (unusualwhales_service._ESSENTIAL_TYPES); the point of labelling them is that they are counted and capped by name."""
     import uw_priority as pri
-    name = str(getattr(cfg, "UA_PRIORITY", "dashboard") or "dashboard").strip().lower()
-    return {"essential": pri.ESSENTIAL, "dashboard": pri.DASHBOARD, "warmer": pri.WARMER}.get(name, pri.DASHBOARD)
+    name = str(getattr(cfg, "UA_PRIORITY", "essential") or "essential").strip().lower()
+    return {"essential": pri.ESSENTIAL, "dashboard": pri.DASHBOARD, "warmer": pri.WARMER}.get(name, pri.ESSENTIAL)
 
 
+def _max_inflight() -> int:
+    return max(1, int((getattr(cfg, "UW_BUDGET", {}).get("module_max_inflight") or {}).get(MODULE, 1)))
+
+
+_GATE = threading.BoundedSemaphore(99)      # replaced on first use with the configured size
+_GATE_N = [0]
+_GATE_LOCK = threading.Lock()
+
+
+def _gate() -> threading.BoundedSemaphore:
+    """At most this many of the tab's provider calls may be on the wire at once. With one, a connection is always free
+    for the live intraday boards and for the quotes the paper tracker and MT5 depend on (A.25 option B)."""
+    global _GATE
+    want = _max_inflight()
+    with _GATE_LOCK:
+        if _GATE_N[0] != want:
+            _GATE, _GATE_N[0] = threading.BoundedSemaphore(want), want
+        return _GATE
+
+
+@contextmanager
 def _labelled():
-    """Every provider call of this tab carries (priority, module), so it is counted and capped under its own name."""
+    """Every provider call of this tab carries (priority, module) so it is counted and capped under its own name, and
+    holds one of the module's own connection permits so it can never fill the wire."""
     import uw_priority as pri
-    return pri.use(_priority(), MODULE)
+    g = _gate()
+    g.acquire()
+    try:
+        with pri.use(_priority(), MODULE):
+            yield
+    finally:
+        g.release()
 
 _f = uw._f
 
@@ -306,18 +337,30 @@ def refresh_state() -> dict:
     import uw_budget
     prio = _priority()
     try:
-        in_session = uw_budget.get().in_session()
+        ctl = uw_budget.get()
+        in_session = ctl.in_session()
+        yielding = (ctl.live_wait_p95() or 0.0) > float((getattr(cfg, "UW_BUDGET", {})).get("yield_wait_s", 1e9))
+        used_hour = ctl.module_hour_calls(MODULE)
     except Exception:  # noqa: BLE001
-        in_session = False
+        in_session, yielding, used_hour = False, False, None
     production = (os.environ.get("APP_ENV") or "").strip().lower() == "production"
-    paused = bool(in_session and production and prio >= pri.DASHBOARD)
+    cap = (getattr(cfg, "UW_BUDGET", {}).get("module_hourly_caps") or {}).get(MODULE)
+    paused = bool(in_session and production and prio >= pri.DASHBOARD)      # only when the tab is put below the boards
+    capped = bool(cap and used_hour is not None and used_hour >= int(cap))
+    if paused:
+        note = ("the market is open and this tab runs below the live intraday boards: it is showing its last completed "
+                "scan and will refresh after the close")
+    elif capped:
+        note = "this tab has used its own hourly allowance; it is showing its last completed scan until the next hour"
+    elif yielding:
+        note = "the live intraday boards are queueing for a connection, so this tab is standing aside for a moment"
+    else:
+        note = "refreshing normally"
     return {"module": MODULE, "priority": pri.NAMES.get(prio, str(prio)), "in_session": in_session,
             "series_ttl_s": float(getattr(cfg, "UA_OV_TTL_SEC", 900.0)),
-            "hourly_cap": (getattr(cfg, "UW_BUDGET", {}).get("module_hourly_caps") or {}).get(MODULE),
-            "paused": paused,
-            "note": ("the market is open and this tab runs below the live intraday boards: it is showing its last "
-                     "completed scan and will refresh after the close" if paused else
-                     "refreshing normally")}
+            "hourly_cap": cap, "hourly_used": used_hour, "max_inflight": _max_inflight(),
+            "paused": paused, "capped": capped, "standing_aside": bool(yielding),
+            "note": note}
 
 
 def warm(occs: list[str], syms: list[str]) -> None:

@@ -289,6 +289,13 @@ class Controller:
             if d.ok and named and self.module_hour_calls(module) >= int(named):
                 d = Decision(False, f"module '{module}' has its own limit of {int(named)} requests an hour and has "
                                     f"reached it", "MODULE_HOUR_CAP")
+            # A.25 option B: a named module stands aside while live / essential work is queueing, even when it runs IN the
+            # essential class. Without this the gate would order it equally with the live boards, which is not what was asked.
+            if d.ok and module in (self.s.get("module_yields_to_live") or ()):
+                yl = self.live_wait_p95()
+                if yl is not None and yl > float(self.s.get("yield_wait_s", 1e9)):
+                    d = Decision(False, f"live / essential requests are waiting {yl:.1f}s for a connection: module "
+                                        f"'{module}' stands aside", "YIELD_TO_LIVE_QUEUE")
             if not d.ok:
                 m = self._mod(module)
                 m["denied"] += 1
