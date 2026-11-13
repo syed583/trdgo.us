@@ -163,9 +163,9 @@ def test_universe_keeps_not_tradable_deferred_served_and_unknown_apart(tmp_path)
     assert by["SERV"]["collection_status"] == "EVIDENCE_COMPLETE" and by["SERV"]["tradable"] is True
     assert by["DEFR"]["collection_status"] == "DEFERRED" and by["DEFR"]["deferred"] is True and "still eligible" in by["DEFR"]["deferred_reason"]
     assert by["CONF"]["collection_status"] == "ELIGIBILITY_UNKNOWN" and by["CONF"]["date_confirmed"] is False and "disagree" in by["CONF"]["status_note"] and by["CONF"]["deferred"] is False
-    assert by["NOSS"]["collection_status"] == "ELIGIBILITY_UNKNOWN" and "session not confirmed" in by["NOSS"]["status_note"]
+    assert by["NOSS"]["collection_status"] == "SESSION_UNKNOWN" and "never skipped" in by["NOSS"]["status_note"]   # kit v6.7: its own status, still shown, still not scanned
     assert "DEFERRED" not in {by[s]["collection_status"] for s in ("MBMO", "CONF", "NOSS")}              # nothing uncertain or untradable is ever called deferred
-    assert uni["summary"]["by_status"] == {"NOT_TRADABLE": 1, "EVIDENCE_COMPLETE": 1, "DEFERRED": 1, "ELIGIBILITY_UNKNOWN": 2} and uni["summary"]["deferred"] == 1 and uni["summary"]["excluded_by_proxy"] == 0
+    assert uni["summary"]["by_status"] == {"NOT_TRADABLE": 1, "EVIDENCE_COMPLETE": 1, "DEFERRED": 1, "ELIGIBILITY_UNKNOWN": 1, "SESSION_UNKNOWN": 1} and uni["summary"]["deferred"] == 1 and uni["summary"]["excluded_by_proxy"] == 0
 
 
 def test_a_ledger_prediction_marks_served_and_beats_every_other_status(tmp_path):

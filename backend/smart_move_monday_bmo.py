@@ -29,6 +29,7 @@ import smart_move_live_publisher as PUB  # noqa: E402
 import smart_move_outcomes as O  # noqa: E402
 from smvshadow import adapters as ad  # noqa: E402
 from smvshadow import calendar_confirm as cc  # noqa: E402
+import smart_move_calendar_session as CS  # noqa: E402  (kit v6.7)
 from smvshadow import cutoff as co  # noqa: E402
 from smvshadow import freshness as fr  # noqa: E402
 from smvshadow import grader as G  # noqa: E402
@@ -77,11 +78,12 @@ def variant_plan(event_date: date, kind: str = "BMO") -> dict:
 def events(svc, now: datetime, *, horizon_days: Optional[int] = None) -> list:
     """Vendor-confirmed events the variant applies to. Default: variant window open now. With horizon_days: every applicable event whose cutoff has not passed and whose release is within the horizon."""
     out = []
+    hist = svc.cal_history()
     for sym, pairs in svc._calobs().items():
         obs = [o for o, _ in pairs if o.observed_at <= now]
         if not obs:
             continue
-        ev = cc.evaluate(sym, obs, now, now.astimezone(ET).date())
+        ev = CS.evaluate_event(sym, obs, now, now.astimezone(ET).date(), hist)
         if not ev["eligible_for_shadow"] or ev["event_date"] is None or not applies(ev["event_date"], ev["kind"]):
             continue
         plan = variant_plan(ev["event_date"], ev["kind"])
@@ -209,7 +211,7 @@ def score(svc, evs: list, now: datetime) -> list:
         sector, etf = e["sector"], e["etf"]
         row = {"dataset": "LIVE_CURRENT", "variant": VARIANT, "symbol": sym, "company": uw.get("company"), "sector": sector, "earnings_date": str(ev["event_date"]), "kind": ev["kind"], "evidence_mode": scorer._mode_of(raw),
                "calendar": {"status_at_observation": ev["status"], "status_now": ev["status"], "reasons": ev["reasons"], "no_trade_reasons": ev["no_trade_reasons"], "eligible_for_shadow": ev["eligible_for_shadow"],
-                            "vendors": ev["vendors"], "calendar_observed_at": ev["calendar_observed_at"].isoformat() if ev["calendar_observed_at"] else None, "uw_flag": uw.get("vendor_flag")},
+                            "vendors": ev["vendors"], "calendar_observed_at": ev["calendar_observed_at"].isoformat() if ev["calendar_observed_at"] else None, "uw_flag": uw.get("vendor_flag"), **CS.calendar_fields(ev)},
                "observations": [{k: r[k] for k in ("source", "date", "label", "clock", "vendor_flag", "observed_at", "raw_sha256", "request_id")} for r in sorted(raw, key=lambda r: (r["source"], r["date"]))]}
         exp = L.expected_session(now)
         used, early = [], set()

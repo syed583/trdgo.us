@@ -29,5 +29,5 @@ def test_the_saved_pilot_passes_the_accounting_and_integrity_audit():
     from datetime import datetime, timezone
     r = PA.audit(STORE, RUN, datetime(2026, 11, 2, 16, 14, 30, tzinfo=timezone.utc))
     assert r["A"]["attempts_logged"] == 50 and r["A"]["all_ok"] and r["A"]["duplicate_requests"] == [] and r["A"]["records_match_attempts"]
-    assert r["B"]["eligible"] == 236 and r["B"]["duplicates"] == 0 and r["F"]["hash_mismatch"] == 0 and r["F"]["payload_missing"] == 0
+    assert r["B"]["eligible"] == 269 and r["B"]["duplicates"] == 0        # kit v6.7: 236 under the two-vendor-only rule + 33 single-vendor dates now scanned and labelled and r["F"]["hash_mismatch"] == 0 and r["F"]["payload_missing"] == 0
     assert r["C"]["responses"] == 18 and r["D"]["headlines"] == 119 and r["D"]["problems"]["future_dated"] == 0

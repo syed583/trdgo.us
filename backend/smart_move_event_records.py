@@ -32,6 +32,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "docs" / "smart_move" / "shadow_impl"))
 from smvshadow import calendar_confirm as cc  # noqa: E402
+import smart_move_calendar_session as CS  # noqa: E402  (kit v6.7)
 from smvshadow import cutoff as co  # noqa: E402
 
 UTC = timezone.utc
@@ -123,12 +124,13 @@ def calobs_from_rows(rows: Iterable[dict]) -> dict:
     return out
 
 
-def build_observation(symbol: str, pairs: list, as_of, *, earnings_rows=None, earnings_retrieved_at=None, earnings_sha256=None, verified_release_utc=None, earnings_others=None) -> dict:
-    """The content of one event record as it can be known at `as_of` (no id/version yet). pairs: [(CalObs, raw_row)]. Vendor evidence, including conflicting dates, is preserved verbatim."""
+def build_observation(symbol: str, pairs: list, as_of, *, earnings_rows=None, earnings_retrieved_at=None, earnings_sha256=None, verified_release_utc=None, earnings_others=None, history=None) -> dict:
+    """The content of one event record as it can be known at `as_of` (no id/version yet). pairs: [(CalObs, raw_row)]. Vendor evidence, including conflicting dates, is preserved verbatim.
+    history (kit v6.7): the symbol's earlier labelled report dates (CS.history_index), used only when no vendor gives the session."""
     as_of = _dt(as_of)
     seen = [(o, r) for o, r in pairs if o.observed_at <= as_of]
     obs = [o for o, _ in seen]
-    ev = cc.evaluate(symbol, obs, as_of, as_of.astimezone(co.ET).date())
+    ev = CS.evaluate_event(symbol, obs, as_of, as_of.astimezone(co.ET).date(), history)
     latest = {}
     for o, r in sorted(seen, key=lambda p: p[0].observed_at):
         latest[o.source] = (o, r)
@@ -158,6 +160,7 @@ def build_observation(symbol: str, pairs: list, as_of, *, earnings_rows=None, ea
     pairing = eligible and q["state"] == "KNOWN" and q_before_cutoff is True
     blockers = ([] if eligible else ["EVENT_NOT_ELIGIBLE"]) + ([] if q["state"] == "KNOWN" else [q["state"] + ":" + str(q["reason"])]) + (["QUARTER_LEARNED_AFTER_CUTOFF"] if q["state"] == "KNOWN" and q_before_cutoff is not True else [])
     return {"schema": SCHEMA, "symbol": symbol, "event_date": event_date, "session": session, "vendor_status": ev["status"], "vendor_reasons": list(ev["reasons"]), "vendor_conflict": bool(conflict),
+            "confirmation": ev.get("confirmation"), "session_source": ev.get("session_source"), "session_unknown": bool(ev.get("session_unknown")),
             "vendor_dates_seen": dates, "vendors": vendors, "stale_vendor_rows": ev.get("stale_vendor_rows") or [], "observed_at": _iso(as_of),
             "calendar_observed_at": _iso(ev["calendar_observed_at"]) if ev["calendar_observed_at"] else None, **rel,
             "ending_fiscal_quarter": q["ending_fiscal_quarter"], "quarter_state": q["state"], "quarter_reason": q["reason"], "quarter_source": q["source"], "quarter_known_before_cutoff": q_before_cutoff, "observed_after_cutoff": after_cutoff,
@@ -378,10 +381,12 @@ def records_from_saved(cal_rows: Iterable[dict], as_of, payloads: Optional[dict]
     """One observation per symbol in the saved calendar, evaluated at as_of, with the quarter from saved payloads only."""
     payloads = payloads or {}
     out = []
+    cal_rows = list(cal_rows)
+    hist = CS.history_index(cal_rows)
     for sym, pairs in sorted(calobs_from_rows(cal_rows).items()):
         p = payloads.get(sym)
         er, ts, sha, others = (p[0], p[1], p[2], p[3] if len(p) > 3 else []) if p else (None, None, None, [])
-        out.append(build_observation(sym, pairs, as_of, earnings_rows=er, earnings_retrieved_at=ts, earnings_sha256=sha, earnings_others=others))
+        out.append(build_observation(sym, pairs, as_of, earnings_rows=er, earnings_retrieved_at=ts, earnings_sha256=sha, earnings_others=others, history=hist))
     return out
 
 

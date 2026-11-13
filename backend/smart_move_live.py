@@ -29,6 +29,7 @@ from smart_move_routes import ENGINE_DIR, SECTOR_ETF  # noqa: F401  (also puts t
 from smvshadow import adapters as ad  # noqa: E402
 from smvshadow import calendar_confirm as cc  # noqa: E402
 from smvshadow import calendar_validation as cv  # noqa: E402
+import smart_move_calendar_session as CS  # noqa: E402  (kit v6.7: session resolution + single-vendor acceptance; the engine stays frozen)
 from smvshadow import cutoff as co  # noqa: E402
 from smvshadow import freshness as fr  # noqa: E402
 from smvshadow import governor as gv  # noqa: E402
@@ -507,6 +508,10 @@ class RefreshService:
         displayed or captured."""
         return filter_cal_obs(self.store.read("cal_obs"))
 
+    def cal_history(self) -> dict:
+        """Kit v6.7: {symbol: [(date, session)]} from the SAME saved calendar rows: the symbol's earlier reports as the vendors labelled them."""
+        return CS.history_index(self.cal_obs())
+
     def _calobs(self, symbol=None):
         out = {}
         for r in self.cal_obs():
@@ -520,8 +525,9 @@ class RefreshService:
         """Events the vendor rules accept (VENDOR_CONFIRMED / COMPANY_VERIFIED) whose capture window is open now. Deadline-ordered.
         horizon_days (tracking only): instead of 'window open now', every accepted event whose assumed release is between now and now + horizon_days and whose cutoff has not passed."""
         out = []
+        hist = self.cal_history()
         for sym, pairs in self._calobs().items():
-            ev = cc.evaluate(sym, [o for o, _ in pairs], now, now.astimezone(co.ET).date())
+            ev = CS.evaluate_event(sym, [o for o, _ in pairs], now, now.astimezone(co.ET).date(), hist)
             if not ev["eligible_for_shadow"] or (self.focus is not None and sym not in self.focus):
                 continue
             plan = co.plan_event(ev["event_date"], ev["kind"])
@@ -531,7 +537,8 @@ class RefreshService:
                     cap = max(float(r["marketcap"]) for _, r in pairs if r.get("marketcap"))
                 except ValueError:
                     cap = 0.0
-                out.append({"symbol": sym, "event_date": ev["event_date"], "kind": ev["kind"], "plan": plan, "sector": sector, "etf": SECTOR_ETF.get(sector), "marketcap": cap})
+                out.append({"symbol": sym, "event_date": ev["event_date"], "kind": ev["kind"], "plan": plan, "sector": sector, "etf": SECTOR_ETF.get(sector), "marketcap": cap,
+                            "confirmation": ev["confirmation"], "session_source": ev["session_source"]})
         out.sort(key=lambda e: (e["plan"]["cutoff_utc"], hashlib.sha256(e["symbol"].encode()).hexdigest()))
         return out
 
@@ -779,11 +786,12 @@ class LiveScorer:
     def score_all(self, now: datetime, persist: bool = False) -> list:
         pre, sha = sc.load_prereg()
         rows = []
+        hist = self.s.cal_history()
         for sym, pairs in sorted(self.s._calobs().items()):
             obs = [o for o, _ in pairs if o.observed_at <= now]
             if not obs:
                 continue
-            ev = cc.evaluate(sym, obs, now, now.astimezone(co.ET).date())
+            ev = CS.evaluate_event(sym, obs, now, now.astimezone(co.ET).date(), hist)
             raw = [r for _, r in pairs]
             uw = next((r for r in raw if r["source"] == "UW_CALENDAR"), {})
             sector = uw.get("sector")
@@ -793,7 +801,8 @@ class LiveScorer:
                    "earnings_date": str(ev["event_date"]) if ev["event_date"] else None, "kind": ev["kind"], "evidence_mode": self._mode_of(raw),
                    "calendar": {"status_at_observation": ev["status"], "status_now": ev["status"], "reasons": ev["reasons"], "no_trade_reasons": ev["no_trade_reasons"], "eligible_for_shadow": ev["eligible_for_shadow"],
                                 "vendors": ev["vendors"], "calendar_observed_at": ev["calendar_observed_at"].isoformat() if ev["calendar_observed_at"] else None, "uw_flag": uw.get("vendor_flag"),
-                                "dependency": ev["dependency"], "stale_vendor_rows": ev.get("stale_vendor_rows", []), "note": "vendor agreement, not direct company confirmation" if ev["status"] == cc.VENDOR_CONFIRMED else None},
+                                "dependency": ev["dependency"], "stale_vendor_rows": ev.get("stale_vendor_rows", []), "note": "vendor agreement, not direct company confirmation" if ev["status"] == cc.VENDOR_CONFIRMED else None,
+                                **CS.calendar_fields(ev)},
                    "observations": [{k: r[k] for k in ("source", "date", "label", "clock", "vendor_flag", "observed_at", "raw_sha256", "request_id")} for r in sorted(raw, key=lambda r: (r["source"], r["date"]))],
                    "exploratory": {"sec_f3": {"available": False, "reason": "SEC_EVIDENCE_NOT_COLLECTED", "note": "experimental and kept out of the primary model"}}}
             if ev["event_date"] is None:

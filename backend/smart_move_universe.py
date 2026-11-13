@@ -10,7 +10,8 @@ collection_status (each value means exactly one thing):
   QUEUED_THIS_RUN                              eligible and funded in the latest planned run
   DEFERRED                                     eligible, but not funded because of the request budget: still eligible while its window is open
   NOT_TRADABLE                                 permanently not tradable under the frozen order-deadline rule (the engine answers NO VALID PREDICTION whatever the evidence; no evidence is requested)
-  ELIGIBILITY_UNKNOWN                          session unknown / vendors in conflict / tradability cannot be established: never skipped, never called deferred
+  SESSION_UNKNOWN                              (kit v6.7) no vendor label, clock or own earlier report gives BMO/AMC: shown, never skipped, not scanned
+  ELIGIBILITY_UNKNOWN                          vendors in conflict / tradability cannot be established: never skipped, never called deferred
   NOT_ELIGIBLE                                 the vendor-confirmation rules reject it (reasons listed)
   WAITING_WINDOW | WINDOW_CLOSED_NO_PREDICTION | CALENDAR_MISSING_UNCONFIRMED | REMOVED
 """
@@ -128,6 +129,9 @@ def build(svc, now, *, horizon_days: int, slot_state: dict, funded_symbols: Opti
             status = "WAITING_WINDOW"
         elif chg.get("state") == "MISSING":
             status = "CALENDAR_MISSING_UNCONFIRMED"
+        elif sess not in SIDE and r.get("session_unknown") and not r["vendor_conflict"]:
+            status = "SESSION_UNKNOWN"
+            status_note = "no vendor label, clock or earlier report of this symbol gives the session (BMO/AMC): shown here, never skipped; not scanned until a source answers."
         elif sess not in SIDE or r["vendor_conflict"] or trad is None:
             status = "ELIGIBILITY_UNKNOWN"
             status_note = "eligibility cannot be established (%s): the event is neither skipped nor called deferred." % ("session not confirmed" if sess not in SIDE else "calendar vendors disagree" if r["vendor_conflict"] else "tradability cannot be computed")
@@ -144,6 +148,7 @@ def build(svc, now, *, horizon_days: int, slot_state: dict, funded_symbols: Opti
                 deferred_reason = "shared or own evidence was retrieved before this event's prediction window opened and has not been re-requested yet (not a valid prediction until it is); " + deferred_reason
         rows.append({"symbol": sym, "company": m.get("company"), "event_date": date_str, "date_confirmed": bool(r["event_date"]), "session": sess, "sector": m.get("sector"), "market_cap": m.get("marketcap"), "priority_proxy_tier": E20.cap_tier(m.get("marketcap")),
                      "excluded_by_proxy": False, "vendor_status": r["vendor_status"], "vendor_conflict": r["vendor_conflict"], "prediction_eligible": r["prediction_eligible"], "ineligible_reasons": r["ineligible_reasons"],
+                     "confirmation": r.get("confirmation"), "session_source": r.get("session_source"),
                      "window": window, "window_start": _times(ws) if ws else None, "cutoff": _times(cu) if cu else None, "hours_to_cutoff": round((cu - now).total_seconds() / 3600, 2) if cu else None,
                      "calendar_tier": slot["tier"] if slot else None, "calendar_slot": slot["key"] if slot else None, "calendar_slot_state": cal_fresh, "calendar_slot_observed_at": (slot_state_row or {}).get("observed_at"),
                      "calendar_change": chg.get("state"), "evidence": ev, "collection_status": status, "tradable": trad, "status_note": status_note, "deferred": status == "DEFERRED", "deferred_reason": deferred_reason, "latest_result": res})

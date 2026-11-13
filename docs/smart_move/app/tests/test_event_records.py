@@ -63,7 +63,8 @@ def test_estimated_unknown_timing_and_stale_calendars_are_never_eligible():
     est = obs("EEE", [row("UW_CALENDAR", "EEE", "2026-11-04", "premarket", flag="estimation"), row("FINNHUB", "EEE", "2026-11-04", "bmo")])
     assert est["prediction_eligible"] is False and est["ineligible_reasons"]
     single = obs("FFF", [row("UW_CALENDAR", "FFF", "2026-11-04", "premarket", flag="company")])
-    assert single["prediction_eligible"] is False and "SINGLE_VENDOR" in single["ineligible_reasons"]
+    assert single["prediction_eligible"] is True and single["confirmation"] == "single-vendor" and single["ineligible_reasons"] == []   # kit v6.7 (owner decision
+    assert "SINGLE_VENDOR_ACCEPTED_KIT_V6_7" in single["vendor_reasons"]                       # 2026-11-13): a single-vendor date is scanned and LABELLED, never skipped
     notime = obs("GGG", [row("UW_CALENDAR", "GGG", "2026-11-04", None, flag="company"), row("FINNHUB", "GGG", "2026-11-04", None)])
     assert notime["session"] == "UNKNOWN" and notime["prediction_eligible"] is False and notime["release_basis"] == "UNKNOWN" and "UNKNOWN_TIMING" in notime["ineligible_reasons"]
     stale = obs("HHH", confirmed("HHH", "2026-11-04", at=T0 - timedelta(hours=9)))
