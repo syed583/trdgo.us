@@ -118,6 +118,7 @@ backend/migrations/2026_10_28_A_audit_role_TEMPLATE.sql
 backend/migrations/institutional/001_institutional_schema.py
 backend/migrations/institutional/pg_compat_check.py
 backend/model_prediction_service.py
+backend/model_privacy.py
 backend/models.py
 backend/models_calls.py
 backend/models_demo_trades.py
