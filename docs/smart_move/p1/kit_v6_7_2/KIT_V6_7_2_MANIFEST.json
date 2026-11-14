@@ -1,0 +1,41 @@
+{
+ "kit": "kit-v6.7.2",
+ "all_or_nothing": true,
+ "files": [
+  {
+   "path": "backend/smart_move_calendar_session.py",
+   "role": "CHANGED",
+   "after_sha256": "ff1dd126fec4794ffe0d7475383f47677794786b7ddd5511e602206dd977d09b",
+   "before_sha256": "9bdb4206f1d9646615cc56e446be1be1dbc166ae6cf0b02b73aa9762de6128f0"
+  },
+  {
+   "path": "backend/smart_move_calendar_tiers.py",
+   "role": "CHANGED",
+   "after_sha256": "49e33adaa011db0724ff64d9fd0cee4461075c531c3c25276ff5eb2d06f69ea3",
+   "before_sha256": "05f2edb87404bc61d704d3e2b3a36d36954b0d761cd88272f6eeda55645ee4e9"
+  },
+  {
+   "path": "backend/smart_move_live_publisher.py",
+   "role": "CHANGED",
+   "after_sha256": "f9f03d5850249a8edf2c4f930eb5c5b527f62f8cb619aee9ba181a0d211efaca",
+   "before_sha256": "fb6c0b9f307f0d2fecf2ed59c44513f8370f5078fef644b11c49a633772be606"
+  }
+ ],
+ "protected_unchanged": {
+  "backend/smart_move_engine20.py": "467470c36dd83fc0b229c45e86282e9baa00a47f5ee4001515d1790aefec6ee6",
+  "backend/smart_move_live.py": "cf212e408d55e3777f81fdbbe51b6e8deea4e5e7179e79fbc7c91d9375971ed9",
+  "backend/smart_move_calendar_changes.py": "f7b6bda580e62c408e5a3befb96162e7907ec36222832ecf843b9136657dca2a",
+  "backend/smart_move_calendar_guard.py": "b4d2994ef328a7a432d95f3561e65d5e8f225b7429fd7401f1c9e33002980ec0",
+  "backend/smart_move_collection_jobs.py": "81d8d2d4d7bbcca948c6ff0aaf1cdd941680e7996a26bb21d3172bc22a36e411",
+  "backend/smart_move_outcomes.py": "0572074c4d0cf81f010fc9e07a774ee59efc9a48dea07cd813d32f2e89ffe4ed",
+  "backend/smart_move_collection_runner.py": "250464de825c4d66c973197e6f19a09f3e23559f26c3a86ae5f8e58f217a9c3e",
+  "backend/smart_move_monday_bmo.py": "5a926530b29417ad246b1a3caa069d8ccfea27f783976bb513be0b99ed28ecbe",
+  "backend/smart_move_universe.py": "3ca98cfef84d07a4ec001a29efe93c8c303ce74ebef08bdd431f45213fbd2cd0",
+  "backend/smart_move_event_records.py": "543e38dad350cfb141289fbf236fc62b9f38e690ef4e300d6b77fe42364586ea"
+ },
+ "frozen_pins_informational": {
+  "docs/smart_move/shadow_impl/smvshadow/scorer.py": "62e09aa0ed785e2a",
+  "backend/smart_move_v2.py": "de2d8f9612934338"
+ },
+ "note": "Kit v6.7.2 (2026-11-14), from the read-only diagnosis of the production store. (1) agreement-v1: when the latest row of two or more sources agree on the same date AND session, the event is judged again over only those rows - the collector fetches Unusual Whales, then Finviz, then Finnhub, so a Finnhub row is always observed last and the engine picks the most recently observed source date, which let one Finnhub row override two agreeing vendors. Fires only where nothing was eligible, only on exactly one agreeing group, never on a session-less row, so a genuine contradiction stays refused. (2) T1_RUN_MAX 6 -> 12, so all ~44 slots of the 30-day horizon are refreshable inside the engine 24 h limit (~44-60 UW requests a day). (3) each prediction records calendar_rule and agreement_sources. Scoring, factors, thresholds, the liquidity gate, the windows and the budgets are unchanged."
+}
