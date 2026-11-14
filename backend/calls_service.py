@@ -14,6 +14,7 @@ never recomputed, so it cannot drift from the call it explains.
 
 from __future__ import annotations
 
+import logging
 import json
 import threading
 import time
@@ -35,6 +36,9 @@ BOARD_RECORD_EVERY = 30 * 60
 
 _ready = False
 _ready_lock = threading.Lock()
+
+
+_log = logging.getLogger("calls")
 
 
 def _ensure_table() -> None:
@@ -252,6 +256,40 @@ def serialise(row: TradeCall, with_parameters: bool = False) -> dict:
     return out
 
 
+# The scored parameters, their weights and points, the buy/sell breakdown and the per-parameter working ARE the
+# model. A.25 stopped the Analysis screen from drawing them; this stops the server from sending them at all, on
+# every route, to anyone who is not an administrator. A reader still gets the decision, the direction score, the
+# confidence, the coverage and the reasons in words - just not the arithmetic that produced them.
+PRIVATE_CALL_KEYS = ("parameters",)
+PRIVATE_WHY_KEYS = ("buy_sell",)
+# `missing` names parameters, so a non-admin must not see its contents - but the screen does `w.missing.length`
+# without a guard, so the KEY has to stay and the list has to be empty. Dropping it crashed the page.
+EMPTIED_WHY_KEYS = ("missing",)
+PRIVATE_REASON_KEYS = ("points", "points_label", "detail")
+
+
+def public_view(call: Optional[dict]) -> Optional[dict]:
+    """The same call with the model's working removed. Used for every non-admin reader."""
+    if not call:
+        return call
+    out = {k: v for k, v in call.items() if k not in PRIVATE_CALL_KEYS}
+    why_in = out.get("why")
+    if isinstance(why_in, dict):
+        why_out = {k: ([] if k in EMPTIED_WHY_KEYS else v)
+                   for k, v in why_in.items() if k not in PRIVATE_WHY_KEYS}
+        for side in ("for", "against"):
+            rows = why_out.get(side)
+            if isinstance(rows, list):
+                why_out[side] = [{k: v for k, v in (r or {}).items() if k not in PRIVATE_REASON_KEYS}
+                                 for r in rows if isinstance(r, dict)]
+        out["why"] = why_out
+    return out
+
+
+def public_views(calls) -> list:
+    return [public_view(c) for c in (calls or [])]
+
+
 def latest(symbol: str, horizon: Optional[str] = None,
            origin: Optional[str] = None) -> Optional[dict]:
     _ensure_table()
@@ -316,8 +354,13 @@ def record_async(symbol: str, result: dict, *, horizon: str = "SWING",
     the screen that made the call should not wait on its own bookkeeping.
     """
     def run() -> None:
-        record(symbol, result, horizon=horizon, origin=origin,
-               price=_price(symbol), spy=_price("SPY"))
+        # This runs on its own thread, so an exception here used to vanish with the thread and the call was
+        # simply never stored. The traceback is written down; the analysis the reader is watching is unaffected.
+        try:
+            record(symbol, result, horizon=horizon, origin=origin,
+                   price=_price(symbol), spy=_price("SPY"))
+        except Exception:  # noqa: BLE001 - bookkeeping must never break the analysis, but it must leave a trace
+            _log.exception("record_async failed for %s (horizon %s)", symbol, horizon)
 
     threading.Thread(target=run, daemon=True, name="record-call").start()
 

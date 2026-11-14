@@ -63,6 +63,17 @@ class _SymbolGuardRoute(APIRoute):
 
 router = APIRouter(prefix="/api", tags=["dashboard"], route_class=_SymbolGuardRoute)
 
+def _is_admin(request: Request) -> bool:
+    """True only for an administrator. Used to decide whether the model's own working may leave the server:
+    the parameter list, the weights, the points, the buy/sell breakdown and the per-parameter explanations."""
+    import auth_service as auth
+    try:
+        user = auth.current_user(request) or {}
+    except Exception:  # noqa: BLE001 - an auth problem must mean "not an admin", never "admin"
+        return False
+    return str(user.get("role") or "").strip().lower() == "admin"
+
+
 def _require_ops(request: Request) -> dict:
     """Shared, service-wide actions (cache clear, snapshot capture/fill, call evaluation, quarterly SEC ingest) change
     state every user sees and cost provider budget. They are for the operator, not for any account that merely
@@ -1551,10 +1562,12 @@ def snapshot_fill(request: Request, payload: dict = Body(default={})) -> dict:
 
 
 @router.get("/snapshots/evaluate")
-def snapshot_evaluate(horizon: int = 10) -> dict:
-    """Per-parameter hit rate and edge against the base rate."""
+def snapshot_evaluate(request: Request, horizon: int = 10) -> dict:
+    """Per-parameter hit rate and edge against the base rate. Administrator only: it names every parameter."""
     import snapshot_service as snap
 
+    if not _is_admin(request):
+        return {"status": "ADMIN_ONLY", "parameters": []}
     return snap.evaluate_parameters(horizon=horizon)
 
 
@@ -1618,22 +1631,26 @@ def calls_evaluate(request: Request) -> dict:
 
 
 @router.get("/calls/history")
-def calls_history(symbol: Optional[str] = None, horizon: Optional[str] = None,
+def calls_history(request: Request, symbol: Optional[str] = None, horizon: Optional[str] = None,
                   limit: int = 50) -> dict:
     import calls_service
 
     rows = calls_service.history(symbol, (horizon or "").upper() or None, limit)
+    if not _is_admin(request):
+        rows = calls_service.public_views(rows)
     return {"status": "OK", "count": len(rows), "calls": rows}
 
 
 @router.get("/calls/latest/{symbol}")
-def calls_latest(symbol: str, horizon: Optional[str] = None,
+def calls_latest(request: Request, symbol: str, horizon: Optional[str] = None,
                  origin: Optional[str] = None) -> dict:
     """The most recent stored call for a symbol, with why it was made."""
     import calls_service
 
     row = calls_service.latest(symbol, (horizon or "").upper() or None,
                                (origin or "").strip() or None)
+    if not _is_admin(request):
+        row = calls_service.public_view(row)
     return ({"status": "OK", "call": row} if row
             else {"status": "NO_DATA", "call": None})
 
@@ -1667,19 +1684,24 @@ def chat(request: Request, payload: dict = Body(...)) -> dict:
 
 
 @router.get("/calls/{call_id}")
-def calls_get(call_id: int) -> dict:
+def calls_get(request: Request, call_id: int) -> dict:
     import calls_service
 
     row = calls_service.get(call_id)
+    if not _is_admin(request):
+        row = calls_service.public_view(row)
     return ({"status": "OK", "call": row} if row
             else {"status": "NO_DATA", "call": None})
 
 
 @router.get("/directional-model/weights")
-def directional_weights() -> dict:
-    """The weight table, so the UI can show what each parameter can score."""
+def directional_weights(request: Request) -> dict:
+    """The weight table, so the UI can show what each parameter can score. Administrator only: this IS the model."""
     import directional_model as dm
 
+    if not _is_admin(request):
+        return {"status": "ADMIN_ONLY", "weights": {}, "total": None, "directional_weight": None,
+                "non_directional": [], "insider_split": None, "decisions": []}
     return {
         "weights": dm.WEIGHTS,
         "total": dm.TOTAL,
@@ -1931,7 +1953,7 @@ def options_levels(symbol: str, expiry: Optional[str] = None) -> dict:
 
 
 @router.post("/explain/parameter/{symbol}/{parameter}")
-def explain_parameter(symbol: str, parameter: str,
+def explain_parameter(request: Request, symbol: str, parameter: str,
                       horizon: str = "") -> dict:
     """
     What one parameter is actually saying about this company.
@@ -1943,6 +1965,8 @@ def explain_parameter(symbol: str, parameter: str,
     """
     import parameter_explainer as explainer
 
+    if not _is_admin(request):
+        return {"status": "ADMIN_ONLY", "symbol": symbol, "parameter": None, "explanation": None}
     return explainer.explain(symbol, parameter, horizon=horizon)
 
 

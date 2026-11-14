@@ -28,6 +28,7 @@ cached figures -- would be exactly the padded progress bar described above.
 
 from __future__ import annotations
 
+import logging
 import json
 import queue
 import threading
@@ -201,6 +202,9 @@ def categorise(signals: list[dict]) -> list[dict]:
 # by the time anyone can read it, and a company's SIC code does not change
 # between two presses of Analyse. Re-fetching them added about fifty seconds
 # to every run and could not change a single figure on the screen.
+_log = logging.getLogger("analysis")
+
+
 SLOW_MOVING = ("sec", "form4", "ownership", "institutional", "profile",
                "earnhist", "symvalid", "symsearch")
 
@@ -295,6 +299,11 @@ def stream_analysis(symbol: str, refresh: bool = False,
 
             updates.put({"type": "result", "result": result})
         except Exception as exc:  # noqa: BLE001
+            # The page used to receive only type(exc).__name__ and nothing was written down, so an intermittent
+            # failure here left no trace at all on the server. The traceback is logged; the browser still gets
+            # only the class name, because the message can carry provider detail a reader should not see.
+            _log.exception("analysis worker failed for %s (horizon %s): %s",
+                           symbol, horizon, type(exc).__name__)
             updates.put({"type": "error", "detail": type(exc).__name__})
         finally:
             updates.put(None)
@@ -337,6 +346,8 @@ def stream_analysis(symbol: str, refresh: bool = False,
                 "sources_total": TOTAL_STAGES,
             })
         elif item["type"] == "error":
+            _log.error("analysis stream for %s (horizon %s) ends in an error event: %s",
+                       symbol, horizon, item.get("detail"))
             yield _event("error", item)
 
     yield _event("done", {"elapsed": round(time.time() - started, 2)})
