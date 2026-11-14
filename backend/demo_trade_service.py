@@ -48,6 +48,35 @@ RETIRED: dict[str, str] = {
     "claude_pro": "Claude Pro Intraday (retired)",
 }
 
+# A.26 (owner decision 2026-11-14): what a NON-ADMIN is told a strategy is called. The real names never leave the server for
+# an ordinary user - not in a label, not in a key - while the database rows, the internal keys, the scoring and the MT5
+# magic numbers keep the real names. An administrator sees the real names unchanged.
+AGENT_PUBLIC: dict[str, tuple[str, str]] = {          # internal key -> (public key, public label)
+    "grok": ("agent1", "Agent 1"),
+    "meta": ("agent2", "Agent 2"),
+    "kimi": ("agent3", "Agent 3"),
+    "gemini": ("agent4", "Agent 4"),
+    "chatgpt": ("agent5", "Agent 5 (retired)"),
+    "claude_pro": ("agent6", "Agent 6 (retired)"),
+}
+_AGENT_INTERNAL = {pub: key for key, (pub, _lab) in AGENT_PUBLIC.items()}
+
+
+def public_key(key: str) -> str:
+    """The strategy key a non-admin sees."""
+    return AGENT_PUBLIC.get(key, (key, key))[0]
+
+
+def public_label(key: str) -> str:
+    """The strategy name a non-admin sees. Unknown keys fall through unchanged rather than inventing an agent number."""
+    return AGENT_PUBLIC.get(key, (key, strategy_label(key)))[1]
+
+
+def internal_key(key: str) -> str:
+    """The real key behind whatever the browser sent, so a non-admin's filter still works."""
+    k = (key or "").strip()
+    return _AGENT_INTERNAL.get(k.lower(), k)
+
 EXIT_LABELS = {
     "OPEN": "Open", "STOP": "Stopped", "TARGET": "Target", "SCORE_EXIT": "Score exit",
     "EOD_CLOSE": "Closed before the bell", "CLEANUP": "Cleanup (prior-day leftover)", "TIMED_EXIT": "Timed exit",
@@ -904,7 +933,9 @@ def _quote_fields(r, live: bool) -> dict:
     return {"bid": bid, "ask": ask, "spread": spread, "spread_pct": r.entry_spread_pct, "quote_age_s": r.entry_quote_age_s}
 
 
-def blotter(strategy: str = "", date: str = "") -> dict:
+def blotter(strategy: str = "", date: str = "", reveal: bool = True) -> dict:
+    """reveal=False (every non-admin caller) replaces each strategy key and label with its Agent name before the answer
+    leaves the server (A.26). Nothing else about the row changes."""
     ensure_schema()
     # Refresh in the background so the page loads instantly from the DB rather
     # than blocking on the board tick (slow on a cold cache). The next refresh
@@ -922,6 +953,7 @@ def blotter(strategy: str = "", date: str = "") -> dict:
     s = database.SessionLocal()
     try:
         q = s.query(DemoTrade).filter(DemoTrade.session_date == day)
+        strategy = internal_key(strategy)                      # a non-admin may have sent agent1..agent6 (A.26)
         if strategy and strategy != "all":
             q = q.filter(DemoTrade.strategy == strategy)
         rows = q.order_by(DemoTrade.entry_time.asc()).all()
@@ -931,7 +963,8 @@ def blotter(strategy: str = "", date: str = "") -> dict:
             if strategy and strategy != "all":
                 cq = cq.filter(DemoTrade.strategy == strategy)
             carried = [{
-                "id": r.id, "strategy": r.strategy, "strategy_label": strategy_label(r.strategy),
+                "id": r.id, "strategy": r.strategy if reveal else public_key(r.strategy),
+            "strategy_label": strategy_label(r.strategy) if reveal else public_label(r.strategy),
                 "symbol": r.symbol, "side": r.side, "shares": r.shares, "opened_on": str(r.session_date),
                 "entry_price": r.entry_price, "last_price": r.last_price, "stop": r.stop, "target": r.target,
                 "profit": r.profit, "profit_pct": r.profit_pct, "status": r.status,
@@ -946,7 +979,8 @@ def blotter(strategy: str = "", date: str = "") -> dict:
         out = [{
             "exit_basis": _basis(r)[0], "gap_effect": _basis(r)[1],
             "exit_date": r.exit_time.astimezone(ET).date().isoformat() if r.exit_time else None,
-            "id": r.id, "strategy": r.strategy, "strategy_label": strategy_label(r.strategy),
+            "id": r.id, "strategy": r.strategy if reveal else public_key(r.strategy),
+            "strategy_label": strategy_label(r.strategy) if reveal else public_label(r.strategy),
             "symbol": r.symbol, "side": r.side, "shares": r.shares,
             "notional": round(r.entry_price * r.shares, 2) if (r.entry_price and r.shares) else None,
             "entry_time": r.entry_time.astimezone(ET).strftime("%I:%M:%S %p") if r.entry_time else None,
@@ -973,8 +1007,10 @@ def blotter(strategy: str = "", date: str = "") -> dict:
         closed = sum(1 for x in out if x["status"] != "OPEN")
         w = entry_window(et.date())
         return {"status": "OK", "source": SOURCE, "date": str(day),
-                "strategies": [{"key": k, "label": v[0]} for k, v in MODELS.items()] +
-                              [{"key": k, "label": v} for k, v in RETIRED.items()],
+                "strategies": ([{"key": k, "label": v[0]} for k, v in MODELS.items()] +
+                               [{"key": k, "label": v} for k, v in RETIRED.items()]) if reveal else
+                              ([{"key": public_key(k), "label": public_label(k)} for k in MODELS] +
+                               [{"key": public_key(k), "label": public_label(k)} for k in RETIRED]),
                 "rows": out, "total_profit": total, "total_notional": notional,
                 "total_pct": round(total / notional * 100, 2) if notional else None, "count": len(out),
                 # still-open positions from earlier dates: listed here, NOT in rows / totals (their P&L stays

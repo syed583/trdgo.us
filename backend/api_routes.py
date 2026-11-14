@@ -3379,13 +3379,18 @@ def institutional_mapping(confidence: str = "", limit: int = 100, offset: int = 
 
 
 @router.get("/strategy-trades")
-def strategy_trades(strategy: str = "", date: str = "") -> dict:
+def strategy_trades(request: Request, strategy: str = "", date: str = "") -> dict:
     """Demo paper-trade blotter -- $10,000-notional trades opened from the intraday model signals, tracked live
     (entry/stop/target, breakeven trail, live P&L, 15:50 ET close). The throttled tick that opens/updates trades runs on
     each request. Paper only. A failure is reported as status ERROR with its reason, never as an empty book."""
+    import auth_service as auth
     import demo_trade_service as dts
+
+    # A.26: only an administrator is told which model a strategy is; everyone else sees Agent 1-4.
+    user = auth.current_user(request) or {}
+    reveal = str(user.get("role") or "").strip().lower() == "admin"
     try:
-        return dts.blotter(strategy, date)
+        return dts.blotter(strategy, date, reveal=reveal)
     except Exception as e:  # noqa: BLE001
         return {"status": "ERROR", "detail": f"{type(e).__name__}: {str(e)[:200]}", "rows": [],
                 "total_profit": 0, "count": 0}

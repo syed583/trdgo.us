@@ -33,9 +33,12 @@ def test_the_four_pages_leave_the_menu_and_keep_their_routes():
 
 def test_the_analysis_item_is_renamed_and_the_kept_items_are_untouched():
     assert "label: 'Analysis Intraday'" in SIDEBAR and "to: '/ai-insights'" in SIDEBAR
-    for path in ("/grok-intraday", "/meta-intraday", "/kimi-intraday", "/gemini-intraday",
-                 "/all-intraday-models", "/strategy-trades", "/smart-move/engine20"):
+    for path in ("/strategy-trades", "/smart-move/engine20"):
         assert ("to: '%s'" % path) in SIDEBAR, "%s should still be in the menu" % path
+    # A.26 (owner decision 2026-11-14) took the four boards and All Intraday out of the user menu; their routes stay,
+    # which test_a26_agent_names.py covers.
+    for path in ("/grok-intraday", "/meta-intraday", "/kimi-intraday", "/gemini-intraday", "/all-intraday-models"):
+        assert ("to: '%s'" % path) not in SIDEBAR
 
 
 # ----------------------------------------------------------------- Trade Plan

@@ -39,10 +39,14 @@ def test_the_seven_boards_are_out_of_the_menu_but_their_routes_still_exist():
         assert ("to: '%s'" % path) in side, "%s should still be in the menu" % path
 
 
-def test_the_intraday_boards_keep_their_menu_entries():
-    side = SIDEBAR.read_text(encoding="utf-8")
+def test_the_intraday_boards_keep_working_even_after_a26_hid_them():
+    """A.25 left the boards in the menu; A.26 (owner decision 2026-11-14) hid them while keeping them running. What
+    matters in both releases is that the ROUTES and the paper tracker's bindings survive."""
+    app = APP.read_text(encoding="utf-8")
+    import demo_trade_service as dts
     for path in ("/grok-intraday", "/meta-intraday", "/kimi-intraday", "/gemini-intraday"):
-        assert ("to: '%s'" % path) in side
+        assert ('path="%s"' % path) in app, "%s lost its route" % path
+    assert set(dts.MODELS) == {"grok", "meta", "kimi", "gemini"}
 
 
 # ----------------------------------------------------------------- Unusual Activity priority and budget
@@ -177,10 +181,13 @@ def test_nothing_in_this_change_touches_smart_move_mt5_or_the_intraday_boards():
     uncommitted. Independent of whether the work has been committed yet."""
     import subprocess
     names = set()
-    for args in (["diff", "--name-only", "38a030fd..HEAD"], ["diff", "--name-only"]):
+    # A.25's OWN range. Measuring "everything since A.24" would drag later releases into this release's guard.
+    for args in (["diff", "--name-only", "38a030fd..e11570da"],):
         out = subprocess.run(["git", "-C", str(ROOT.parent), *args], capture_output=True, text=True).stdout
         names.update(l.strip() for l in out.splitlines() if l.strip())
-    changed = sorted(n for n in names if not n.startswith("deploy/intraday_cleanup/"))   # the built package mirrors the source
+    changed = sorted(n for n in names
+                     if not n.startswith("deploy/intraday_cleanup/")      # the built package mirrors the source
+                     and not n.startswith("backend/tests/"))              # a test file named after a board is not a board
     assert changed, "expected a diff against A.24 to inspect"
     for f in changed:
         low = f.lower()

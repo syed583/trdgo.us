@@ -40,11 +40,10 @@ const MT5_ITEMS: NavEntry[] = [
 const NAV_GROUPS: NavGroup[] = [
   { heading: 'Analysis', items: [
     { to: '/ai-insights', label: 'Analysis Intraday', icon: <Brain size={S} /> },
-    { to: '/grok-intraday', label: 'Grok Intraday', icon: <Zap size={S} /> },
-    { to: '/meta-intraday', label: 'Meta Intraday', icon: <Layers size={S} /> },
-    { to: '/kimi-intraday', label: 'Kimi Intraday', icon: <Compass size={S} /> },
-    { to: '/gemini-intraday', label: 'Gemini Intraday', icon: <Waypoints size={S} /> },
-    { to: '/all-intraday-models', label: 'All Intraday', icon: <ListOrdered size={S} /> },
+    // A.26 (owner decision 2026-11-14): the four per-model intraday boards and All Intraday left the sidebar. They KEEP
+    // RUNNING - the intraday feed, the paper tracker and the MT5 mirror are untouched - and their routes still answer, so
+    // an administrator reaches them by URL (/grok-intraday, /meta-intraday, /kimi-intraday, /gemini-intraday,
+    // /all-intraday-models). NAV_GROUPS is the non-admin menu; an admin's sidebar shows only the admin links anyway.
     { to: '/strategy-trades', label: 'Strategy Trades', icon: <Receipt size={S} /> },
     // A.25 (owner decision 2026-11-13, after the intraday audit): Tradgo Call, Trade Plan, Signal History and Sector
     // Comparison left the menu. Their ROUTES still work (/tradgo-call, /trade-plan, /signal-history, /peers) and every
