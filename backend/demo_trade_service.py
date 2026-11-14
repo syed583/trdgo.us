@@ -10,7 +10,7 @@ The rules (tab_settings.PAPER_EXECUTION):
     or old quote, or a stale board input (the freshness gate), means no entry;
   * size = ``notional_usd`` / entry price, floored to whole shares (no fixed 100 shares);
   * stop / target levels as the board computed them (0.5 / 1.0 ATR), re-based on the real entry price;
-  * breakeven trail: once profit reaches ``breakeven_at`` of the target distance the stop moves to the entry;
+  * breakeven trail: once profit reaches ``breakeven_atr`` ATR (A.27: 0.40) the stop moves to the entry;
   * exits: STOP, TARGET, SCORE_EXIT (score falls 15 points against the entry), and EOD_CLOSE: EVERY open position is
     closed ``eod_minutes_before_close`` before the official close (15:50 ET; 12:50 on an early-close day);
   * fills are the observed crossing price (``paper_fills`` ``observed``), never the level itself;
@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import threading
 import time as _time
 from datetime import datetime, time as dtime, timedelta, timezone
@@ -396,17 +397,29 @@ def _exit_reason(t, last: float, score: Optional[float], after_close: bool) -> O
 
 def breakeven_stop(side: str, entry: float, stop: Optional[float], target: Optional[float], last: float,
                    trigger: Optional[float] = None) -> Optional[float]:
-    """The new stop when the breakeven trail fires, else None. Pure: fires once profit has covered ``trigger`` (default
-    PAPER_EXECUTION breakeven_at = 50 %) of the distance from the entry to the target, and only moves the stop in the
-    trade's favour (a stop already at or beyond the entry is left alone)."""
+    """The new stop when the breakeven trail fires, else None. Pure, and only ever moves the stop in the trade's favour
+    (a stop already at or beyond the entry is left alone).
+
+    A.27: the trigger is read from PAPER_EXECUTION ``breakeven_atr`` as a number of ATR (0.40, chosen by backtest). ATR is
+    recovered from the target distance, which the tracker sets to ``target_atr_mult`` ATR. When ``breakeven_atr`` is None
+    the old behaviour applies: ``breakeven_at`` as a share of the distance to the target. An explicit ``trigger`` argument
+    still overrides both and is read as a share of that distance, so existing callers and tests are unaffected."""
     if target is None or entry is None or last is None:
         return None
-    trig = float(_cfg().get("breakeven_at", 0.5)) if trigger is None else float(trigger)
     dist = abs(target - entry)
     if dist <= 0:
         return None
+    if trigger is not None:
+        need = float(trigger) * dist
+    else:
+        atr_trig = _cfg().get("breakeven_atr")
+        if atr_trig is None:
+            need = float(_cfg().get("breakeven_at", 0.5)) * dist
+        else:
+            atr = dist / target_atr_mult()                      # the board's full ATR, from the scaled target distance
+            need = float(atr_trig) * atr
     gain = (last - entry) if side == "LONG" else (entry - last)
-    if gain < trig * dist:
+    if gain + 1e-9 < need:          # a price exactly ON the trigger must fire it; binary floats miss that by a hair
         return None
     if stop is not None and ((side == "LONG" and stop >= entry) or (side == "SHORT" and stop <= entry)):
         return None
@@ -475,6 +488,42 @@ def _with_levels(side: str, entry: float, sl, tp):
     return sl, tp
 
 
+def market_is_down(now: Optional[datetime] = None) -> tuple:
+    """(True/False/None, detail) - is SPY or QQQ below its own day open right now? None means neither could be read, and a
+    reading the engine cannot make must never silently open a trade (A.27)."""
+    proxies = list(_cfg().get("short_market_proxies") or ("SPY", "QQQ"))
+    seen, down = [], False
+    for sym in proxies:
+        try:
+            import live_market_service as market
+            q = market.get_quote(sym) or {}
+        except Exception:  # noqa: BLE001 - a provider problem is "unknown", never "go ahead"
+            q = {}
+        px, op = q.get("price"), q.get("open")
+        if px is None or op is None:
+            continue
+        seen.append("%s %.2f vs open %.2f" % (sym, float(px), float(op)))
+        if float(px) < float(op):
+            down = True
+    if not seen:
+        return None, "no %s reading" % "/".join(proxies)
+    return down, "; ".join(seen)
+
+
+def short_block_reason(side: str, now: Optional[datetime] = None) -> Optional[str]:
+    """A.27 (owner decision 2026-11-14): the reason not to open a SHORT, or None when it may open. Longs are never
+    affected. With the filter on and the market not readable, the short is refused: the measured edge exists only when
+    the market is confirmed down."""
+    if side != "SHORT" or not _cfg().get("short_market_filter", False):
+        return None
+    down, detail = market_is_down(now)
+    if down is True:
+        return None
+    if down is None:
+        return "SHORT_MARKET_UNKNOWN (%s)" % detail
+    return "SHORT_MARKET_NOT_DOWN (%s)" % detail
+
+
 def stop_cap_reason(entry: float, sl) -> Optional[str]:
     """STOP CAP (owner decision 2026-11-12): the reason not to open when the stop is further than PAPER_EXECUTION['max_stop_pct']
     from the entry price; None when the trade may open. A missing stop or a cap of 0 / None disables the rule."""
@@ -502,12 +551,22 @@ def stop_cap_hits() -> dict:
     return dict(_stop_cap_hits)
 
 
+def target_atr_mult() -> float:
+    """How many ATR the target sits from the entry (A.27: 0.5; the board computes 1.0). 1.0 restores the old behaviour."""
+    try:
+        return max(0.05, float(_cfg().get("target_atr_mult", 1.0)))
+    except (TypeError, ValueError):
+        return 1.0
+
+
 def rebase_levels(side: str, board_entry, sl, tp, entry: float):
-    """The board's stop / target distances (computed from ITS price) applied to the real entry price."""
+    """The board's stop / target distances (computed from ITS price) applied to the real entry price. The STOP distance is
+    the board's own; the TARGET distance is scaled by target_atr_mult (A.27), because the board's 1.0 ATR target was never
+    reached in 559 trades. The board itself is not modified - this is the tracker's own level."""
     if board_entry and sl is not None and tp is not None:
         sgn = 1 if side == "LONG" else -1
         sl_d, tp_d = abs(float(board_entry) - float(sl)), abs(float(tp) - float(board_entry))
-        return round(entry - sgn * sl_d, 2), round(entry + sgn * tp_d, 2)
+        return round(entry - sgn * sl_d, 2), round(entry + sgn * tp_d * target_atr_mult(), 2)
     return _with_levels(side, entry, None, None)
 
 
@@ -556,6 +615,29 @@ def _evidence(info: dict, q: dict, shares: int, entry: float, reason_ok: str = "
         return json.dumps(ev, default=str)
     except Exception:  # noqa: BLE001
         return json.dumps({"error": "evidence not serialisable"})
+
+
+def score_tick_dir() -> str:
+    """Where the per-tick score log is written (A.27). Beside the other state folders, never inside the app's code."""
+    return os.environ.get("SCORE_TICK_DIR") or os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "score_ticks")
+
+
+def _log_score_tick(t, score, et) -> None:
+    """One line per open trade per tick: which trade, when, the score the tracker saw, and the entry score it is compared
+    with. Append-only JSONL, one file a day. A failure here can never affect a trade (A.27)."""
+    if score is None or not _cfg().get("score_tick_log", False):
+        return
+    try:
+        d = score_tick_dir()
+        os.makedirs(d, exist_ok=True)
+        rec = {"trade_id": t.id, "strategy": t.strategy, "symbol": t.symbol, "side": t.side,
+               "at": et.astimezone(timezone.utc).isoformat(), "score": round(float(score), 2),
+               "score_at_entry": t.score_at_entry, "status": t.status}
+        with open(os.path.join(d, "%s.jsonl" % et.date().isoformat()), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, default=str) + "\n")
+    except Exception:  # noqa: BLE001 - a log must never break the tracker
+        pass
 
 
 _pending_events: list = []
@@ -713,6 +795,7 @@ def tick(force: bool = False) -> None:
                     if nb is not None:
                         stop, be_moved = nb, True
                         _log.info("BREAKEVEN %s %s #%s: stop -> %.4f at %.4f", t.strategy, t.symbol, t.id, stop, last)
+                _log_score_tick(t, info.get("score"), et)           # A.27: the score this tick saw, for later analysis
                 profit, pct = _pnl(t.side, t.entry_price, last, t.shares)
                 if leftover:
                     reason = "CLEANUP"
@@ -764,6 +847,10 @@ def tick(force: bool = False) -> None:
                             _log.info("NO ENTRY %s %s: price %.2f above the notional", strat, sym, entry)
                             continue
                         side = "LONG" if sig == "BUY" else "SHORT"
+                        blocked = short_block_reason(side, et)              # A.27: shorts only into a market that is down
+                        if blocked:
+                            _log.info("NO ENTRY %s %s: %s", strat, sym, blocked)
+                            continue
                         sl, tp = rebase_levels(side, info.get("entry"), info.get("sl"), info.get("tp"), entry)
                         capped = stop_cap_reason(entry, sl)
                         if capped:
@@ -1022,6 +1109,8 @@ def blotter(strategy: str = "", date: str = "", reveal: bool = True) -> dict:
                 "rules": {"notional_usd": _cfg().get("notional_usd"), "max_stop_pct": _cfg().get("max_stop_pct"), "stop_cap_hits": stop_cap_hits(), "entry_window_et": [w[0].strftime("%H:%M"), w[1].strftime("%H:%M")] if w else None,
                           "eod_close_et": eod_cutoff(et.date()).strftime("%H:%M") if eod_cutoff(et.date()) else None,
                           "quote_max_age_s": _cfg().get("quote_max_age_s"), "breakeven_at": _cfg().get("breakeven_at"),
+                          "target_atr_mult": _cfg().get("target_atr_mult"), "short_market_filter": bool(_cfg().get("short_market_filter")),
+                          "breakeven_atr": _cfg().get("breakeven_atr"),
                           "fill_model": _cfg().get("fill_model")},
                 "rth": _is_rth(et), "after_close": _after_close(et), "entries_open": _can_open(et)}
     finally:

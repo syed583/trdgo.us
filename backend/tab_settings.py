@@ -464,7 +464,22 @@ PAPER_EXECUTION: dict = {
                                       # 2026-11-13 after the 2026-11-12 close ran 19-27 min late under provider slot starvation)
     "eod_quote_wait_s": 3.0,          # the EOD close waits at most this long for a provider slot per quote ...
     "eod_last_known_fill": True,      # ... and when no fresh quote arrives, closes at the position's last known price (fill assumption recorded)
-    "breakeven_at": 0.5,              # stop moves to the entry once profit reaches this share of the target distance
+    "breakeven_at": 0.5,              # LEGACY fraction of the distance to the target; used only when breakeven_atr is None
+    "breakeven_atr": 0.40,            # A.27 (owner decision 2026-11-14): the stop moves to the entry once profit reaches this
+                                      # many ATR. Backtested on the 559 trades since 2026-11-07 WITH the 0.5 ATR target, net
+                                      # after commission: 0.20 -$797, 0.25 -$163, 0.30 -$459, 0.35 -$434, 0.40 +$972,
+                                      # 0.50/none +$634. Stated in ATR, not as a share of the target, so it does not move
+                                      # when the target multiplier does. Set it to None to fall back to breakeven_at.
+    "target_atr_mult": 0.5,           # A.27 (owner decision 2026-11-14): the target sits this many ATR from the entry. The board
+                                      # computes 1.0 ATR; measured over 559 trades since 2026-11-07 that target was reached
+                                      # ZERO times, while 0.5 ATR was worth +$659 on longs and +$1,980 on shorts. The stop
+                                      # stays where the board put it (0.5 ATR), so this also fixes the reward geometry.
+    "short_market_filter": True,      # A.27: a SHORT opens only when SPY or QQQ is below its own day open at that moment.
+                                      # Measured: it was the only one of five proposed short rules that turned the short side
+                                      # positive on its own (-$2,494 -> +$293), keeping 98 of 160 trades.
+    "short_market_proxies": ["SPY", "QQQ"],
+    "score_tick_log": True,           # A.27: append (trade, time, score) for every open trade to a daily JSONL, so the
+                                      # score-exit threshold and a consecutive-tick rule can be tested from real data later.
     "max_stop_pct": 2.5,              # STOP CAP (owner decision 2026-11-12): a trade whose stop sits further than this % from the entry is
                                       # not opened (logged NO ENTRY STOP_CAP). Back-test 2026-11-07..12: 2.0% blocked 75 closed trades
                                       # (net -$141), 2.5% blocked 44 (net -$977); the board's own ATR levels are unchanged.

@@ -54,20 +54,25 @@ def test_ten_thousand_dollar_notional_floored_to_whole_shares(price, shares):
 
 
 def test_levels_are_rebased_on_the_real_entry_price():
+    """A.27: the STOP keeps the board's own distance; the TARGET distance is scaled by target_atr_mult (0.5), because the
+    board's full 1.0 ATR target was never reached in 559 trades."""
+    assert dts.target_atr_mult() == 0.5
     sl, tp = dts.rebase_levels("LONG", 100.0, 99.0, 102.0, 100.5)
-    assert (sl, tp) == (99.5, 102.5)
+    assert (sl, tp) == (99.5, 101.5)        # stop 1.00 below as the board had it; target 0.5 x 2.00 = 1.00 above
     sl, tp = dts.rebase_levels("SHORT", 100.0, 101.0, 98.0, 99.0)
-    assert (sl, tp) == (100.0, 97.0)
-    assert dts.rebase_levels("LONG", None, None, None, 50.0) == (49.5, 51.0)      # the 1% / 2% default
+    assert (sl, tp) == (100.0, 98.0)        # stop 1.00 above; target 0.5 x 2.00 = 1.00 below
+    assert dts.rebase_levels("LONG", None, None, None, 50.0) == (49.5, 51.0)      # the 1% / 2% default, unscaled
 
 
 # ------------------------------------------------------------------------------------------------- breakeven trail ---
-def test_breakeven_trail_moves_the_stop_to_the_entry_at_half_the_target_distance():
-    assert dts.breakeven_stop("LONG", 100.0, 99.0, 102.0, 100.99) is None       # 0.99 of 2.0: not yet
-    assert dts.breakeven_stop("LONG", 100.0, 99.0, 102.0, 101.0) == 100.0        # exactly 50 %
-    assert dts.breakeven_stop("LONG", 100.0, 100.0, 102.0, 101.5) is None        # already at breakeven
-    assert dts.breakeven_stop("SHORT", 100.0, 101.0, 98.0, 99.0) == 100.0
-    assert dts.breakeven_stop("SHORT", 100.0, 101.0, 98.0, 99.5) is None
+def test_breakeven_trail_moves_the_stop_to_the_entry_at_four_tenths_of_an_atr():
+    """A.27, chosen by backtest: the trail fires at 0.40 ATR. A stored target is 0.5 ATR from the entry, so a target
+    1.00 away means ATR 2.00 and the trail fires at +0.80."""
+    assert dts.breakeven_stop("LONG", 100.0, 99.0, 101.0, 100.79) is None       # not yet
+    assert dts.breakeven_stop("LONG", 100.0, 99.0, 101.0, 100.80) == 100.0       # exactly 0.40 ATR
+    assert dts.breakeven_stop("LONG", 100.0, 100.0, 101.0, 100.95) is None       # already at breakeven
+    assert dts.breakeven_stop("SHORT", 100.0, 101.0, 99.0, 99.20) == 100.0
+    assert dts.breakeven_stop("SHORT", 100.0, 101.0, 99.0, 99.50) is None
     assert dts.breakeven_stop("LONG", 100.0, 99.0, None, 150.0) is None          # no target: no trail
 
 
@@ -191,7 +196,7 @@ def test_entry_is_priced_at_the_fresh_quote_sized_to_ten_thousand_with_evidence(
     sim.tick(10, 30)
     r = sim.rows()[0]
     assert r.entry_price == 101.25 and r.shares == 98                          # floor(10000 / 101.25)
-    assert (r.stop, r.target) == (100.25, 103.25)                              # the board's 1.0 / 2.0 distances, re-based
+    assert (r.stop, r.target) == (100.25, 102.25)                              # A.27: the board's stop distance, HALF its target distance
     assert r.entry_bid == 101.20 and r.entry_ask == 101.30 and r.entry_quote_age_s == pytest.approx(2.0, abs=0.5)
     ev = json.loads(r.entry_evidence)
     assert ev["coverage_pct"] == 92.5 and ev["score"] == 71.5 and ev["params"][0]["name"] == "options_flow"
@@ -219,7 +224,7 @@ def test_breakeven_trail_then_stop_at_entry_books_the_observed_price(sim):
     sim.quote("AAA", 100.0)
     sim.signal("grok", "AAA", "BUY", 100.0, sl=99.0, tp=102.0)
     sim.tick(10, 30)
-    sim.price("grok", "AAA", 101.0)                           # half-way to the target
+    sim.price("grok", "AAA", 100.9)                           # past the 0.40 ATR trail (+0.80), short of the 0.5 ATR target (101.0)
     sim.tick(10, 35)
     r = sim.rows()[0]
     assert r.status == "OPEN" and r.stop == 100.0 and r.be_moved is True
@@ -295,19 +300,19 @@ def test_a_full_simulated_day(sim):
     assert sim.rows() == []
     sim.tick(10, 1)
     assert sorted((r.symbol, r.shares) for r in sim.rows()) == [("AAA", 100), ("BBB", 50)]
-    sim.price("grok", "BBB", 195.5)                           # target crossed (observed 195.5, beyond the 196 level)
-    sim.price("grok", "AAA", 101.2)                           # breakeven reached
+    sim.price("grok", "BBB", 197.5)                           # target crossed (observed 197.5, beyond the 198.0 level)
+    sim.price("grok", "AAA", 100.9)                           # breakeven reached, target (101.0) not touched
     sim.tick(11, 0)
     rows = {r.symbol: r for r in sim.rows()}
-    assert rows["BBB"].status == "TARGET" and rows["BBB"].exit_price == 195.5 and rows["BBB"].profit == 225.0
+    assert rows["BBB"].status == "TARGET" and rows["BBB"].exit_price == 197.5 and rows["BBB"].profit == 125.0
     assert rows["AAA"].status == "OPEN" and rows["AAA"].stop == 100.0 and rows["AAA"].be_moved
     sim.signal("kimi", "CCC", "BUY", 25.0)
     sim.tick(15, 10)                                          # too late: CCC never opens
     assert "CCC" not in {r.symbol for r in sim.rows()}
-    sim.price("grok", "AAA", 101.0)
+    sim.price("grok", "AAA", 100.95)                          # still short of the 0.5 ATR target, so the sweep closes it
     sim.tick(15, 45)
     rows = {r.symbol: r for r in sim.rows()}
-    assert rows["AAA"].status == "EOD_CLOSE" and rows["AAA"].exit_price == 101.0 and rows["AAA"].profit == 100.0
+    assert rows["AAA"].status == "EOD_CLOSE" and rows["AAA"].exit_price == 100.95 and rows["AAA"].profit == 95.0
     sim.tick(16, 30)
     assert all(r.status != "OPEN" for r in sim.rows())
     for r in sim.rows():

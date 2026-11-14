@@ -166,3 +166,16 @@ def _restore_embedded_modules():
             sys.modules.pop(k, None) if sys.modules.get(k) is not None and getattr(sys.modules.get(k), "__file__", None) is None else None
         elif sys.modules.get(k) is not mod:
             sys.modules[k] = mod
+
+
+@pytest.fixture(autouse=True)
+def _short_market_filter_off_by_default():
+    """A.27 added a live market gate on SHORT entries: a short opens only when SPY or QQQ is below its own day open, and
+    an unreadable market refuses the short. A test harness has no SPY/QQQ quote, so with the gate on, every short in
+    every unrelated test would be refused. Default it OFF here; the tests that are ABOUT the gate turn it on themselves.
+    Production keeps it on (tab_settings.PAPER_EXECUTION)."""
+    import tab_settings
+    saved = tab_settings.PAPER_EXECUTION.get("short_market_filter")
+    tab_settings.PAPER_EXECUTION["short_market_filter"] = False
+    yield
+    tab_settings.PAPER_EXECUTION["short_market_filter"] = saved

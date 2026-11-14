@@ -113,7 +113,9 @@ def test_warm_universe_read_never_builds_the_universe_or_calls_a_provider(monkey
     assert ProdAdapters.warm_universe(object.__new__(ProdAdapters)) is None          # nothing held: no answer, no build
     monkeypatch.setattr(US, "peek", lambda: {"rows": [{"ticker": "AAPL"}, {"ticker": "MSFT"}]})
     out = ProdAdapters.warm_universe(object.__new__(ProdAdapters))
-    assert out["symbols"] == ["AAPL", "MSFT"] and out["horizon_days"] >= 14
+    # horizon_days is the CALENDAR span that covers 10 trading days, so it moves with the weekday the test runs on
+    # (13 from a Saturday, 14 from a Monday). Assert the invariant, not one weekday's answer.
+    assert out["symbols"] == ["AAPL", "MSFT"] and 10 <= out["horizon_days"] <= 20
 
 
 def _arm_provider_tripwires(monkeypatch):
