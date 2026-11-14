@@ -82,6 +82,8 @@ def _dt(x):
 
 def history_session(symbol: str, event_date: date, index: dict) -> tuple:
     """(session | None, detail) from the symbol's earlier report dates (strictly before event_date), newest first, last 4."""
+    if not isinstance(index, dict):          # a caller that passes the wrong shape must not take a live pass down
+        return None, "no history index"
     past = [s for d, s in (index.get(symbol) or []) if d < event_date][:HISTORY_LAST]
     if not past:
         return None, "no earlier calendar observation with a session"

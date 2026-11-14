@@ -155,3 +155,32 @@ def test_calendar_fields_shape():
     ev = ev_of("TTT", [row("UW_CALENDAR", "TTT", "2026-11-04", "premarket", flag="company")])
     f = CS.calendar_fields(ev)
     assert set(f) == {"confirmation", "session_source", "session_unknown", "engine_no_trade_reasons"} and f["confirmation"] == "single-vendor" and f["engine_no_trade_reasons"]
+
+
+# ------------------------------------------------------------------ 5. the v6.7 live-pass regression (2026-11-14)
+def test_history_session_survives_a_caller_passing_the_wrong_shape():
+    """The v6.7 live pass died on its second symbol with AttributeError: 'list' object has no attribute 'get'.
+    smart_move_live.score_all held the calendar history in a variable called `hist`, and further down the same loop
+    `hist` is reassigned to that symbol's earnings ROWS - so symbol two onwards passed a list where a dict belongs.
+    The variable is renamed, and this guard means no caller can ever take a live pass down that way again."""
+    assert CS.history_session("AAA", date(2026, 11, 4), []) == (None, "no history index")
+    assert CS.history_session("AAA", date(2026, 11, 4), None)[0] is None
+    assert CS.history_session("AAA", date(2026, 11, 4), [("2026-08-01", "BMO")])[0] is None
+
+
+def test_evaluate_event_ignores_a_wrong_shaped_history_instead_of_raising():
+    rows = [row("UW_CALENDAR", "AAA", "2026-11-04", None, flag="company")]      # no session: history would be consulted
+    ev = CS.evaluate_event("AAA", calobs(rows), T0, TODAY, [])                   # a list, as the broken caller passed
+    assert ev["session_unknown"] is True and ev["eligible_for_shadow"] is False
+
+
+def test_the_live_scorer_does_not_reuse_the_earnings_rows_variable_for_the_calendar_history():
+    """Pins the rename. Inside score_all's loop the earnings ROWS are held in `hist`; the calendar history must not
+    share that name, or symbol two onwards gets a list where a dict belongs - the 2026-11-14 live-pass failure."""
+    src = (ROOT / "backend" / "smart_move_live.py").read_text(encoding="utf-8")
+    import re
+    # anchored to the line start: "cal_hist = ..." contains "hist = ..." as a substring
+    assert not re.search(r"^\s+hist = self\.?s?\.?cal_history\(\)", src, re.M), "the calendar history is back on the shadowed name"
+    assert src.count("cal_hist = self") == 2                      # score_all and eligible_events
+    assert src.count("date(), cal_hist)") == 2                    # both pass the renamed dict
+    assert "hist, sha_h = self._rows_of(hist_rec)" in src         # the earnings rows still use `hist`

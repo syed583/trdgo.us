@@ -525,9 +525,9 @@ class RefreshService:
         """Events the vendor rules accept (VENDOR_CONFIRMED / COMPANY_VERIFIED) whose capture window is open now. Deadline-ordered.
         horizon_days (tracking only): instead of 'window open now', every accepted event whose assumed release is between now and now + horizon_days and whose cutoff has not passed."""
         out = []
-        hist = self.cal_history()
+        cal_hist = self.cal_history()
         for sym, pairs in self._calobs().items():
-            ev = CS.evaluate_event(sym, [o for o, _ in pairs], now, now.astimezone(co.ET).date(), hist)
+            ev = CS.evaluate_event(sym, [o for o, _ in pairs], now, now.astimezone(co.ET).date(), cal_hist)
             if not ev["eligible_for_shadow"] or (self.focus is not None and sym not in self.focus):
                 continue
             plan = co.plan_event(ev["event_date"], ev["kind"])
@@ -786,12 +786,12 @@ class LiveScorer:
     def score_all(self, now: datetime, persist: bool = False) -> list:
         pre, sha = sc.load_prereg()
         rows = []
-        hist = self.s.cal_history()
+        cal_hist = self.s.cal_history()           # NOTE: not `hist` - that name is reused below for the earnings rows
         for sym, pairs in sorted(self.s._calobs().items()):
             obs = [o for o, _ in pairs if o.observed_at <= now]
             if not obs:
                 continue
-            ev = CS.evaluate_event(sym, obs, now, now.astimezone(co.ET).date(), hist)
+            ev = CS.evaluate_event(sym, obs, now, now.astimezone(co.ET).date(), cal_hist)
             raw = [r for _, r in pairs]
             uw = next((r for r in raw if r["source"] == "UW_CALENDAR"), {})
             sector = uw.get("sector")
