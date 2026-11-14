@@ -74,6 +74,16 @@ def _is_admin(request: Request) -> bool:
     return str(user.get("role") or "").strip().lower() == "admin"
 
 
+ADMIN_ONLY_BODY = {"status": "ADMIN_ONLY", "detail": "This view is for an administrator."}
+
+
+def _admin_only(request: Request) -> Optional[dict]:
+    """B.1: the routes behind the pages A.26 removed from the menu. Every caller of each of these is an admin-only
+    page (GrokIntradayPage, AllIntradayModelsPage, TradgoCallPage), verified against the frontend before gating, so
+    a normal user loses nothing. Returns a body to send when the reader is not an administrator, else None."""
+    return None if _is_admin(request) else dict(ADMIN_ONLY_BODY)
+
+
 def _require_ops(request: Request) -> dict:
     """Shared, service-wide actions (cache clear, snapshot capture/fill, call evaluation, quarterly SEC ingest) change
     state every user sees and cost provider budget. They are for the operator, not for any account that merely
@@ -327,9 +337,10 @@ def claude_last_scan(days: int = 15) -> dict:
 
 
 @router.get("/pre-earnings-direction/scan")
-def pre_earnings_direction_scan(days: int = 15) -> dict:
+def pre_earnings_direction_scan(request: Request, days: int = 15) -> dict:
     """Pre-Earnings Direction (v2) -- all-positive 0-100 direction score, ranked.
     Lists every upcoming name; unscored ones warm in the background and fill in."""
+    import model_privacy as _privacy
     import pre_earnings_direction_service as ped
     import threading
     import os
@@ -348,7 +359,7 @@ def pre_earnings_direction_scan(days: int = 15) -> dict:
                 pass
 
         threading.Thread(target=_warm, daemon=True).start()
-    return res
+    return _privacy.public_payload(res, admin=_is_admin(request), map_models=False)
 
 
 @router.get("/claude-last/{symbol}")
@@ -483,8 +494,11 @@ def grok_intraday_scan(days: int = 15) -> dict:
 
 
 @router.get("/all-intraday-models/scan")
-def all_intraday_models_scan() -> dict:
+def all_intraday_models_scan(request: Request) -> dict:
     """All intraday models' call per universe name, one matrix. Non-blocking."""
+    blocked = _admin_only(request)
+    if blocked:
+        return blocked
     import all_intraday_models_service as aim
     import threading
     res = swr.peek("allintra:scan")
@@ -503,8 +517,11 @@ def all_intraday_models_scan() -> dict:
 
 
 @router.get("/gemini-intraday/board")
-def gemini_intraday_board() -> dict:
+def gemini_intraday_board(request: Request) -> dict:
     """Gemini Intraday LIVE board -- 80/20 execution model, equity signals."""
+    blocked = _admin_only(request)
+    if blocked:
+        return blocked
     import gemini_intraday_service as gin
     import threading
     res = swr.peek("geminiintra:board")
@@ -523,8 +540,11 @@ def gemini_intraday_board() -> dict:
 
 
 @router.get("/gemini-intraday/{symbol}")
-def gemini_intraday_detail(symbol: str) -> dict:
+def gemini_intraday_detail(request: Request, symbol: str) -> dict:
     """Gemini Intraday single-stock: 80/20 score + breakdown + move size."""
+    blocked = _admin_only(request)
+    if blocked:
+        return blocked
     import gemini_intraday_service as gin
     import earnings_equity_service as eq_svc
     sym = symbol.upper()
@@ -544,8 +564,11 @@ def gemini_intraday_detail(symbol: str) -> dict:
 
 
 @router.get("/kimi-intraday/board")
-def kimi_intraday_board() -> dict:
+def kimi_intraday_board(request: Request) -> dict:
     """Kimi Intraday LIVE board -- live engine, framework 6-category weighting."""
+    blocked = _admin_only(request)
+    if blocked:
+        return blocked
     import kimi_intraday_service as kin
     import threading
     res = swr.peek("kimiintra:board")
@@ -564,8 +587,11 @@ def kimi_intraday_board() -> dict:
 
 
 @router.get("/kimi-intraday/{symbol}")
-def kimi_intraday_detail(symbol: str) -> dict:
+def kimi_intraday_detail(request: Request, symbol: str) -> dict:
     """Kimi Intraday single-stock detail: 10-signal short-term score + breakdown."""
+    blocked = _admin_only(request)
+    if blocked:
+        return blocked
     import kimi_intraday_service as kin
     import earnings_equity_service as eq_svc
 
@@ -593,9 +619,12 @@ def kimi_intraday_detail(symbol: str) -> dict:
 
 
 @router.get("/meta-intraday/board")
-def meta_intraday_board() -> dict:
+def meta_intraday_board(request: Request) -> dict:
     """Meta Intraday LIVE board over the liquid universe, scored with the 7-signal
     model. Non-blocking."""
+    blocked = _admin_only(request)
+    if blocked:
+        return blocked
     import meta_intraday_service as mi
     import threading
     res = swr.peek("metaintra:board")
@@ -614,8 +643,11 @@ def meta_intraday_board() -> dict:
 
 
 @router.get("/meta-intraday/{symbol}")
-def meta_intraday_detail(symbol: str) -> dict:
+def meta_intraday_detail(request: Request, symbol: str) -> dict:
     """Meta Intraday single-stock detail: 7-signal short-term score + breakdown."""
+    blocked = _admin_only(request)
+    if blocked:
+        return blocked
     import meta_intraday_service as mi
     import earnings_equity_service as eq_svc
 
@@ -643,9 +675,12 @@ def meta_intraday_detail(symbol: str) -> dict:
 
 
 @router.get("/grok-intraday/board")
-def grok_intraday_board() -> dict:
+def grok_intraday_board(request: Request) -> dict:
     """Grok Intraday LIVE board over the liquid universe (like Trdgo Stock), scored
     with the Grok 10-signal model. Non-blocking: serves the last board, warms next."""
+    blocked = _admin_only(request)
+    if blocked:
+        return blocked
     import intraday_grok_service as ig
     import threading
     res = swr.peek("grokintra:board")
@@ -664,8 +699,11 @@ def grok_intraday_board() -> dict:
 
 
 @router.get("/grok-intraday/{symbol}")
-def grok_intraday_detail(symbol: str) -> dict:
+def grok_intraday_detail(request: Request, symbol: str) -> dict:
     """Grok Intraday single-stock detail: 10-signal short-term score + breakdown."""
+    blocked = _admin_only(request)
+    if blocked:
+        return blocked
     import intraday_grok_service as ig
     import earnings_equity_service as eq_svc
 
@@ -693,8 +731,9 @@ def grok_intraday_detail(symbol: str) -> dict:
 
 
 @router.get("/all-models/scan")
-def all_models_scan(days: int = 15) -> dict:
+def all_models_scan(request: Request, days: int = 15) -> dict:
     """All-in-One matrix: every model's call per upcoming name. Non-blocking."""
+    import model_privacy as _privacy
     import all_models_service as am
     import threading
 
@@ -710,9 +749,11 @@ def all_models_scan(days: int = 15) -> dict:
 
     threading.Thread(target=_compute, daemon=True).start()
     if res is None:
-        return {"status": "WARMING", "source": am.SOURCE, "models": am.MODELS,
-                "rows": [], "universe": 0, "scored": 0}
-    return res
+        # the warming answer names the models and the source too, so it is shaped like any other
+        return _privacy.public_payload({"status": "WARMING", "source": am.SOURCE, "models": am.MODELS,
+                                  "rows": [], "universe": 0, "scored": 0},
+                                 admin=_is_admin(request), map_models=True)
+    return _privacy.public_payload(res, admin=_is_admin(request), map_models=True)
 
 
 @router.get("/warm/progress")
@@ -771,13 +812,14 @@ def uw_budget_status() -> dict:
 
 
 @router.get("/model-accuracy/scoreboard")
-def model_accuracy_scoreboard() -> dict:
+def model_accuracy_scoreboard(request: Request) -> dict:
     """Verified (provisional) accuracy scoreboard for the earnings models: one eligible pre-release
     prediction per stock / event / model, graded outcomes only, BUY / SELL / NEUTRAL separate, with
     sample sizes, intervals, baseline and excluded / pending / missing-outcome counts. A new cache key
     is used so an old-format cached answer is never served."""
+    import model_privacy as _privacy
     import model_prediction_service as mp
-    return swr.serve("modacc:scoreboard:v2", lambda: mp.scoreboard(), 300.0)
+    return _privacy.public_payload(swr.serve("modacc:scoreboard:v2", lambda: mp.scoreboard(), 300.0), admin=_is_admin(request), map_models=True)
 
 
 @router.get("/model-accuracy/scoreboard-legacy")
@@ -1181,20 +1223,24 @@ def intraday_premarket() -> dict:
 
 
 @router.get("/intraday/score/{symbol}")
-def intraday_score(symbol: str) -> dict:
+def intraday_score(request: Request, symbol: str) -> dict:
     """Intraday Model v2 score for one ticker (Analysis page). Same function the
     Today board uses, so the two screens match for a ticker in the same minute."""
+    import model_privacy as _privacy
     if not _intraday_v2_on():
         return {"status": "DISABLED"}
     import intraday_model as im
-    return im.score(symbol)
+    return _privacy.public_payload(im.score(symbol), admin=_is_admin(request), map_models=False)
 
 
 @router.get("/intraday/board")
-def intraday_board() -> dict:
+def intraday_board(request: Request) -> dict:
     """Trdgo Stock Today view (v2): Top Buyers / Top Sellers / NO EDGE / WITHHELD,
     plus the daily summary. Non-blocking: serves the last scan and runs the next
     scan cycle (which also drives confirmations and exits) in the background."""
+    blocked = _admin_only(request)
+    if blocked:
+        return blocked
     if not _intraday_v2_on():
         return {"status": "DISABLED"}
     import intraday_signal_v2 as eng
@@ -1327,8 +1373,11 @@ def earnings_signal_history(n: int = 4, symbol: str = "") -> dict:
 
 
 @router.get("/tradgo-call/{symbol}")
-def tradgo_call(symbol: str) -> dict:
+def tradgo_call(request: Request, symbol: str) -> dict:
     """Tradgo Call: the re-weighted short-term direction model (-100..+100)."""
+    blocked = _admin_only(request)
+    if blocked:
+        return blocked
     import tradgo_call_service as tc
     return swr.serve(f"tradgocall:{symbol.upper()}",
                      lambda: tc.get_call(symbol),
@@ -1461,7 +1510,7 @@ def peers(symbol: str) -> dict:
 
 
 @router.get("/directional/{symbol}")
-def directional(symbol: str, horizon: Optional[str] = None) -> dict:
+def directional(request: Request, symbol: str, horizon: Optional[str] = None) -> dict:
     """
     Direction and confidence as two separate numbers, every parameter
     carrying the rule and the raw figures behind its score.
@@ -1493,14 +1542,22 @@ def directional(symbol: str, horizon: Optional[str] = None) -> dict:
             pass
         return payload
 
+    # B.1: the scored parameters and the category roll-up are the model itself. The pages that read this route
+    # (Dashboard, Earnings, Insights, Peers, Options Flow, Calendar) are ones a normal user still sees, so the
+    # answer is SHAPED, not refused - and `signals` stays as an EMPTY LIST, because DirectionalScorePanel does
+    # d.signals.filter(...) with no guard and removing the key would crash the page.
+    import model_privacy as _privacy
+
+    admin = _is_admin(request)
+
     h = (horizon or "").upper()
     if h in ("TODAY", "TOMORROW"):
         import horizon_model
 
-        return _with_categories(horizon_model.score_horizon(symbol, h, base=base))
+        return _privacy.public_payload(_with_categories(horizon_model.score_horizon(symbol, h, base=base)), admin=admin)
     if h == "SWING":
         return _with_categories({**base, "horizon": "SWING"})
-    return _with_categories(base)
+    return _privacy.public_payload(_with_categories(base), admin=admin)
 
 
 @router.get("/overview/{symbol}")
