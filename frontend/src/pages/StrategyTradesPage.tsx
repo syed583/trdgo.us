@@ -145,6 +145,8 @@ export default function StrategyTradesPage() {
   const needle = symQ.trim().toUpperCase();
   const rows: any[] = needle ? allRows.filter((r) => (r.symbol || '').toUpperCase().includes(needle)) : allRows;
   const strategies: any[] = d?.strategies || [];
+  // A.28: the live rules the server computed for this blotter; the help text at the foot is written from these.
+  const rules: any = d?.rules || {};
   const total = d?.total_profit ?? 0;
   // Gross profit (winners) vs gross loss (losers) for the selected strategy.
   const gross = useMemo(() => {
@@ -391,13 +393,23 @@ export default function StrategyTradesPage() {
           </table>
         </div>
       )}
-      <div className="st-note">Live P&amp;L updates every ~15s. One trade per symbol per strategy per day,
-        no re-entry. Every trade is $10,000 notional (shares = floor(10,000 / entry)). Entries are taken
-        only between 10:00 and 15:00 ET on regular trading days. Entry/stop/target come from each model's
-        ATR levels; the stop moves to breakeven (entry) once price has covered 50% of the distance to the
-        target. A position closes on stop, target, a 15‑point score drop, or at 15:50 ET (10 min before an
-        early close). Fills are gap-aware: a stop or target jumped over at the open fills at the open print,
-        not the level.
+      {/* A.28: every number below comes from the rules the SERVER sent with this blotter, so the text cannot
+          drift from the live settings again. A missing value falls back to the shipped default. */}
+      <div className="st-note">Live P&amp;L updates every ~15s. One trade per symbol per agent per day,
+        no re-entry. Every trade is {money(rules.notional_usd ?? 10000)} notional (shares = floor(notional / entry)).
+        Entries are taken only between {rules.entry_window_et?.[0] ?? '10:00'} and {rules.entry_window_et?.[1] ?? '15:00'} ET
+        on regular trading days{rules.short_market_filter
+          ? `, and a SHORT opens only while ${(rules.short_market_proxies || ['SPY', 'QQQ']).join(' or ')} is below its own day open \u2014 when the market is up, no new shorts are taken`
+          : ''}.
+        Entry, stop and target come from each agent&apos;s ATR levels: the stop stays where the agent put it, and the
+        target sits {rules.target_atr_mult != null ? `${rules.target_atr_mult} ATR` : 'one ATR'} from the entry.
+        The stop moves to breakeven (entry) once price has covered {rules.breakeven_atr != null
+          ? `${rules.breakeven_atr} ATR of profit`
+          : `${Math.round((rules.breakeven_at ?? 0.5) * 100)}% of the distance to the target`}.
+        A position closes on stop, target, a {rules.score_drop_exit ?? 15}&#8209;point score drop, or
+        at {rules.eod_close_et ?? '15:45'} ET (the same minutes before an early close).
+        A trade whose stop would sit further than {rules.max_stop_pct ?? 2.5}% from the entry is not opened.
+        Fills are gap-aware: a stop or target jumped over at the open fills at the open print, not the level.
         <br /><b>Take Now?</b> tells you whether an OPEN signal is still worth entering mid‑move:
         <span className="st-take good">Good entry</span> = price still at/near entry (best);
         <span className="st-take ok">Still OK</span> = part of the move gone, reward still beats risk;

@@ -56,3 +56,12 @@
 {"trade_id": 1, "strategy": "grok", "symbol": "AAA", "side": "LONG", "at": "2026-11-05T16:00:00+00:00", "score": 70.0, "score_at_entry": 70.0, "status": "OPEN"}
 {"trade_id": 2, "strategy": "grok", "symbol": "BBB", "side": "SHORT", "at": "2026-11-05T16:00:00+00:00", "score": 70.0, "score_at_entry": 70.0, "status": "OPEN"}
 {"trade_id": 1, "strategy": "grok", "symbol": "AAA", "side": "LONG", "at": "2026-11-05T20:10:00+00:00", "score": 70.0, "score_at_entry": 70.0, "status": "OPEN"}
+{"trade_id": 1, "strategy": "grok", "symbol": "AAA", "side": "LONG", "at": "2026-11-05T20:00:00+00:00", "score": 70.0, "score_at_entry": 70.0, "status": "OPEN"}
+{"trade_id": 1, "strategy": "grok", "symbol": "AAA", "side": "LONG", "at": "2026-11-05T15:35:00+00:00", "score": 70.0, "score_at_entry": 70.0, "status": "OPEN"}
+{"trade_id": 1, "strategy": "grok", "symbol": "AAA", "side": "LONG", "at": "2026-11-05T15:40:00+00:00", "score": 70.0, "score_at_entry": 70.0, "status": "OPEN"}
+{"trade_id": 1, "strategy": "grok", "symbol": "AAA", "side": "LONG", "at": "2026-11-05T15:45:00+00:00", "score": 70.0, "score_at_entry": 70.0, "status": "OPEN"}
+{"trade_id": 1, "strategy": "grok", "symbol": "AAA", "side": "LONG", "at": "2026-11-05T20:44:00+00:00", "score": 70.0, "score_at_entry": 70.0, "status": "OPEN"}
+{"trade_id": 2, "strategy": "kimi", "symbol": "BBB", "side": "SHORT", "at": "2026-11-05T20:44:00+00:00", "score": 70.0, "score_at_entry": 70.0, "status": "OPEN"}
+{"trade_id": 1, "strategy": "grok", "symbol": "AAA", "side": "LONG", "at": "2026-11-05T16:00:00+00:00", "score": 70.0, "score_at_entry": 70.0, "status": "OPEN"}
+{"trade_id": 2, "strategy": "grok", "symbol": "BBB", "side": "SHORT", "at": "2026-11-05T16:00:00+00:00", "score": 70.0, "score_at_entry": 70.0, "status": "OPEN"}
+{"trade_id": 1, "strategy": "grok", "symbol": "AAA", "side": "LONG", "at": "2026-11-05T20:10:00+00:00", "score": 70.0, "score_at_entry": 70.0, "status": "OPEN"}

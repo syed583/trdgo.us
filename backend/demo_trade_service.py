@@ -1111,6 +1111,8 @@ def blotter(strategy: str = "", date: str = "", reveal: bool = True) -> dict:
                           "quote_max_age_s": _cfg().get("quote_max_age_s"), "breakeven_at": _cfg().get("breakeven_at"),
                           "target_atr_mult": _cfg().get("target_atr_mult"), "short_market_filter": bool(_cfg().get("short_market_filter")),
                           "breakeven_atr": _cfg().get("breakeven_atr"),
+                          "score_drop_exit": SCORE_DROP_EXIT, "notional_usd_label": _cfg().get("notional_usd"),
+                          "short_market_proxies": list(_cfg().get("short_market_proxies") or ()),
                           "fill_model": _cfg().get("fill_model")},
                 "rth": _is_rth(et), "after_close": _after_close(et), "entries_open": _can_open(et)}
     finally:
