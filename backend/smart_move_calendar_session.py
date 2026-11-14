@@ -16,6 +16,14 @@ collector does with its answer:
      (confirmation = 'single-vendor'; two-vendor agreement keeps 'two-vendor', direct company evidence 'company-verified').
      Date conflicts, stale observations, moved dates, label/clock contradictions and company-evidence contradictions still refuse.
   3. No session from any source -> session_unknown = True: the event stays on the dashboard as SESSION_UNKNOWN, never skipped.
+  4. AGREEMENT (kit v6.7.2, owner decision 2026-11-14): when the latest row of two or more sources agree on the SAME date AND
+     the SAME session, those rows decide the event, whatever was observed last. The engine is then re-run over only those rows,
+     so its own staleness, moved-date and contradiction rules still apply unchanged.
+     WHY: the collector fetches Unusual Whales, then Finviz, then Finnhub, so a Finnhub row is ALWAYS the most recently observed;
+     the engine picks the date of the most recently observed source, so a lone Finnhub row that is one day out (or carries the
+     opposite session) silently overrode two agreeing vendors on every such event.
+     The rule only fires where nothing was eligible, only when exactly ONE group of two or more sources agrees (so a genuine
+     contradiction stays refused), and never on a source with no session - a session-less row can decide nothing.
 Calendar ingestion only: scoring, factors, thresholds, the liquidity gate, windows, budgets and limits are not touched. Dashboard
 only: nothing here reaches MT5 or any alert channel.
 """
@@ -23,6 +31,7 @@ from __future__ import annotations
 
 import collections
 import dataclasses
+import datetime
 import sys
 from datetime import date
 from pathlib import Path
@@ -32,7 +41,9 @@ sys.path.insert(0, str(HERE.parent / "docs" / "smart_move" / "shadow_impl"))
 from smvshadow import calendar_confirm as cc  # noqa: E402
 
 KIT = "kit-v6.7"
+CALENDAR_RULE = "agreement-v1"          # recorded in the ledger with every prediction made under kit v6.7.2
 SOURCE_FINNHUB, SOURCE_UW, SOURCE_CLOCK, SOURCE_HISTORY = "finnhub-hour", "uw-report-time", "vendor-clock", "history-last4"
+REASON_AGREEMENT = "DATE_SESSION_AGREEMENT_KIT_V6_7_2"
 CONF_TWO, CONF_SINGLE, CONF_COMPANY, CONF_NONE, CONF_UNKNOWN = "two-vendor", "single-vendor", "company-verified", "not-eligible", "session-unknown"
 CONF_TWO_DATE = "two-vendor-date"      # both vendors give the date, only one gives the session (or the Unusual Whales flag is not 'company')
 # the engine's objections that single-vendor acceptance is allowed to override (every other no-trade reason still refuses)
@@ -120,7 +131,55 @@ def resolve_session(on: list) -> tuple:
 
 
 # ------------------------------------------------------------------ the kit-level evaluation
+def _latest_per_source(obs: list) -> dict:
+    """The newest row of each source. Local on purpose: the kit does not reach into the frozen engine's private helpers."""
+    out: dict = {}
+    for o in obs:
+        if o.source not in out or o.observed_at > out[o.source].observed_at:
+            out[o.source] = o
+    return out
+
+
+def agreeing_rows(symbol: str, obs: list, now):
+    """Kit v6.7.2. The rows of the sources that agree on one date AND one session, or None when the rule must not fire.
+
+    Fires only when EXACTLY ONE (date, session) group holds two or more sources. Two rival agreeing groups, or none at all,
+    mean the vendors genuinely disagree and the engine's refusal stands (this is what keeps a real contradiction refused)."""
+    live = [o for o in obs if o.symbol == symbol and o.observed_at <= now
+            and o.date >= o.observed_at.astimezone(datetime.timezone.utc).date() - datetime.timedelta(days=1)]
+    latest = _latest_per_source(live)
+    if len(latest) < 2:
+        return None
+    groups: dict = collections.defaultdict(set)
+    for src, o in latest.items():
+        if o.session() in ("BMO", "AMC"):                     # a row with no session can never decide anything
+            groups[(o.date, o.session())].add(src)
+    winners = [(d, ss, srcs) for (d, ss), srcs in groups.items() if len(srcs) >= 2]
+    if len(winners) != 1:
+        return None
+    d, ss, srcs = winners[0]
+    return [o for src, o in latest.items() if src in srcs]
+
+
 def evaluate_event(symbol: str, obs: list, now, today, history: dict | None = None, **kw) -> dict:
+    """cc.evaluate + the kit rules. Kit v6.7.2 wraps v6.7: when the first answer is not eligible, the event is judged again over
+    the rows of the sources that AGREE on a date and a session (see agreeing_rows). Everything else is unchanged."""
+    ev = _evaluate_once(symbol, obs, now, today, history, **kw)
+    if ev.get("eligible_for_shadow"):
+        return ev
+    rows = agreeing_rows(symbol, obs, now)
+    if not rows:
+        return ev
+    alt = _evaluate_once(symbol, rows, now, today, history, **kw)
+    if not alt.get("eligible_for_shadow"):
+        return ev                                              # the agreeing rows are stale, moved or otherwise refused: keep the original answer
+    alt["reasons"] = list(alt["reasons"]) + [REASON_AGREEMENT]
+    alt["agreement_sources"] = sorted({o.source for o in rows})
+    alt["engine_no_trade_reasons_before_agreement"] = list(ev.get("engine_no_trade_reasons") or [])
+    return alt
+
+
+def _evaluate_once(symbol: str, obs: list, now, today, history: dict | None = None, **kw) -> dict:
     """cc.evaluate + kit v6.7 rules. The returned dict is the engine's dict plus: confirmation, session_source, session_unknown,
     engine_no_trade_reasons (the engine's own objections, kept verbatim for the record even when overridden)."""
     ev = cc.evaluate(symbol, obs, now, today, **kw)
@@ -171,4 +230,5 @@ def _single_vendor_acceptable(ev: dict) -> bool:
 def calendar_fields(ev: dict) -> dict:
     """The extra keys every published/scored row carries under row['calendar'] (kit v6.7)."""
     return {"confirmation": ev.get("confirmation"), "session_source": ev.get("session_source"), "session_unknown": bool(ev.get("session_unknown")),
-            "engine_no_trade_reasons": list(ev.get("engine_no_trade_reasons") or [])}
+            "engine_no_trade_reasons": list(ev.get("engine_no_trade_reasons") or []), "calendar_rule": CALENDAR_RULE,
+            "agreement_sources": list(ev.get("agreement_sources") or [])}

@@ -28,7 +28,10 @@ HORIZON_MAX = 30
 T0_MAX_AGE_H = 5.0            # same margin as smart_move_calendar_guard.MAX_AGE_H (the frozen limit is 6 h)
 T0_LEAD_H = 12.0              # a window that opens within this many hours is refreshed like an open one
 T1_MAX_AGE_H = 24.0
-T1_RUN_MAX = 6                # far-day slots refreshed in one run at most
+T1_RUN_MAX = 12               # far-day slots refreshed in one run at most (kit v6.7.2: 6 could not keep the horizon fresh -
+                              # ~22 trading days x 2 sides = ~44 slots against 4 live runs a day, so 6 covered 24 of 44 and the
+                              # rest aged past the engine's 24 h limit for D>4 and were refused as CALENDAR_OBSERVATION_STALE.
+                              # 12 x 4 = 48 >= 44, about 44-60 UW requests a day inside the 700/day limit and the 0.30 share cap.)
 CALENDAR_SHARE = 0.30         # a run never plans more than this share of its ceiling for calendar requests
 CONFIRM_RESERVE = 2           # Finviz + Finnhub confirmations that accompany a refresh (see RefreshService.refresh_calendar)
 STATE_FILE = "calendar_slots.json"

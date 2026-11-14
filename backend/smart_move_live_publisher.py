@@ -168,7 +168,9 @@ def publish_rows(rows: list, now, out_dir, *, scan_id: str, mode: str, scan_ok: 
                                      "coverage_points": cl["coverage_points"], "coverage_max": cl["coverage_max"], "liquidity": cl["liquidity"], "adv20_usd": cl.get("adv20_usd"),
                                      "contrarian_signal": cl.get("contrarian_signal"), "missing_factors": cl["missing_factors"], "window": "OPEN", "window_cutoff_utc": cl["window_cutoff_utc"],
                                      "evidence": ev, "evidence_latest": ev[-1]["retrieved_at"] if ev else None, "evidence_digest": digest, "generated_at": now.isoformat(),
-                                     "generated_at_et": now.astimezone(ET).strftime("%Y-%m-%d %H:%M:%S %Z"), "scan_id": scan_id, "model_version": cl["model_version"], "mode": mode}, prev, seq + 1)
+                                     "generated_at_et": now.astimezone(ET).strftime("%Y-%m-%d %H:%M:%S %Z"), "scan_id": scan_id, "model_version": cl["model_version"], "mode": mode,
+                                     "calendar_rule": (r.get("calendar") or {}).get("calendar_rule"),            # kit v6.7.2: which calendar rule made this event eligible, so accuracy can be split by rule version
+                                     "agreement_sources": (r.get("calendar") or {}).get("agreement_sources") or []}, prev, seq + 1)
         prev, seq = rec["record_sha256"], seq + 1
         latest[key] = rec
         c["published"] += 1
