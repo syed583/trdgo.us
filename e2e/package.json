@@ -1,0 +1,14 @@
+{
+  "name": "trdgo-e2e",
+  "private": true,
+  "version": "1.0.0",
+  "description": "B.0 - the end-to-end gate every kit must pass before it is installed.",
+  "scripts": {
+    "test": "playwright test",
+    "report": "playwright show-report report",
+    "install-browser": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}
