@@ -92,8 +92,6 @@ def test_nested_rows_are_cleaned():
 # --------------------------------------------------------------------------- the routes
 SHAPED = [
     ("directional", lambda m: m.directional(request=None, symbol="TSLA")),
-    ("all_models_scan", lambda m: m.all_models_scan(request=None, days=15)),
-    ("model_accuracy_scoreboard", lambda m: m.model_accuracy_scoreboard(request=None)),
     ("pre_earnings_direction_scan", lambda m: m.pre_earnings_direction_scan(request=None, days=15)),
     ("intraday_score", lambda m: m.intraday_score(request=None, symbol="TSLA")),
 ]
@@ -110,6 +108,9 @@ ADMIN_ONLY = [
     ("all_intraday_models_scan", lambda m: m.all_intraday_models_scan(request=None)),
     ("intraday_board", lambda m: m.intraday_board(request=None)),
     ("tradgo_call", lambda m: m.tradgo_call(request=None, symbol="TSLA")),
+    # B.1a (owner decision 2026-11-15, option B): these two were Agent-mapped in B.1 and are now refused
+    ("all_models_scan", lambda m: m.all_models_scan(request=None, days=15)),
+    ("model_accuracy_scoreboard", lambda m: m.model_accuracy_scoreboard(request=None)),
 ]
 
 
@@ -140,3 +141,13 @@ def test_shaped_routes_answer_a_non_admin_without_the_working(monkeypatch, name,
     assert isinstance(out, dict)
     assert out.get("status") != "ADMIN_ONLY", "%s must keep answering a normal user" % name
     assert_clean(out)
+
+
+# --------------------------------------------------------------------------- B.1a: the menu, pinned
+def test_all_models_and_model_accuracy_left_the_non_admin_menu():
+    """Owner decision 2026-11-15 (option B). NAV_GROUPS is the non-admin menu; an admin reaches both by URL."""
+    sidebar = (Path(__file__).resolve().parents[2] / "frontend" / "src" / "components" / "Sidebar.tsx").read_text(
+        encoding="utf-8")
+    for entry in ("to: '/all-models'", "to: '/model-accuracy'"):
+        assert entry not in sidebar, "%s is back in the user menu" % entry
+    assert "/all-models" in sidebar, "the note explaining why it was removed should stay"

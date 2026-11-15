@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import {
-  Activity, BarChart3, Brain, Building2, CalendarDays, Compass, Crosshair, FlaskConical, Flame, Gauge, History, Layers, LineChart, Receipt, Users,
+  Activity, Brain, Building2, CalendarDays, Compass, Crosshair, FlaskConical, Flame, Gauge, History, Layers, LineChart, Receipt, Users,
   LayoutDashboard, ListOrdered, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
   Radar, Scale, ScrollText, Settings, ShieldCheck, Sparkles, Star, TrendingUp, UserCog, Waves, Waypoints, X, Zap,
 } from 'lucide-react';
@@ -57,8 +57,10 @@ const NAV_GROUPS: NavGroup[] = [
     // Move now, and these seven were one component over the same cached data. The ROUTES still work (/claude-last, /grok,
     // /meta, /chatgpt, /kimi, /gemini, /claude-pro) and every module stays on disk, because All Models, the backtests, the
     // monitor registry and the four intraday boards import them. Nothing was deleted.
-    { to: '/all-models', label: 'All Models', icon: <ListOrdered size={S} /> },
-    { to: '/model-accuracy', label: 'Model Accuracy', icon: <BarChart3 size={S} /> },
+    // B.1a (owner decision 2026-11-15): All Models and Model Accuracy are the model's own scoreboard - which
+    // engines exist and how each one scores - so they are for an administrator only. The routes refuse a
+    // non-admin, and an administrator reaches both by URL (/all-models, /model-accuracy), exactly as A.26 left
+    // the four boards. Nothing is deleted and no data is lost.
     { to: '/option-scanner', label: 'IV Crush Check', icon: <Flame size={S} /> },
     { to: '/unusual-activity', label: 'Unusual Activity', icon: <Zap size={S} /> },
     { to: '/pre-earnings-direction', label: 'Pre-Earnings Direction', icon: <Compass size={S} /> },

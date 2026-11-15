@@ -32,11 +32,16 @@ def test_the_seven_boards_are_out_of_the_menu_but_their_routes_still_exist():
     for path in HIDDEN:
         assert ("to: '%s'" % path) not in side, "%s is still a menu item" % path
         assert ('path="%s"' % path) in app, "%s lost its route: the board must stay reachable" % path
-    # the ones the owner kept are untouched
-    for path in ("/earnings-calendar", "/all-models", "/model-accuracy", "/option-scanner", "/unusual-activity",
+    # the ones the owner kept are untouched. /all-models and /model-accuracy were on this list under A.25
+    # ("leave them unchanged for now"); the owner superseded that on 2026-11-15 with B.1a option B, so they moved
+    # to the list below. Their ROUTES still exist - an administrator reaches both by URL.
+    for path in ("/earnings-calendar", "/option-scanner", "/unusual-activity",
                  "/pre-earnings-direction", "/earnings-signals", "/forward-scoreboard", "/historical-backtest",
                  "/post-earnings-forward"):
         assert ("to: '%s'" % path) in side, "%s should still be in the menu" % path
+    for path in ("/all-models", "/model-accuracy"):
+        assert ("to: '%s'" % path) not in side, "%s is admin-only since B.1a" % path
+        assert ('path="%s"' % path) in app, "%s lost its route: an admin must still reach it" % path
 
 
 def test_the_intraday_boards_keep_working_even_after_a26_hid_them():

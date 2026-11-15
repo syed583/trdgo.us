@@ -18,10 +18,10 @@ export const PAGES: Page[] = [
   { path: '/earnings-signals', name: 'Earnings Signals' },
   { path: '/forward-scoreboard', name: 'Forward Scoreboard' },
   { path: '/historical-backtest', name: 'Historical Backtest' },
-  { path: '/model-accuracy', name: 'Model Accuracy' },
+  { path: '/model-accuracy', name: 'Model Accuracy', admin: true }, // B.1a
   { path: '/pre-earnings-direction', name: 'Pre-Earnings Direction' },
   { path: '/post-earnings-forward', name: 'Post-Earnings Forward' },
-  { path: '/all-models', name: 'All Models' },
+  { path: '/all-models', name: 'All Models', admin: true },      // B.1a
   { path: '/unusual-activity', name: 'Unusual Activity' },
   { path: '/options-flow', name: 'Options Flow' },
   { path: '/option-scanner', name: 'Option Scanner' },

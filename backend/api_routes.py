@@ -733,6 +733,9 @@ def grok_intraday_detail(request: Request, symbol: str) -> dict:
 @router.get("/all-models/scan")
 def all_models_scan(request: Request, days: int = 15) -> dict:
     """All-in-One matrix: every model's call per upcoming name. Non-blocking."""
+    blocked = _admin_only(request)
+    if blocked:
+        return blocked
     import model_privacy as _privacy
     import all_models_service as am
     import threading
@@ -817,6 +820,9 @@ def model_accuracy_scoreboard(request: Request) -> dict:
     prediction per stock / event / model, graded outcomes only, BUY / SELL / NEUTRAL separate, with
     sample sizes, intervals, baseline and excluded / pending / missing-outcome counts. A new cache key
     is used so an old-format cached answer is never served."""
+    blocked = _admin_only(request)
+    if blocked:
+        return blocked
     import model_privacy as _privacy
     import model_prediction_service as mp
     return _privacy.public_payload(swr.serve("modacc:scoreboard:v2", lambda: mp.scoreboard(), 300.0), admin=_is_admin(request), map_models=True)
