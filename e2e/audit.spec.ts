@@ -11,40 +11,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { PAGES } from './pages';
 import { FORBIDDEN, isDestructive } from './guards';
+import { CREDS, hasState, redact, signIn, type Role } from './auth';
 
 const BASE = process.env.E2E_BASE_URL || 'http://localhost:8000';
 const SLOW_MS = 3000;
 const OUT = path.join(__dirname, 'screenshots');
 const LEAKS: any[] = [];
 
-const CREDS = {
-  admin: { user: process.env.E2E_ADMIN_USER, pass: process.env.E2E_ADMIN_PASS },
-  user: { user: process.env.E2E_USER_USER, pass: process.env.E2E_USER_PASS },
-};
-
-/** Never let a credential reach a log, a report or a screenshot. */
-function redact(s: string): string {
-  let out = s;
-  for (const c of [CREDS.admin.pass, CREDS.user.pass, CREDS.admin.user, CREDS.user.user]) {
-    if (c) out = out.split(c).join('«redacted»');
-  }
-  return out;
-}
-
-async function signIn(page: PwPage, role: 'admin' | 'user') {
-  const { user, pass } = CREDS[role];
-  if (!user || !pass) test.skip(true, `no credentials for ${role} — set E2E_${role.toUpperCase()}_USER/PASS`);
-  await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
-  await page.fill('input[name="username"], input[type="text"]', user!);
-  await page.fill('input[type="password"]', pass!);
-  await page.click('button[type="submit"]');
-  await page.waitForLoadState('networkidle');
-}
-
 for (const role of ['admin', 'user'] as const) {
   test.describe(`${role}`, () => {
+    // A saved session (E2E_<ROLE>_STATE) skips the form entirely - the only way in for an account that
+    // needs a WhatsApp one-time code.
+    if (hasState(role)) test.use({ storageState: CREDS[role].state! });
+
     test.beforeEach(async ({ page }) => {
-      await signIn(page, role);
+      if (!hasState(role)) await signIn(page, role as Role, BASE);
     });
 
     for (const p of PAGES) {
