@@ -1,0 +1,8 @@
+.auth/
+user.json
+admin.json
+report/
+screenshots/
+test-results/
+leaks.json
+node_modules/

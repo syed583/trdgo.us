@@ -1,4 +1,8 @@
 import { defineConfig } from '@playwright/test';
+import * as path from 'path';
+
+const STATE = (role: string) =>
+  process.env[`E2E_${role.toUpperCase()}_STATE`] || path.join(__dirname, '.auth', `${role}.json`);
 
 export default defineConfig({
   testDir: '.',
@@ -12,9 +16,28 @@ export default defineConfig({
   reporter: [['html', { outputFolder: 'report', open: 'never' }], ['list']],
   use: {
     baseURL: process.env.E2E_BASE_URL || 'http://localhost:8000',
-    storageState: process.env.E2E_STORAGE_STATE || undefined,
     ignoreHTTPSErrors: false,
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
   },
+  projects: [
+    // ONE sign-in per role per run; every page test reuses the saved session. The first design signed in
+    // inside each test - 58 admin pages = 58 logins - against a throttle of 8 failures per 5 minutes, so it
+    // locked itself out and could never have finished.
+    { name: 'setup', testMatch: /auth\.setup\.ts/ },
+    {
+      name: 'admin',
+      dependencies: ['setup'],
+      testMatch: /audit\.spec\.ts/,
+      grep: /admin · |destructive/,
+      use: { storageState: STATE('admin') },
+    },
+    {
+      name: 'user',
+      dependencies: ['setup'],
+      testMatch: /audit\.spec\.ts/,
+      grep: /user · /,
+      use: { storageState: STATE('user') },
+    },
+  ],
 });

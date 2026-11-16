@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { PAGES } from './pages';
 import { FORBIDDEN, isDestructive } from './guards';
-import { CREDS, hasState, redact, signIn, type Role } from './auth';
+import { CREDS, hasState, redact } from './auth';
 
 const BASE = process.env.E2E_BASE_URL || 'http://localhost:8000';
 const SLOW_MS = 3000;
@@ -20,13 +20,10 @@ const LEAKS: any[] = [];
 
 for (const role of ['admin', 'user'] as const) {
   test.describe(`${role}`, () => {
-    // A saved session (E2E_<ROLE>_STATE) skips the form entirely - the only way in for an account that
-    // needs a WhatsApp one-time code.
-    if (hasState(role)) test.use({ storageState: CREDS[role].state! });
-
-    test.beforeEach(async ({ page }) => {
-      if (!hasState(role)) await signIn(page, role as Role, BASE);
-    });
+    // No sign-in here. The `setup` project signs in ONCE per role and the config hands every test that
+    // saved session, so the server sees 2 logins per run instead of 116.
+    test.skip(!CREDS[role].pass && !hasState(role),
+      `no credentials for ${role}: set E2E_${role.toUpperCase()}_USER/PASS or E2E_${role.toUpperCase()}_STATE`);
 
     for (const p of PAGES) {
       test(`${role} · ${p.name} (${p.path})`, async ({ page }) => {
