@@ -191,8 +191,8 @@ def terminal() -> dict:
 
 
 # ----------------------------------------------------------------------------- symbols and prices
-def symbol(sym: str, select: bool = True) -> dict:
-    res = _call("SymbolParams", {"symbol": sym})
+def symbol(sym: str, select: bool = True, token: Optional[str] = None) -> dict:
+    res = _call("SymbolParams", {"symbol": sym}, token=token)
     if not res.get("ok"):
         text = ("%s" % res.get("detail")).lower()
         return {"ok": False, "reason": "UNKNOWN_SYMBOL" if ("not found" in text or "unknown" in text or "invalid symbol" in text) else res.get("reason"), "detail": res.get("detail"), "raw": res.get("raw")}
@@ -222,8 +222,8 @@ def symbol(sym: str, select: bool = True) -> dict:
     return out
 
 
-def tick(sym: str) -> dict:
-    res = _call("GetQuote", {"symbol": sym})
+def tick(sym: str, token: Optional[str] = None) -> dict:
+    res = _call("GetQuote", {"symbol": sym}, token=token)
     if not res.get("ok"):
         return {"ok": False, "reason": "NO_TICK", "detail": res.get("detail")}
     d = res["data"] if isinstance(res["data"], dict) else {}
@@ -258,12 +258,14 @@ def _order_fields(d: Any) -> dict:
 
 
 def market_order(sym: str, side: str, volume: float, *, sl: Optional[float], tp: Optional[float], deviation_points: int, magic: int, comment: str,
-                 sym_info: Optional[dict] = None, check_only: bool = False) -> dict:
-    """OrderSendSafe: ``volume`` is already in LOTS (the policy converts shares with the contract size)."""
-    info = sym_info or symbol(sym)
+                 sym_info: Optional[dict] = None, check_only: bool = False, token: Optional[str] = None) -> dict:
+    """OrderSendSafe: ``volume`` is already in LOTS (the policy converts shares with the contract size).
+
+    C.2: `token` places the order in a USER's account. Without it this is the operator's account, unchanged."""
+    info = sym_info or symbol(sym, token=token)
     if not info.get("ok"):
         return info
-    t = tick(sym)
+    t = tick(sym, token=token)
     if not t.get("ok"):
         return t
     buy = side.upper() in ("BUY", "LONG")
@@ -287,8 +289,8 @@ def market_order(sym: str, side: str, volume: float, *, sl: Optional[float], tp:
             "order": o["ticket"], "deal": o["ticket"], "volume": filled if filled is not None else float(volume), "price": o.get("price") or (t["ask"] if buy else t["bid"]), "comment": o.get("comment")}
 
 
-def positions(sym: Optional[str] = None, magic: Optional[int] = None) -> dict:
-    res = _call("OpenedOrders")
+def positions(sym: Optional[str] = None, magic: Optional[int] = None, token: Optional[str] = None) -> dict:
+    res = _call("OpenedOrders", token=token)
     if not res.get("ok"):
         return {"ok": False, "reason": res.get("reason"), "detail": res.get("detail")}
     rows = res["data"] if isinstance(res["data"], list) else (_g(res["data"], "orders", "positions", "items") or [])
@@ -306,12 +308,12 @@ def positions(sym: Optional[str] = None, magic: Optional[int] = None) -> dict:
     return {"ok": True, "positions": out}
 
 
-def close_position(ticket: int, *, deviation_points: int, magic: int, comment: str) -> dict:
+def close_position(ticket: int, *, deviation_points: int, magic: int, comment: str, token: Optional[str] = None) -> dict:
     """OrderCloseSafe(ticket). A ticket that is no longer open counts as already closed."""
-    live = positions()
+    live = positions(token=token)
     if live.get("ok") and not any(int(p.get("ticket") or 0) == int(ticket) for p in live["positions"]):
         return {"ok": True, "already_closed": True, "ticket": int(ticket)}
-    res = _call("OrderCloseSafe", {"ticket": int(ticket), "slippage": int(deviation_points)})
+    res = _call("OrderCloseSafe", {"ticket": int(ticket), "slippage": int(deviation_points)}, token=token)
     if not res.get("ok"):
         text = ("%s" % res.get("detail")).lower()
         if "not found" in text or "already closed" in text or "position closed" in text:

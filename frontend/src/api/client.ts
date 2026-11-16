@@ -758,6 +758,16 @@ export const api2 = {
   myMt5Enabled: (enabled: boolean) => send<any>('/api/me/mt5/enabled', 'POST', { enabled }),
   myMt5Size: (max_shares: number) => send<any>('/api/me/mt5/size', 'POST', { max_shares }),
   myMt5Disconnect: () => send<any>('/api/me/mt5/disconnect', 'POST'),
+  // C.2 - live copy trading
+  myMt5Settings: (patch: { shares?: number; max_positions?: number; daily_loss_pct?: number; auto_copy?: boolean }) =>
+    send<any>('/api/me/mt5/settings', 'POST', patch),
+  myMt5Preview: (s?: AbortSignal) => request<any>('/api/me/mt5/preview', s),
+  myMt5Orders: (limit = 100, s?: AbortSignal) => request<any>(`/api/me/mt5/orders?limit=${limit}`, s),
+  copyUsers: (s?: AbortSignal) => request<any>('/api/admin/copy-trading/users', s),
+  copyPause: (body: { username?: string; all?: boolean; paused: boolean }) =>
+    send<any>('/api/admin/copy-trading/pause', 'POST', body),
+  copyUserOrders: (username: string, s?: AbortSignal) =>
+    request<any>(`/api/admin/copy-trading/orders?username=${encodeURIComponent(username)}`, s),
   allModelsScan: (days = 15, s?: AbortSignal) =>
     request<any>(`/api/all-models/scan?days=${days}`, s),
   modelAccuracyScoreboard: (s?: AbortSignal) =>

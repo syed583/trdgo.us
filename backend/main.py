@@ -648,6 +648,28 @@ def _start_mt5_autotrade() -> None:
         logging.getLogger("mt5").exception("mt5 auto-trade startup failed")
 
 
+@_startup
+def _start_user_copy_trading() -> None:
+    """C.2: mirror our intraday trades into the accounts of users who switched Auto-copy on.
+
+    Registered as a SECOND listener, after ours, and it only queues: the orders go out on its own thread, so a
+    user's broker can never slow our book or the tracker. It is registered unconditionally - with no user
+    copying it queues events and places nothing - but AUTO_COPY_USERS=0 switches it off outright.
+    """
+    try:
+        import os
+        if (os.getenv("AUTO_COPY_USERS") or "1").strip() not in ("1", "true", "TRUE", "yes"):
+            logging.getLogger("user_copy").info("user copy trading is switched off (AUTO_COPY_USERS)")
+            return
+        import demo_trade_service as dts
+        import user_copy_service as CP
+        if CP.on_paper_event not in dts.HOOKS:
+            dts.HOOKS.append(CP.on_paper_event)
+        CP.start()
+    except Exception:  # noqa: BLE001
+        logging.getLogger("user_copy").exception("user copy trading startup failed")
+
+
 def _start_demo_trade_tracker() -> None:
     """Open + track the intraday demo (paper) trades continuously. Runs a tick
     every 60s during regular hours so signals are captured even when nobody has

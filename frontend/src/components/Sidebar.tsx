@@ -35,6 +35,8 @@ const MT5_ITEMS: NavEntry[] = [
   { to: '/mt5', label: 'MT5 Account', icon: <Settings size={S} /> },
   { to: '/mt5/symbols', label: 'MT5 Symbol Mapping', icon: <ListOrdered size={S} /> },
   { to: '/mt5/audit', label: 'MT5 Audit Report', icon: <ScrollText size={S} /> },
+  // C.2: who is copying our trades into their own account, and the pause.
+  { to: '/mt5/copy-trading', label: 'Copy Trading', icon: <Users size={S} /> },
 ];
 
 const NAV_GROUPS: NavGroup[] = [

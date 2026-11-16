@@ -106,6 +106,38 @@ def routes(monkeypatch, key):
                         lambda u, e: ({"ok": True, "enabled": e} if u in rows else {"ok": False, "reason": "NO_ACCOUNT"}))
     monkeypatch.setattr(store, "set_max_shares",
                         lambda u, n: ({"ok": True, "max_shares": n} if 1 <= n <= 1000 else {"ok": False, "reason": "OUT_OF_RANGE"}))
+
+    # C.2 reads and writes the copy settings through the same store. Stubbed here with the same in-memory rows,
+    # so these tests stay what they are - route and privacy tests that never touch a database.
+    def settings_of(u):
+        row = rows.get(u)
+        if not row:
+            return {"shares": 10, "max_positions": 20, "daily_loss_pct": 1.0, "auto_copy": False,
+                    "enabled": False, "admin_paused": False, "has_account": False}
+        return {"shares": row.get("max_shares", 10), "max_positions": 20, "daily_loss_pct": 1.0,
+                "auto_copy": bool(row.get("auto_copy")), "enabled": bool(row.get("enabled")),
+                "admin_paused": False, "has_account": True}
+
+    def update_settings(u, patch):
+        row = rows.get(u)
+        if not row:
+            return {"ok": False, "reason": "NO_ACCOUNT"}
+        if "shares" in patch:
+            try:
+                n = int(patch["shares"])
+            except (TypeError, ValueError):
+                return {"ok": False, "reason": "BAD_VALUE"}
+            if not (1 <= n <= 1000):
+                return {"ok": False, "reason": "OUT_OF_RANGE"}
+            row["max_shares"] = n
+        if "auto_copy" in patch:
+            row["auto_copy"] = bool(patch["auto_copy"])
+        return dict(settings_of(u), ok=True)
+
+    monkeypatch.setattr(store, "settings_of", settings_of)
+    monkeypatch.setattr(store, "update_settings", update_settings)
+    monkeypatch.setattr(store, "open_tickets", lambda u: [])
+    monkeypatch.setattr(store, "realized_today", lambda u: 0.0)
     monkeypatch.setattr(store, "disconnect", lambda u: (rows.pop(u, None), {"ok": True})[1])
     monkeypatch.setattr(svc, "verify", lambda u: {"ok": True, "account": {"balance": 1000.0, "currency": "USD"}})
     return r, rows
@@ -183,18 +215,30 @@ def test_the_risk_notice_is_served_with_the_tab(routes, monkeypatch):
         assert phrase in notice.lower()
 
 
-# --------------------------------------------------------------------------- C.1 cannot trade
-def test_c1_exposes_no_route_that_places_or_closes_an_order():
+# --------------------------------------------------------------------------- no route PLACES an order
+def test_no_user_route_places_or_closes_an_order_on_request():
+    """C.2 made the system trade, but not from a request.
+
+    Orders exist only as a consequence of OUR tracker's own entries and exits, on the copy service's thread.
+    No HTTP route a user can call may open or close a position - that would be a trading terminal, which is a
+    different product with different duties. /orders is a read-only log, and the GET is asserted here.
+    """
     import user_mt5_routes as r
-    paths = {route.path for route in r.router.routes}
-    for forbidden in ("order", "buy", "sell", "close", "trade"):
-        assert not [p for p in paths if forbidden in p.lower()], "C.1 must not expose %r" % forbidden
+    for route in r.router.routes:
+        methods = set(getattr(route, "methods", set()) or set())
+        path = route.path.lower()
+        for forbidden in ("buy", "sell", "/close", "/trade"):
+            assert forbidden not in path, "a user route looks like an order route: %s" % route.path
+        # /orders and /positions exist, and both must be reads: a POST to either would be a way to trade.
+        if "order" in path or "position" in path:
+            assert methods <= {"GET", "HEAD"}, "%s must be read-only, it is %s" % (route.path, methods)
 
 
-def test_c1_service_never_calls_the_order_functions():
+def test_the_read_only_service_still_places_nothing():
+    """user_mt5_service is the READ half and stays that way; the ordering lives in user_copy_service."""
     src = (BACKEND / "user_mt5_service.py").read_text(encoding="utf-8")
     for forbidden in ("market_order", "close_position", "modify_position"):
-        assert forbidden not in src, "C.1 must not reference %s" % forbidden
+        assert forbidden not in src, "the read-only service must not reference %s" % forbidden
 
 
 def test_a_user_session_never_disturbs_the_operator_session():

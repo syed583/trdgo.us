@@ -45,6 +45,7 @@ const GROK_DETAIL = { base: '/grok', title: 'Agent 1', detail: (s: string, sig?:
 const META_DETAIL = { base: '/meta', title: 'Agent 2', detail: (s: string, sig?: AbortSignal) => api2.metaDetail(s, sig) };
 const CHATGPT_DETAIL = { base: '/chatgpt', title: 'Agent 6', detail: (s: string, sig?: AbortSignal) => api2.chatgptDetail(s, sig) };
 const MyBrokerPage = lazy(() => import('./pages/MyBrokerPage'));
+const CopyTradingPage = lazy(() => import('./pages/CopyTradingPage'));
 const OptionScannerPage = lazy(() => import('./pages/OptionScannerPage'));
 const UnusualActivityPage = lazy(() => import('./pages/UnusualActivityPage'));
 const InstitutionalPage = lazy(() => import('./pages/InstitutionalPage'));
@@ -407,6 +408,7 @@ function Shell() {
           <Route path="/mt5" element={operatorGate(<Mt5AccountView />)} />
           <Route path="/mt5/symbols" element={operatorGate(<Mt5SymbolsView />)} />
           <Route path="/mt5/audit" element={operatorGate(<Mt5AuditView />)} />
+          <Route path="/mt5/copy-trading" element={operatorGate(<CopyTradingPage />)} />
           <Route path="/grok-intraday" element={<IntradayBoardPage ctx={ctx} />} />
           <Route path="/grok-intraday/:symbol" element={<AgentModelDetail ctx={ctx} model={GROK_INTRADAY_DETAIL} />} />
           <Route path="/meta-intraday" element={<IntradayBoardPage ctx={ctx} cfg={META_INTRADAY_CFG} />} />
