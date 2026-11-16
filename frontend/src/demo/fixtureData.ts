@@ -30,7 +30,7 @@ export const DEMO_BARS: ChartBar[] = [{"t":"2024-06-18","label":"Jun 18","open":
 
 export const DEMO_STATUS: SystemStatus = {
   feed: {
-    provider: 'Unusual Whales', configured: true, status: 'OK',
+    provider: 'Demo provider', configured: true, status: 'OK',
     app_left: 20000, app_budget: 20000, blocked: false,
   },
   database: { connected: true, error: null },

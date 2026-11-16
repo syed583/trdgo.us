@@ -137,7 +137,7 @@ export default function VolatilityPage({ ctx }: { ctx: PageContext }) {
     <div className="page">
       <PageHead
         title={`Volatility · ${symbol}`}
-        subtitle="Implied vs realized, the IV rank, and the term structure across every expiry — from Unusual Whales."
+        subtitle="Implied vs realized, the IV rank, and the term structure across every expiry — from the market-data provider."
       />
 
       <VolatilityExplainer />

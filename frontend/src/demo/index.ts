@@ -19,6 +19,11 @@ import {
 } from './fixtureData';
 
 export function isDemoMode(): boolean {
+  // B.2a: demo mode is a DEVELOPMENT tool. Gating it on import.meta.env.DEV lets the bundler fold this to
+  // `false` in a production build, which makes every DEMO_* fixture unreachable and drops the whole 67 KB
+  // of sample data - including the string "Unusual Whales", which was reaching every visitor in the main
+  // chunk, before sign-in. In dev it behaves exactly as before.
+  if (!import.meta.env.DEV) return false;
   if (typeof window === 'undefined') return false;
   const search = new URLSearchParams(window.location.search);
   if (search.get('demo') === '1') return true;

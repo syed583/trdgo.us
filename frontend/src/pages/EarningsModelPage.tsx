@@ -54,7 +54,7 @@ export type DirModelCfg = {
 
 const CLAUDE_NEW_MODEL = (pz: boolean): DirModelCfg => ({
   base: '/claude-last',
-  title: 'Claude · Pre-Earnings Direction v2 · 12 parameters · 100 pts',
+  title: 'Agent 5 · Pre-earnings direction',
   subtitle: '12-parameter / 100-point model (Trade Go US v2, for trades 1–2 days before the result): '
     + 'Options Flow+Unusual+Skew 19, EPS 15, Price Action & RS 15, Revenue 10, Sector & Market 10, '
     + 'Historical Earnings Reaction 8, Peers 7, Implied-vs-Realized 5, Big Fund 3, Dark Pool 3, '
@@ -81,7 +81,7 @@ const META_PARAMS: { key: string; label: string }[] = [
 
 export const META_MODEL: DirModelCfg = {
   base: '/meta',
-  title: 'Meta · Anas Earnings Model v1 · 11 parameters · 100 pts',
+  title: 'Agent 2 · Earnings model',
   subtitle: '11-parameter / 100-point model: EPS 15, Price Action & RS 15, Options Flow+Unusual+Skew 19, '
     + 'Revenue 10, Sector & Market 10, Guidance 8, Peers 7, Implied-vs-Realized 5, Dark Pool 3, '
     + 'Short/Insider 3, Calendar 2 (source summed 97, rescaled to 100). Bands: Buy ≥ 55 · Neutral 46–54 · '
@@ -108,7 +108,7 @@ const CHATGPT_PARAMS: { key: string; label: string }[] = [
 
 export const CHATGPT_MODEL: DirModelCfg = {
   base: '/chatgpt',
-  title: 'ChatGPT · Pre-Earnings Direction · 12 parameters · 100 pts',
+  title: 'Agent 6 · Pre-earnings direction',
   subtitle: '12-parameter / 100-point model: EPS 16, Revenue 10, Price Action & RS 16, '
     + 'Options Flow & OI 15, Sector & Market 10, Guidance 8, Peers 7, Unusual 5, Disparity/Skew 5, '
     + 'Dark Pool 3, Short/Insider 3, Calendar 2. Bands: 80+ STRONG BUY · 65–79 BUY · 40–64 NEUTRAL · '
@@ -136,7 +136,7 @@ const KIMI_PARAMS: { key: string; label: string }[] = [
 
 export const KIMI_MODEL: DirModelCfg = {
   base: '/kimi',
-  title: 'Kimi · Anas v1 review · 12 parameters · 100 pts',
+  title: 'Agent 3 · Earnings model',
   subtitle: 'EPS 12, Revenue 6, Guidance 10, Options 20, Price/RS 12, Hist reaction 7, Peers 6, '
     + 'Sector/Market 8, Short 3, Insider 1, Dark pool 2, Timing 3 (spec sums to 90, rescaled to 100). '
     + 'Bands: STRONG BUY ≥65 · BUY 58–64 · NEUTRAL 43–57 · SELL 36–42 · STRONG SELL ≤35. '
@@ -162,7 +162,7 @@ const GEMINI_PARAMS: { key: string; label: string }[] = [
 
 export const GEMINI_MODEL: DirModelCfg = {
   base: '/gemini',
-  title: 'Gemini · Anas Engine v2 · 11 parameters · 100 pts',
+  title: 'Agent 4 · Earnings model',
   subtitle: 'EPS rev 12, Revenue 8, Price/RS 12, Sector/Mkt 8, Options 14, IV crush 8, '
     + 'Guidance 8, Hit-rate 8, Squeeze 6, Insider 8. STRONG BUY ≥68 · SPEC BUY 58–67 · NOISE 43–57 · '
     + 'SPEC SHORT 33–42 · STRONG SHORT ≤32. Missing inputs are excluded and the score rescaled to 100 (see Data coverage).',
@@ -183,7 +183,7 @@ const CLAUDE_PRO_PARAMS: { key: string; label: string }[] = [
 
 export const CLAUDE_PRO_MODEL: DirModelCfg = {
   base: '/claude-pro',
-  title: 'Claude Pro · Refined Direction · 6 blocks',
+  title: 'Agent 5 Pro · Refined direction',
   subtitle: 'Refined model: correlated positioning signals merged into one block, technicals '
     + 'merged into trend/run-up, magnitude pulled out into a separate Move-Size read. Weights: '
     + 'Expectations 40, Positioning 20, Trend/Run-up 12, History 15, Short/Insider 8, Regime 5. '
@@ -208,17 +208,16 @@ const GROK_INTRADAY_PARAMS: { key: string; label: string }[] = [
 
 export const GROK_INTRADAY_MODEL: DirModelCfg = {
   base: '/grok-intraday',
-  title: 'Grok Intraday · Short-term Direction · 10 signals',
-  subtitle: 'Short-term directional lean from live signals: options flow 18, unusual activity 14, '
-    + 'volume/PCR 12, trend & price action 15, key option levels 10, OI change + expiry 8, '
-    + 'volatility & expected move 8, RSI 6, C/P disparity 5, event radar 4. 100 pts.',
+  title: 'Agent 1 Intraday · Short-term direction',
+  // B.2a: this subtitle printed the model's entire weight table in plain sight.
+  subtitle: 'Short-term directional lean from live signals.',
   params: GROK_INTRADAY_PARAMS,
   scan: (d, s) => api2.grokIntradayScan(d, s),
 };
 
 export const GROK_MODEL: DirModelCfg = {
   base: '/grok',
-  title: 'Grok · Anas Earnings Model v1 · 11 parameters · 100 pts',
+  title: 'Agent 1 · Earnings model',
   subtitle: '11-parameter / 100-point model: EPS 15, Price Action & RS 15, Options Flow+Unusual+Skew 19, '
     + 'Revenue 10, Sector & Market 10, Guidance 8, Peers 7, Implied-vs-Realized 5, Dark Pool 3, '
     + 'Short/Insider 3, Calendar 2 (source summed 97, rescaled to 100). Bands: Buy ≥ 55 · Neutral 46–54 · '
@@ -246,7 +245,7 @@ const dayLabel = (iso: string) => {
   } catch { return iso; }
 };
 
-export default function ClaudeLastPage({ ctx, base, pz = false, model }:
+export default function EarningsModelPage({ ctx, base, pz = false, model }:
   { ctx: PageContext; base?: string; pz?: boolean; model?: DirModelCfg }) {
   const cfg = model || CLAUDE_NEW_MODEL(pz);
   const navigate = useNavigate();

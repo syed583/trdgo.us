@@ -160,7 +160,7 @@ export default function UnusualActivityPage({ ctx }: { ctx: PageContext }) {
             </table>
           </div>
         )}
-        <div className="ts-foot">Premium = total $ traded today, straight from Unusual Whales. The
+        <div className="ts-foot">Premium = total $ traded today, straight from the market-data provider. The
           normal ratio is the average over the last 20 sessions. Read-only — never places an order.</div>
       </Panel>
     </div>

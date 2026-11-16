@@ -27,23 +27,23 @@ const PostEarningsForwardPage = lazy(() => import('./pages/PostEarningsForwardPa
 const EarningsEquityPage = lazy(() => import('./pages/EarningsEquityPage'));
 const EarningsOptionsPage = lazy(() => import('./pages/EarningsOptionsPage'));
 const EarningsTradePage = lazy(() => import('./pages/EarningsTradePage'));
-const EarningsClaudePage = lazy(() => import('./pages/EarningsClaudePage'));
-const ClaudeLastPage = lazy(() => import('./pages/ClaudeLastPage'));
-const ClaudeLastDetail = lazy(() => import('./pages/ClaudeLastDetail'));
-import { GROK_MODEL, META_MODEL, CHATGPT_MODEL, KIMI_MODEL, GEMINI_MODEL, CLAUDE_PRO_MODEL } from './pages/ClaudeLastPage';
+const EarningsAgentPage = lazy(() => import('./pages/EarningsAgentPage'));
+const EarningsModelPage = lazy(() => import('./pages/EarningsModelPage'));
+const AgentModelDetail = lazy(() => import('./pages/AgentModelDetail'));
+import { GROK_MODEL, META_MODEL, CHATGPT_MODEL, KIMI_MODEL, GEMINI_MODEL, CLAUDE_PRO_MODEL } from './pages/EarningsModelPage';
 const CLAUDE_PRO_DETAIL = { base: '/claude-pro', title: 'Claude Pro', detail: (s: string, sig?: AbortSignal) => api2.claudeProDetail(s, sig) };
 const AllModelsPage = lazy(() => import('./pages/AllModelsPage'));
 const ModelAccuracyPage = lazy(() => import('./pages/ModelAccuracyPage'));
-const GrokIntradayPage = lazy(() => import('./pages/GrokIntradayPage'));
+const IntradayBoardPage = lazy(() => import('./pages/IntradayBoardPage'));
 const AllIntradayModelsPage = lazy(() => import('./pages/AllIntradayModelsPage'));
-import { META_INTRADAY_CFG, KIMI_INTRADAY_CFG, GEMINI_INTRADAY_CFG } from './pages/GrokIntradayPage';
-const META_INTRADAY_DETAIL = { base: '/meta-intraday', title: 'Meta Intraday', detail: (s: string, sig?: AbortSignal) => api2.metaIntradayDetail(s, sig) };
-const GROK_INTRADAY_DETAIL = { base: '/grok-intraday', title: 'Grok Intraday', detail: (s: string, sig?: AbortSignal) => api2.grokIntradayDetail(s, sig) };
-const GEMINI_DETAIL = { base: '/gemini', title: 'Gemini', detail: (s: string, sig?: AbortSignal) => api2.geminiDetail(s, sig) };
-const KIMI_DETAIL = { base: '/kimi', title: 'Kimi', detail: (s: string, sig?: AbortSignal) => api2.kimiDetail(s, sig) };
-const GROK_DETAIL = { base: '/grok', title: 'Grok', detail: (s: string, sig?: AbortSignal) => api2.grokDetail(s, sig) };
-const META_DETAIL = { base: '/meta', title: 'Meta', detail: (s: string, sig?: AbortSignal) => api2.metaDetail(s, sig) };
-const CHATGPT_DETAIL = { base: '/chatgpt', title: 'ChatGPT', detail: (s: string, sig?: AbortSignal) => api2.chatgptDetail(s, sig) };
+import { META_INTRADAY_CFG, KIMI_INTRADAY_CFG, GEMINI_INTRADAY_CFG } from './pages/intradayBoardConfigs';
+const META_INTRADAY_DETAIL = { base: '/meta-intraday', title: 'Agent 2 Intraday', detail: (s: string, sig?: AbortSignal) => api2.metaIntradayDetail(s, sig) };
+const GROK_INTRADAY_DETAIL = { base: '/grok-intraday', title: 'Agent 1 Intraday', detail: (s: string, sig?: AbortSignal) => api2.grokIntradayDetail(s, sig) };
+const GEMINI_DETAIL = { base: '/gemini', title: 'Agent 4', detail: (s: string, sig?: AbortSignal) => api2.geminiDetail(s, sig) };
+const KIMI_DETAIL = { base: '/kimi', title: 'Agent 3', detail: (s: string, sig?: AbortSignal) => api2.kimiDetail(s, sig) };
+const GROK_DETAIL = { base: '/grok', title: 'Agent 1', detail: (s: string, sig?: AbortSignal) => api2.grokDetail(s, sig) };
+const META_DETAIL = { base: '/meta', title: 'Agent 2', detail: (s: string, sig?: AbortSignal) => api2.metaDetail(s, sig) };
+const CHATGPT_DETAIL = { base: '/chatgpt', title: 'Agent 6', detail: (s: string, sig?: AbortSignal) => api2.chatgptDetail(s, sig) };
 const OptionScannerPage = lazy(() => import('./pages/OptionScannerPage'));
 const UnusualActivityPage = lazy(() => import('./pages/UnusualActivityPage'));
 const InstitutionalPage = lazy(() => import('./pages/InstitutionalPage'));
@@ -381,24 +381,24 @@ function Shell() {
           <Route path="/tradgo-call/:symbol" element={<TradgoCallPage ctx={ctx} />} />
           <Route path="/earnings-trade" element={<EarningsTradePage ctx={ctx} />} />
           <Route path="/earnings-trade/:symbol" element={<EarningsTradePage ctx={ctx} />} />
-          <Route path="/earnings-claude" element={<EarningsClaudePage ctx={ctx} base="/earnings-claude" profile="plusminus" />} />
-          <Route path="/earnings-claude/:symbol" element={<EarningsClaudePage ctx={ctx} base="/earnings-claude" profile="plusminus" />} />
-          <Route path="/claude-last" element={<ClaudeLastPage ctx={ctx} />} />
-          <Route path="/claude-last/:symbol" element={<ClaudeLastDetail ctx={ctx} />} />
-          <Route path="/claude-new-pz" element={<ClaudeLastPage ctx={ctx} base="/claude-new-pz" pz />} />
-          <Route path="/claude-new-pz/:symbol" element={<ClaudeLastDetail ctx={ctx} base="/claude-new-pz" pz />} />
-          <Route path="/grok" element={<ClaudeLastPage ctx={ctx} model={GROK_MODEL} />} />
-          <Route path="/grok/:symbol" element={<ClaudeLastDetail ctx={ctx} model={GROK_DETAIL} />} />
-          <Route path="/meta" element={<ClaudeLastPage ctx={ctx} model={META_MODEL} />} />
-          <Route path="/meta/:symbol" element={<ClaudeLastDetail ctx={ctx} model={META_DETAIL} />} />
-          <Route path="/chatgpt" element={<ClaudeLastPage ctx={ctx} model={CHATGPT_MODEL} />} />
-          <Route path="/chatgpt/:symbol" element={<ClaudeLastDetail ctx={ctx} model={CHATGPT_DETAIL} />} />
-          <Route path="/kimi" element={<ClaudeLastPage ctx={ctx} model={KIMI_MODEL} />} />
-          <Route path="/kimi/:symbol" element={<ClaudeLastDetail ctx={ctx} model={KIMI_DETAIL} />} />
-          <Route path="/gemini" element={<ClaudeLastPage ctx={ctx} model={GEMINI_MODEL} />} />
-          <Route path="/gemini/:symbol" element={<ClaudeLastDetail ctx={ctx} model={GEMINI_DETAIL} />} />
-          <Route path="/claude-pro" element={<ClaudeLastPage ctx={ctx} model={CLAUDE_PRO_MODEL} />} />
-          <Route path="/claude-pro/:symbol" element={<ClaudeLastDetail ctx={ctx} model={CLAUDE_PRO_DETAIL} />} />
+          <Route path="/earnings-claude" element={<EarningsAgentPage ctx={ctx} base="/earnings-claude" profile="plusminus" />} />
+          <Route path="/earnings-claude/:symbol" element={<EarningsAgentPage ctx={ctx} base="/earnings-claude" profile="plusminus" />} />
+          <Route path="/claude-last" element={<EarningsModelPage ctx={ctx} />} />
+          <Route path="/claude-last/:symbol" element={<AgentModelDetail ctx={ctx} />} />
+          <Route path="/claude-new-pz" element={<EarningsModelPage ctx={ctx} base="/claude-new-pz" pz />} />
+          <Route path="/claude-new-pz/:symbol" element={<AgentModelDetail ctx={ctx} base="/claude-new-pz" pz />} />
+          <Route path="/grok" element={<EarningsModelPage ctx={ctx} model={GROK_MODEL} />} />
+          <Route path="/grok/:symbol" element={<AgentModelDetail ctx={ctx} model={GROK_DETAIL} />} />
+          <Route path="/meta" element={<EarningsModelPage ctx={ctx} model={META_MODEL} />} />
+          <Route path="/meta/:symbol" element={<AgentModelDetail ctx={ctx} model={META_DETAIL} />} />
+          <Route path="/chatgpt" element={<EarningsModelPage ctx={ctx} model={CHATGPT_MODEL} />} />
+          <Route path="/chatgpt/:symbol" element={<AgentModelDetail ctx={ctx} model={CHATGPT_DETAIL} />} />
+          <Route path="/kimi" element={<EarningsModelPage ctx={ctx} model={KIMI_MODEL} />} />
+          <Route path="/kimi/:symbol" element={<AgentModelDetail ctx={ctx} model={KIMI_DETAIL} />} />
+          <Route path="/gemini" element={<EarningsModelPage ctx={ctx} model={GEMINI_MODEL} />} />
+          <Route path="/gemini/:symbol" element={<AgentModelDetail ctx={ctx} model={GEMINI_DETAIL} />} />
+          <Route path="/claude-pro" element={<EarningsModelPage ctx={ctx} model={CLAUDE_PRO_MODEL} />} />
+          <Route path="/claude-pro/:symbol" element={<AgentModelDetail ctx={ctx} model={CLAUDE_PRO_DETAIL} />} />
           <Route path="/all-models" element={<AllModelsPage ctx={ctx} />} />
           <Route path="/model-accuracy" element={<ModelAccuracyPage />} />
           <Route path="/institutional-intel" element={<InstitutionalPage />} />
@@ -406,14 +406,14 @@ function Shell() {
           <Route path="/mt5" element={operatorGate(<Mt5AccountView />)} />
           <Route path="/mt5/symbols" element={operatorGate(<Mt5SymbolsView />)} />
           <Route path="/mt5/audit" element={operatorGate(<Mt5AuditView />)} />
-          <Route path="/grok-intraday" element={<GrokIntradayPage ctx={ctx} />} />
-          <Route path="/grok-intraday/:symbol" element={<ClaudeLastDetail ctx={ctx} model={GROK_INTRADAY_DETAIL} />} />
-          <Route path="/meta-intraday" element={<GrokIntradayPage ctx={ctx} cfg={META_INTRADAY_CFG} />} />
-          <Route path="/meta-intraday/:symbol" element={<ClaudeLastDetail ctx={ctx} model={META_INTRADAY_DETAIL} />} />
-          <Route path="/kimi-intraday" element={<GrokIntradayPage ctx={ctx} cfg={KIMI_INTRADAY_CFG} />} />
-          <Route path="/kimi-intraday/:symbol" element={<ClaudeLastDetail ctx={ctx} model={{ base: '/kimi-intraday', title: 'Kimi Intraday', detail: (s: string, sig?: AbortSignal) => api2.kimiIntradayDetail(s, sig) }} />} />
-          <Route path="/gemini-intraday" element={<GrokIntradayPage ctx={ctx} cfg={GEMINI_INTRADAY_CFG} />} />
-          <Route path="/gemini-intraday/:symbol" element={<ClaudeLastDetail ctx={ctx} model={{ base: '/gemini-intraday', title: 'Gemini Intraday', detail: (s: string, sig?: AbortSignal) => api2.geminiIntradayDetail(s, sig) }} />} />
+          <Route path="/grok-intraday" element={<IntradayBoardPage ctx={ctx} />} />
+          <Route path="/grok-intraday/:symbol" element={<AgentModelDetail ctx={ctx} model={GROK_INTRADAY_DETAIL} />} />
+          <Route path="/meta-intraday" element={<IntradayBoardPage ctx={ctx} cfg={META_INTRADAY_CFG} />} />
+          <Route path="/meta-intraday/:symbol" element={<AgentModelDetail ctx={ctx} model={META_INTRADAY_DETAIL} />} />
+          <Route path="/kimi-intraday" element={<IntradayBoardPage ctx={ctx} cfg={KIMI_INTRADAY_CFG} />} />
+          <Route path="/kimi-intraday/:symbol" element={<AgentModelDetail ctx={ctx} model={{ base: '/kimi-intraday', title: 'Agent 3 Intraday', detail: (s: string, sig?: AbortSignal) => api2.kimiIntradayDetail(s, sig) }} />} />
+          <Route path="/gemini-intraday" element={<IntradayBoardPage ctx={ctx} cfg={GEMINI_INTRADAY_CFG} />} />
+          <Route path="/gemini-intraday/:symbol" element={<AgentModelDetail ctx={ctx} model={{ base: '/gemini-intraday', title: 'Agent 4 Intraday', detail: (s: string, sig?: AbortSignal) => api2.geminiIntradayDetail(s, sig) }} />} />
           <Route path="/all-intraday-models" element={<AllIntradayModelsPage ctx={ctx} />} />
           <Route path="/option-scanner" element={<OptionScannerPage ctx={ctx} />} />
           <Route path="/unusual-activity" element={<UnusualActivityPage ctx={ctx} />} />

@@ -243,7 +243,7 @@ function ScoreSplit({ equity, options, lock }:
 
 // `base`/`profile`/`embedded` let the My Calls page reuse this same engine view
 // under its own route and scoring profile ("final") without duplicating the UI.
-export default function EarningsClaudePage({ ctx, base = '/earnings-claude', profile = 'plusminus', embedded }:
+export default function EarningsAgentPage({ ctx, base = '/earnings-claude', profile = 'plusminus', embedded }:
   { ctx: PageContext; base?: string; profile?: string; embedded?: boolean }) {
   const { symbol, demo } = ctx;
   const { symbol: pathSym } = useParams();

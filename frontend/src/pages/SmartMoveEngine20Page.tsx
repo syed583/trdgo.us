@@ -166,7 +166,7 @@ export function LiveView() {
             {' · '}Now: {d.now_et}
           </div>
           <div className="sm-q-muted" data-testid="sm-live-requests">
-            Unusual Whales requests by the collector today: <b>{q.used_today ?? 'unknown'}</b> of {q.daily_limit ?? 'unknown'} · remaining <b>{q.remaining_today ?? 'unknown'}</b> · per run ≤ {q.run_limit ?? 'unknown'}
+            Provider requests by the collector today: <b>{q.used_today ?? 'unknown'}</b> of {q.daily_limit ?? 'unknown'} · remaining <b>{q.remaining_today ?? 'unknown'}</b> · per run ≤ {q.run_limit ?? 'unknown'}
             {d.calendar?.through && <> · calendar through {d.calendar.through} (age {d.calendar.age_h} h)</>}
             {e.open_scanned != null && <> · events in an open window scanned: <b>{e.open_scanned}</b></>}
           </div>

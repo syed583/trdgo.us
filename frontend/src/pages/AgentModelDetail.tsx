@@ -16,7 +16,7 @@ import './earnings-trade-screen.css';   // ets-* layout (same as Claude +-)
 
 const num = (v: any, d = 2) => (v == null ? '--' : Number(v).toFixed(d));
 
-export default function ClaudeLastDetail({ ctx, base = '/claude-last', pz = false, model }:
+export default function AgentModelDetail({ ctx, base = '/claude-last', pz = false, model }:
   { ctx: PageContext; base?: string; pz?: boolean;
     model?: { base: string; title: string; detail: (sym: string, s?: AbortSignal) => Promise<any> } }) {
   const { symbol } = useParams();

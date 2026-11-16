@@ -422,7 +422,7 @@ export default function OverviewPage({ ctx }: { ctx: PageContext }) {
                 <Panel title="Insider Activity" noBody><Insiders ins={d.insiders} /></Panel>
               </div>
               <div className="hint" style={{ padding: '2px 4px' }}>
-                Data from Unusual Whales and SEC filings.
+                Data from the market-data provider and SEC filings.
               </div>
             </>
           )}
