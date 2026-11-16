@@ -187,6 +187,10 @@ backend/trdgo_score_service.py
 backend/universe_service.py
 backend/unusual_activity_service.py
 backend/unusualwhales_service.py
+backend/user_mt5_routes.py
+backend/user_mt5_service.py
+backend/user_mt5_store.py
+backend/user_secret_box.py
 backend/user_service.py
 backend/uw_budget.py
 backend/uw_budget_cli.py
