@@ -47,6 +47,10 @@ EQUITY_TTL_S = 60.0
 SYMBOL_TTL_S = 6 * 3600.0
 PREVIEW_MAX = 80
 
+# Why the worker is not running, when it is not. The page shows this instead of a bare "NOT running":
+# a status with no reason is almost useless when something has gone wrong at boot.
+_start_error: Optional[str] = None
+
 _queue: deque = deque()
 _wake = threading.Condition()
 _worker: Optional[threading.Thread] = None
@@ -88,13 +92,36 @@ def on_paper_event(ev: dict) -> None:
 
 
 def start() -> None:
-    """Start the worker. Called once at startup; safe to call again."""
-    global _worker, _stop
+    """Start the worker. Called once at startup; safe to call again.
+
+    A failure here is recorded AND raised: the caller writes it to mt5.log, and `worker_error()` puts it on
+    the operator's page. A copy engine that is quietly not running is the worst of the possible states.
+    """
+    global _worker, _stop, _start_error
     if _worker and _worker.is_alive():
+        _start_error = None
         return
-    _stop = False
-    _worker = threading.Thread(target=_loop, name="user-copy", daemon=True)
-    _worker.start()
+    try:
+        _stop = False
+        _worker = threading.Thread(target=_loop, name="user-copy", daemon=True)
+        _worker.start()
+        if not _worker.is_alive():
+            raise RuntimeError("the worker thread did not come up")
+        _start_error = None
+    except Exception as exc:  # noqa: BLE001
+        _start_error = "%s: %s" % (type(exc).__name__, exc)
+        raise
+
+
+def worker_error() -> Optional[str]:
+    """The reason the worker is not running, or None. Also set when it died after a clean start."""
+    if _worker and _worker.is_alive():
+        return None
+    if _start_error:
+        return _start_error
+    if _worker is None:
+        return "the copy worker was never started (check mt5.log at boot)"
+    return "the copy worker started and then stopped (check mt5.log)"
 
 
 def stop() -> None:
@@ -378,8 +405,9 @@ def user_status(username: str) -> dict:
     except Exception:  # noqa: BLE001
         open_now, realized = [], 0.0
     copying = bool(st.get("auto_copy") and st.get("enabled") and not st.get("admin_paused"))
+    running = bool(_worker and _worker.is_alive())
     return {"stage": "C.2", "live": True, "copying": copying, "settings": st,
             "open_positions": len(open_now), "realized_today": round(realized, 2),
-            "worker_running": bool(_worker and _worker.is_alive()),
+            "worker_running": running, "worker_error": (None if running else worker_error()),
             "note": ("Orders are being placed in your own account." if copying
                      else "No orders are being placed. Switch Auto-copy on to start.")}

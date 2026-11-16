@@ -136,11 +136,18 @@ def classify_refusal(res: dict) -> str:
 
 
 # ----------------------------------------------------------------------------- session
-def connect(login: int, password: str, server: str, base_url: Optional[str] = None, **_ignored) -> dict:
-    """ConnectEx(user, password, server) -> session token (kept in memory only)."""
+def connect(login: int, password: str, server: str, base_url: Optional[str] = None, *,
+            session: Optional[dict] = None, **_ignored) -> dict:
+    """ConnectEx(user, password, server) -> session token (kept in memory only).
+
+    C.2a: `session` is the dict to open the connection in. Omitted, it is the operator's module session and
+    this behaves exactly as before. Given, the operator's session is never read or written - which is how a
+    USER connects without taking the operator's token away for the length of the HTTP call.
+    """
+    sess = _session if session is None else session
     with _lock:
         base = (base_url or DEFAULT_BASE_URL).strip() or DEFAULT_BASE_URL
-        _session.update(base_url=base, token=None, login=None, server=None)
+        sess.update(base_url=base, token=None, login=None, server=None)
         res = _call("ConnectEx", {"user": int(login), "password": password, "server": server}, with_token=False, base_url=base)
         if not res.get("ok"):
             return {"ok": False, "reason": res.get("reason"), "detail": res.get("detail"), "error_code": res.get("error_code"), "path": res.get("path")}
@@ -149,10 +156,10 @@ def connect(login: int, password: str, server: str, base_url: Optional[str] = No
             tok = _g(tok, "id", "token", "sessionId", "session")
         if not tok or not isinstance(tok, str):
             return {"ok": False, "reason": "NO_TOKEN", "detail": "ConnectEx answered without a session token", "raw": res.get("data")}
-        _session.update(token=tok, login=int(login), server=server)
-        acct = account()
+        sess.update(token=tok, login=int(login), server=server)
+        acct = account(token=(tok if session is not None else None), base_url=base)
         if not acct.get("ok"):
-            _session["token"] = None
+            sess["token"] = None
             return {"ok": False, "reason": "ACCOUNT_SUMMARY_FAILED", "detail": acct.get("detail")}
         return {"ok": True, "account": acct["account"]}
 
@@ -169,8 +176,9 @@ def connected() -> bool:
     return bool(_session.get("token"))
 
 
-def account() -> dict:
-    res = _call("AccountSummary")
+def account(token: Optional[str] = None, base_url: Optional[str] = None) -> dict:
+    """The connected account. `token` reads a USER's session instead of the operator's (C.2a)."""
+    res = _call("AccountSummary", token=token, base_url=base_url)
     if not res.get("ok"):
         return {"ok": False, "reason": res.get("reason"), "detail": res.get("detail")}
     d = res["data"] if isinstance(res["data"], dict) else {}

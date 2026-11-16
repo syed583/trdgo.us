@@ -27,6 +27,13 @@ export default function CopyTradingPage() {
 
   const d = info.data || {};
   const users = d.users || [];
+  // C.2a: never state a status we do not have. The previous version printed "worker: NOT running" whenever
+  // `worker_running` was undefined - which is what a FAILED REQUEST looks like - and that is exactly what
+  // happened when the route was not mounted: the page reported the engine as down while it was fine.
+  const answered = !!info.data && d.ok !== false;
+  const workerText = !answered
+    ? (info.loading ? 'checking...' : 'unknown - this page could not reach the server')
+    : (d.worker_running ? 'running' : `NOT running${d.worker_error ? ` - ${d.worker_error}` : ''}`);
 
   const run = useCallback(async (fn: () => Promise<any>, ok: string) => {
     setBusy(true); setMsg(null);
@@ -52,7 +59,9 @@ export default function CopyTradingPage() {
       <style>{CSS}</style>
       <PageHead
         title="Copy trading"
-        subtitle={`${copying} of ${users.length} connected accounts are copying our trades.`}
+        subtitle={answered
+          ? `${copying} of ${users.length} connected accounts are copying our trades.`
+          : 'Could not read the copy-trading status from the server.'}
         right={<button className="ghost-btn" onClick={info.refresh}>
           <RefreshCw size={12} className={info.loading ? 'spin' : undefined} /> Refresh
         </button>}
@@ -68,8 +77,9 @@ export default function CopyTradingPage() {
             onClick={() => run(() => api2.copyPause({ all: true, paused: false }), 'Every user is resumed.')}>
             <PlayCircle size={12} /> Resume everyone
           </button>
-          <span style={{ fontSize: 12, opacity: .8, alignSelf: 'center' }}>
-            worker: {d.worker_running ? 'running' : 'NOT running'} · queue: {d.queue_depth ?? 0}
+          <span style={{ fontSize: 12, alignSelf: 'center' }}
+            className={answered && !d.worker_running ? 'on' : undefined}>
+            worker: {workerText} · queue: {answered ? d.queue_depth ?? 0 : '—'}
           </span>
         </div>
       </div>
@@ -129,6 +139,14 @@ export default function CopyTradingPage() {
               </tbody>
             </table>
           )}
+        </div>
+      )}
+
+      {!answered && !info.loading && (
+        <div className="card" style={{ borderColor: 'var(--danger, #b91c1c)' }}>
+          <b>This page could not reach the copy-trading status.</b>
+          <p style={{ margin: '6px 0 0' }}>{info.error ? String(info.error) : 'The request failed.'} Until it
+            answers, treat the worker state above as unknown rather than as off.</p>
         </div>
       )}
 

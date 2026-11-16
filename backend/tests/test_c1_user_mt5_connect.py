@@ -242,9 +242,18 @@ def test_the_read_only_service_still_places_nothing():
 
 
 def test_a_user_session_never_disturbs_the_operator_session():
-    """mt5_bridge keeps ONE session for the operator; a user's connect must hand it back untouched."""
+    """mt5_bridge keeps ONE session for the operator; a user's connect must not touch it at all.
+
+    C.2a replaced what this test used to assert. It required the user path to blank `_session` and set it
+    back - and that WAS the defect: `_call` reads `_session["token"]` without the lock, so for the length of
+    the ConnectEx call the operator had no token and every admin request failed with "no session token:
+    connect first". The guarantee is not "restore it afterwards", it is "never write to it", which is what
+    `bridge.connect(..., session=...)` makes possible. Behaviour is tested in
+    test_c2a_worker_and_session.py; this file keeps the structural half.
+    """
     src = (BACKEND / "user_mt5_service.py").read_text(encoding="utf-8")
-    assert "_session.update(token=None" in src, "the operator's session must be restored after a user connects"
+    assert "_session" not in src, "the user path must not read or write the operator's session"
+    assert "session=sess" in src, "the user path must connect into its own session dict"
 
 
 # --------------------------------------------------------------------------- C.1a: the page must be reachable

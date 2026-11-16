@@ -58,10 +58,18 @@ def my_mt5(request: Request) -> dict:
 def connect(request: Request, payload: dict = Body(...)) -> dict:
     """Store my account, then test it once. `consent` must be true: it records that the user read the notice."""
     me = _me(request)
+    login = str(payload.get("login") or "").strip()
+    server = str(payload.get("server") or "").strip()
+    # C.2a: not the account our own engine trades. Both sides would place orders into it, the positions would
+    # be indistinguishable, and our 15:45 sweep would close theirs. Checked before anything is stored.
+    if svc.is_operator_account(login, server):
+        return {"ok": False, "reason": "OPERATOR_ACCOUNT",
+                "detail": "That is the account this service trades itself. Connect a different account - "
+                          "copying into the same account would place two sets of orders in it."}
     saved = store.save(
         me,
-        login=str(payload.get("login") or "").strip(),
-        server=str(payload.get("server") or "").strip(),
+        login=login,
+        server=server,
         password=str(payload.get("password") or ""),
         consent=bool(payload.get("consent")),
     )
@@ -172,8 +180,10 @@ def copy_users(request: Request) -> dict:
         st = copysvc.user_status(name)
         rows.append(dict(row, copying=st["copying"], open_positions=st["open_positions"],
                          realized_today=st["realized_today"]))
+    running = bool(copysvc._worker and copysvc._worker.is_alive())               # noqa: SLF001
     return {"ok": True, "users": rows, "queue_depth": copysvc.queue_depth(),
-            "worker_running": bool(copysvc._worker and copysvc._worker.is_alive())}    # noqa: SLF001
+            "worker_running": running,
+            "worker_error": (None if running else copysvc.worker_error())}
 
 
 @admin_router.post("/pause")

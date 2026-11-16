@@ -56,8 +56,12 @@ def _connect(username: str) -> dict:
         return {"ok": False, "reason": "RECONNECT_NEEDED",
                 "detail": "the stored password cannot be read; connect the account again"}
     login, server, password = creds
+    # C.2a: a dict of OUR own, so the operator's module session is never read or written by this call. Before
+    # this, bridge.connect() blanked the operator's token for the length of the ConnectEx call and every admin
+    # request in that window failed with "no session token: connect first" (owner, 2026-11-16).
+    sess: dict = {"base_url": None, "token": None, "login": None, "server": None}
     try:
-        res = bridge.connect(int(login), password, server)
+        res = bridge.connect(int(login), password, server, session=sess)
     except (TypeError, ValueError):
         return {"ok": False, "reason": "BAD_LOGIN", "detail": "the stored account number is not a number"}
     finally:
@@ -66,10 +70,7 @@ def _connect(username: str) -> dict:
         store.record_check(username, "FAILED", res.get("detail") or res.get("reason"))
         return {"ok": False, "reason": res.get("reason") or "CONNECT_FAILED", "detail": res.get("detail")}
 
-    # bridge.connect stores the token in the OPERATOR's session. Take it for this user and put the
-    # operator's session back exactly as it was, so a user's connect can never hijack the admin one.
-    token = bridge._session.get("token")                                     # noqa: SLF001 - see above
-    bridge._session.update(token=None, login=None, server=None)              # noqa: SLF001
+    token = sess.get("token")
     if not token:
         store.record_check(username, "FAILED", "no session token")
         return {"ok": False, "reason": "NO_TOKEN", "detail": "the broker did not return a session"}
@@ -154,3 +155,27 @@ def status(username: str) -> dict:
         "copy_trading": {"stage": "C.1", "orders_enabled": False,
                          "note": "C.1 only reads this account. Copying trades arrives in a later release."},
     }
+
+
+# --------------------------------------------------------------------------- the operator's own account
+def is_operator_account(login: str, server: str) -> bool:
+    """True when these are the credentials OUR engine trades with.
+
+    A user must not connect the account our own book runs on: both sides would place orders into it, the
+    positions would be indistinguishable, and our EOD sweep would close theirs. Compared on the account
+    number and the server only - the saved password is never read here.
+    """
+    try:
+        import mt5_autotrade as AT
+        saved = AT.load_credentials()
+    except Exception:  # noqa: BLE001 - no saved credentials, or the file cannot be read: nothing to clash with
+        return False
+    if not saved:
+        return False
+    try:
+        same_login = int(str(login).strip()) == int(saved.get("login"))
+    except (TypeError, ValueError):
+        return False
+    ours = str(saved.get("server") or "").strip().lower()
+    theirs = str(server or "").strip().lower()
+    return same_login and (ours == theirs or not ours or not theirs)

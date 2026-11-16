@@ -149,7 +149,11 @@ app.include_router(_mt5_router)
 # C.1: a USER's own MT5 account - connect and read only, never an order. Separate from the operator routes
 # above on purpose: these act on the signed-in user and on nobody else.
 from user_mt5_routes import router as _user_mt5_router  # noqa: E402
+# C.2a: the operator's copy-trading routes are a SECOND router in that module. C.2 shipped without this line,
+# so /api/admin/copy-trading/* did not exist and the operator page showed an invented "worker: NOT running".
+from user_mt5_routes import admin_router as _copy_admin_router  # noqa: E402
 app.include_router(_user_mt5_router)
+app.include_router(_copy_admin_router)
 
 # Smart Move Engine20 snapshot (read-only; the session gate below covers it like every /api route). Serves a file snapshot; no provider code.
 from smart_move_engine20_routes import router as _sm_engine20_router  # noqa: E402
@@ -656,18 +660,34 @@ def _start_user_copy_trading() -> None:
     user's broker can never slow our book or the tracker. It is registered unconditionally - with no user
     copying it queues events and places nothing - but AUTO_COPY_USERS=0 switches it off outright.
     """
+    # C.2a: log to mt5.log, not to a bare logger with no file handler. A copy engine that failed to start
+    # must leave a trace in a file the operator actually reads.
+    import app_logging as _al
+    log = _al.file_logger("mt5")
     try:
         import os
         if (os.getenv("AUTO_COPY_USERS") or "1").strip() not in ("1", "true", "TRUE", "yes"):
-            logging.getLogger("user_copy").info("user copy trading is switched off (AUTO_COPY_USERS)")
+            log.warning("COPY TRADING OFF: AUTO_COPY_USERS is set, no user trades will be copied")
             return
         import demo_trade_service as dts
         import user_copy_service as CP
         if CP.on_paper_event not in dts.HOOKS:
             dts.HOOKS.append(CP.on_paper_event)
         CP.start()
+        log.info("copy trading worker started (queue depth %d)", CP.queue_depth())
     except Exception:  # noqa: BLE001
-        logging.getLogger("user_copy").exception("user copy trading startup failed")
+        log.exception("COPY TRADING WORKER FAILED TO START - no user trade will be copied")
+
+
+@_startup
+def _start_mt5_session_watch() -> None:
+    """C.2a: reconnect the OPERATOR's broker session when it drops, instead of waiting for a hand press."""
+    try:
+        import mt5_session_watch as SW
+        SW.start()
+    except Exception:  # noqa: BLE001
+        import app_logging as _al
+        _al.file_logger("mt5").exception("MT5 session watcher failed to start")
 
 
 def _start_demo_trade_tracker() -> None:

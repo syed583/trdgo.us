@@ -61,6 +61,7 @@ def _ensure_schema() -> None:
         return
     _add_c2_columns()
     _create_orders_table()
+    _fix_share_default()                 # after both, because it reads auto_copy and the orders table
     _schema_ready = True
 
 
@@ -114,6 +115,33 @@ _C2_COLUMNS = (
     ("daily_loss_pct", "DOUBLE PRECISION NOT NULL DEFAULT %s" % DEFAULT_DAILY_LOSS_PCT),
     ("admin_paused", "BOOLEAN NOT NULL DEFAULT FALSE"),
 )
+
+
+# C.1 created max_shares with a DEFAULT of 1, so every account connected before C.2 reads "1 share a trade"
+# however the code's default changes - a column default does not apply to rows that already exist. The default
+# is moved to 10 for new rows, and rows still sitting on the old default are lifted to 10 ONLY while they have
+# never copied anything and have Auto-copy off. A deliberate choice of 1 by a user who is already copying is
+# left exactly as it is.
+def _fix_share_default() -> None:
+    db = SessionLocal()
+    try:
+        try:
+            db.execute(text("ALTER TABLE %s ALTER COLUMN max_shares SET DEFAULT %d" % (TABLE, DEFAULT_SHARES)))
+            db.commit()
+        except Exception:  # noqa: BLE001 - a dialect without ALTER COLUMN: new rows then use the code default
+            db.rollback()
+        try:
+            res = db.execute(text(
+                "UPDATE %s SET max_shares = :n, updated_at = NOW() WHERE max_shares = 1 AND auto_copy = FALSE"
+                " AND username NOT IN (SELECT DISTINCT username FROM %s)" % (TABLE, ORDERS_TABLE)),
+                {"n": DEFAULT_SHARES})
+            db.commit()
+            if res.rowcount:
+                _log.info("lifted %d account(s) from the old 1-share default to %d", res.rowcount, DEFAULT_SHARES)
+        except Exception:  # noqa: BLE001
+            db.rollback()
+    finally:
+        db.close()
 
 
 def _add_c2_columns() -> None:
