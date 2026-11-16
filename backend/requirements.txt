@@ -25,3 +25,8 @@ httpx==0.28.1
 
 # Data Health Check workbook export (data_health_check.py)
 openpyxl==3.1.5
+
+# C.1 — encrypting a user's own broker password at rest (user_secret_box.py). Fernet, from this library;
+# the standard library has no authenticated symmetric cipher and rolling one is not acceptable for a
+# password. Without it the MT5 connect feature reports itself unavailable and stores nothing.
+cryptography==50.0.2
