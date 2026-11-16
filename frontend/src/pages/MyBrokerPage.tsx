@@ -77,7 +77,7 @@ export default function MyBrokerPage() {
     }
     run(() => api2.myMt5Settings({ auto_copy: !copy.settings?.auto_copy }),
       copy.settings?.auto_copy ? 'Auto-copy is off. No further orders will be placed.'
-        : 'Auto-copy is ON. Orders will be placed in your account.');
+        : 'Auto-copy is ON and this account is no longer paused. Orders will be placed in your account.');
   };
 
   const loadPreview = async () => {
@@ -133,9 +133,17 @@ export default function MyBrokerPage() {
                 <tr><td>Last check</td><td>{acct.status || 'not checked yet'}{acct.last_error ? ` — ${acct.last_error}` : ''}</td></tr>
                 <tr>
                   <td>Auto-copy</td>
+                  {/* C.2b: the switch's own state and the reason copying is not happening are different
+                      facts. Showing only "off" is what made the ON button look broken when the account was
+                      still paused. */}
                   <td>{copy.copying
                     ? <span className="mb-live">ON — real orders are being placed in this account</span>
-                    : <b>off</b>} {copy.note ? <span style={{ opacity: .8 }}>— {copy.note}</span> : null}</td>
+                    : <>
+                      <b>{set.auto_copy ? 'on' : 'off'}</b>
+                      {copy.blocked_reason
+                        ? <span style={{ opacity: .85 }}> — not copying: {copy.blocked_reason}</span>
+                        : null}
+                    </>}</td>
                 </tr>
                 <tr><td>Open positions</td><td>{copy.open_positions ?? 0} of {set.max_positions ?? 20}</td></tr>
                 <tr><td>Realised today</td><td>{copy.realized_today ?? 0}</td></tr>
@@ -154,7 +162,7 @@ export default function MyBrokerPage() {
               <button className="ghost-btn" disabled={busy}
                 onClick={() => run(() => api2.myMt5Enabled(!acct.enabled),
                   acct.enabled ? 'Paused. No orders will be placed until you resume.' : 'Resumed.')}>
-                <Power size={12} /> {acct.enabled ? 'Pause everything' : 'Resume'}
+                <Power size={12} /> {acct.enabled ? 'Pause copying' : 'Resume copying'}
               </button>
               <button className="ghost-btn" disabled={busy}
                 onClick={() => { if (window.confirm('Disconnect and delete the stored password?')) run(() => api2.myMt5Disconnect(), 'Disconnected.'); }}>

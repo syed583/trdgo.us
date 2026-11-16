@@ -405,9 +405,23 @@ def user_status(username: str) -> dict:
     except Exception:  # noqa: BLE001
         open_now, realized = [], 0.0
     copying = bool(st.get("auto_copy") and st.get("enabled") and not st.get("admin_paused"))
+    # C.2b: never report "off" without the reason. Four things must hold, and a user who cannot see which one
+    # is missing has no way to act - which is exactly what happened with the pause on 2026-11-16.
+    if not st.get("has_account"):
+        blocked = "Connect an account first."
+    elif not st.get("consent_at"):
+        blocked = "Accept the risk notice first."
+    elif not st.get("auto_copy"):
+        blocked = "Auto-copy is off. Switch it on to start copying."
+    elif st.get("admin_paused"):
+        blocked = "An administrator has paused copying for this account."
+    elif not st.get("enabled"):
+        blocked = "Auto-copy is on, but this account is paused. Press Resume to start copying."
+    else:
+        blocked = None
     running = bool(_worker and _worker.is_alive())
-    return {"stage": "C.2", "live": True, "copying": copying, "settings": st,
+    return {"stage": "C.2", "live": True, "copying": copying, "blocked_reason": blocked, "settings": st,
             "open_positions": len(open_now), "realized_today": round(realized, 2),
             "worker_running": running, "worker_error": (None if running else worker_error()),
             "note": ("Orders are being placed in your own account." if copying
-                     else "No orders are being placed. Switch Auto-copy on to start.")}
+                     else "No orders are being placed. %s" % blocked)}

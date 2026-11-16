@@ -350,6 +350,13 @@ def update_settings(username: str, patch: dict) -> dict:
     if "auto_copy" in patch:
         fields.append("auto_copy = :auto_copy")
         params["auto_copy"] = bool(patch["auto_copy"])
+        if params["auto_copy"]:
+            # C.2b: an account is created paused (enabled = FALSE) so that connecting never starts trading.
+            # But switching Auto-copy ON *is* the decision to trade, and asking to copy while paused is a
+            # contradiction the user cannot see - it reads as "the button does nothing". Clearing the pause
+            # here is what makes ON mean on. Pause stays a separate control: it stops copying without
+            # forgetting the setting.
+            fields.append("enabled = TRUE")
     if not fields:
         return {"ok": False, "reason": "NOTHING_TO_DO"}
     _ensure_schema()
