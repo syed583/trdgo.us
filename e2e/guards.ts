@@ -19,3 +19,17 @@ export const FORBIDDEN = [
   'sec_filings', 'iv_greeks', 'options_flow', 'relative_strength',
   'Grok', 'Kimi', 'Gemini', 'ChatGPT', 'directional-',
 ];
+
+
+// Model names that a NEWS feed may legitimately print: a company shipped a product by that name, and a real
+// headline about it is content, not a leak. The server scrubs a model name out of OUR attribution fields
+// (source, provider, note, model...) and leaves headline text alone, so checking for the bare word here only
+// produces false alarms. Vendor names are still checked everywhere, including here.
+const MODEL_WORDS = ['Grok', 'Kimi', 'Gemini', 'ChatGPT'];
+const NEWS_ROUTES = [/\/api\/news\//];
+
+/** The words that count as a leak for THIS url. */
+export function forbiddenFor(url: string): string[] {
+  const isNews = NEWS_ROUTES.some((re) => re.test(url));
+  return isNews ? FORBIDDEN.filter((w) => !MODEL_WORDS.includes(w)) : FORBIDDEN;
+}

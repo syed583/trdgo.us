@@ -11,7 +11,8 @@ export default defineConfig({
   timeout: 45_000,
   expect: { timeout: 8_000 },
   retries: 0,
-  maxFailures: 8,
+  // No maxFailures: the point of this suite is the FULL list in one run. It was capped at 8 while a wrong
+  // selector could burn an hour per mistake; the fast-fail timeouts below make that unnecessary now.
   workers: 2,                      // gentle on the server: this may run against production
   reporter: [['html', { outputFolder: 'report', open: 'never' }], ['list']],
   use: {

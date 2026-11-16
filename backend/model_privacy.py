@@ -39,7 +39,15 @@ VENDOR_REPLACEMENT = "the data provider"
 # The model names, in the order the owner fixed for Strategy Trades (A.26).
 AGENT_ORDER = ("grok", "meta", "kimi", "gemini")
 MODEL_LIST_KEYS = ("models", "model_list", "engines")
+
+# B.5: fields where WE say where something came from. A model's name is scrubbed out of these, but NOT out of
+# free text: a news feed may legitimately mention Gemini or ChatGPT because a company shipped a product by that
+# name, and rewriting a headline would corrupt real content to hide our own wiring.
+ATTRIBUTION_KEYS = ("source", "sources", "provider", "note", "detail", "engine", "model", "model_name",
+                    "scored_by", "attribution", "sector_note")
 EXTRA_MODELS = ("claude", "chatgpt", "claude_pro", "claude-pro")
+# Built AFTER the tuples it reads, with word boundaries so 'metals' is not mistaken for 'meta'.
+_MODEL_RE = re.compile(r"\b(" + "|".join(AGENT_ORDER + EXTRA_MODELS) + r")\b", re.IGNORECASE)
 
 
 def agent_label(model: str) -> str:
@@ -52,17 +60,23 @@ def agent_label(model: str) -> str:
     return "Agent" if key else ""
 
 
-def scrub_text(value: Any) -> Any:
-    """Replace any data-vendor name inside a string. Non-strings pass through untouched."""
-    if isinstance(value, str) and _VENDOR_RE.search(value):
-        return _VENDOR_RE.sub(VENDOR_REPLACEMENT, value)
-    return value
+def scrub_text(value: Any, *, key: Optional[str] = None) -> Any:
+    """Replace any data-vendor name inside a string. Non-strings pass through untouched.
+
+    When `key` names an attribution field, a MODEL's name goes too - that is us saying which engine produced
+    something. Elsewhere a model name is left alone on purpose; see ATTRIBUTION_KEYS."""
+    if not isinstance(value, str):
+        return value
+    out = _VENDOR_RE.sub(VENDOR_REPLACEMENT, value) if _VENDOR_RE.search(value) else value
+    if key in ATTRIBUTION_KEYS:
+        out = _MODEL_RE.sub(lambda m: agent_label(m.group(0)), out)
+    return out
 
 
 def _clean_row(row: Any) -> Any:
     if not isinstance(row, dict):
         return scrub_text(row)
-    return {k: scrub_text(v) for k, v in row.items() if k not in PRIVATE_ROW_KEYS}
+    return {k: scrub_text(v, key=k) for k, v in row.items() if k not in PRIVATE_ROW_KEYS}
 
 
 def public_payload(payload: Optional[dict], *, admin: bool = False, map_models: bool = False,
@@ -92,9 +106,9 @@ def public_payload(payload: Optional[dict], *, admin: bool = False, map_models: 
             out[k] = public_payload(v, admin=False, map_models=map_models, model_keys=model_keys)
         elif isinstance(v, list):
             out[k] = [public_payload(x, admin=False, map_models=map_models, model_keys=model_keys)
-                      if isinstance(x, dict) else scrub_text(x) for x in v]
+                      if isinstance(x, dict) else scrub_text(x, key=k) for x in v]
         else:
-            out[k] = scrub_text(v)
+            out[k] = scrub_text(v, key=k)
     return out
 
 

@@ -132,9 +132,14 @@ def status() -> dict:
 
 
 @router.get("/health")
-def provider_matrix(deep: bool = False) -> dict:
-    """Full provider matrix used by Settings and the Dashboard."""
-    return health.get_health(deep=deep)
+def provider_matrix(request: Request, deep: bool = False) -> dict:
+    """Full provider matrix used by Settings and the Dashboard.
+
+    B.5: the matrix names each provider, so a non-admin reader gets it shaped - which provider the data comes
+    from is not something a reader needs, and B.0 caught it reaching one."""
+    import model_privacy as _privacy
+
+    return _privacy.public_payload(health.get_health(deep=deep), admin=_is_admin(request))
 
 
 # ---------------------------------------------------------------------------
@@ -220,7 +225,7 @@ def market_tide() -> dict:
 
 
 @router.get("/tickers/strip")
-def ticker_strip(symbols: Optional[str] = None) -> dict:
+def ticker_strip(request: Request, symbols: Optional[str] = None) -> dict:
     """
     The scored ticker strip on the Earnings screen.
 
@@ -247,7 +252,9 @@ def ticker_strip(symbols: Optional[str] = None) -> dict:
         requested = saved + [s for s in DEFAULT_STRIP if s not in saved]
         return scores.get_watchlist(requested[:10])
 
-    return swr.serve("strip:default", build_default, 120)
+    # B.5: each row names the provider it came from, which B.0 caught reaching an ordinary reader.
+    import model_privacy as _privacy
+    return _privacy.public_payload(swr.serve("strip:default", build_default, 120), admin=_is_admin(request))
 
 
 @router.get("/score/{symbol}")
@@ -1567,13 +1574,15 @@ def directional(request: Request, symbol: str, horizon: Optional[str] = None) ->
 
 
 @router.get("/overview/{symbol}")
-def ticker_overview(symbol: str) -> dict:
+def ticker_overview(request: Request, symbol: str) -> dict:
     """The one-page ticker overview: key stats, performance, analysts, insiders."""
+    import model_privacy as _privacy
     sym = validate.clean_symbol(symbol)
     import ticker_overview_service as ov
 
-    return swr.serve(f"overview:{sym}", lambda: ov.get_overview(sym),
-                     market.session_ttl(60, 900))
+    return _privacy.public_payload(
+        swr.serve(f"overview:{sym}", lambda: ov.get_overview(sym), market.session_ttl(60, 900)),
+        admin=_is_admin(request))
 
 
 @router.get("/events/{symbol}")
@@ -2780,11 +2789,15 @@ def _news_backend():
 
 
 @router.get("/news/desk")
-def news_desk() -> dict:
-    """Merged headline feed plus every tally drawn from it."""
+def news_desk(request: Request) -> dict:
+    """Merged headline feed plus every tally drawn from it.
+
+    B.5: the feed carried both a vendor's name and a model's name ("Gemini") into an ordinary reader's page."""
+    import model_privacy as _privacy
     import news_desk_service as desk
 
-    return swr.serve("news:desk", desk.get_desk, 900)
+    return _privacy.public_payload(swr.serve("news:desk", desk.get_desk, 900),
+                                   admin=_is_admin(request), map_models=True)
 
 
 @router.get("/news/providers")

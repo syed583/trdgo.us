@@ -10,13 +10,15 @@ import { expect, test, type Page as PwPage, type Request } from '@playwright/tes
 import * as fs from 'fs';
 import * as path from 'path';
 import { PAGES } from './pages';
-import { FORBIDDEN, isDestructive } from './guards';
+import { forbiddenFor, isDestructive } from './guards';
 import { CREDS, hasState, redact } from './auth';
 
 const BASE = process.env.E2E_BASE_URL || 'http://localhost:8000';
 const SLOW_MS = 3000;
 const OUT = path.join(__dirname, 'screenshots');
 const LEAKS: any[] = [];
+const SLOW: any[] = [];
+const ABORTED: any[] = [];
 
 for (const role of ['admin', 'user'] as const) {
   test.describe(`${role}`, () => {
@@ -33,7 +35,18 @@ for (const role of ['admin', 'user'] as const) {
         page.on('console', (m) => {
           if (m.type() === 'error') consoleErrors.push(redact(m.text()));
         });
-        page.on('requestfailed', (r: Request) => badRequests.push(`${r.method()} ${r.url()} failed`));
+        page.on('requestfailed', (r: Request) => {
+          // A request the BROWSER cancelled is not a fault. Navigating away, or a React state change that
+          // re-issues a query, aborts the one in flight - which is exactly what made /api/earnings/calendar
+          // ?range=THIS_WEEK look broken: the page fires it on load, then replaces it, and it never reaches
+          // the server at all. Aborts are recorded so a real cancellation storm is still visible.
+          const why = r.failure()?.errorText || '';
+          if (/ERR_ABORTED|NS_BINDING_ABORTED/i.test(why)) {
+            ABORTED.push({ page: p.path, role, url: r.url(), why });
+            return;
+          }
+          badRequests.push(`${r.method()} ${r.url()} failed: ${why}`);
+        });
         page.on('response', async (res) => {
           const url = res.url();
           if (!url.includes('/api/')) return;
@@ -46,7 +59,7 @@ for (const role of ['admin', 'user'] as const) {
           if (role !== 'user' || status >= 400) return;
           let body = '';
           try { body = await res.text(); } catch { return; }
-          for (const word of FORBIDDEN) {
+          for (const word of forbiddenFor(url)) {
             if (body.includes(word)) {
               LEAKS.push({ page: p.path, route: url, word });
             }
@@ -83,7 +96,12 @@ for (const role of ['admin', 'user'] as const) {
 
         expect(consoleErrors, `console errors on ${p.path}`).toEqual([]);
         expect(badRequests, `failed requests on ${p.path}`).toEqual([]);
-        expect(elapsed, `${p.path} took ${elapsed} ms`).toBeLessThan(SLOW_MS);
+        // Slowness is reported, not failed: a slow page is worth knowing about but it is not broken, and a
+        // failure here would hide the leak and console findings underneath it (owner decision 2026-11-16).
+        if (elapsed >= SLOW_MS) {
+          SLOW.push({ page: p.path, role, ms: elapsed });
+          test.info().annotations.push({ type: 'slow', description: `${p.path} took ${elapsed} ms` });
+        }
       });
     }
   });
@@ -92,6 +110,11 @@ for (const role of ['admin', 'user'] as const) {
 test.afterAll(async () => {
   fs.mkdirSync(path.join(__dirname), { recursive: true });
   fs.writeFileSync(path.join(__dirname, 'leaks.json'), JSON.stringify(LEAKS, null, 1));
+  fs.writeFileSync(path.join(__dirname, 'slow.json'), JSON.stringify(SLOW, null, 1));
+  fs.writeFileSync(path.join(__dirname, 'aborted.json'), JSON.stringify(ABORTED, null, 1));
+  if (ABORTED.length) console.log(`${ABORTED.length} requests the browser cancelled - see aborted.json (not failures)`);
+  if (SLOW.length) console.log(`
+${SLOW.length} page loads over ${SLOW_MS} ms - see slow.json`);
   // A leak is a failure of the whole run, not of one page: the same route feeds several pages.
   expect(LEAKS, `the model's working reached an ordinary user: ${JSON.stringify(LEAKS.slice(0, 20))}`).toEqual([]);
 });
