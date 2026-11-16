@@ -67,11 +67,18 @@ def _real_http_get(url: str, timeout: float = TIMEOUT_S) -> tuple[int, str]:
 _http_get = _real_http_get
 
 
-def _call(path: str, params: Optional[dict] = None, *, with_token: bool = True, base_url: Optional[str] = None) -> dict:
-    """One GET. Returns {"ok", "status", "data"|"error", "path"}; the token never leaves this function."""
+def _call(path: str, params: Optional[dict] = None, *, with_token: bool = True, base_url: Optional[str] = None,
+          token: Optional[str] = None) -> dict:
+    """One GET. Returns {"ok", "status", "data"|"error", "path"}; the token never leaves this function.
+
+    C.1: `token` names the session explicitly, for a call made on behalf of a USER rather than the operator.
+    The module-level _session is the operator's single connection and must not be disturbed by user traffic.
+    """
     base = (base_url or _session["base_url"] or DEFAULT_BASE_URL).rstrip("/") + "/"
     q = dict(params or {})
-    if with_token:
+    if token:
+        q["id"] = token
+    elif with_token:
         if not _session.get("token"):
             return {"ok": False, "reason": "NOT_CONNECTED", "detail": "no session token: connect first", "path": path}
         q["id"] = _session["token"]

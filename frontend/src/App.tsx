@@ -44,6 +44,7 @@ const KIMI_DETAIL = { base: '/kimi', title: 'Agent 3', detail: (s: string, sig?:
 const GROK_DETAIL = { base: '/grok', title: 'Agent 1', detail: (s: string, sig?: AbortSignal) => api2.grokDetail(s, sig) };
 const META_DETAIL = { base: '/meta', title: 'Agent 2', detail: (s: string, sig?: AbortSignal) => api2.metaDetail(s, sig) };
 const CHATGPT_DETAIL = { base: '/chatgpt', title: 'Agent 6', detail: (s: string, sig?: AbortSignal) => api2.chatgptDetail(s, sig) };
+const MyBrokerPage = lazy(() => import('./pages/MyBrokerPage'));
 const OptionScannerPage = lazy(() => import('./pages/OptionScannerPage'));
 const UnusualActivityPage = lazy(() => import('./pages/UnusualActivityPage'));
 const InstitutionalPage = lazy(() => import('./pages/InstitutionalPage'));
@@ -448,6 +449,8 @@ function Shell() {
           <Route path="/trade-journal" element={<JournalPage ctx={ctx} />} />
           <Route path="/strategy" element={<StrategyPage ctx={ctx} />} />
           <Route path="/settings" element={adminGate(<SettingsPage ctx={ctx} />)} />
+          {/* C.1: a user connects their OWN broker account. Not admin-gated on purpose - and /settings is. */}
+          <Route path="/my-broker" element={<MyBrokerPage />} />
           <Route path="/admin" element={adminGate(<AdminDashboardPage ctx={ctx} />)} />
           <Route path="/admin/users" element={adminGate(<UsersPage ctx={ctx} />)} />
           <Route path="/admin/audit" element={adminGate(<AuditLogPage ctx={ctx} />)} />

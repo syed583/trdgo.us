@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import {
   Activity, Brain, Building2, CalendarDays, Compass, Crosshair, FlaskConical, Flame, Gauge, History, Layers, LineChart, Receipt, Users,
-  LayoutDashboard, ListOrdered, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
+  LayoutDashboard, Link2, ListOrdered, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
   Radar, Scale, ScrollText, Settings, ShieldCheck, Sparkles, Star, TrendingUp, UserCog, Waves, Waypoints, X, Zap,
 } from 'lucide-react';
 import { BrandLockup, BRAND_QUOTE_EARNINGS } from './Brand';
@@ -131,7 +131,8 @@ export default function Sidebar({
         { to: '/admin/users', label: 'Users', icon: <Users size={S} /> },
         { to: '/admin/audit', label: 'Audit Log', icon: <ScrollText size={S} /> },
         { to: '/admin/workflow', label: 'Workflow', icon: <Waypoints size={S} /> },
-        { to: '/settings', label: 'Settings', icon: <Settings size={S} /> },
+        { to: '/my-broker', label: 'My Broker', icon: <Link2 size={S} /> },
+    { to: '/settings', label: 'Settings', icon: <Settings size={S} /> },
         ...(mt5Operator ? MT5_ITEMS : [])] }]
     : (mt5Operator ? NAV_GROUPS.map((g) => (g.heading === 'Analysis' ? { ...g, items: [...g.items, ...MT5_ITEMS] } : g)) : NAV_GROUPS);
   const [collapsed, setCollapsed] = React.useState(readCollapsed);

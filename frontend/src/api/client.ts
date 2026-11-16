@@ -749,6 +749,15 @@ export const api2 = {
   claudeProDetail: (symbol: string, s?: AbortSignal) =>
     request<any>(`/api/claude-pro/${encodeURIComponent(symbol)}`, s),
   warmProgress: (s?: AbortSignal) => request<any>('/api/warm/progress', s),
+
+  // C.1: a user's own MT5 account. Every one of these acts on the SIGNED-IN user; there is no username to pass.
+  myMt5: (s?: AbortSignal) => request<any>('/api/me/mt5', s),
+  myMt5Connect: (body: { login: string; server: string; password: string; consent: boolean }) =>
+    send<any>('/api/me/mt5/connect', 'POST', body),
+  myMt5Test: () => send<any>('/api/me/mt5/test', 'POST'),
+  myMt5Enabled: (enabled: boolean) => send<any>('/api/me/mt5/enabled', 'POST', { enabled }),
+  myMt5Size: (max_shares: number) => send<any>('/api/me/mt5/size', 'POST', { max_shares }),
+  myMt5Disconnect: () => send<any>('/api/me/mt5/disconnect', 'POST'),
   allModelsScan: (days = 15, s?: AbortSignal) =>
     request<any>(`/api/all-models/scan?days=${days}`, s),
   modelAccuracyScoreboard: (s?: AbortSignal) =>

@@ -146,6 +146,11 @@ app.include_router(api_router)
 from mt5_routes import router as _mt5_router  # noqa: E402  (operator-only MT5 auto-trading; see mt5_autotrade.py)
 app.include_router(_mt5_router)
 
+# C.1: a USER's own MT5 account - connect and read only, never an order. Separate from the operator routes
+# above on purpose: these act on the signed-in user and on nobody else.
+from user_mt5_routes import router as _user_mt5_router  # noqa: E402
+app.include_router(_user_mt5_router)
+
 # Smart Move Engine20 snapshot (read-only; the session gate below covers it like every /api route). Serves a file snapshot; no provider code.
 from smart_move_engine20_routes import router as _sm_engine20_router  # noqa: E402
 app.include_router(_sm_engine20_router)
