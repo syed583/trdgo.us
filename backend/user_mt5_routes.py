@@ -39,9 +39,10 @@ def _me(request: Request) -> str:
 
 
 COPY_NOTICE = (
-    "With Auto-copy on, orders are placed in your own account automatically - the same stocks, side, stop and "
+    "With Auto-trade on, orders are placed in your own account automatically - the same stocks, side, stop and "
     "target our system trades, sized to the share count you set. They are real orders at your broker. You can "
-    "switch Auto-copy off at any time; positions already open stay open until our trade closes."
+    "switch Auto-trade off at any time; positions already open are closed by the same rules, including the "
+    "end-of-day close at 15:45 New York time."
 )
 
 

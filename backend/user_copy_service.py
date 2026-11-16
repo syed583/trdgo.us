@@ -319,14 +319,21 @@ def _slip(ref, fill, side, *, opening: bool) -> Optional[float]:
 
 # --------------------------------------------------------------------------- close
 def _close_for(u: dict, ev: dict) -> dict:
-    """Close the user's position when ours closes - score exit, stop, target, breakeven or the 15:45 ET sweep."""
+    """Close the user's position when ours closes - score exit, stop, target or breakeven."""
     name, tid = u["username"], ev.get("trade_id")
     row = store.open_row(name, tid)
     if not row:
         return {"ok": True, "reason": "NOTHING_OPEN"}                        # we never opened one for this user
+    return close_row(name, row, ev.get("reason") or "EXIT", admin_price=ev.get("exit_price"))
+
+
+def close_row(name: str, row: dict, reason: str, *, admin_price=None) -> dict:
+    """Close ONE recorded position in a user's account. Used by the exit event and by the EOD sweep."""
+    tid = row.get("admin_trade_id")
+    ev = {"reason": reason, "exit_price": admin_price}
     common = {"symbol": row.get("symbol"), "broker_symbol": row.get("broker_symbol"), "side": row.get("side"),
               "shares": row.get("shares"), "volume": row.get("volume"), "admin_trade_id": tid,
-              "strategy": row.get("strategy"), "ticket": row.get("ticket"), "admin_price": ev.get("exit_price")}
+              "strategy": row.get("strategy"), "ticket": row.get("ticket"), "admin_price": admin_price}
     token, err = usvc._token_for(name)                                       # noqa: SLF001
     if err:
         _safe_log(name, "CLOSE_FAIL", reason="NO_SESSION: %s" % (err.get("reason") or ""), **common)
@@ -412,11 +419,11 @@ def user_status(username: str) -> dict:
     elif not st.get("consent_at"):
         blocked = "Accept the risk notice first."
     elif not st.get("auto_copy"):
-        blocked = "Auto-copy is off. Switch it on to start copying."
+        blocked = "Auto-trade is off. Switch it on to start trading."
     elif st.get("admin_paused"):
-        blocked = "An administrator has paused copying for this account."
+        blocked = "An administrator has paused trading for this account."
     elif not st.get("enabled"):
-        blocked = "Auto-copy is on, but this account is paused. Press Resume to start copying."
+        blocked = "Auto-trade is on, but this account is paused. Press Resume to start trading."
     else:
         blocked = None
     running = bool(_worker and _worker.is_alive())
@@ -425,3 +432,118 @@ def user_status(username: str) -> dict:
             "worker_running": running, "worker_error": (None if running else worker_error()),
             "note": ("Orders are being placed in your own account." if copying
                      else "No orders are being placed. %s" % blocked)}
+
+
+# --------------------------------------------------------------------------- end of day, on OUR clock
+# The same window the admin book uses (A.22). Imported, not copied, so the two cannot drift apart.
+SWEEP_POLL_S = 30.0
+_sweep: Optional[threading.Thread] = None
+_sweep_state: dict = {"last_sweep_date": None, "closed": 0, "failed": 0, "last_run": None,
+                      "last_retry_date": None, "retried": 0}
+
+
+def _et_now():
+    return AT._et_now()                                                      # noqa: SLF001 - one clock only
+
+
+def _in_window(now, start, end) -> bool:
+    return (start[0], start[1]) <= (now.hour, now.minute) <= (end[0], end[1])
+
+
+def open_rows_all_users() -> list:
+    """(username, row) for every position this system opened and has not recorded closing.
+
+    Read from the ORDER LOG, not from the copying-users list: a user who has since switched Auto-trade off,
+    or been paused, still has our position in their account and it must still be closed.
+    """
+    out = []
+    try:
+        for acct in store.all_accounts():
+            name = acct.get("username")
+            try:
+                for row in store.open_tickets(name):
+                    out.append((name, row))
+            except Exception:  # noqa: BLE001 - one unreadable account must not hide the rest
+                _log.exception("could not read the open positions of %s", name)
+    except Exception:  # noqa: BLE001
+        _log.exception("could not list the accounts for the end-of-day sweep")
+    return out
+
+
+def sweep_now(reason: str = "EOD_SWEEP") -> dict:
+    """Close every open user position. Safe to call twice: a row already closed is simply not in the list."""
+    closed = failed = 0
+    for name, row in open_rows_all_users():
+        try:
+            res = close_row(name, row, reason)
+            if res.get("ok"):
+                closed += 1
+            else:
+                failed += 1
+        except Exception:  # noqa: BLE001 - one user's broker must never stop the others being closed
+            failed += 1
+            _log.exception("end-of-day close failed for %s", name)
+    if closed or failed:
+        _log.warning("user end-of-day sweep (%s): %d closed, %d still open", reason, closed, failed)
+    return {"closed": closed, "failed": failed}
+
+
+def sweep_once() -> dict:
+    """One tick of the sweep clock. Does nothing outside the windows, and nothing at the weekend."""
+    now = _et_now()
+    if now.weekday() >= 5:
+        return {"action": "NONE", "reason": "WEEKEND"}
+    today = now.date().isoformat()
+    _sweep_state["last_run"] = now.strftime("%Y-%m-%d %H:%M:%S")
+
+    if _in_window(now, AT.EOD_SWEEP_START, AT.EOD_SWEEP_END):
+        res = sweep_now("EOD_SWEEP")
+        _sweep_state["closed"] += res["closed"]
+        _sweep_state["failed"] = res["failed"]
+        if res["failed"] == 0:
+            _sweep_state["last_sweep_date"] = today
+        return dict(res, action="EOD_SWEEP")
+
+    # A close the broker refused with "market closed" leaves the row open; retry it next session.
+    if (now.hour, now.minute) >= AT.PENDING_RETRY_FROM and now.hour < 12 \
+            and _sweep_state.get("last_retry_date") != today:
+        rows = open_rows_all_users()
+        if rows:
+            res = sweep_now("PENDING_RETRY")
+            _sweep_state["retried"] += res["closed"]
+            _sweep_state["last_retry_date"] = today
+            return dict(res, action="PENDING_RETRY")
+        _sweep_state["last_retry_date"] = today
+    return {"action": "NONE", "reason": "OUTSIDE_WINDOW"}
+
+
+def sweep_state() -> dict:
+    d = dict(_sweep_state)
+    d["running"] = bool(_sweep and _sweep.is_alive())
+    d["window_et"] = "%02d:%02d-%02d:%02d" % (AT.EOD_SWEEP_START + AT.EOD_SWEEP_END)
+    return d
+
+
+def _sweep_loop() -> None:
+    # Wait a poll BEFORE the first pass. Nothing needs closing in the first thirty seconds of a process, and
+    # doing database work the instant the app boots makes start-up slower and less predictable - it also made
+    # a provider-coalescing test fail, because every TestClient start-up ran a sweep.
+    while not _stop:
+        waited = 0.0
+        while waited < SWEEP_POLL_S and not _stop:
+            time.sleep(1.0)
+            waited += 1.0
+        if _stop:
+            return
+        try:
+            sweep_once()
+        except Exception:  # noqa: BLE001 - the sweep must outlive any single failure
+            _log.exception("user end-of-day sweep tick failed")
+
+
+def start_sweep() -> None:
+    global _sweep
+    if _sweep and _sweep.is_alive():
+        return
+    _sweep = threading.Thread(target=_sweep_loop, name="user-copy-eod", daemon=True)
+    _sweep.start()

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Receipt, Volume2, VolumeX } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import './model-accuracy.css';
@@ -237,7 +238,14 @@ export default function StrategyTradesPage() {
       <div className="ts-head">
         <h1><Receipt size={20} /> Strategy Trades</h1>
         <p>Demo $10,000-notional paper trades opened from the intraday model signals, tracked live until
-          stop / target / score-drop / the 15:50 ET close. Paper only — no real orders.</p>
+          stop / target / score-drop / the 15:50 ET close. This book is paper — no real orders are placed
+          here.</p>
+        {/* D: the same signals can be traded in the reader's OWN account. Said here because this is where
+            someone decides they want them, and because "Paper only - no real orders" stopped being the whole
+            truth the moment a user could switch Auto-trade on. */}
+        <p className="st-own">Want these trades in your own account?{' '}
+          <Link to="/my-broker">Connect your broker</Link> — you set the share size, and you stay responsible
+          for your own account.</p>
       </div>
 
       <EtfStrip />

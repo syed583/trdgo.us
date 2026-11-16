@@ -143,3 +143,7 @@
 }
 .st-stat.CLEANUP, .st-stat.EOD_CLOSE, .st-stat.MARKET_CLOSE { background: rgba(100,116,139,.16); color: #475569; }
 .st-stat.NO_PRICE { background: rgba(100,116,139,.16); color: #475569; }
+
+/* D: the one line pointing at My Broker */
+.ts-head .st-own { margin-top: 6px; opacity: .9; }
+.ts-head .st-own a { text-decoration: underline; }

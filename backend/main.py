@@ -674,7 +674,9 @@ def _start_user_copy_trading() -> None:
         if CP.on_paper_event not in dts.HOOKS:
             dts.HOOKS.append(CP.on_paper_event)
         CP.start()
-        log.info("copy trading worker started (queue depth %d)", CP.queue_depth())
+        CP.start_sweep()          # D: users close at 15:45 ET on OUR clock, not only when the paper book exits
+        log.info("copy trading worker started (queue depth %d), end-of-day sweep %s",
+                 CP.queue_depth(), CP.sweep_state()["window_et"])
     except Exception:  # noqa: BLE001
         log.exception("COPY TRADING WORKER FAILED TO START - no user trade will be copied")
 

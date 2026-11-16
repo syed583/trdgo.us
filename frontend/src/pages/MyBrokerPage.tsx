@@ -5,7 +5,7 @@
  * /settings is admin-gated, so this cannot live there: it is its own page, reachable by any signed-in user.
  *
  * C.2 places REAL orders in the account the user connected. The page says that plainly, in the notice and
- * next to the switch, and the switch is the last of three deliberate steps - connect, consent, Auto-copy.
+ * next to the switch, and the switch is the last of three deliberate steps - connect, consent, Auto-trade.
  * It never implies the orders are practice ones, because they are not.
  */
 import { useCallback, useState } from 'react';
@@ -70,14 +70,14 @@ export default function MyBrokerPage() {
   const toggleAutoCopy = () => {
     if (!copy.settings?.auto_copy) {
       const ok = window.confirm(
-        `Switch Auto-copy ON?\n\nReal orders will be placed in your own account (${acct?.login_masked}) `
+        `Switch Auto-trade ON?\n\nReal orders will be placed in your own account (${acct?.login_masked}) `
         + `automatically, ${shares} shares a trade, whenever our system trades. You are responsible for the `
         + `result. You can switch it off at any time.`);
       if (!ok) return;
     }
     run(() => api2.myMt5Settings({ auto_copy: !copy.settings?.auto_copy }),
-      copy.settings?.auto_copy ? 'Auto-copy is off. No further orders will be placed.'
-        : 'Auto-copy is ON and this account is no longer paused. Orders will be placed in your account.');
+      copy.settings?.auto_copy ? 'Auto-trade is off. No further orders will be placed.'
+        : 'Auto-trade is ON and this account is no longer paused. Orders will be placed in your account.');
   };
 
   const loadPreview = async () => {
@@ -132,7 +132,7 @@ export default function MyBrokerPage() {
                 <tr><td>Server</td><td>{acct.server}</td></tr>
                 <tr><td>Last check</td><td>{acct.status || 'not checked yet'}{acct.last_error ? ` — ${acct.last_error}` : ''}</td></tr>
                 <tr>
-                  <td>Auto-copy</td>
+                  <td>Auto-trade</td>
                   {/* C.2b: the switch's own state and the reason copying is not happening are different
                       facts. Showing only "off" is what made the ON button look broken when the account was
                       still paused. */}
@@ -157,7 +157,7 @@ export default function MyBrokerPage() {
                 {busy ? <Loader2 size={12} className="spin" /> : <Link2 size={12} />} Test connection
               </button>
               <button className="ghost-btn" disabled={busy} onClick={toggleAutoCopy}>
-                <Power size={12} /> {set.auto_copy ? 'Switch Auto-copy off' : 'Switch Auto-copy ON'}
+                <Power size={12} /> {set.auto_copy ? 'Switch Auto-trade off' : 'Switch Auto-trade ON'}
               </button>
               <button className="ghost-btn" disabled={busy}
                 onClick={() => run(() => api2.myMt5Enabled(!acct.enabled),
@@ -288,12 +288,12 @@ export default function MyBrokerPage() {
           <label className="mb-consent">
             <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
             <span>I have read the notice above. I connect this account voluntarily and I am responsible for
-              my own account and for any profit or loss in it. I understand that if I switch Auto-copy on,
+              my own account and for any profit or loss in it. I understand that if I switch Auto-trade on,
               real orders will be placed in this account automatically.</span>
           </label>
           <button className="ghost-btn" disabled={busy || !storageReady || !consent || !login || !server || !password}
             onClick={() => run(() => api2.myMt5Connect({ login, server, password, consent }),
-              'Account connected. Nothing is copied until you switch Auto-copy on.')}>
+              'Account connected. Nothing is copied until you switch Auto-trade on.')}>
             {busy ? <Loader2 size={12} className="spin" /> : <Link2 size={12} />} Connect
           </button>
         </div>

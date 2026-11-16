@@ -67,7 +67,7 @@ def test_the_exact_case_the_owner_hit(monkeypatch):
 
 def test_auto_copy_off_says_so(monkeypatch):
     out = _status(monkeypatch, auto_copy=False, enabled=True)
-    assert "Auto-copy is off" in out["blocked_reason"]
+    assert "Auto-trade is off" in out["blocked_reason"]   # D renamed the label; the rule is unchanged
 
 
 def test_no_consent_says_so(monkeypatch):
