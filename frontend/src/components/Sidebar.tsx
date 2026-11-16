@@ -84,6 +84,12 @@ const NAV_GROUPS: NavGroup[] = [
   { heading: 'Lists', items: [
     { to: '/watchlist', label: 'Watchlist', icon: <Star size={S} /> },
   ] },
+  // C.1a: a user's own broker account. This belongs to NAV_GROUPS (the NON-admin menu). It was first added
+  // beside /settings, which lives in the admin branch - so ordinary users, the only people the page is for,
+  // never saw it.
+  { heading: 'Account', items: [
+    { to: '/my-broker', label: 'My Broker', icon: <Link2 size={S} /> },
+  ] },
 ];
 
 const COLLAPSE_KEY = 'usr.sidebar.collapsed';
@@ -132,7 +138,7 @@ export default function Sidebar({
         { to: '/admin/audit', label: 'Audit Log', icon: <ScrollText size={S} /> },
         { to: '/admin/workflow', label: 'Workflow', icon: <Waypoints size={S} /> },
         { to: '/my-broker', label: 'My Broker', icon: <Link2 size={S} /> },
-    { to: '/settings', label: 'Settings', icon: <Settings size={S} /> },
+        { to: '/settings', label: 'Settings', icon: <Settings size={S} /> },
         ...(mt5Operator ? MT5_ITEMS : [])] }]
     : (mt5Operator ? NAV_GROUPS.map((g) => (g.heading === 'Analysis' ? { ...g, items: [...g.items, ...MT5_ITEMS] } : g)) : NAV_GROUPS);
   const [collapsed, setCollapsed] = React.useState(readCollapsed);

@@ -201,3 +201,31 @@ def test_a_user_session_never_disturbs_the_operator_session():
     """mt5_bridge keeps ONE session for the operator; a user's connect must hand it back untouched."""
     src = (BACKEND / "user_mt5_service.py").read_text(encoding="utf-8")
     assert "_session.update(token=None" in src, "the operator's session must be restored after a user connects"
+
+
+# --------------------------------------------------------------------------- C.1a: the page must be reachable
+def _sidebar() -> str:
+    return (BACKEND.parent / "frontend" / "src" / "components" / "Sidebar.tsx").read_text(encoding="utf-8")
+
+
+def test_my_broker_is_in_the_non_admin_menu():
+    """It was first added beside /settings, which lives in the ADMIN branch - so the only people the page is
+    for never saw it. NAV_GROUPS is the non-admin menu, and the entry has to be in there."""
+    s = _sidebar()
+    nav = s[:s.index("const groups: NavGroup[] = isAdmin")]
+    assert "to: '/my-broker'" in nav, "My Broker is missing from the ordinary user's menu"
+
+
+def test_my_broker_is_also_in_the_admin_menu():
+    s = _sidebar()
+    admin = s[s.index("const groups: NavGroup[] = isAdmin"):]
+    assert "to: '/my-broker'" in admin, "an administrator should reach it from the menu too"
+
+
+def test_the_connect_form_refuses_browser_autofill():
+    """A bare text + password pair looks like a sign-in form, so the browser filled Server with a saved phone
+    number and Password with a saved website password."""
+    page = (BACKEND.parent / "frontend" / "src" / "pages" / "MyBrokerPage.tsx").read_text(encoding="utf-8")
+    assert 'autoComplete="new-password"' in page, "the password field must opt out of autofill"
+    assert page.count('autoComplete="off"') >= 2, "account number and server must opt out of autofill"
+    assert 'placeholder="STGlobalMarketsLtd-Live-1"' in page, "Server needs an example so its format is obvious"

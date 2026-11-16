@@ -13,6 +13,13 @@ import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import { PageHead } from './shared';
 
+const FIELD_CSS = `
+.mb-field { display: block; margin: 0 0 14px; }
+.mb-field .mb-label { display: block; margin-bottom: 6px; font-size: 12px; opacity: .8; }
+.mb-field .inp { display: block; width: 100%; max-width: 360px; padding: 8px 10px; box-sizing: border-box; }
+.mb-consent { display: flex; gap: 8px; align-items: flex-start; margin: 14px 0 16px; max-width: 520px; }
+`;
+
 export default function MyBrokerPage() {
   const info = useApi<any>((s?: AbortSignal) => api2.myMt5(s), []);
   const [login, setLogin] = useState('');
@@ -42,6 +49,7 @@ export default function MyBrokerPage() {
 
   return (
     <div className="page">
+      <style>{FIELD_CSS}</style>
       <PageHead
         title="My Broker"
         subtitle="Connect your own MetaTrader account to see it here. Read-only."
@@ -100,16 +108,30 @@ export default function MyBrokerPage() {
       ) : (
         <div className="card">
           <h3>Connect an account</h3>
-          <label className="lbl">Account number
-            <input className="inp" value={login} onChange={(e) => setLogin(e.target.value)} inputMode="numeric" />
+          {/* The browser was filling Server with a saved phone number and Password with a saved website
+              password, because an unnamed text + password pair looks exactly like a sign-in form. Naming the
+              fields something the browser has no history for, and asking it not to autofill, stops that.
+              autoComplete="new-password" is the one value password managers reliably treat as "do not fill". */}
+          <label className="mb-field">
+            <span className="mb-label">Account number</span>
+            <input className="inp" name="mt5-account" value={login} inputMode="numeric"
+              autoComplete="off" autoCorrect="off" spellCheck={false} placeholder="250086"
+              onChange={(e) => setLogin(e.target.value)} />
           </label>
-          <label className="lbl">Server
-            <input className="inp" value={server} onChange={(e) => setServer(e.target.value)} />
+          <label className="mb-field">
+            <span className="mb-label">Server</span>
+            <input className="inp" name="mt5-server" value={server}
+              autoComplete="off" autoCorrect="off" spellCheck={false}
+              placeholder="STGlobalMarketsLtd-Live-1"
+              onChange={(e) => setServer(e.target.value)} />
           </label>
-          <label className="lbl">Password
-            <input className="inp" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <label className="mb-field">
+            <span className="mb-label">Password</span>
+            <input className="inp" name="mt5-password" type="password" value={password}
+              autoComplete="new-password" placeholder="your MetaTrader password"
+              onChange={(e) => setPassword(e.target.value)} />
           </label>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', margin: '10px 0' }}>
+          <label className="mb-consent">
             <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
             <span>I have read the notice above. I connect this account voluntarily and I am responsible for
               my own account and for any profit or loss in it.</span>
