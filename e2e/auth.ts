@@ -49,15 +49,19 @@ export async function signIn(page: Page, role: Role, base: string): Promise<void
   }
 
   if (role === 'admin') {
+    // The admin card has BOTH a username and a password, and its button stays disabled until both are
+    // filled. Omitting the username is silent: the click does nothing and the page simply stays put.
+    if (!user) {
+      throw new Error('the admin sign-in needs a username as well as a password: set E2E_ADMIN_USER.');
+    }
     await page.goto(`${base}/admin/login`, { waitUntil: 'domcontentloaded' });
     const pw = page.locator('input[type="password"]');
     await expect(pw, 'the admin sign-in password field').toBeVisible({ timeout: FIELD_TIMEOUT });
-    if (user) {
-      const other = page.locator('input:not([type="password"])').first();
-      if (await other.count()) await other.fill(user);
-    }
+    await page.locator('input:not([type="password"])').first().fill(user);
     await pw.fill(pass);
-    await page.locator('button.adl-btn, button[type="submit"]').first().click();
+    const btn = page.locator('button.adl-btn').first();
+    await expect(btn, 'the Sign in button (disabled means a field is still empty)').toBeEnabled({ timeout: FIELD_TIMEOUT });
+    await btn.click();
   } else {
     await page.goto(`${base}/login`, { waitUntil: 'domcontentloaded' });
     const phone = page.locator('input[placeholder="Phone number"]');
@@ -79,6 +83,13 @@ export async function signIn(page: Page, role: Role, base: string): Promise<void
 
   await page.waitForLoadState('networkidle').catch(() => undefined);
   if (/\/login$/.test(new URL(page.url()).pathname)) {
-    throw new Error(`${role} sign-in did not leave the login page: the credentials were refused.`);
+    // Say WHY. The page prints the reason, and "too many attempts" reads very differently from a wrong
+    // password: the throttle is 8 failures in 5 minutes, then a 5 minute lockout.
+    const shown = (await page.locator('.adl-err, .lp-error').first().textContent().catch(() => null)) || '';
+    throw new Error(
+      `${role} sign-in did not leave the login page.` +
+        (shown ? ` The page says: ${shown.trim()}` : ' The page gave no reason (check the screenshot).') +
+        ' If this says too many attempts, wait 5 minutes: the throttle is 8 failures per 5 minute window.',
+    );
   }
 }
