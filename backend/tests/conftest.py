@@ -45,6 +45,10 @@ _DEFAULT_TEST_DB = "sqlite+pysqlite:///" + (
     _pathlib.Path(_tempfile.gettempdir()) / "trdgo_test.db").as_posix()
 os.environ["DATABASE_URL"] = os.environ.get("TEST_DATABASE_URL") or _DEFAULT_TEST_DB
 os.environ.setdefault("TRDGO_ENV", "test")
+# The shared broker rate gate (broker_rate.py) sleeps between orders to stay under the broker's
+# 3-per-second limit. There is no broker here, and those sleeps sit inside the order path that the
+# MT5 tests exercise - enough to upset the wall-clock concurrency tests. Effectively unlimited in tests.
+os.environ.setdefault("MT5_MAX_ORDERS_PER_SECOND", "100000")
 # The institutional dev engine must never be the production project either; if a
 # dev URL is present it is validated by institutional_dashboard_service's own
 # guard. Leave it unset here so institutional tests skip unless a dev DB is

@@ -203,9 +203,10 @@ def test_the_admin_change_is_one_line():
     assert admin.count("broker_rate") == 2, "more than the single approved admin line touches broker_rate"
 
 
-def test_the_gate_spaces_orders_out():
+def test_the_gate_spaces_orders_out(monkeypatch):
     import broker_rate
     import time as _t
+    monkeypatch.setattr(broker_rate, "MAX_PER_SECOND", 20.0)   # a real rate; tests run the gate wide open
     broker_rate.reset()
     t0 = _t.time()
     for _ in range(4):
@@ -226,4 +227,4 @@ def test_the_gate_never_refuses():
 
 def test_the_rate_is_under_the_brokers_three_per_second():
     import broker_rate
-    assert broker_rate.MAX_PER_SECOND <= 3.0
+    assert broker_rate.DEFAULT_MAX_PER_SECOND <= 3.0   # the POLICY, not the test override

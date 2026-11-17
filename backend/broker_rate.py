@@ -20,7 +20,8 @@ import time
 
 # The broker's documented ceiling is 3/s. We aim just under it, because the limit is enforced on their clock,
 # not ours, and a burst that arrives on the boundary is rejected outright with NO_RETRY.
-MAX_PER_SECOND = float(os.getenv("MT5_MAX_ORDERS_PER_SECOND") or 2.5)
+DEFAULT_MAX_PER_SECOND = 2.5
+MAX_PER_SECOND = float(os.getenv("MT5_MAX_ORDERS_PER_SECOND") or DEFAULT_MAX_PER_SECOND)
 
 _lock = threading.Lock()
 _last = 0.0

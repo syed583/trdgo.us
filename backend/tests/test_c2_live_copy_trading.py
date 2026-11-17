@@ -367,9 +367,15 @@ def test_an_excluded_symbol_is_not_copied(rig, monkeypatch):
 
 
 def test_the_rate_limit_holds_orders_apart(monkeypatch):
+    """F replaced C.2's user-only limiter with broker_rate, the single gate the operator's book shares.
+
+    A user-only limiter never bounded anything: the broker counts orders per second across the whole
+    account, so the admin engine's orders went out beside the user's and the total broke the limit.
+    """
     import time as _t
-    monkeypatch.setattr(CP, "MAX_ORDERS_PER_SECOND", 2.0)
-    monkeypatch.setattr(CP, "_last_order_at", 0.0)
+    import broker_rate
+    monkeypatch.setattr(broker_rate, "MAX_PER_SECOND", 2.0)     # tests otherwise run the gate wide open
+    broker_rate.reset()
     t0 = _t.time()
     CP._throttle()
     CP._throttle()
