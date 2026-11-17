@@ -86,7 +86,11 @@ def test_users_are_not_bound_by_the_operators_exclusion_list():
 
 def test_the_operators_own_list_is_untouched():
     admin = (BACKEND / "mt5_autotrade.py").read_text(encoding="utf-8")
-    assert 'DEFAULT_EXCLUDED = ("ADBE", "AMD", "AVGO", "CAT", "COP", "COST", "LLY", "MU", "ORACLE",' in admin
+    # H dropped the bogus "ORACLE" entry, so the list is not pinned literally - what matters is that the
+    # operator still HAS a list and it still gates our own orders.
+    import mt5_autotrade as _AT
+    assert set(_AT.DEFAULT_EXCLUDED) >= {"LLY", "COP", "MU", "SPY"}, "the operator's losers must stay listed"
+    assert "ORACLE" not in _AT.DEFAULT_EXCLUDED, "ORACLE is not a ticker and excluded nothing"
     block = admin.split("def _entry_allowed")[1].split("\ndef ")[0]
     assert 'return "EXCLUDED"' in block
 

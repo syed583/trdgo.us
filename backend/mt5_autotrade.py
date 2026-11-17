@@ -496,7 +496,8 @@ def _software_symbols_uncached() -> list:
 # 2026-11-11 afternoon the broker's symbol list changed (65 -> 1,029 names) and the startup auto-map mapped these twelve by their
 # plain names; four of them then traded on the demo account. An excluded symbol is never auto-mapped, never mapped by hand
 # without un-excluding it first, and never sent as an order.
-DEFAULT_EXCLUDED = ("ADBE", "AMD", "AVGO", "CAT", "COP", "COST", "LLY", "MU", "ORACLE", "ORCL", "QQQ", "SPY", "UNH")
+# H: "ORACLE" was in this hand-written list and is not a ticker in our universe - it excluded nothing.
+DEFAULT_EXCLUDED = ("ADBE", "AMD", "AVGO", "CAT", "COP", "COST", "LLY", "MU", "ORCL", "QQQ", "SPY", "UNH")
 
 
 def _seed_excluded() -> list:
@@ -509,6 +510,8 @@ def load_map() -> dict:
     m = _read_json(STATE_DIR / MAP_FILE, {"version": 1, "map": {}})
     if "excluded" not in m:
         m["excluded"] = _seed_excluded()                                        # first read after A.18: the owner's list
+    elif "ORACLE" in (m.get("excluded") or []):
+        m["excluded"] = [s for s in m["excluded"] if s != "ORACLE"]             # H: never matched a ticker
     return m
 
 
@@ -521,7 +524,12 @@ def is_excluded(symbol: str) -> bool:
 
 
 def set_excluded(symbol: str, flag: bool, who: str = "operator") -> dict:
-    """Operator switch. Excluding a symbol also drops its mapping (so it shows UNMAPPED/EXCLUDED at once and can never trade)."""
+    """Operator switch: may this symbol TRADE on our own book?
+
+    H: excluding still drops the mapping, so the symbol reads UNMAPPED/EXCLUDED at once. What changed is that
+    an excluded symbol can be mapped again (by auto-map or by hand) WITHOUT being un-excluded first - mapping
+    is a fact about the broker, trading is a decision. Un-excluding a mapped symbol starts it trading.
+    """
     symbol = (symbol or "").upper().strip()
     if not symbol:
         return {"ok": False, "reason": "NO_SYMBOL"}
@@ -597,9 +605,6 @@ def set_mapping(symbol: str, broker_symbol: Optional[str], source: str = "manual
             save_map(m)
         audit("UNMAPPED", symbol=symbol, detail={"source": source})
         return {"ok": True, "symbol": symbol, "status": "UNMAPPED"}
-    if is_excluded(symbol):
-        audit("MAP_REFUSED", symbol=symbol, broker_symbol=broker_symbol, reason="EXCLUDED: on the operator's exclusion list (un-exclude it first)", detail={"source": source})
-        return {"ok": False, "symbol": symbol, "status": "EXCLUDED", "reason": "EXCLUDED", "note": "on the operator's exclusion list; un-exclude it first"}
     v = verify_broker_symbol(broker_symbol) if _conn["connected"] else {"ok": False, "reason": "NOT_CONNECTED"}   # network, no lock held
     e = {"broker_symbol": broker_symbol, "source": source, "verified": bool(v.get("ok")), "verified_at": _now_iso() if v.get("ok") else None, "note": None if v.get("ok") else "%s: %s" % (v.get("reason"), v.get("detail", ""))}
     if v.get("ok"):
@@ -675,8 +680,13 @@ def run_automap() -> dict:
             audit("MAPPING_STALE", symbol=d["symbol"], broker_symbol=d["broker_symbol"], reason="the broker no longer offers this name; re-map or auto-map")
         _automap["stale"] = len(stale)
         ex = set(m.get("excluded") or [])
-        skipped_excluded = [s for s in software_symbols() if s in ex]
-        todo = [s for s in software_symbols() if s not in ex and not (m["map"].get(s) or {}).get("verified")]
+        # H: excluded symbols are mapped as well, so the operator can read the broker name, contract size and
+        # volume rules BEFORE deciding to trade them. They still cannot trade: _entry_allowed refuses an
+        # excluded symbol first. Nothing here enables anything.
+        skipped_excluded = []
+        # H: excluded symbols are mapped too - the operator must be able to SEE what a symbol would map
+        # to before deciding to trade it. They still cannot trade: _entry_allowed refuses them first.
+        todo = [s for s in software_symbols() if not (m["map"].get(s) or {}).get("verified")]
         _automap["total"] = len(todo)
         for s in todo:
             prev = (m["map"].get(s) or {}).get("broker_symbol")

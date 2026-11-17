@@ -168,10 +168,10 @@ def test_a_transport_error_is_a_result_not_an_exception(fake, monkeypatch):
 
 # ---------------------------------------------------------------- mapping
 def test_mapping_verifies_against_the_broker_and_unmapped_never_trades(fake):
-    assert AT.mapping_rows()["summary"] == "0 of 3 symbols mapped (13 excluded)"
+    assert AT.mapping_rows()["summary"] == "0 of 3 symbols mapped (12 excluded)"
     _connected(fake)
     m = AT.mapping_rows()
-    assert m["summary"] == "2 of 3 symbols mapped (13 excluded)" and {r["symbol"]: r["status"] for r in m["rows"]} == {"AAPL": "MAPPED", "TSLA": "MAPPED", "NVDA": "UNMAPPED"}
+    assert m["summary"] == "2 of 3 symbols mapped (12 excluded)" and {r["symbol"]: r["status"] for r in m["rows"]} == {"AAPL": "MAPPED", "TSLA": "MAPPED", "NVDA": "UNMAPPED"}
     assert AT.set_mapping("NVDA", "NVDA.XYZ")["status"] == "UNVERIFIED"
     assert AT.on_paper_event(entry(symbol="NVDA"))["reason"] == "UNMAPPED" and _sent(fake) == []
     assert any(a["event"] == "SKIPPED" and a["symbol"] == "NVDA" and a["reason"] == "UNMAPPED" for a in _audit())
@@ -183,7 +183,7 @@ def test_automap_uses_one_symbols_call_then_verifies_only_the_matches(fake):
     n0 = len(fake.calls)
     r = AT.automap()
     assert {x["symbol"]: x["broker_symbol"] for x in r["mapped"]} == {"AAPL": "AAPL", "TSLA": "TSLA.NAS"}
-    assert [x["symbol"] for x in r["unmapped"]] == ["NVDA"] and r["unmapped"][0]["note"] == "not offered by the broker" and r["summary"] == "2 of 3 symbols mapped (13 excluded)"
+    assert [x["symbol"] for x in r["unmapped"]] == ["NVDA"] and r["unmapped"][0]["note"] == "not offered by the broker" and r["summary"] == "2 of 3 symbols mapped (12 excluded)"
     paths = [pp for pp, q in fake.calls[n0:]]
     assert paths.count("Symbols") == 1 and paths.count("SymbolParams") == 2                  # never one call per candidate suffix
     st = AT.automap_state()
@@ -234,7 +234,7 @@ def test_automap_runs_in_the_background_and_status_keeps_answering(fake):
         if not AT.automap_state()["running"]:
             break
         _t.sleep(0.02)
-    assert AT.automap_state()["running"] is False and AT.mapping_rows()["summary"] == "2 of 3 symbols mapped (13 excluded)"
+    assert AT.automap_state()["running"] is False and AT.mapping_rows()["summary"] == "2 of 3 symbols mapped (12 excluded)"
     assert AT.status()["connected"] is True
 
 
@@ -456,25 +456,48 @@ def _offer(fake, *names):
 
 
 # ------------------------------------------------------------------ A.18: the operator's exclusion list ---
-def test_excluded_symbols_are_seeded_never_automapped_never_mapped_by_hand_and_never_trade(fake, monkeypatch):
+def test_an_excluded_symbol_is_mapped_but_never_trades(fake, monkeypatch):
+    """H: exclusion means "do not trade", not "do not map".
+
+    Before H the two were tangled: auto-map skipped excluded symbols and set_mapping refused them, so every
+    excluded symbol was also UNMAPPED and would have been refused as UNMAPPED even after un-exclusion. The
+    operator could not see what a symbol WOULD map to before deciding. That is why CAT, AMD, COST, UNH,
+    ADBE, ORCL and QQQ - +97,000 of paper profit between them - had never reached the broker.
+
+    Now a symbol is mapped either way, and the exclusion still stops the order. Un-excluding a mapped symbol
+    starts it trading with no second step.
+    """
     monkeypatch.setattr(AT, "software_symbols", lambda: ["AAPL", "CAT", "QQQ"])
     _offer(fake, "AAPL", "CAT", "QQQ", "COP")
     assert {"CAT", "QQQ", "COP", "SPY", "LLY"} <= set(AT.excluded_symbols())             # the owner's list is the seed
+    assert "ORACLE" not in AT.excluded_symbols(), "ORACLE is not a ticker and excluded nothing"
     AT.connect(123, "p", "STGlobalMarketsLtd-Live-1")
+
     r = AT.automap()
-    assert {x["symbol"] for x in r["mapped"]} == {"AAPL"}                                # CAT / QQQ skipped although the broker offers them
+    assert {x["symbol"] for x in r["mapped"]} == {"AAPL", "CAT", "QQQ"}, "excluded symbols are mapped too"
     rows = {x["symbol"]: x for x in AT.mapping_rows()["rows"]}
-    assert rows["CAT"]["status"] == "EXCLUDED" and rows["QQQ"]["excluded"] is True and rows["AAPL"]["status"] == "MAPPED"
-    m = AT.set_mapping("CAT", "CAT", source="manual")
-    assert m["ok"] is False and m["reason"] == "EXCLUDED" and AT.mapped("CAT") is None
+    assert rows["CAT"]["status"] == "EXCLUDED" and rows["QQQ"]["excluded"] is True
+    assert rows["CAT"]["broker_symbol"] == "CAT", "the operator must be able to SEE the mapping"
+
+    # mapped - and still unable to trade
     n0 = [p for p, q in fake.calls].count("OrderSendSafe")
-    out = AT.on_paper_event({"type": "ENTRY", "trade_id": 9001, "strategy": "grok", "symbol": "CAT", "side": "LONG", "shares": 16, "entry": 600.0, "stop": 590.0, "target": 620.0})
+    out = AT.on_paper_event({"type": "ENTRY", "trade_id": 9001, "strategy": "grok", "symbol": "CAT",
+                             "side": "LONG", "shares": 16, "entry": 600.0, "stop": 590.0, "target": 620.0})
     assert out["reason"] == "EXCLUDED" and [p for p, q in fake.calls].count("OrderSendSafe") == n0
     assert AT.audit_rows(limit=5, symbol="CAT")[0]["reason"] == "EXCLUDED"
-    # un-exclude -> ordinary symbol again; re-exclude drops the mapping
+
+    # mapping by hand is allowed while excluded, and still does not enable trading
+    m = AT.set_mapping("CAT", "CAT", source="manual")
+    assert m["status"] == "MAPPED"
+    assert AT.on_paper_event({"type": "ENTRY", "trade_id": 9002, "strategy": "grok", "symbol": "CAT",
+                              "side": "LONG", "shares": 16, "entry": 600.0, "stop": 590.0,
+                              "target": 620.0})["reason"] == "EXCLUDED"
+
+    # stage 2: un-exclude, and the existing mapping simply starts trading
     assert AT.set_excluded("CAT", False)["ok"] and "CAT" not in AT.excluded_symbols()
-    assert AT.set_mapping("CAT", "CAT", source="manual")["status"] == "MAPPED"
-    assert AT.set_excluded("CAT", True)["ok"] and AT.mapped("CAT") is None and {x["symbol"]: x for x in AT.mapping_rows()["rows"]}["CAT"]["status"] == "EXCLUDED"
+    assert AT.mapped("CAT") is not None, "the mapping must survive un-exclusion - no re-map needed"
+    # and re-excluding drops it again
+    assert AT.set_excluded("CAT", True)["ok"] and AT.mapped("CAT") is None
 
 
 def test_startup_applies_the_exclusion_list_to_existing_mappings_and_runs_once(fake, monkeypatch):
