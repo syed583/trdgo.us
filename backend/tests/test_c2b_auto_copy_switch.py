@@ -114,9 +114,16 @@ def _page() -> str:
 
 
 def test_the_page_shows_the_switch_state_and_the_reason():
+    """The guarantee, not the markup.
+
+    The page must render the server's reason, and must read the SWITCH (`set.auto_copy`) somewhere rather
+    than deriving everything from `copying`. E moved this from a table row to a status band; pinning the old
+    JSX string would have forbidden the redesign for no benefit - the same mistake as the C.1 test that
+    required the session bug to stay in place.
+    """
     src = _page()
-    assert "blocked_reason" in src, "the page must show why it is not copying"
-    assert "{set.auto_copy ? 'on' : 'off'}" in src, "the page must show the SWITCH state, not only `copying`"
+    assert "blocked_reason" in src, "the page must show why it is not trading"
+    assert "set.auto_copy" in src, "the page must read the switch state, not only `copying`"
 
 
 def test_the_page_no_longer_prints_a_bare_off():
@@ -125,6 +132,8 @@ def test_the_page_no_longer_prints_a_bare_off():
 
 
 def test_the_pause_button_says_what_it_pauses():
+    """"Pause everything" / "Resume" gave no hint that it gated trading. The verb may change with the
+    product's wording; what must not come back is a bare "Pause" or "Resume"."""
     src = _page()
-    assert "Pause copying" in src and "Resume copying" in src, \
-        "'Pause everything' / 'Resume' gave no hint that it gated copying"
+    assert ("Pause trading" in src or "Pause copying" in src), "the pause button must say what it pauses"
+    assert ("Resume trading" in src or "Resume copying" in src), "the resume button must say what it resumes"
