@@ -38,7 +38,11 @@ class FakeBroker:
         self.closes = {k: [] for k in self.accounts}
         self.next_ticket = 1000
 
-    def _acct(self, token):
+    def _acct(self, token, strict_token=False):
+        # F: a strict call with no token must never reach an account. In the real bridge this used to fall
+        # through to the OPERATOR's session, which is how 25 user positions were opened in 250086.
+        if strict_token and not token:
+            raise AssertionError("a user call reached the broker with NO session token")
         a = self.accounts.get(token)
         if a is None:
             raise AssertionError("an order was sent with no account token: %r" % token)
@@ -46,33 +50,35 @@ class FakeBroker:
             raise RuntimeError("this broker is down")
         return a
 
-    def symbol(self, sym, select=True, token=None):
-        a = self._acct(token)
+    def symbol(self, sym, select=True, token=None, strict_token=False):
+        a = self._acct(token, strict_token)
         if not sym.endswith(a["suffix"]) or sym[:len(sym) - len(a["suffix"]) if a["suffix"] else len(sym)] == "":
             return {"ok": False, "reason": "NOT_FOUND"}
         return {"ok": True, "symbol": sym, "contract_size": a["contract_size"], "volume_min": a["volume_min"],
                 "volume_step": a["volume_step"], "volume_max": a["volume_max"]}
 
-    def tick(self, sym, token=None):
-        self._acct(token)
+    def tick(self, sym, token=None, strict_token=False):
+        self._acct(token, strict_token)
         return {"ok": True, "bid": 99.9, "ask": 100.1}
 
     def market_order(self, sym, side, volume, *, sl, tp, deviation_points, magic, comment,
-                     sym_info=None, check_only=False, token=None):
-        self._acct(token)
+                     sym_info=None, check_only=False, token=None, strict_token=False):
+        self._acct(token, strict_token)
         self.next_ticket += 1
         self.orders[token].append({"symbol": sym, "side": side, "volume": volume, "sl": sl, "tp": tp,
                                    "ticket": self.next_ticket})
         fill = 100.1 if side in ("BUY", "LONG") else 99.9      # a buy pays the ask, a sell gets the bid
         return {"ok": True, "order": self.next_ticket, "volume": volume, "price": fill}
 
-    def close_position(self, ticket, *, deviation_points, magic, comment, token=None):
-        self._acct(token)
+    def close_position(self, ticket, *, deviation_points, magic, comment, token=None,
+                       strict_token=False):
+        self._acct(token, strict_token)
         self.closes[token].append(int(ticket))
         return {"ok": True, "price": 102.0, "volume": 1.0}
 
-    def _call(self, path, params=None, *, with_token=True, base_url=None, token=None):
-        a = self._acct(token)
+    def _call(self, path, params=None, *, with_token=True, base_url=None, token=None,
+              strict_token=False):
+        a = self._acct(token, strict_token)
         if path == "AccountSummary":
             return {"ok": True, "data": {"equity": a["equity"], "balance": a["equity"]}}
         return {"ok": False, "reason": "UNEXPECTED_CALL", "detail": path}
@@ -157,7 +163,7 @@ def rig(monkeypatch):
     monkeypatch.setattr(CP, "_sym_cache", {})
     monkeypatch.setattr(CP, "_equity_cache", {})
     monkeypatch.setattr(CP, "MAX_ORDERS_PER_SECOND", 1000.0)      # the rate limit has its own test
-    monkeypatch.setattr(CP.usvc, "_token_for", lambda u: ("tok-%s" % u, None))
+    monkeypatch.setattr(CP.usvc, "session_for", lambda u: ("tok-%s" % u, None))
     monkeypatch.setattr(CP.AT, "is_excluded", lambda s: False)
     monkeypatch.setattr(CP.AT, "mapped", lambda s: None)
     monkeypatch.setattr(CP.AT, "_suffixes", lambda: ["", ".m", "US.m"])
@@ -189,12 +195,14 @@ def test_a_close_only_closes_that_users_ticket(rig):
 
 def test_one_users_session_is_never_used_for_another(rig, monkeypatch):
     broker, st = rig
-    monkeypatch.setattr(CP.usvc, "_token_for",
+    monkeypatch.setattr(CP.usvc, "session_for",
                         lambda u: (("tok-ann", None) if u == "ann" else (None, {"ok": False, "reason": "DEAD"})))
     CP.dispatch(ENTRY)
     assert len(broker.orders["tok-ann"]) == 1
     assert broker.orders["tok-bob"] == []                       # bob has no session: nothing sent on anyone's
-    assert st.events("bob", "SKIPPED")[0]["reason"].startswith("NO_SESSION")
+    # F: the log now names the SPECIFIC refusal (DEAD, SESSION_ACCOUNT_MISMATCH, OPERATOR_ACCOUNT ...)
+    # instead of a generic NO_SESSION, so an operator can see which rail stopped the order.
+    assert st.events("bob", "SKIPPED")[0]["reason"].startswith("DEAD")
 
 
 # --------------------------------------------------------------------------- 2. only with Auto-copy ON

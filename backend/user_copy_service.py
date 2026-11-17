@@ -33,6 +33,7 @@ import time
 from collections import deque
 from typing import Optional
 
+import broker_rate
 import demo_trade_service as dts
 import mt5_autotrade as AT
 import mt5_bridge as bridge
@@ -65,14 +66,13 @@ _equity_cache: dict = {}             # username -> (equity, at)
 
 # --------------------------------------------------------------------------- the rate limit
 def _throttle() -> None:
-    """Hold every order, for every user, to MAX_ORDERS_PER_SECOND between them."""
-    global _last_order_at
-    gap = 1.0 / float(MAX_ORDERS_PER_SECOND)
-    with _rate_lock:
-        wait = _last_order_at + gap - time.time()
-        if wait > 0:
-            time.sleep(wait)
-        _last_order_at = time.time()
+    """Hold every order behind the ONE gate the operator's book also passes through.
+
+    F: this used to be a user-only limiter. The broker counts orders per second across the whole account, so
+    a user limiter the admin engine could not see never actually bounded the rate - on 2026-11-16 a GME order
+    was rejected outright with "Max 3 orders per second".
+    """
+    broker_rate.acquire("user")
 
 
 # --------------------------------------------------------------------------- the queue
@@ -201,7 +201,7 @@ def _broker_symbol(username: str, token: str, sym: str) -> tuple:
             seen.add(c.upper())
             cands.append(c)
     for cand in cands:
-        info = bridge.symbol(cand, token=token)
+        info = bridge.symbol(cand, token=token, strict_token=True)
         if not info.get("ok"):
             continue
         if info.get("volume_min") is None or info.get("volume_step") is None:
@@ -222,7 +222,7 @@ def _equity(username: str, token: str) -> Optional[float]:
     hit = _equity_cache.get(username)
     if hit and time.time() - hit[1] < EQUITY_TTL_S:
         return hit[0]
-    res = bridge._call("AccountSummary", token=token)                        # noqa: SLF001
+    res = bridge._call("AccountSummary", token=token, strict_token=True)                        # noqa: SLF001
     if not res.get("ok"):
         return None
     d = res.get("data") or {}
@@ -264,10 +264,12 @@ def _open_for(u: dict, ev: dict) -> dict:
     if not bridge.available():
         _safe_log(name, "SKIPPED", reason="PROVIDER_UNAVAILABLE", **common)
         return {"ok": False, "reason": "PROVIDER_UNAVAILABLE"}
-    token, err = usvc._token_for(name)                                       # noqa: SLF001
+    # F.1: a session that is PROVEN to be this user's account, or nothing at all. Before this, a missing
+    # token fell through to the operator's session inside _call and the order appeared in account 250086.
+    token, err = usvc.session_for(name)
     if err:
-        _safe_log(name, "SKIPPED", reason="NO_SESSION: %s" % (err.get("reason") or ""), **common)
-        return {"ok": False, "reason": "NO_SESSION"}
+        _safe_log(name, "SKIPPED", reason="%s: %s" % (err.get("reason"), err.get("detail") or ""), **common)
+        return {"ok": False, "reason": err.get("reason")}
 
     why = _entry_refused(u, ev, token)
     if why:
@@ -280,18 +282,25 @@ def _open_for(u: dict, ev: dict) -> dict:
         return {"ok": False, "reason": "NOT_AT_BROKER"}
 
     shares = common["shares"]
+    # F.1: ....94 had no margin, so nothing could ever have filled there - but we sent anyway and the order
+    # went somewhere else entirely. An account with nothing to trade on is skipped with a clear reason.
+    eq = _equity(name, token)
+    if eq is not None and eq <= 0:
+        _safe_log(name, "SKIPPED", broker_symbol=bsym, reason="NO_MARGIN: this account has no equity to trade with",
+                  **common)
+        return {"ok": False, "reason": "NO_MARGIN"}
     z = AT.sizing(info.get("contract_size"), info.get("volume_min"), info.get("volume_step"),
                   info.get("volume_max"), shares)
     if not z["valid"]:
         _safe_log(name, "SKIPPED", broker_symbol=bsym, reason="SKIPPED_SIZE: %s" % z["reason"], **common)
         return {"ok": False, "reason": "SKIPPED_SIZE"}
 
-    t = bridge.tick(bsym, token=token)
+    t = bridge.tick(bsym, token=token, strict_token=True)
     ref = (t.get("ask") if side in ("BUY", "LONG") else t.get("bid")) if t.get("ok") else None
     _throttle()
     res = bridge.market_order(bsym, side, z["volume"], sl=ev.get("stop"), tp=ev.get("target"),
                               deviation_points=AT.DEVIATION_POINTS, magic=AT.magic_for(strat),
-                              comment="TRDGO copy #%s" % tid, sym_info=info, token=token)
+                              comment="TRDGO copy #%s" % tid, sym_info=info, token=token, strict_token=True)
     if not res.get("ok"):
         _safe_log(name, "REJECTED", broker_symbol=bsym, volume=z["volume"],
                   reason="%s (%s): %s" % (res.get("retcode_text") or res.get("reason"), res.get("retcode"),
@@ -334,12 +343,12 @@ def close_row(name: str, row: dict, reason: str, *, admin_price=None) -> dict:
     common = {"symbol": row.get("symbol"), "broker_symbol": row.get("broker_symbol"), "side": row.get("side"),
               "shares": row.get("shares"), "volume": row.get("volume"), "admin_trade_id": tid,
               "strategy": row.get("strategy"), "ticket": row.get("ticket"), "admin_price": admin_price}
-    token, err = usvc._token_for(name)                                       # noqa: SLF001
+    token, err = usvc.session_for(name)
     if err:
-        _safe_log(name, "CLOSE_FAIL", reason="NO_SESSION: %s" % (err.get("reason") or ""), **common)
-        return {"ok": False, "reason": "NO_SESSION"}
+        _safe_log(name, "CLOSE_FAIL", reason="%s: %s" % (err.get("reason"), err.get("detail") or ""), **common)
+        return {"ok": False, "reason": err.get("reason")}
 
-    t = bridge.tick(row.get("broker_symbol"), token=token)
+    t = bridge.tick(row.get("broker_symbol"), token=token, strict_token=True)
     ref = (t.get("bid") if row.get("side") in ("BUY", "LONG") else t.get("ask")) if t.get("ok") else None
     last = {}
     for attempt in range(1, AT.MAX_CLOSE_ATTEMPTS + 1):
@@ -347,12 +356,22 @@ def close_row(name: str, row: dict, reason: str, *, admin_price=None) -> dict:
         last = bridge.close_position(int(row["ticket"]), deviation_points=AT.DEVIATION_POINTS * attempt,
                                      magic=AT.magic_for(row.get("strategy")),
                                      comment="TRDGO copy %s #%s" % ((ev.get("reason") or "EXIT")[:10], tid),
-                                     token=token)
-        if last.get("ok"):
+                                     token=token, strict_token=True)
+        if last.get("ok") and last.get("price") is not None:
             fill = last.get("price")
             _safe_log(name, "CLOSED", price=fill, slippage=_slip(ref, fill, row.get("side"), opening=False),
                       pnl=_pnl(row, fill), reason=ev.get("reason"), **common)
             return {"ok": True, "attempts": attempt}
+        if last.get("ok"):
+            # F.1: "ok" with no fill price means the broker could not see the ticket - which is what a close
+            # aimed at the WRONG ACCOUNT looks like. On 2026-11-16 every one of these was written as CLOSED,
+            # so the book read flat while 25 positions stayed open. It is now recorded as unconfirmed, the
+            # row stays open so the sweep retries it, and it is visible on the page.
+            _safe_log(name, "CLOSE_UNCONFIRMED", reason="the broker confirmed no fill for this ticket: %s"
+                      % (last.get("retcode_text") or last.get("reason") or "no price returned"), **common)
+            _log.error("unconfirmed close for %s ticket %s (%s): the position may still be open",
+                       name, row.get("ticket"), row.get("symbol"))
+            return {"ok": False, "reason": "CLOSE_UNCONFIRMED"}
         if last.get("retcode_text") == "NO_RETRY":
             break
         time.sleep(0.5 * attempt)
@@ -382,7 +401,8 @@ def preview(username: str, limit: int = PREVIEW_MAX) -> dict:
         return {"ok": False, "reason": "NO_ACCOUNT", "shares": shares, "rows": []}
     if not bridge.available():
         return {"ok": False, "reason": "PROVIDER_UNAVAILABLE", "shares": shares, "rows": []}
-    token, err = usvc._token_for(username)                                   # noqa: SLF001
+    # F.1: the preview reads the user's own broker, so it uses the same verified session as a real order.
+    token, err = usvc.session_for(username)
     if err:
         return dict(err, shares=shares, rows=[])
     rows, excluded = [], set(AT.excluded_symbols())

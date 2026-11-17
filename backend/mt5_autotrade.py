@@ -833,6 +833,7 @@ def _handle_entry(ev: dict) -> dict:
               reason="dry run: would send %s %s lots (= %s shares) magic %s" % (side, vol, shares, magic),
               detail={"sl": ev.get("stop"), "tp": ev.get("target"), "paper_shares": ev.get("shares"), "shares_per_trade": shares, "lots": vol, "contract_size": info.get("contract_size"), "magic": magic, "comment": comment, "bid": t.get("bid"), "ask": t.get("ask")})
         return {"ok": True, "dry": True, "volume": vol}
+    import broker_rate; broker_rate.acquire("operator")   # F: the ONE shared 3/s broker gate (owner-approved single line)
     res = B.market_order(bsym, side, vol, sl=ev.get("stop"), tp=ev.get("target"), deviation_points=DEVIATION_POINTS, magic=magic, comment=comment, sym_info=info)
     if not res.get("ok") and res.get("retcode_text") == "REPRICE":
         audit("REPRICE", symbol=sym, broker_symbol=bsym, action=side, quantity=vol, trade_id=tid, strategy=strat, reason="%s: %s" % (res.get("retcode_text"), res.get("comment")))

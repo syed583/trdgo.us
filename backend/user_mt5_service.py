@@ -20,28 +20,35 @@ import user_secret_box as box
 
 _log = logging.getLogger("user_mt5")
 
-# A user's session token, in memory only, never written down. {username: (token, obtained_at)}
+# A user's session token, in memory only, never written down. {username: (token, obtained_at, login)}
+# F.1: the LOGIN is kept beside the token. A token on its own cannot say which account it opens, so nothing
+# could check that an order was going to the right place - and on 2026-11-16, 25 of them did not.
 _tokens: dict = {}
 _lock = threading.Lock()
 TOKEN_TTL_S = 20 * 60.0
 
 
-def _cached_token(username: str) -> Optional[str]:
+def _cached_entry(username: str):
     with _lock:
         got = _tokens.get(username)
     if not got:
         return None
-    token, at = got
+    token, at, login = got
     if time.time() - at > TOKEN_TTL_S:
         with _lock:
             _tokens.pop(username, None)
         return None
-    return token
+    return token, login
 
 
-def _store_token(username: str, token: str) -> None:
+def _cached_token(username: str) -> Optional[str]:
+    got = _cached_entry(username)
+    return got[0] if got else None
+
+
+def _store_token(username: str, token: str, login: str = "") -> None:
     with _lock:
-        _tokens[username] = (token, time.time())
+        _tokens[username] = (token, time.time(), str(login))
 
 
 def forget(username: str) -> None:
@@ -74,7 +81,7 @@ def _connect(username: str) -> dict:
     if not token:
         store.record_check(username, "FAILED", "no session token")
         return {"ok": False, "reason": "NO_TOKEN", "detail": "the broker did not return a session"}
-    _store_token(username, token)
+    _store_token(username, token, login)
     store.record_check(username, "OK", None)
     return {"ok": True}
 
@@ -179,3 +186,47 @@ def is_operator_account(login: str, server: str) -> bool:
     ours = str(saved.get("server") or "").strip().lower()
     theirs = str(server or "").strip().lower()
     return same_login and (ours == theirs or not ours or not theirs)
+
+
+# --------------------------------------------------------------------------- F.1: whose account is this?
+def session_for(username: str) -> tuple:
+    """(token, None) for a session that is proven to be THIS user's, or (None, refusal).
+
+    Three things must hold before a single order is sent:
+      * we have a session, and we know which login opened it;
+      * that login is the account the user has stored;
+      * that account is not the operator's own.
+
+    Any doubt refuses. The alternative - acting on a session we cannot name - is what put 25 positions in
+    account 250086 on 2026-11-16 under a user's name.
+    """
+    row = store.get(username)
+    if not row:
+        return None, {"ok": False, "reason": "NO_ACCOUNT", "detail": "no account is connected"}
+
+    token, err = _token_for(username)
+    if err:
+        return None, err
+    if not token:
+        return None, {"ok": False, "reason": "NO_USER_SESSION", "detail": "no session for this user"}
+
+    got = _cached_entry(username)
+    session_login = (got[1] if got else "") or ""
+    creds = store.secret_of(username)
+    stored_login = (creds[0] if creds else "") or ""
+    if not session_login or not stored_login:
+        forget(username)
+        return None, {"ok": False, "reason": "SESSION_UNVERIFIED",
+                      "detail": "cannot confirm which account this session belongs to"}
+    try:
+        same = int(str(session_login).strip()) == int(str(stored_login).strip())
+    except (TypeError, ValueError):
+        same = str(session_login).strip() == str(stored_login).strip()
+    if not same:
+        forget(username)                       # the account changed under us: never reuse the old session
+        return None, {"ok": False, "reason": "SESSION_ACCOUNT_MISMATCH",
+                      "detail": "the open session is not the account now stored for you"}
+    if is_operator_account(stored_login, creds[1] if creds else ""):
+        return None, {"ok": False, "reason": "OPERATOR_ACCOUNT",
+                      "detail": "this is the account the service trades itself; it cannot also be copied into"}
+    return token, None

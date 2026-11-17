@@ -68,7 +68,7 @@ _http_get = _real_http_get
 
 
 def _call(path: str, params: Optional[dict] = None, *, with_token: bool = True, base_url: Optional[str] = None,
-          token: Optional[str] = None) -> dict:
+          token: Optional[str] = None, strict_token: bool = False) -> dict:
     """One GET. Returns {"ok", "status", "data"|"error", "path"}; the token never leaves this function.
 
     C.1: `token` names the session explicitly, for a call made on behalf of a USER rather than the operator.
@@ -76,6 +76,11 @@ def _call(path: str, params: Optional[dict] = None, *, with_token: bool = True, 
     """
     base = (base_url or _session["base_url"] or DEFAULT_BASE_URL).rstrip("/") + "/"
     q = dict(params or {})
+    if strict_token and not token:
+        # F.1: a USER call with no session must fail here. Falling through to the operator's token is how 25
+        # user positions were opened in account 250086 on 2026-11-16, silently and reported as filled.
+        return {"ok": False, "reason": "NO_USER_SESSION",
+                "detail": "this call needs the user's own session and none was supplied", "path": path}
     if token:
         q["id"] = token
     elif with_token:
@@ -199,8 +204,8 @@ def terminal() -> dict:
 
 
 # ----------------------------------------------------------------------------- symbols and prices
-def symbol(sym: str, select: bool = True, token: Optional[str] = None) -> dict:
-    res = _call("SymbolParams", {"symbol": sym}, token=token)
+def symbol(sym: str, select: bool = True, token: Optional[str] = None, strict_token: bool = False) -> dict:
+    res = _call("SymbolParams", {"symbol": sym}, token=token, strict_token=strict_token)
     if not res.get("ok"):
         text = ("%s" % res.get("detail")).lower()
         return {"ok": False, "reason": "UNKNOWN_SYMBOL" if ("not found" in text or "unknown" in text or "invalid symbol" in text) else res.get("reason"), "detail": res.get("detail"), "raw": res.get("raw")}
@@ -230,8 +235,8 @@ def symbol(sym: str, select: bool = True, token: Optional[str] = None) -> dict:
     return out
 
 
-def tick(sym: str, token: Optional[str] = None) -> dict:
-    res = _call("GetQuote", {"symbol": sym}, token=token)
+def tick(sym: str, token: Optional[str] = None, strict_token: bool = False) -> dict:
+    res = _call("GetQuote", {"symbol": sym}, token=token, strict_token=strict_token)
     if not res.get("ok"):
         return {"ok": False, "reason": "NO_TICK", "detail": res.get("detail")}
     d = res["data"] if isinstance(res["data"], dict) else {}
@@ -266,14 +271,15 @@ def _order_fields(d: Any) -> dict:
 
 
 def market_order(sym: str, side: str, volume: float, *, sl: Optional[float], tp: Optional[float], deviation_points: int, magic: int, comment: str,
-                 sym_info: Optional[dict] = None, check_only: bool = False, token: Optional[str] = None) -> dict:
+                 sym_info: Optional[dict] = None, check_only: bool = False, token: Optional[str] = None,
+                 strict_token: bool = False) -> dict:
     """OrderSendSafe: ``volume`` is already in LOTS (the policy converts shares with the contract size).
 
     C.2: `token` places the order in a USER's account. Without it this is the operator's account, unchanged."""
-    info = sym_info or symbol(sym, token=token)
+    info = sym_info or symbol(sym, token=token, strict_token=strict_token)
     if not info.get("ok"):
         return info
-    t = tick(sym, token=token)
+    t = tick(sym, token=token, strict_token=strict_token)
     if not t.get("ok"):
         return t
     buy = side.upper() in ("BUY", "LONG")
@@ -285,7 +291,10 @@ def market_order(sym: str, side: str, volume: float, *, sl: Optional[float], tp:
         req["takeprofit"] = round(float(tp), digits)
     if check_only:
         return {"ok": True, "request": req, "tick": t, "note": "mtapi.io has no order_check; validation is local"}
-    res = _call("OrderSendSafe", req)
+    # C.2 added `token` to every call EXCEPT this one - the one that places the order. Every user order
+    # was therefore built from the user's data and sent on the OPERATOR's session: 25 positions opened
+    # in account 250086 on 2026-11-16 under a user's name. The token belongs here above all.
+    res = _call("OrderSendSafe", req, token=token, strict_token=strict_token)
     if not res.get("ok"):
         return {"ok": False, "stage": "order_send", "request": req, "tick": t, "retcode": res.get("error_code"), "retcode_text": classify_refusal(res), "comment": res.get("detail"), "raw": res.get("raw")}
     o = _order_fields(res.get("data"))
@@ -297,8 +306,9 @@ def market_order(sym: str, side: str, volume: float, *, sl: Optional[float], tp:
             "order": o["ticket"], "deal": o["ticket"], "volume": filled if filled is not None else float(volume), "price": o.get("price") or (t["ask"] if buy else t["bid"]), "comment": o.get("comment")}
 
 
-def positions(sym: Optional[str] = None, magic: Optional[int] = None, token: Optional[str] = None) -> dict:
-    res = _call("OpenedOrders", token=token)
+def positions(sym: Optional[str] = None, magic: Optional[int] = None, token: Optional[str] = None,
+              strict_token: bool = False) -> dict:
+    res = _call("OpenedOrders", token=token, strict_token=strict_token)
     if not res.get("ok"):
         return {"ok": False, "reason": res.get("reason"), "detail": res.get("detail")}
     rows = res["data"] if isinstance(res["data"], list) else (_g(res["data"], "orders", "positions", "items") or [])
@@ -316,12 +326,14 @@ def positions(sym: Optional[str] = None, magic: Optional[int] = None, token: Opt
     return {"ok": True, "positions": out}
 
 
-def close_position(ticket: int, *, deviation_points: int, magic: int, comment: str, token: Optional[str] = None) -> dict:
+def close_position(ticket: int, *, deviation_points: int, magic: int, comment: str, token: Optional[str] = None,
+                   strict_token: bool = False) -> dict:
     """OrderCloseSafe(ticket). A ticket that is no longer open counts as already closed."""
-    live = positions(token=token)
+    live = positions(token=token, strict_token=strict_token)
     if live.get("ok") and not any(int(p.get("ticket") or 0) == int(ticket) for p in live["positions"]):
         return {"ok": True, "already_closed": True, "ticket": int(ticket)}
-    res = _call("OrderCloseSafe", {"ticket": int(ticket), "slippage": int(deviation_points)}, token=token)
+    res = _call("OrderCloseSafe", {"ticket": int(ticket), "slippage": int(deviation_points)}, token=token,
+                strict_token=strict_token)
     if not res.get("ok"):
         text = ("%s" % res.get("detail")).lower()
         if "not found" in text or "already closed" in text or "position closed" in text:
