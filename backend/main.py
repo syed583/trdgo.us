@@ -692,6 +692,7 @@ def _start_mt5_session_watch() -> None:
         _al.file_logger("mt5").exception("MT5 session watcher failed to start")
 
 
+@_bg
 def _start_demo_trade_tracker() -> None:
     """Open + track the intraday demo (paper) trades continuously. Runs a tick
     every 60s during regular hours so signals are captured even when nobody has

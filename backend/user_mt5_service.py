@@ -230,3 +230,70 @@ def session_for(username: str) -> tuple:
         return None, {"ok": False, "reason": "OPERATOR_ACCOUNT",
                       "detail": "this is the account the service trades itself; it cannot also be copied into"}
     return token, None
+
+
+# --------------------------------------------------------------------------- G: the user's own symbol list
+_symbols_cache: dict = {}          # username -> (names, fetched_at); one Symbols call serves a whole session
+SYMBOLS_TTL_S = 15 * 60.0
+
+
+def broker_symbols(username: str, refresh: bool = False) -> tuple:
+    """Every symbol name THIS user's broker offers, or (None, refusal).
+
+    One `Symbols` call is cached for fifteen minutes: a user typing in the search box must not produce a
+    broker call per keystroke, and the list does not change during a session.
+    """
+    import time as _t
+    hit = _symbols_cache.get(username)
+    if hit and not refresh and _t.time() - hit[1] < SYMBOLS_TTL_S:
+        return hit[0], None
+
+    token, err = session_for(username)
+    if err:
+        return None, err
+    res = bridge.symbols_list(token=token, strict_token=True)
+    if not res.get("ok"):
+        return None, {"ok": False, "reason": res.get("reason") or "SYMBOLS_FAILED", "detail": res.get("detail")}
+    names = [str(n) for n in (res.get("symbols") or []) if n]
+    _symbols_cache[username] = (names, _t.time())
+    return names, None
+
+
+def forget_symbols(username: str) -> None:
+    _symbols_cache.pop(username, None)
+
+
+def search_symbols(username: str, query: str, limit: int = 20) -> dict:
+    """What this user's broker offers for a ticker they typed.
+
+    Ordered so the obvious answer is first: an exact match, then names that start with it, then the rest.
+    No guessing and no auto-selection - the user picks, because a near-miss suffix can be a different
+    instrument entirely (that is how the operator's book took wrong-symbol fills in A.18).
+    """
+    q = (query or "").strip().upper()
+    if len(q) < 1:
+        return {"ok": False, "reason": "EMPTY", "detail": "type a symbol to search for"}
+    names, err = broker_symbols(username)
+    if err:
+        return err
+    up = [(n, n.upper()) for n in names]
+    exact = [n for n, u in up if u == q]
+    starts = [n for n, u in up if u != q and u.startswith(q)]
+    rest = [n for n, u in up if q in u and u != q and not u.startswith(q)]
+    found = (exact + starts + rest)[:max(1, min(int(limit), 50))]
+    return {"ok": True, "query": q, "matches": found, "total_at_broker": len(names)}
+
+
+def verify_symbol(username: str, broker_symbol: str) -> dict:
+    """Ask the user's broker about one symbol: it must exist AND carry volume rules we can size with."""
+    token, err = session_for(username)
+    if err:
+        return err
+    info = bridge.symbol(broker_symbol, token=token, strict_token=True)
+    if not info.get("ok"):
+        return {"ok": False, "reason": info.get("reason") or "NOT_FOUND",
+                "detail": info.get("detail") or "your broker does not offer %s" % broker_symbol}
+    if info.get("volume_min") is None or info.get("volume_step") is None:
+        return {"ok": False, "reason": "NO_VOLUME_RULES",
+                "detail": "your broker gave no volume rules for %s, so an order could not be sized" % broker_symbol}
+    return {"ok": True, "info": info}

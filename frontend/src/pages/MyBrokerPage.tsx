@@ -19,6 +19,7 @@ import {
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import { PageHead } from './shared';
+import MyBrokerSymbols from './MyBrokerSymbols';
 import './my-broker.css';
 
 const SHARE_PRESETS = [10, 20, 30, 50, 100];
@@ -197,6 +198,10 @@ export default function MyBrokerPage() {
                 </tbody>
               </table>)}
           </div>
+
+          {/* G: what the share size applies to. Placed after Size and before Activity because that is the
+              order a person decides in: how much, on what, then what happened. */}
+          <MyBrokerSymbols onChanged={info.refresh} />
 
           <div className="mb-card">
             <h3>Activity</h3>

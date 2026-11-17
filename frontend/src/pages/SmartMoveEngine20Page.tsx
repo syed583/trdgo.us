@@ -43,7 +43,7 @@ export function missingText(r: { missing_factors?: any[] }): string {
 }
 
 /** The newest immutable Engine20 prediction snapshot. A historical record of the frozen score40-v1 output at its generation time: this page computes no score, and it never presents a snapshot as a current live signal. */
-export function SnapshotView() {
+export function SnapshotView({ isAdmin = false }: { isAdmin?: boolean }) {
   const [cat, setCat] = useState('');
   const [open, setOpen] = useState('');
   const snap = useApi<any>((s) => smartMoveEngine20.latest(s), [], { refreshMs: 60_000 });
@@ -74,7 +74,9 @@ export function SnapshotView() {
 
       {ok && (
         <>
-          <div className="sm-fresh stale" data-testid="snapshot-label"><AlertTriangle size={14} /> Historical snapshot generated {fmtTime(d.generated_at)} ({d.snapshot_age_h} h ago) · model {d.model_version} · {d.window_open_now ? 'prediction window still open, but this page is not a live feed' : 'prediction window closed'} · audit {d.audit?.verdict}</div>
+          {/* The age is not decay: this record is immutable by design, so it is stated plainly rather than
+              styled as an alarm. The model version and audit verdict are internals and stay with the admin. */}
+          <div className="sm-fresh" data-testid="snapshot-label"><AlertTriangle size={14} /> Historical snapshot generated {fmtTime(d.generated_at)}{isAdmin ? ` (${d.snapshot_age_h} h ago) · model ${d.model_version} · audit ${d.audit?.verdict ?? ''}` : ''} · {d.window_open_now ? 'prediction window still open, but this page is not a live feed' : 'prediction window closed'}</div>
           <div className="sm-summary" data-testid="counts">
             <div className="sm-card"><div className="sm-card-k">BUY</div><div className="sm-card-v">{d.counts.BUY}</div></div>
             <div className="sm-card"><div className="sm-card-k">SELL</div><div className="sm-card-v">{d.counts.SELL}</div></div>
@@ -372,7 +374,10 @@ export function MondayBmoView() {
 
 /** Smart Money Move: the LIVE scanner (default), the 30-day event universe, the separate Monday-BMO Friday variant, and the frozen historical snapshot, as separate views. A historical snapshot is never shown as a live signal. */
 export default function SmartMoveEngine20Page({ ctx }: { ctx: PageContext }) {
-  void ctx;
+  // G: the Historical snapshot is a frozen record of ONE earnings day (4 Nov 2026, 20 stocks) that nothing
+  // regenerates. Beside three live tabs it reads as a broken live view, so it is shown to administrators
+  // only. Display gating: the route and the snapshot file are untouched, and Smart Move stays frozen.
+  const isAdmin = !ctx.readOnly;
   const [view, setView] = useState<'live' | 'universe' | 'mondaybmo' | 'snapshot'>('live');
   return (
     <div>
@@ -381,10 +386,10 @@ export default function SmartMoveEngine20Page({ ctx }: { ctx: PageContext }) {
           <button role="tab" aria-selected={view === 'live'} className={`sm-tab ${view === 'live' ? 'on' : ''}`} data-testid="tab-live" onClick={() => setView('live')}>LIVE scanner</button>
           <button role="tab" aria-selected={view === 'universe'} className={`sm-tab ${view === 'universe' ? 'on' : ''}`} data-testid="tab-universe" onClick={() => setView('universe')}>Event universe (30 days)</button>
           <button role="tab" aria-selected={view === 'mondaybmo'} className={`sm-tab ${view === 'mondaybmo' ? 'on' : ''}`} data-testid="tab-monday-bmo" onClick={() => setView('mondaybmo')}>Monday BMO (Friday window)</button>
-          <button role="tab" aria-selected={view === 'snapshot'} className={`sm-tab ${view === 'snapshot' ? 'on' : ''}`} data-testid="tab-snapshot" onClick={() => setView('snapshot')}>Historical snapshot (20 stocks)</button>
+          {isAdmin && <button role="tab" aria-selected={view === 'snapshot'} className={`sm-tab ${view === 'snapshot' ? 'on' : ''}`} data-testid="tab-snapshot" onClick={() => setView('snapshot')}>Historical snapshot (20 stocks)</button>}
         </div>
       </div>
-      {view === 'live' ? <LiveView /> : view === 'universe' ? <UniverseView /> : view === 'mondaybmo' ? <MondayBmoView /> : <SnapshotView />}
+      {view === 'live' ? <LiveView /> : view === 'universe' ? <UniverseView /> : view === 'mondaybmo' ? <MondayBmoView /> : <SnapshotView isAdmin={isAdmin} />}
     </div>
   );
 }

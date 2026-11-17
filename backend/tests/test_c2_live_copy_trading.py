@@ -153,27 +153,44 @@ ENTRY = {"type": "ENTRY", "trade_id": "T1", "strategy": "gemini", "symbol": "AAP
 EXIT = {"type": "EXIT", "trade_id": "T1", "symbol": "AAPL", "reason": "SCORE_EXIT", "exit_price": 102.0}
 
 
+class FakeMap:
+    """G: each user's own verified mapping. The broker NAME and the volume rules both live here, which is
+    why the copy path no longer probes - and cannot land on a near-miss suffix."""
+
+    def __init__(self):
+        self.rows = {
+            # ann's broker: contract size 100, so 100 shares is 1.0 lot
+            ("ann", "AAPL"): {"symbol": "AAPL", "broker_symbol": "AAPL", "contract_size": 100.0,
+                              "volume_min": 0.01, "volume_step": 0.01, "volume_max": 50.0},
+            # bob's broker: the same company is AAPL.m with contract size 1, so 100 shares is 100.0 lots
+            ("bob", "AAPL"): {"symbol": "AAPL", "broker_symbol": "AAPL.m", "contract_size": 1.0,
+                              "volume_min": 1.0, "volume_step": 1.0, "volume_max": 500.0},
+        }
+
+    def get(self, username, symbol):
+        return self.rows.get((username, (symbol or "").upper()))
+
+
 @pytest.fixture
 def rig(monkeypatch):
     broker = FakeBroker()
+    smap = FakeMap()
+    monkeypatch.setattr(CP, "symmap", smap)
     st = FakeStore([{"username": "ann", "shares": 100, "max_positions": 20, "daily_loss_pct": 1.0},
                     {"username": "bob", "shares": 100, "max_positions": 20, "daily_loss_pct": 1.0}])
     monkeypatch.setattr(CP, "bridge", broker)
     monkeypatch.setattr(CP, "store", st)
-    monkeypatch.setattr(CP, "_sym_cache", {})
     monkeypatch.setattr(CP, "_equity_cache", {})
     monkeypatch.setattr(CP, "MAX_ORDERS_PER_SECOND", 1000.0)      # the rate limit has its own test
     monkeypatch.setattr(CP.usvc, "session_for", lambda u: ("tok-%s" % u, None))
     monkeypatch.setattr(CP.AT, "is_excluded", lambda s: False)
-    monkeypatch.setattr(CP.AT, "mapped", lambda s: None)
-    monkeypatch.setattr(CP.AT, "_suffixes", lambda: ["", ".m", "US.m"])
     monkeypatch.setattr(CP.dts, "stop_cap_reason", lambda entry, sl: None)
-    return broker, st
+    return broker, st, smap
 
 
 # --------------------------------------------------------------------------- 1. one user cannot touch another
 def test_each_order_lands_in_its_own_account(rig):
-    broker, st = rig
+    broker, st, smap = rig
     CP.dispatch(ENTRY)
     assert len(broker.orders["tok-ann"]) == 1
     assert len(broker.orders["tok-bob"]) == 1
@@ -183,7 +200,7 @@ def test_each_order_lands_in_its_own_account(rig):
 
 
 def test_a_close_only_closes_that_users_ticket(rig):
-    broker, st = rig
+    broker, st, smap = rig
     CP.dispatch(ENTRY)
     ann_ticket = broker.orders["tok-ann"][0]["ticket"]
     bob_ticket = broker.orders["tok-bob"][0]["ticket"]
@@ -194,7 +211,7 @@ def test_a_close_only_closes_that_users_ticket(rig):
 
 
 def test_one_users_session_is_never_used_for_another(rig, monkeypatch):
-    broker, st = rig
+    broker, st, smap = rig
     monkeypatch.setattr(CP.usvc, "session_for",
                         lambda u: (("tok-ann", None) if u == "ann" else (None, {"ok": False, "reason": "DEAD"})))
     CP.dispatch(ENTRY)
@@ -207,7 +224,7 @@ def test_one_users_session_is_never_used_for_another(rig, monkeypatch):
 
 # --------------------------------------------------------------------------- 2. only with Auto-copy ON
 def test_only_users_with_auto_copy_on_are_dispatched(rig):
-    broker, st = rig
+    broker, st, smap = rig
     # copying_users() is the ONLY list dispatch reads, and the store builds it from
     # auto_copy = TRUE AND enabled = TRUE AND admin_paused = FALSE AND consent_at IS NOT NULL
     st.users = [{"username": "ann", "shares": 100, "max_positions": 20, "daily_loss_pct": 1.0}]
@@ -228,7 +245,7 @@ def test_the_copying_query_requires_all_four_switches():
 
 # --------------------------------------------------------------------------- 3. same setting, different brokers
 def test_one_share_setting_gives_the_right_lot_at_each_broker(rig):
-    broker, st = rig
+    broker, st, smap = rig
     CP.dispatch(ENTRY)
     # 100 shares: contract size 100 -> 1.0 lot; contract size 1 -> 100.0 lots. Same setting, different lot.
     assert broker.orders["tok-ann"][0]["volume"] == pytest.approx(1.0)
@@ -236,15 +253,13 @@ def test_one_share_setting_gives_the_right_lot_at_each_broker(rig):
 
 
 def test_a_share_count_off_the_volume_grid_is_skipped_not_rounded(rig):
-    broker, st = rig
+    broker, st, smap = rig
     st.users = [{"username": "ann", "shares": 150, "max_positions": 20, "daily_loss_pct": 1.0}]
     # 150 shares / contract size 100 = 1.5 lots, which IS on a 0.01 step: valid.
     CP.dispatch(ENTRY)
     assert broker.orders["tok-ann"][0]["volume"] == pytest.approx(1.5)
-    # now a step that cannot express it
-    broker.accounts["tok-ann"]["volume_step"] = 1.0
-    broker.accounts["tok-ann"]["volume_min"] = 1.0
-    CP.forget_symbols("ann")
+    # now a mapping whose step cannot express 150 shares
+    smap.rows[("ann", "AAPL")] = dict(smap.rows[("ann", "AAPL")], volume_step=1.0, volume_min=1.0)
     CP.dispatch(dict(ENTRY, trade_id="T2"))
     skipped = [r for r in st.events("ann", "SKIPPED") if (r["reason"] or "").startswith("SKIPPED_SIZE")]
     assert skipped, "150 shares on a 1.0-lot step should be SKIPPED_SIZE"
@@ -252,24 +267,25 @@ def test_a_share_count_off_the_volume_grid_is_skipped_not_rounded(rig):
 
 
 def test_the_users_shares_are_used_not_our_paper_shares(rig):
-    broker, st = rig
+    broker, st, smap = rig
     st.users = [{"username": "bob", "shares": 20, "max_positions": 20, "daily_loss_pct": 1.0}]
     CP.dispatch(ENTRY)                                          # the event carries shares=7; it must be ignored
     assert broker.orders["tok-bob"][0]["volume"] == pytest.approx(20.0)
 
 
-def test_a_symbol_the_users_broker_does_not_offer_is_skipped(rig):
-    broker, st = rig
-    broker.accounts["tok-bob"]["suffix"] = "_NOPE"
-    CP.forget_symbols()
+def test_an_unmapped_symbol_is_skipped_with_a_reason_the_user_can_act_on(rig):
+    """G: no mapping, no order - and the reason names the page where they fix it."""
+    broker, st, smap = rig
+    smap.rows.pop(("bob", "AAPL"))
     CP.dispatch(ENTRY)
     assert broker.orders["tok-bob"] == []
-    assert any(r["reason"].startswith("NOT_AT_BROKER") for r in st.events("bob", "SKIPPED"))
+    reason = st.events("bob", "SKIPPED")[0]["reason"]
+    assert reason.startswith("NOT_MAPPED") and "My Broker" in reason
 
 
 # --------------------------------------------------------------------------- 4. one failure blocks nothing
 def test_a_broken_broker_for_one_user_does_not_stop_the_others(rig):
-    broker, st = rig
+    broker, st, smap = rig
     broker.accounts["tok-ann"]["fail"] = True
     CP.dispatch(ENTRY)
     assert len(broker.orders["tok-bob"]) == 1                   # bob still traded
@@ -303,7 +319,7 @@ def test_the_copy_hook_is_registered_after_ours():
 
 # --------------------------------------------------------------------------- the per-user rails
 def test_max_open_positions_stops_a_new_order(rig):
-    broker, st = rig
+    broker, st, smap = rig
     st.users = [{"username": "ann", "shares": 100, "max_positions": 1, "daily_loss_pct": 1.0}]
     CP.dispatch(ENTRY)
     CP.dispatch(dict(ENTRY, trade_id="T2"))
@@ -312,7 +328,7 @@ def test_max_open_positions_stops_a_new_order(rig):
 
 
 def test_the_daily_loss_limit_stops_new_orders(rig):
-    broker, st = rig
+    broker, st, smap = rig
     st.users = [{"username": "ann", "shares": 100, "max_positions": 20, "daily_loss_pct": 1.0}]
     st.realized["ann"] = -120.0                                 # equity 10,000; the 1% limit is 100
     CP.dispatch(ENTRY)
@@ -321,7 +337,7 @@ def test_the_daily_loss_limit_stops_new_orders(rig):
 
 
 def test_a_profit_does_not_trip_the_daily_limit(rig):
-    broker, st = rig
+    broker, st, smap = rig
     st.users = [{"username": "ann", "shares": 100, "max_positions": 20, "daily_loss_pct": 1.0}]
     st.realized["ann"] = 500.0
     CP.dispatch(ENTRY)
@@ -329,7 +345,7 @@ def test_a_profit_does_not_trip_the_daily_limit(rig):
 
 
 def test_an_unreadable_equity_fails_closed(rig):
-    broker, st = rig
+    broker, st, smap = rig
     st.users = [{"username": "ann", "shares": 100, "max_positions": 20, "daily_loss_pct": 1.0}]
     st.realized["ann"] = -50.0
     broker.accounts["tok-ann"]["equity"] = None
@@ -339,7 +355,7 @@ def test_an_unreadable_equity_fails_closed(rig):
 
 
 def test_the_stop_cap_is_the_same_rail_our_book_uses(rig, monkeypatch):
-    broker, st = rig
+    broker, st, smap = rig
     monkeypatch.setattr(CP.dts, "stop_cap_reason", lambda entry, sl: "STOP_CAP: too far")
     CP.dispatch(ENTRY)
     assert broker.orders["tok-ann"] == [] and broker.orders["tok-bob"] == []
@@ -358,12 +374,25 @@ def test_the_stop_cap_rail_is_not_a_copy_of_the_number(rig):
     assert "max_stop_pct" not in code, "the cap must be read through demo_trade_service, not re-derived"
 
 
-def test_an_excluded_symbol_is_not_copied(rig, monkeypatch):
-    broker, st = rig
+def test_the_operators_exclusion_list_no_longer_binds_users(rig, monkeypatch):
+    """Owner decision 2026-11-17, superseding 2026-11-16.
+
+    The list (ADBE, AMD, AVGO, CAT, COP, COST, LLY, MU, ORCL, QQQ, SPY, UNH - plus "ORACLE", which matches
+    no ticker) was hand-written for OUR broker. A user whose own broker offers the symbol cleanly, and who
+    has mapped and verified it, is no longer bound by it. What protects them instead is stronger: an order
+    goes only to a symbol they mapped, so there is no suffix to guess wrong.
+    """
+    broker, st, smap = rig
     monkeypatch.setattr(CP.AT, "is_excluded", lambda s: s == "AAPL")
     CP.dispatch(ENTRY)
-    assert broker.orders["tok-ann"] == []
-    assert any(r["reason"] == "EXCLUDED" for r in st.events("ann", "SKIPPED"))
+    assert len(broker.orders["tok-ann"]) == 1, "a mapped symbol must trade even if WE exclude it"
+
+
+def test_the_operators_own_book_still_honours_its_exclusion_list():
+    """And the operator's side is untouched: the list still gates OUR orders exactly as before."""
+    admin = (Path(__file__).resolve().parents[1] / "mt5_autotrade.py").read_text(encoding="utf-8")
+    block = admin.split("def _entry_allowed")[1].split("def ")[0]
+    assert 'return "EXCLUDED"' in block
 
 
 def test_the_rate_limit_holds_orders_apart(monkeypatch):
@@ -385,7 +414,7 @@ def test_the_rate_limit_holds_orders_apart(monkeypatch):
 
 # --------------------------------------------------------------------------- the log and the P&L
 def test_the_log_records_the_fill_slippage_and_pnl(rig):
-    broker, st = rig
+    broker, st, smap = rig
     st.users = [{"username": "ann", "shares": 100, "max_positions": 20, "daily_loss_pct": 1.0}]
     CP.dispatch(ENTRY)
     filled = st.events("ann", "FILLED")[0]
@@ -399,14 +428,14 @@ def test_the_log_records_the_fill_slippage_and_pnl(rig):
 
 
 def test_a_close_for_a_user_we_never_opened_is_a_no_op(rig):
-    broker, st = rig
+    broker, st, smap = rig
     CP.dispatch(EXIT)
     assert broker.closes["tok-ann"] == [] and broker.closes["tok-bob"] == []
     assert st.log == []
 
 
 def test_a_short_is_copied_as_a_short_and_priced_correctly(rig):
-    broker, st = rig
+    broker, st, smap = rig
     st.users = [{"username": "ann", "shares": 100, "max_positions": 20, "daily_loss_pct": 1.0}]
     CP.dispatch(dict(ENTRY, side="SELL", entry=100.0, stop=101.0, target=99.0))
     assert broker.orders["tok-ann"][0]["side"] == "SELL"
@@ -417,9 +446,8 @@ def test_a_short_is_copied_as_a_short_and_priced_correctly(rig):
 
 
 def test_the_preview_shows_each_users_own_lot(rig, monkeypatch):
-    broker, st = rig
+    broker, st, smap = rig
     monkeypatch.setattr(CP.AT, "software_symbols", lambda: ["AAPL", "MSFT"])
-    monkeypatch.setattr(CP.AT, "excluded_symbols", lambda: [])
     ann = CP.preview("ann")
     bob = CP.preview("bob")
     assert ann["shares"] == 100 and bob["shares"] == 100
@@ -429,7 +457,7 @@ def test_the_preview_shows_each_users_own_lot(rig, monkeypatch):
 
 
 def test_the_users_own_status_says_whether_it_is_live(rig):
-    broker, st = rig
+    broker, st, smap = rig
     out = CP.user_status("ann")
     assert out["stage"] == "C.2" and out["live"] is True and out["copying"] is True
 

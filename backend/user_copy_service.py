@@ -39,6 +39,7 @@ import mt5_autotrade as AT
 import mt5_bridge as bridge
 import user_mt5_service as usvc
 import user_mt5_store as store
+import user_symbol_map as symmap
 
 _log = logging.getLogger("user_copy")
 
@@ -60,7 +61,6 @@ _stop = False
 _rate_lock = threading.Lock()
 _last_order_at = 0.0
 
-_sym_cache: dict = {}                # (username, symbol) -> (broker_symbol, info, at)
 _equity_cache: dict = {}             # username -> (equity, at)
 
 
@@ -184,37 +184,30 @@ def _safe_log(username: str, event: str, **cols) -> None:
 
 # --------------------------------------------------------------------------- the user's own broker symbol
 def _broker_symbol(username: str, token: str, sym: str) -> tuple:
-    """(broker_symbol, info) at THIS user's broker, or (None, reason).
+    """(broker_symbol, info) from the user's OWN mapping, or (None, "NOT_MAPPED").
 
-    Our own mapping is only the first candidate: the user may be at a different broker with different names, so
-    the configured suffixes are tried against their account until one answers with real volume rules.
+    G: an order goes only to a symbol this user has mapped and we verified against their broker. C.2 used to
+    guess - our name first, then a list of suffixes - and a near-miss suffix can be a different instrument,
+    which is how the operator's own book took wrong-symbol fills in A.18. Guessing is the wrong default when
+    the result is a real order in someone else's account.
+
+    Unmapped is not a failure: the signal still shows on screen for everyone, and the order is skipped with a
+    reason the user can see and act on from My Broker.
     """
-    key = (username, sym)
-    hit = _sym_cache.get(key)
-    if hit and time.time() - hit[2] < SYMBOL_TTL_S:
-        return (hit[0], hit[1]) if hit[0] else (None, "NOT_AT_BROKER")
-
-    ours = (AT.mapped(sym) or {}).get("broker_symbol")
-    seen, cands = set(), []
-    for c in ([ours] if ours else []) + [sym] + [sym + suf for suf in AT._suffixes() if suf]:  # noqa: SLF001
-        if c and c.upper() not in seen:
-            seen.add(c.upper())
-            cands.append(c)
-    for cand in cands:
-        info = bridge.symbol(cand, token=token, strict_token=True)
-        if not info.get("ok"):
-            continue
-        if info.get("volume_min") is None or info.get("volume_step") is None:
-            continue
-        _sym_cache[key] = (cand, info, time.time())
-        return cand, info
-    _sym_cache[key] = (None, None, time.time())
-    return None, "NOT_AT_BROKER"
+    row = symmap.get(username, sym)
+    if not row:
+        return None, "NOT_MAPPED"
+    info = {"contract_size": row.get("contract_size"), "volume_min": row.get("volume_min"),
+            "volume_step": row.get("volume_step"), "volume_max": row.get("volume_max")}
+    if info["volume_min"] is None or info["volume_step"] is None:
+        return None, "NOT_MAPPED"
+    return row["broker_symbol"], info
 
 
 def forget_symbols(username: Optional[str] = None) -> None:
-    for k in [k for k in list(_sym_cache) if username is None or k[0] == username]:
-        _sym_cache.pop(k, None)
+    """G: the broker symbol LIST is cached in user_mt5_service; the per-symbol probe cache is gone, because
+    the user's stored mapping is now the source of truth. Kept so callers need not change."""
+    usvc.forget_symbols(username) if username else None
 
 
 # --------------------------------------------------------------------------- the per-user rails
@@ -236,8 +229,9 @@ def _equity(username: str, token: str) -> Optional[float]:
 def _entry_refused(u: dict, ev: dict, token: str) -> Optional[str]:
     """The reason not to open for this user, or None. Ordered so the log says exactly which rail stopped it."""
     sym = ev.get("symbol")
-    if AT.is_excluded(sym):
-        return "EXCLUDED"
+    # G: the operator's exclusion list was hand-written for OUR broker (and contains "ORACLE", which matches
+    # nothing). A user's own verified mapping decides what their account can trade; an unmapped symbol is
+    # skipped in _open_for with NOT_MAPPED. The operator's own list is unchanged.
     capped = dts.stop_cap_reason(ev.get("entry"), ev.get("stop"))
     if capped:
         return capped                                                        # the same 2.5% cap our book uses
@@ -278,8 +272,9 @@ def _open_for(u: dict, ev: dict) -> dict:
 
     bsym, info = _broker_symbol(name, token, sym)
     if not bsym:
-        _safe_log(name, "SKIPPED", reason="NOT_AT_BROKER: your broker does not offer %s" % sym, **common)
-        return {"ok": False, "reason": "NOT_AT_BROKER"}
+        _safe_log(name, "SKIPPED", reason="NOT_MAPPED: map %s to your broker's symbol on My Broker to trade it"
+                  % sym, **common)
+        return {"ok": False, "reason": "NOT_MAPPED"}
 
     shares = common["shares"]
     # F.1: ....94 had no margin, so nothing could ever have filled there - but we sent anyway and the order
@@ -405,18 +400,16 @@ def preview(username: str, limit: int = PREVIEW_MAX) -> dict:
     token, err = usvc.session_for(username)
     if err:
         return dict(err, shares=shares, rows=[])
-    rows, excluded = [], set(AT.excluded_symbols())
+    rows = []
     for sym in AT.software_symbols()[:max(1, int(limit))]:
-        if sym in excluded:
-            continue
         bsym, info = _broker_symbol(username, token, sym)
         if not bsym:
             rows.append({"symbol": sym, "broker_symbol": None, "shares": shares, "volume": None,
-                         "valid": False, "reason": "your broker does not offer it"})
+                         "valid": False, "mapped": False, "reason": "not mapped yet"})
             continue
         z = AT.sizing(info.get("contract_size"), info.get("volume_min"), info.get("volume_step"),
                       info.get("volume_max"), shares)
-        rows.append({"symbol": sym, "broker_symbol": bsym, "shares": shares,
+        rows.append({"symbol": sym, "broker_symbol": bsym, "shares": shares, "mapped": True,
                      "contract_size": info.get("contract_size"), "volume": z["volume"],
                      "valid": z["valid"], "reason": z["reason"]})
     return {"ok": True, "shares": shares, "rows": rows,

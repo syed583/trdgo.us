@@ -133,7 +133,9 @@ def test_the_copy_path_asks_for_a_verified_session():
 
 def test_every_user_broker_call_is_strict():
     src = (BACKEND / "user_copy_service.py").read_text(encoding="utf-8")
-    for call in ("bridge.symbol(", "bridge.tick(", "bridge.market_order(", "bridge.close_position(",
+    # G removed bridge.symbol( from this module: the volume rules now come from the user's stored mapping,
+    # verified at map time. The calls that remain must still carry the user's own session.
+    for call in ("bridge.tick(", "bridge.market_order(", "bridge.close_position(",
                  'bridge._call("AccountSummary"'):
         idx = src.find(call)
         assert idx > 0, "%s not found" % call

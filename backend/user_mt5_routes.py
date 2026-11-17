@@ -20,6 +20,7 @@ import model_privacy as _privacy
 import user_copy_service as copysvc
 import user_mt5_service as svc
 import user_mt5_store as store
+import user_symbol_map as symmap
 
 router = APIRouter(prefix="/api/me/mt5", tags=["user-mt5"])
 
@@ -129,6 +130,77 @@ def set_copy_settings(request: Request, payload: dict = Body(...)) -> dict:
         if not row.get("consent_at"):
             return {"ok": False, "reason": "NO_CONSENT", "detail": "accept the risk notice first"}
     return store.update_settings(me, patch)
+
+
+# --------------------------------------------------------------------------- G: symbol mapping
+@router.get("/symbols")
+def my_symbols(request: Request) -> dict:
+    """What this user has mapped, and which of our stocks are still unmapped."""
+    me = _me(request)
+    import mt5_autotrade as AT
+    mapped = symmap.all_for(me)
+    have = {r["symbol"] for r in mapped}
+    return {"ok": True, "mapped": mapped,
+            "unmapped": [s for s in AT.software_symbols() if s not in have],
+            "note": "Only mapped stocks are traded in your account. The rest still appear on screen."}
+
+
+@router.get("/symbols/search")
+def search_symbols(request: Request, q: str = "") -> dict:
+    """The symbols THIS user's broker offers for a ticker they typed, best match first."""
+    return svc.search_symbols(_me(request), q)
+
+
+@router.post("/symbols/map")
+def map_symbol(request: Request, payload: dict = Body(...)) -> dict:
+    """Map one of our stocks to a name at this user's broker, after checking the broker really offers it."""
+    me = _me(request)
+    sym = str(payload.get("symbol") or "").strip().upper()
+    bsym = str(payload.get("broker_symbol") or "").strip()
+    if not sym or not bsym:
+        return {"ok": False, "reason": "BAD_INPUT", "detail": "choose a stock and a symbol at your broker"}
+    checked = svc.verify_symbol(me, bsym)
+    if not checked.get("ok"):
+        return checked
+    return symmap.save(me, sym, bsym, checked.get("info"))
+
+
+@router.post("/symbols/unmap")
+def unmap_symbol(request: Request, payload: dict = Body(...)) -> dict:
+    """Stop trading one stock in this account. Positions already open still close by the usual rules."""
+    return symmap.remove(_me(request), str(payload.get("symbol") or ""))
+
+
+@router.post("/symbols/map-auto")
+def map_auto(request: Request) -> dict:
+    """Map every stock whose name matches EXACTLY at this user's broker.
+
+    Exact only, deliberately. Anything needing a suffix is left for the user to choose, because a near-miss
+    suffix can be a different instrument - that is how the operator's own book took wrong-symbol fills
+    (A.18). This is a shortcut for the easy cases, never a guess.
+    """
+    me = _me(request)
+    import mt5_autotrade as AT
+    names, err = svc.broker_symbols(me)
+    if err:
+        return err
+    at_broker = {n.upper(): n for n in names}
+    mapped, skipped = [], []
+    for sym in AT.software_symbols():
+        if symmap.get(me, sym):
+            continue
+        hit = at_broker.get(sym.upper())
+        if not hit:
+            skipped.append(sym)
+            continue
+        checked = svc.verify_symbol(me, hit)
+        if not checked.get("ok"):
+            skipped.append(sym)
+            continue
+        out = symmap.save(me, sym, hit, checked.get("info"))
+        (mapped if out.get("ok") else skipped).append(sym)
+    return {"ok": True, "mapped": mapped, "mapped_count": len(mapped), "left": skipped,
+            "note": "Stocks whose name differs at your broker are left for you to map by hand."}
 
 
 @router.get("/preview")

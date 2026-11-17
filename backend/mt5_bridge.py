@@ -365,8 +365,14 @@ def position_exit_deals(ticket: int, since_epoch: float) -> dict:
     return {"ok": True, "deals": out}
 
 
-def symbols_list() -> dict:
-    res = _call("Symbols")
+def symbols_list(token: Optional[str] = None, strict_token: bool = False) -> dict:
+    """Every symbol the connected account can trade.
+
+    G: `token` lists a USER's symbols. Without it this is the operator's account, unchanged. Before this the
+    call had no token at all - the same omission that sent 25 user orders to account 250086 (see F), and it
+    would have shown every user the operator's symbol list as if it were their own.
+    """
+    res = _call("Symbols", token=token, strict_token=strict_token)
     if not res.get("ok"):
         return {"ok": False, "reason": res.get("reason"), "detail": res.get("detail")}
     data = res["data"]

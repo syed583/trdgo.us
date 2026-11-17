@@ -46,10 +46,20 @@ def test_both_listeners_are_siblings_on_the_same_signal():
     assert "user_copy_service" not in admin_src, "the admin engine must not call the user copier"
 
 
-def test_the_shared_exclusion_list_still_applies(monkeypatch):
-    """Owner decision 2026-11-16: excluded symbols stay blocked for everyone, after the A.18 wrong fills."""
+def test_a_users_own_mapping_replaces_the_exclusion_list(monkeypatch):
+    """Owner decision 2026-11-17, superseding 2026-11-16.
+
+    The 16 Nov decision kept the operator's exclusion list binding on users, because of the A.18
+    wrong-symbol fills. G addresses that risk better: a user's order goes only to a symbol THEY mapped and
+    we verified against THEIR broker, so there is nothing to guess. The list was hand-written for our broker
+    anyway (it even contains "ORACLE", which matches no ticker). The operator's own list is unchanged.
+    """
     src = (BACKEND / "user_copy_service.py").read_text(encoding="utf-8")
-    assert "AT.is_excluded" in src, "the shared safety list must still apply to users"
+    assert "AT.is_excluded" not in src, "a user is no longer bound by the operator's blocklist"
+    assert "symmap.get" in src, "the user's own verified mapping must decide"
+    assert "NOT_MAPPED" in src, "an unmapped symbol must be skipped with a visible reason"
+    admin = (BACKEND / "mt5_autotrade.py").read_text(encoding="utf-8")
+    assert "is_excluded(ev[" in admin, "the OPERATOR's exclusion list must stay exactly as it was"
 
 
 # --------------------------------------------------------------------------- the sweep window

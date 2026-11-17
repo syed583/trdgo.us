@@ -762,6 +762,14 @@ export const api2 = {
   myMt5Settings: (patch: { shares?: number; max_positions?: number; daily_loss_pct?: number; auto_copy?: boolean }) =>
     send<any>('/api/me/mt5/settings', 'POST', patch),
   myMt5Preview: (s?: AbortSignal) => request<any>('/api/me/mt5/preview', s),
+  // G - per-user symbol mapping
+  myMt5Symbols: (s?: AbortSignal) => request<any>('/api/me/mt5/symbols', s),
+  myMt5SymbolSearch: (q: string, s?: AbortSignal) =>
+    request<any>(`/api/me/mt5/symbols/search?q=${encodeURIComponent(q)}`, s),
+  myMt5MapSymbol: (symbol: string, broker_symbol: string) =>
+    send<any>('/api/me/mt5/symbols/map', 'POST', { symbol, broker_symbol }),
+  myMt5UnmapSymbol: (symbol: string) => send<any>('/api/me/mt5/symbols/unmap', 'POST', { symbol }),
+  myMt5MapAuto: () => send<any>('/api/me/mt5/symbols/map-auto', 'POST'),
   myMt5Orders: (limit = 100, s?: AbortSignal) => request<any>(`/api/me/mt5/orders?limit=${limit}`, s),
   copyUsers: (s?: AbortSignal) => request<any>('/api/admin/copy-trading/users', s),
   copyPause: (body: { username?: string; all?: boolean; paused: boolean }) =>
