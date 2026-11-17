@@ -195,6 +195,7 @@ backend/user_mt5_service.py
 backend/user_mt5_store.py
 backend/user_secret_box.py
 backend/user_service.py
+backend/user_symbol_map.py
 backend/uw_budget.py
 backend/uw_budget_cli.py
 backend/uw_company_service.py
