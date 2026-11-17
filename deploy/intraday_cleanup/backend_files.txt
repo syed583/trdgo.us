@@ -12,6 +12,7 @@ backend/auth_service.py
 backend/backtest_service.py
 backend/black_scholes.py
 backend/boot_guard.py
+backend/broker_rate.py
 backend/calls_service.py
 backend/chat_service.py
 backend/chatgpt_service.py
