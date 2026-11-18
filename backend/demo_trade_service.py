@@ -637,11 +637,17 @@ def _log_score_tick(t, score, et) -> None:
         rec = {"trade_id": t.id, "strategy": t.strategy, "symbol": t.symbol, "side": t.side,
                "at": et.astimezone(timezone.utc).isoformat(), "score": round(float(score), 2),
                "score_at_entry": t.score_at_entry, "status": t.status,
-               "price": t.last_price, "stop": t.stop, "target": t.target}
+               "price": getattr(t, "last_price", None), "stop": getattr(t, "stop", None),
+               "target": getattr(t, "target", None)}
         with open(os.path.join(d, "%s.jsonl" % et.date().isoformat()), "a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec, default=str) + "\n")
-    except Exception:  # noqa: BLE001 - a log must never break the tracker
-        pass
+    except Exception:  # noqa: BLE001 - a log must never break the tracker (A.27), but it must not be silent
+        # I: reading a missing attribute raised here and the whole record was dropped without a trace, which
+        # is how a log stops recording while everything looks healthy. The trade is still never affected.
+        try:
+            _log.warning("score tick not recorded for trade %s", getattr(t, "id", "?"), exc_info=True)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 _pending_events: list = []

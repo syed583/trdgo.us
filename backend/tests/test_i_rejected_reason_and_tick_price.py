@@ -86,3 +86,32 @@ def test_the_tick_logger_still_cannot_break_a_trade():
     src = (BACKEND / "demo_trade_service.py").read_text(encoding="utf-8")
     fn = src.split("def _log_score_tick")[1].split("\ndef ")[0]
     assert "except Exception" in fn and "pass" in fn
+
+
+def test_a_trade_object_without_the_new_fields_still_records(monkeypatch, tmp_path):
+    """The bug this test exists for: kit I read t.last_price directly, and _log_score_tick swallows every
+    exception (A.27). A trade object without that attribute therefore wrote NOTHING, silently - the exact
+    failure that left the tick log useless. Reads are tolerant now."""
+    import json
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    import demo_trade_service as dts
+
+    monkeypatch.setenv("SCORE_TICK_DIR", str(tmp_path))
+    monkeypatch.setattr(dts, "_cfg", lambda: {"score_tick_log": True})
+    when = datetime(2026, 11, 17, 15, 0, tzinfo=timezone.utc)
+    bare = SimpleNamespace(id=1, strategy="grok", symbol="AAA", side="LONG", score_at_entry=60.0,
+                           status="OPEN")            # no last_price, no stop, no target
+    dts._log_score_tick(bare, 50.0, when)
+    f = tmp_path / ("%s.jsonl" % when.date().isoformat())
+    assert f.exists(), "a missing attribute must not stop the tick being recorded"
+    rec = json.loads(f.read_text(encoding="utf-8").splitlines()[0])
+    assert rec["score"] == 50.0 and rec["price"] is None
+
+
+def test_a_logging_failure_is_no_longer_silent():
+    """It still cannot break a trade, but it must leave a trace - a log that stops recording while
+    everything looks healthy is how this went unnoticed for days."""
+    src = (BACKEND / "demo_trade_service.py").read_text(encoding="utf-8")
+    fn = src.split("def _log_score_tick")[1].split("\ndef ")[0]
+    assert "_log.warning" in fn and "exc_info=True" in fn
