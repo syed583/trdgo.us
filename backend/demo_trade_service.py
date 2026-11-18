@@ -631,9 +631,13 @@ def _log_score_tick(t, score, et) -> None:
     try:
         d = score_tick_dir()
         os.makedirs(d, exist_ok=True)
+        # I: the price at the moment the score was read. Without it no alternative exit rule can be
+        # priced from this log - the score-exit backtest needs a price series, and this is the only place
+        # the two are observed together. A.27 still holds: a failure here can never affect a trade.
         rec = {"trade_id": t.id, "strategy": t.strategy, "symbol": t.symbol, "side": t.side,
                "at": et.astimezone(timezone.utc).isoformat(), "score": round(float(score), 2),
-               "score_at_entry": t.score_at_entry, "status": t.status}
+               "score_at_entry": t.score_at_entry, "status": t.status,
+               "price": t.last_price, "stop": t.stop, "target": t.target}
         with open(os.path.join(d, "%s.jsonl" % et.date().isoformat()), "a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec, default=str) + "\n")
     except Exception:  # noqa: BLE001 - a log must never break the tracker

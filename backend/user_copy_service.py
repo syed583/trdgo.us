@@ -197,8 +197,13 @@ def _broker_symbol(username: str, token: str, sym: str) -> tuple:
     row = symmap.get(username, sym)
     if not row:
         return None, "NOT_MAPPED"
-    info = {"contract_size": row.get("contract_size"), "volume_min": row.get("volume_min"),
-            "volume_step": row.get("volume_step"), "volume_max": row.get("volume_max")}
+    # I: `ok` is what market_order checks FIRST - `if not info.get("ok"): return info`. Without it every
+    # user order returned this dict unchanged before any request was sent, and the refusal read
+    # "None (None): None". The mapping is verified against the broker at map time, so ok=True is the truth.
+    info = {"ok": True, "symbol": row["broker_symbol"],
+            "contract_size": row.get("contract_size"), "volume_min": row.get("volume_min"),
+            "volume_step": row.get("volume_step"), "volume_max": row.get("volume_max"),
+            "digits": row.get("digits")}
     if info["volume_min"] is None or info["volume_step"] is None:
         return None, "NOT_MAPPED"
     return row["broker_symbol"], info
@@ -297,16 +302,32 @@ def _open_for(u: dict, ev: dict) -> dict:
                               deviation_points=AT.DEVIATION_POINTS, magic=AT.magic_for(strat),
                               comment="TRDGO copy #%s" % tid, sym_info=info, token=token, strict_token=True)
     if not res.get("ok"):
-        _safe_log(name, "REJECTED", broker_symbol=bsym, volume=z["volume"],
-                  reason="%s (%s): %s" % (res.get("retcode_text") or res.get("reason"), res.get("retcode"),
-                                          res.get("comment") or res.get("detail")), **common)
-        return {"ok": False, "reason": res.get("retcode_text") or res.get("reason")}
+        why = _refusal_text(res)
+        _safe_log(name, "REJECTED", broker_symbol=bsym, volume=z["volume"], reason=why, **common)
+        return {"ok": False, "reason": res.get("retcode_text") or res.get("reason") or "REJECTED"}
 
     fill = res.get("price")
     _safe_log(name, "FILLED", broker_symbol=bsym, volume=float(res.get("volume") or z["volume"]),
               price=fill, slippage=_slip(ref, fill, side, opening=True),
               ticket=res.get("order") or res.get("deal"), **common)
     return {"ok": True, "ticket": res.get("order") or res.get("deal"), "volume": res.get("volume")}
+
+
+def _refusal_text(res: dict) -> str:
+    """Why the broker refused, in words. Never "None (None): None".
+
+    F promised every refusal names itself. A format string of three missing fields keeps that promise in
+    form and breaks it in substance - which is exactly what the owner saw after G. If the result carries
+    nothing we can name, say so and show its shape, so the next person has something to work with.
+    """
+    bits = []
+    for key in ("retcode_text", "reason", "retcode", "comment", "detail", "stage", "note"):
+        v = res.get(key)
+        if v not in (None, "", {}, []):
+            bits.append("%s=%s" % (key, str(v)[:120]))
+    if bits:
+        return "; ".join(bits)
+    return "the broker answered without a reason (keys: %s)" % ", ".join(sorted(res.keys())) or "no detail"
 
 
 def _slip(ref, fill, side, *, opening: bool) -> Optional[float]:
