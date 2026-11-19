@@ -2592,16 +2592,31 @@ _htbt_computing: set = set()
 
 
 @router.get("/earnings/historical-backtest")
-def earnings_historical_backtest(months: int = 18, max_symbols: int = 25) -> dict:
+def earnings_historical_backtest(request: Request, months: int = 18, max_symbols: int = 25) -> dict:
     """Track B — 1-2y PARTIAL-FACTOR historical earnings backtest (SIMULATED).
     Background-computed and polled (reconstructs point-in-time signals + prices)."""
     import historical_backtest_service as htb
     import threading
 
+    import model_privacy as _privacy
+
     key = f"htbt2:{months}:{max_symbols}"
     cached = swr.peek(key)
     if cached is not None:
-        return cached
+        admin = _is_admin(request)
+        out = _privacy.public_payload(cached, admin=admin, map_models=True)
+        if not admin and isinstance(out, dict):
+            # present_factors / missing_factors name every input the model uses - A.29 keeps those to an
+            # administrator. The COUNTS stay, because "4 of 17 inputs could be rebuilt" is the honest
+            # limitation on a partial backtest and removing it would make the result look complete.
+            pres = cached.get("present_factors") or []
+            miss = cached.get("missing_factors") or []
+            out["present_factor_count"] = len(pres)
+            out["missing_factor_count"] = len(miss)
+            out["factor_total"] = len(pres) + len(miss)
+            out["present_factors"] = []
+            out["missing_factors"] = []
+        return out
     if key not in _htbt_computing:
         _htbt_computing.add(key)
 
@@ -2619,7 +2634,7 @@ _fwdsb_computing: set = set()
 
 
 @router.get("/earnings/forward-scoreboard")
-def earnings_forward_scoreboard(model: str = "", max_symbols: int = 80) -> dict:
+def earnings_forward_scoreboard(request: Request, model: str = "", max_symbols: int = 80) -> dict:
     """Genuine Forward Scoreboard: after-cost performance of the real recorded
     pre-earnings predictions (simulated execution on historical daily bars).
 
@@ -2629,10 +2644,14 @@ def earnings_forward_scoreboard(model: str = "", max_symbols: int = 80) -> dict:
     import forward_scoreboard_service as fsb
     import threading
 
+    import model_privacy as _privacy
+
     key = f"fwdsb3:{model or 'all'}:{max_symbols}"
     cached = swr.peek(key)
     if cached is not None:
-        return cached
+        # B.1 covered seventeen routes; this one was missed. by_model is keyed by the vendor's name and
+        # every trade row carries a `model`, so a signed-in user could read the whole roster.
+        return _privacy.public_payload(cached, admin=_is_admin(request), map_models=True)
     if key not in _fwdsb_computing:
         _fwdsb_computing.add(key)
 
@@ -2813,8 +2832,14 @@ def symbol_news(symbol: str, limit: int = 20) -> dict:
 
 
 @router.get("/sentiment/{symbol}")
-def sentiment(symbol: str, limit: int = 20) -> dict:
-    return _news_backend().get_sentiment(symbol, limit)
+def sentiment(request: Request, symbol: str, limit: int = 20) -> dict:
+    # The adapter sets source to the engine that read the headlines. `source` is an attribution key and
+    # the engine is in EXTRA_MODELS, so the wrap removes it - the machinery existed, it was simply never
+    # applied here.
+    import model_privacy as _privacy
+
+    return _privacy.public_payload(_news_backend().get_sentiment(symbol, limit),
+                                   admin=_is_admin(request))
 
 
 # ---------------------------------------------------------------------------

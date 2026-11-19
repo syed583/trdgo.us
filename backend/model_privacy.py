@@ -39,6 +39,8 @@ VENDOR_REPLACEMENT = "the data provider"
 # The model names, in the order the owner fixed for Strategy Trades (A.26).
 AGENT_ORDER = ("grok", "meta", "kimi", "gemini")
 MODEL_LIST_KEYS = ("models", "model_list", "engines")
+# Keys whose CONTENT is organised by model: a dict keyed by it, or rows carrying it in "key".
+MODEL_KEYED = ("by_model",)
 
 # B.5: fields where WE say where something came from. A model's name is scrubbed out of these, but NOT out of
 # free text: a news feed may legitimately mention Gemini or ChatGPT because a company shipped a product by that
@@ -99,6 +101,24 @@ def public_payload(payload: Optional[dict], *, admin: bool = False, map_models: 
             continue
         elif map_models and k in model_keys and isinstance(v, str):
             out[k] = agent_label(v)
+        elif map_models and k in MODEL_KEYED:
+            # A dict keyed BY the model ({"grok": {...}}) or a list of rows holding it in `key`
+            # ([{"key": "grok", ...}]). public_payload only ever mapped a model held as a VALUE under
+            # model/model_name/engine, so both of these shapes used to pass straight through.
+            if isinstance(v, dict):
+                out[k] = {agent_label(mk): public_payload(mv, admin=False, map_models=map_models,
+                                                          model_keys=model_keys)
+                          if isinstance(mv, dict) else mv
+                          for mk, mv in v.items()}
+            elif isinstance(v, (list, tuple)):
+                out[k] = [{**public_payload(r, admin=False, map_models=map_models,
+                                            model_keys=model_keys),
+                           "key": agent_label(r.get("key"))} if isinstance(r, dict) and "key" in r
+                          else (public_payload(r, admin=False, map_models=map_models,
+                                               model_keys=model_keys) if isinstance(r, dict) else r)
+                          for r in v]
+            else:
+                out[k] = v
         elif map_models and k in MODEL_LIST_KEYS and isinstance(v, (list, tuple)):
             # a plain list of model names, e.g. {"models": ["grok", "meta", ...]}
             out[k] = [agent_label(x) if isinstance(x, str) else x for x in v]
