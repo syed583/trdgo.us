@@ -1954,6 +1954,37 @@ def options_metrics(symbol: str) -> dict:
     )
 
 
+@router.get("/options/iv-history/{symbol}")
+def options_iv_history(symbol: str, days: int = 30) -> dict:
+    """The implied-volatility series behind the IV trend chart, plus its range and rank.
+
+    get_iv_history already computes this - a year of {date, iv} - and get_metrics drops it on the
+    floor, keeping only the latest reading. Returning it changes nothing about how it is measured;
+    it only stops the series being thrown away before it reaches a page.
+
+    Trimmed to `days` points (default 30, the window the design draws) so a page that wants a month
+    does not carry a year over the wire.
+    """
+    hist = options.get_iv_history(symbol) or {}
+    if hist.get("status") != "OK":
+        return {"symbol": symbol.upper(), "status": hist.get("status") or "DATA_UNAVAILABLE",
+                "error": hist.get("error"), "series": []}
+    return {
+        "symbol": symbol.upper(),
+        "status": "OK",
+        "source": hist.get("source"),
+        "as_of": hist.get("as_of"),
+        "iv": hist.get("iv"),
+        "iv_low": hist.get("iv_low"),
+        "iv_high": hist.get("iv_high"),
+        "iv_rank": hist.get("iv_rank"),
+        "iv_percentile": hist.get("iv_percentile"),
+        "hv": hist.get("hv"),
+        "samples": hist.get("samples"),
+        "series": (hist.get("series") or [])[-max(5, min(int(days or 30), 400)):],
+    }
+
+
 # ---------------------------------------------------------------------------
 # market-wide options flow
 # ---------------------------------------------------------------------------

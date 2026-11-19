@@ -19,7 +19,10 @@ import unusual_activity_service as ua  # noqa: E402
 import uw_budget  # noqa: E402
 import uw_priority as pri  # noqa: E402
 
-SIDEBAR = ROOT.parent / "frontend" / "src" / "components" / "Sidebar.tsx"
+# The menu moved from Sidebar.tsx into navModel.tsx when the redesigned shell was added, so the
+# existing sidebar and the new one read ONE list. These checks follow it; a separate test
+# (test_stage1_shell_flag) pins that neither shell declares a menu of its own.
+SIDEBAR = ROOT.parent / "frontend" / "src" / "components" / "navModel.tsx"
 APP = ROOT.parent / "frontend" / "src" / "App.tsx"
 ROUTES = (ROOT / "api_routes.py").read_text(encoding="utf-8")
 HIDDEN = ("/claude-last", "/grok", "/meta", "/chatgpt", "/kimi", "/gemini", "/claude-pro")

@@ -261,6 +261,20 @@ export default function MarketPulsePage({ ctx }: { ctx: PageContext }) {
 
   const open = (symbol: string) => navigate(`/earnings/${symbol}${ctx.search}`);
 
+  // A payload can arrive before the first pass has finished. Treat that as
+  // loading rather than rendering a page of empty panels, and poll until it
+  // settles -- the build is running, it just has not landed yet.
+  const building = d?.status === 'BUILDING';
+  // THIS HOOK MUST RUN BEFORE ANY EARLY RETURN. It used to sit below the error branch, so the moment
+  // /api/market/pulse failed the component returned with one fewer hook than the render before it,
+  // and React threw "Rendered fewer hooks than expected" - the whole page replaced by the error
+  // boundary, rather than the small "could not be loaded" panel the branch intends.
+  useEffect(() => {
+    if (!building) return undefined;
+    const t = setTimeout(() => setTick((n) => n + 1), 6000);
+    return () => clearTimeout(t);
+  }, [building, tick]);
+
   if (pulse.error) {
     return (
       <div className="page">
@@ -268,15 +282,6 @@ export default function MarketPulsePage({ ctx }: { ctx: PageContext }) {
       </div>
     );
   }
-  // A payload can arrive before the first pass has finished. Treat that as
-  // loading rather than rendering a page of empty panels, and poll until it
-  // settles -- the build is running, it just has not landed yet.
-  const building = d?.status === 'BUILDING';
-  useEffect(() => {
-    if (!building) return undefined;
-    const t = setTimeout(() => setTick((n) => n + 1), 6000);
-    return () => clearTimeout(t);
-  }, [building, tick]);
 
   if (pulse.initialLoading || !d || building) {
     return (

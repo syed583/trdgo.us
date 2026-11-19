@@ -1,0 +1,133 @@
+/* ============================================================================
+   Market Overview in the redesigned shell (NewMarketOverviewPage).
+
+   STYLING ONLY. Everything under `.nmo` is the LIVE /market page, rendered by
+   MarketPulsePage, so the `panel` / `mo-*` class names belong to that page and
+   are not ours to change - these rules only re-surface it. No figure, panel or
+   wording on that page is touched.
+
+   Every value below is a shell token, not a literal colour, so light, dark and
+   mobile follow the theme rather than pinning the frame's light palette.
+   ========================================================================= */
+
+/* The page frame: the shell already supplies the background and the rail. */
+.app-nu .nmo > .page { padding: 0; background: transparent; }
+
+/* ------------------------------------------------------------------ header */
+.app-nu .nmo .mo-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.app-nu .nmo .mo-head h1 {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  margin: 0 0 6px;
+  color: var(--nu-page-ink);
+}
+.app-nu .nmo .mo-head p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--nu-page-ink-dim);
+  max-width: 62ch;
+}
+.app-nu .nmo .mo-head-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.app-nu .nmo .mo-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 12px;
+  border-radius: 999px;
+  background: var(--nu-card);
+  border: 1px solid var(--nu-line);
+  box-shadow: var(--nu-shadow);
+}
+.app-nu .nmo .mo-search input {
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--nu-ink);
+  font-size: 13px;
+  width: 150px;
+}
+.app-nu .nmo .mo-search-go {
+  border: 0;
+  border-radius: 999px;
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--nu-accent);
+  cursor: pointer;
+}
+.app-nu .nmo .mo-search-go:disabled { opacity: 0.5; cursor: default; }
+
+.app-nu .nmo .mo-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--nu-ink-dim);
+  background: var(--nu-card);
+  border: 1px solid var(--nu-line);
+}
+.app-nu .nmo .mo-live i {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--nu-ink-dim);
+}
+.app-nu .nmo .mo-live.on i { background: var(--nu-up); }
+
+/* ------------------------------------------------------- index cards + grid */
+.app-nu .nmo .mo-indices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: var(--nu-gap);
+  margin-bottom: var(--nu-gap);
+}
+.app-nu .nmo .mo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--nu-gap);
+}
+
+/* ------------------------------------------------------------------ panels */
+.app-nu .nmo .panel,
+.app-nu .nmo .mo-indices > * {
+  background: var(--nu-card);
+  border: 1px solid var(--nu-line);
+  border-radius: var(--nu-r);
+  box-shadow: var(--nu-shadow);
+}
+.app-nu .nmo .panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--nu-line);
+}
+.app-nu .nmo .panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--nu-ink);
+}
+.app-nu .nmo .panel-body { padding: 14px 16px; }
+.app-nu .nmo .hint { color: var(--nu-ink-dim); font-size: 12px; }
+.app-nu .nmo table td { border-color: var(--nu-line); }
+.app-nu .nmo table th { color: var(--nu-ink-dim); }
+
+@media (max-width: 900px) {
+  .app-nu .nmo .mo-head h1 { font-size: 24px; }
+  .app-nu .nmo .mo-head-right { width: 100%; }
+  .app-nu .nmo .mo-search input { width: 100%; }
+}

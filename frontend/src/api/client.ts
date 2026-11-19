@@ -835,6 +835,10 @@ export const api2 = {
     `/api/earnings/calendar?range=${range}&sort=${sort}` +
     `${q ? `&q=${encodeURIComponent(q)}` : ''}`, s),
 
+  /** The day's biggest movers, as the provider ranks them. Server-cached for 5 minutes. */
+  movers: (limit = 25, s?: AbortSignal) =>
+    request<any>(`/api/movers?limit=${limit}`, s),
+
   // market-wide options flow
   flowMarketSummary: (s?: AbortSignal) =>
     request<any>('/api/flow/market/summary', s),
@@ -875,6 +879,10 @@ export const api2 = {
 
   earningsCalendarContext: (s?: AbortSignal) =>
     request<any>('/api/earnings/calendar/context', s),
+
+  /** The implied-volatility series behind the IV trend chart (one request per symbol opened). */
+  optionIvHistory: (symbol: string, days = 30, s?: AbortSignal) =>
+    request<any>(`/api/options/iv-history/${encodeURIComponent(symbol)}?days=${days}`, s),
 
   optionChain: (symbol: string, expiry?: string, s?: AbortSignal) =>
     request<any>(

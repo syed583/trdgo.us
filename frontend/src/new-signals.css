@@ -1,0 +1,58 @@
+/* ============================================================================
+   Signal History in the redesigned shell (NewSignalHistoryPage), frame 8:6.
+
+   Shell tokens only - no literal from the frame - so light, dark and mobile
+   follow the theme. Hero text uses --nu-on-photo*, which does not invert.
+   ========================================================================= */
+
+.app-nu .nsh-hero { min-height: 165px; }
+.app-nu .nsh-hero h1 { font-size: 34px; margin: 12px 0 8px; color: var(--nu-on-photo); }
+.app-nu .nsh-hero h1 em { font-style: normal; color: var(--nu-accent-2); }
+.app-nu .nsh-hero p { max-width: 68ch; color: var(--nu-on-photo-dim); }
+.app-nu .nsh-hero .nd-eyebrow { display: inline-flex; align-items: center; gap: 7px; }
+
+/* The grid on the left, the frame's rail of summaries on the right. */
+.app-nu .nsh-split {
+  display: grid; grid-template-columns: minmax(0, 2.1fr) minmax(0, 1fr);
+  gap: var(--nu-gap); align-items: start;
+}
+.app-nu .nsh-rail { display: flex; flex-direction: column; gap: var(--nu-gap); }
+.app-nu .nsh-panel { padding: 12px 14px; }
+.app-nu .nsh-panel .nd-card-head { padding: 0 0 10px; }
+.app-nu .nsh-panel .nd-card-head h3 { font-size: 13.5px; }
+.app-nu .nsh-legend { font-size: 11.5px; color: var(--nu-ink-dim); }
+
+.app-nu .nsh-avg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 6px; }
+.app-nu .nsh-avg > div {
+  padding: 8px 10px; border-radius: var(--nu-r-sm);
+  background: var(--nu-card-2); border: 1px solid var(--nu-line);
+}
+.app-nu .nsh-avg span { display: block; font-size: 11px; color: var(--nu-ink-dim); }
+.app-nu .nsh-avg b { display: block; margin-top: 2px; font-size: 15px; color: var(--nu-ink); }
+.app-nu .nsh-avg b.up { color: var(--nu-up); }
+.app-nu .nsh-avg b.down { color: var(--nu-down); }
+
+.app-nu .nsh-note { margin: 8px 0 0; font-size: 11.5px; color: var(--nu-ink-dim); }
+
+.app-nu .nsh-list { list-style: none; margin: 0; padding: 0; }
+.app-nu .nsh-list li {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 10px;
+  align-items: baseline; padding: 7px 2px; font-size: 12.5px;
+}
+.app-nu .nsh-list li + li { border-top: 1px solid var(--nu-line); }
+.app-nu .nsh-list .nst-mute { font-size: 11.5px; }
+.app-nu .nsh-list b.up { color: var(--nu-up); }
+.app-nu .nsh-list b.down { color: var(--nu-down); }
+
+/* 900, not 1180. The frame draws this page on a 1024 canvas WITH the rail beside the table, so
+   collapsing at 1180 pushed the whole rail below the fold at exactly the width the design shows it
+   alongside - the same mistake as the sidebar breakpoint. */
+@media (max-width: 900px) {
+  .app-nu .nsh-split { grid-template-columns: 1fr; }
+  .app-nu .nsh-rail {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  }
+}
+@media (max-width: 760px) {
+  .app-nu .nsh-hero h1 { font-size: 26px; }
+}

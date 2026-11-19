@@ -1,0 +1,136 @@
+/* ============================================================================
+   IV Crush Check in the redesigned shell (NewIvCrushPage), Figma frame 8:2.
+
+   Every value here is a shell token, never a literal from the frame, so light,
+   dark and mobile follow the theme rather than pinning the frame's palette.
+   Text over the hero photograph uses --nu-on-photo*, which is declared once and
+   does not invert - the fault that made four headings vanish in light mode.
+   ========================================================================= */
+
+.app-nu .niv-hero { min-height: 170px; }
+.app-nu .niv-hero h1 { font-size: 36px; margin: 12px 0 8px; color: var(--nu-on-photo); }
+.app-nu .niv-hero h1 em { font-style: normal; color: var(--nu-accent-2); }
+.app-nu .niv-hero p { max-width: 70ch; color: var(--nu-on-photo-dim); }
+.app-nu .niv-hero .nd-eyebrow { display: inline-flex; align-items: center; gap: 7px; }
+
+/* FIVE tiles in ONE row, as the frame draws them; the old page stacked them two-high. */
+.app-nu .nd-stats.niv-stats { grid-template-columns: repeat(5, 1fr); }
+
+/* ------------------------------------------------------------------ filters */
+.app-nu .niv-filters {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 16px 0;
+}
+.app-nu .niv-search {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px; border-radius: 999px;
+  background: var(--nu-card); border: 1px solid var(--nu-line); box-shadow: var(--nu-shadow);
+  color: var(--nu-ink-dim);
+}
+.app-nu .niv-search input {
+  border: 0; outline: 0; background: transparent; color: var(--nu-ink);
+  font-size: 13px; width: 150px;
+}
+
+/* ------------------------------------------------------- detail + side list */
+.app-nu .niv-split {
+  display: grid; grid-template-columns: minmax(0, 1.85fr) minmax(0, 1fr);
+  gap: var(--nu-gap); margin-bottom: var(--nu-gap);
+}
+.app-nu .niv-detail, .app-nu .niv-upcoming { padding: 14px 16px; }
+
+.app-nu .niv-detail-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap; padding-bottom: 12px;
+  border-bottom: 1px solid var(--nu-line);
+}
+.app-nu .niv-detail-head h3 { margin: 0; font-size: 20px; color: var(--nu-ink); }
+.app-nu .niv-detail-price { text-align: right; }
+.app-nu .niv-detail-price b { display: block; font-size: 20px; color: var(--nu-ink); }
+.app-nu .niv-detail-price span, .app-nu .niv-detail-when span { display: block; font-size: 12px; }
+.app-nu .niv-detail-when { text-align: right; }
+.app-nu .niv-badge {
+  display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px;
+  background: var(--nu-pill-grad); border: 1px solid var(--nu-pill-line); color: var(--nu-pill-ink);
+}
+
+.app-nu .niv-metrics {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 14px 0 4px;
+}
+.app-nu .niv-metrics > div {
+  padding: 10px 12px; border-radius: var(--nu-r-sm);
+  background: var(--nu-card-2); border: 1px solid var(--nu-line);
+}
+.app-nu .niv-metrics span { display: block; font-size: 11.5px; color: var(--nu-ink-dim); }
+.app-nu .niv-metrics b { display: block; margin-top: 3px; font-size: 18px; color: var(--nu-ink); }
+.app-nu .niv-metrics b.up { color: var(--nu-up); }
+.app-nu .niv-metrics b.down { color: var(--nu-down); }
+
+.app-nu .niv-chart { margin-top: 14px; }
+.app-nu .niv-chart-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 4px;
+}
+.app-nu .niv-chart-head h4 { margin: 0; font-size: 13.5px; font-weight: 650; color: var(--nu-ink); }
+
+.app-nu .niv-top-list { list-style: none; margin: 0; padding: 0; }
+.app-nu .niv-top-list li + li { border-top: 1px solid var(--nu-line); }
+.app-nu .niv-pick {
+  display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; width: 100%;
+  padding: 9px 8px; border: 0; background: transparent; cursor: pointer; text-align: left;
+  border-radius: var(--nu-r-sm);
+}
+.app-nu .niv-pick:hover { background: var(--nu-card-2); }
+.app-nu .niv-pick.is-on { background: var(--nu-pill-grad); border: 1px solid var(--nu-pill-line); }
+/* The selected pill is a strong fill, so EVERY label inside it switches to the pill's own ink.
+   Leaving the dim and up/down colours in place put grey-on-blue and green-on-blue in the one row
+   the reader is actually looking at. */
+.app-nu .niv-pick.is-on .nd-sym,
+.app-nu .niv-pick.is-on .nst-mute,
+.app-nu .niv-pick.is-on b,
+.app-nu .niv-pick.is-on b.up,
+.app-nu .niv-pick.is-on b.down,
+.app-nu .niv-pick.is-on i { color: var(--nu-pill-ink); }
+.app-nu .niv-pick .nd-sym { font-weight: 650; }
+.app-nu .niv-pick b { text-align: right; }
+.app-nu .niv-pick b.up { color: var(--nu-up); }
+.app-nu .niv-pick b.down { color: var(--nu-down); }
+.app-nu .niv-pick i { font-style: normal; font-size: 11.5px; text-align: right; }
+.app-nu .niv-pick span.nst-mute { font-size: 11.5px; }
+
+/* ------------------------------------------------- calls | strike | puts */
+.app-nu .niv-ladder-table th.niv-calls { text-align: center; color: var(--nu-up); }
+.app-nu .niv-ladder-table th.niv-puts { text-align: center; color: var(--nu-down); }
+.app-nu .niv-ladder-table th.niv-strike-head,
+.app-nu .niv-ladder-table td.niv-strike {
+  text-align: center; background: var(--nu-card-2); font-weight: 650; color: var(--nu-ink);
+}
+.app-nu .niv-ladder-table tr.niv-atm { background: var(--nu-pill-grad); }
+
+.app-nu .niv-bars { padding: 14px 16px; }
+
+/* a clicked row in the full table opens that name above */
+.app-nu .nst-table tbody tr { cursor: pointer; }
+.app-nu .nst-table tbody tr.niv-row-on { background: var(--nu-pill-grad); }
+
+/* --------------------------------------------------------------- legend */
+.app-nu .niv-legend {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  margin: 14px 0 0; font-size: 12px; color: var(--nu-ink-dim);
+}
+.app-nu .niv-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.app-nu .niv-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.app-nu .niv-dot.live { background: var(--nu-up); }
+.app-nu .niv-dot.calc { background: var(--nu-accent-2); }
+.app-nu .niv-dot.wait { background: var(--nu-warn); }
+
+@media (max-width: 1180px) {
+  /* the detail/side split can stack early; the TILES stay five across to 900, as the frame draws them */
+  .app-nu .niv-split { grid-template-columns: 1fr; }
+}
+@media (max-width: 900px) {
+  .app-nu .nd-stats.niv-stats { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 900px) {
+  .app-nu .niv-hero h1 { font-size: 27px; }
+  .app-nu .nd-stats.niv-stats { grid-template-columns: repeat(2, 1fr); }
+  .app-nu .niv-metrics { grid-template-columns: repeat(2, 1fr); }
+}

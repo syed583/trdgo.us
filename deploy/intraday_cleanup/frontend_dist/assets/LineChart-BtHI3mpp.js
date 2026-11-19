@@ -1,0 +1,1 @@
+import{p as e,u as t}from"./jsx-runtime-rjZ7treo.js";import{nt as n}from"./CategoricalChart-CUivkv1J.js";import{u as r}from"./index-BSUaWvz5.js";var i=e(t()),a=[`axis`],o=(0,i.forwardRef)((e,t)=>i.createElement(r,{chartName:`LineChart`,defaultTooltipEventType:`axis`,validateTooltipEventTypes:a,tooltipPayloadSearcher:n,categoricalChartProps:e,ref:t}));export{o as t};

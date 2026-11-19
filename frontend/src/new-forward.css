@@ -1,0 +1,65 @@
+/* ============================================================================
+   Forward Scoreboard in the redesigned shell (NewForwardScoreboardPage), 8:10.
+   Shell tokens only; hero text uses the non-inverting --nu-on-photo ink.
+   ========================================================================= */
+
+.app-nu .nfs-hero { min-height: 160px; }
+.app-nu .nfs-hero h1 { font-size: 34px; margin: 12px 0 10px; color: var(--nu-on-photo); }
+.app-nu .nfs-hero h1 em { font-style: normal; color: var(--nu-accent-2); }
+.app-nu .nfs-hero .nd-eyebrow { display: inline-flex; align-items: center; gap: 7px; }
+.app-nu .nfs-sub { margin-top: 14px; }
+.app-nu .sr-only {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+
+.app-nu .nfs-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+.app-nu .nfs-pill {
+  padding: 4px 11px; border-radius: 999px; font-size: 12px;
+  border: 1px solid var(--nu-on-photo-line); color: var(--nu-on-photo);
+  background: rgba(255, 255, 255, .10);
+}
+.app-nu .nfs-pill.ok { border-color: var(--nu-up); }
+.app-nu .nfs-pill.info { border-color: var(--nu-accent-2); }
+
+.app-nu .nfs-caveats, .app-nu .nfs-missing {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 10px; margin: 14px 0;
+}
+.app-nu .nfs-caveat {
+  padding: 10px 13px; border-radius: var(--nu-r-sm); font-size: 12.5px; line-height: 1.5;
+  background: var(--nu-card); border: 1px solid var(--nu-line); color: var(--nu-ink-dim);
+}
+.app-nu .nfs-caveat b { color: var(--nu-ink); text-transform: capitalize; }
+.app-nu .nfs-caveat.warn { border-left: 3px solid var(--nu-warn); }
+
+.app-nu .nfs-perf, .app-nu .nfs-portfolio, .app-nu .nfs-attr { margin-bottom: var(--nu-gap); }
+.app-nu .nfs-portfolio, .app-nu .nfs-attr { padding: 0 0 12px; }
+.app-nu .nfs-pf-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--nu-gap); padding: 0 16px;
+}
+.app-nu .nfs-pf h4 { margin: 0 0 8px; font-size: 13px; color: var(--nu-ink); }
+.app-nu .nfs-pf-rows { display: grid; gap: 6px; }
+.app-nu .nfs-pf-rows > div {
+  display: flex; justify-content: space-between; gap: 10px;
+  padding: 7px 10px; border-radius: var(--nu-r-sm);
+  background: var(--nu-card-2); border: 1px solid var(--nu-line); font-size: 12.5px;
+}
+.app-nu .nfs-pf-rows span { color: var(--nu-ink-dim); }
+.app-nu .nfs-pf-rows b { color: var(--nu-ink); }
+.app-nu .nfs-pf-rows b.up { color: var(--nu-up); }
+.app-nu .nfs-pf-rows b.down { color: var(--nu-down); }
+.app-nu .nfs-note { margin: 10px 16px 0; font-size: 11.5px; color: var(--nu-ink-dim); }
+
+.app-nu .nfs-attr .nd-card-head { flex-wrap: wrap; gap: 10px; }
+
+/* Five tiles in one row, as the frame draws them. */
+.app-nu .nd-stats.nfs-stats { grid-template-columns: repeat(5, 1fr); }
+@media (max-width: 900px) {
+  .app-nu .nd-stats.nfs-stats { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 900px) {
+  .app-nu .nfs-hero h1 { font-size: 26px; }
+  .app-nu .nd-stats.nfs-stats { grid-template-columns: repeat(2, 1fr); }
+}

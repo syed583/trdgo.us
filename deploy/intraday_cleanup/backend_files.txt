@@ -186,6 +186,7 @@ backend/trade_plan_service.py
 backend/trade_settings.py
 backend/tradgo_call_service.py
 backend/trdgo_score_service.py
+backend/ui_flags.py
 backend/universe_service.py
 backend/unusual_activity_service.py
 backend/unusualwhales_service.py

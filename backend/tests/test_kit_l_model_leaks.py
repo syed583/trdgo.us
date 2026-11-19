@@ -99,3 +99,11 @@ def test_each_route_takes_the_request_it_needs():
                      ("/sentiment/{symbol}", "def sentiment(")):
         sig = _route(path).split(fn)[1].split(")")[0]
         assert "request: Request" in sig, f"{path} must accept the request"
+
+
+# ---------------------------------------------------------------- the pages can drop their workaround
+def test_the_backtest_page_reads_the_counts():
+    page = (pathlib.Path(__file__).resolve().parents[2] / "frontend" / "src" / "pages"
+            / "NewHistoricalBacktestPage.tsx").read_text(encoding="utf-8")
+    assert "present_factor_count" in page and "factor_total" in page, \
+        "the page must use the counts the server now sends"
