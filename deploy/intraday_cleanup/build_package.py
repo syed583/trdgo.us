@@ -57,6 +57,22 @@ def main() -> int:
     newest_src = max((f.stat().st_mtime for f in src_dir.rglob("*") if f.is_file()), default=0.0)
     if (dist / "index.html").stat().st_mtime < newest_src:
         print("frontend/dist is OLDER than frontend/src: run `npm run build` in frontend/ first (stale UI would ship)"); return 2
+    # The copy list comes from `git ls-files`, so a backend file that is NOT YET STAGED is silently
+    # left out of it - the file rides along in the commit while the installer never copies it. Kit M
+    # hit exactly that: ui_flags.py was added, this script was run before `git add`, and the kit
+    # installed clean, passed PostCheck, and left the new interface permanently off because main.py's
+    # `import ui_flags` could never succeed. It fails closed, so nothing broke; it just did nothing.
+    # Any kit that adds a backend module can repeat this, so refuse to build rather than ship inert.
+    untracked = subprocess.run(["git", "-C", str(ROOT), "ls-files", "--others", "--exclude-standard", "backend"],
+                               capture_output=True, text=True, check=True).stdout.split()
+    stray = [f for f in untracked if f.endswith((".py", ".sql", ".ini", ".json")) and not protected(f)
+             and not f.startswith("backend/tests/")]
+    if stray:
+        print("backend files are not staged, so the installer would never copy them - `git add` them first:")
+        for f in stray:
+            print("   ", f)
+        return 2
+
     tracked = subprocess.run(["git", "-C", str(ROOT), "ls-files", "backend"], capture_output=True, text=True, check=True).stdout.split()
     files = sorted(f for f in tracked if not f.startswith("backend/tests/") and not protected(f)
                    and (f.endswith((".py", ".sql", ".txt", ".ini", ".json")) or f == "backend/requirements.txt"))
