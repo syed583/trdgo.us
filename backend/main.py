@@ -1720,7 +1720,20 @@ def auth_me(request: Request) -> dict:
             "role": role, "is_admin": is_staff,
             "mt5_operator": __import__("mt5_routes").is_operator(user),
             "permissions": auth.permissions_for(role),
-            "full_access": full_access}
+            "full_access": full_access,
+            # Stage 1 of the redesign: which shell this account is served. Fails closed to the existing
+            # interface - see ui_flags.py. Not a permission: it changes nothing about what the account
+            # may see or do, only how it is drawn.
+            "new_ui": _new_ui(user["username"])}
+
+
+def _new_ui(username) -> bool:
+    """Whether this account sees the redesigned shell. Any failure means the existing one."""
+    try:
+        import ui_flags
+        return ui_flags.new_ui_for(username)
+    except Exception:  # noqa: BLE001 - a flag must never be able to break sign-in
+        return False
 
 
 def _client_key(request: Request) -> str:

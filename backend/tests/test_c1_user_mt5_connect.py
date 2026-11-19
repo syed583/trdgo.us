@@ -258,20 +258,22 @@ def test_a_user_session_never_disturbs_the_operator_session():
 
 # --------------------------------------------------------------------------- C.1a: the page must be reachable
 def _sidebar() -> str:
-    return (BACKEND.parent / "frontend" / "src" / "components" / "Sidebar.tsx").read_text(encoding="utf-8")
+        # The menu moved into navModel.tsx when the redesigned shell was added, so both shells read
+    # ONE list. This follows it.
+    return (BACKEND.parent / "frontend" / "src" / "components" / "navModel.tsx").read_text(encoding="utf-8")
 
 
 def test_my_broker_is_in_the_non_admin_menu():
     """It was first added beside /settings, which lives in the ADMIN branch - so the only people the page is
     for never saw it. NAV_GROUPS is the non-admin menu, and the entry has to be in there."""
     s = _sidebar()
-    nav = s[:s.index("const groups: NavGroup[] = isAdmin")]
+    nav = s[:s.index("export const ADMIN_GROUP")]      # the user list, before the admin one
     assert "to: '/my-broker'" in nav, "My Broker is missing from the ordinary user's menu"
 
 
 def test_my_broker_is_also_in_the_admin_menu():
     s = _sidebar()
-    admin = s[s.index("const groups: NavGroup[] = isAdmin"):]
+    admin = s[s.index("export const ADMIN_GROUP"):]     # the admin list
     assert "to: '/my-broker'" in admin, "an administrator should reach it from the menu too"
 
 

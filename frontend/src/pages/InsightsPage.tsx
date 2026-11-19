@@ -9,6 +9,8 @@ import type { PageContext } from '../App';
 import { Panel } from '../components/common';
 import WorldGlobe from '../components/WorldGlobe';
 import analysisHero from '../assets/analysis-hero.webp';
+import HeroStatCards from '../components/HeroStatCards';
+import NewAnalysisLanding from './NewAnalysisLanding';
 import scanVideo from '../assets/scan-globe.mp4';
 import { api, api2 } from '../api/client';
 import WhyCall from '../components/WhyCall';
@@ -210,6 +212,18 @@ export default function InsightsPage({ ctx }: { ctx: PageContext }) {
   };
 
   if (phase === 'idle') {
+    // ONLY the landing changes with the new shell. The scanning view and the analysed result below
+    // are the same components either way, so a search started here behaves exactly as it does today.
+    const controls = (
+      <LandingControls draft={draft} onDraft={setDraft} onAnalyse={analyse}
+        horizon={horizon} onHorizon={setPicked} session={session} readOnly={ctx.readOnly} />
+    );
+    // The panels are the live ones, built here and handed over, so the redesign cannot drift from
+    // what the classic landing shows.
+    const panels = (
+      <LandingPanels ctx={ctx} onPick={(sym) => { setDraft(sym); if (!ctx.readOnly) analyse(sym); }} />
+    );
+    if (ctx.newUi) return <NewAnalysisLanding ctx={ctx} controls={controls} panels={panels} />;
     return (
       <SearchScreen draft={draft} onDraft={setDraft} onAnalyse={analyse}
         horizon={horizon} onHorizon={setPicked} session={session}
@@ -296,42 +310,21 @@ function Dot({ sym }: { sym: string }) {
   return <span className="anp-dot" style={{ background: `hsl(${hue} 60% 46%)` }}>{s.slice(0, 2)}</span>;
 }
 
-// Representative data so the landing panels always render populated like the
-// design. Real indices/news override these the moment they load (see below).
-const SPARK_UP = [3, 4, 3.4, 5, 4.4, 6.2, 5.6, 7, 6.4, 8.2, 7.6, 9];
-const SPARK_DN = [9, 8.1, 8.5, 7, 7.4, 6, 6.4, 5.1, 5.6, 4, 4.5, 3];
-const DEMO_MOVERS = [
-  { symbol: 'NVDA', price: 184.72, change_percent: 4.26, volume: 52_400_000 },
-  { symbol: 'TSLA', price: 259.18, change_percent: -1.32, volume: 88_100_000 },
-  { symbol: 'AAPL', price: 178.54, change_percent: 0.95, volume: 45_200_000 },
-  { symbol: 'AMZN', price: 131.26, change_percent: 2.14, volume: 38_700_000 },
-  { symbol: 'MSFT', price: 418.92, change_percent: 1.08, volume: 27_100_000 },
-  { symbol: 'META', price: 312.45, change_percent: 0.64, volume: 21_400_000 },
-];
-const DEMO_INDICES = [
-  { label: 'S&P 500', value: 5682.14, change_percent: 0.62 },
-  { label: 'NASDAQ', value: 17918.32, change_percent: 0.85 },
-  { label: 'Dow Jones', value: 42330.45, change_percent: 0.41 },
-  { label: 'Russell 2000', value: 2215.83, change_percent: 1.10 },
-  { label: 'VIX', value: 16.24, change_percent: -3.21 },
-  { label: 'DXY', value: 102.88, change_percent: -0.14 },
-];
-const DEMO_NEWS = [
-  { headline: 'NVIDIA prepares for next-gen AI chip launch', symbols: ['NVDA'], time_label: '12 min ago', sentiment: 'positive' },
-  { headline: 'Tesla reports higher deliveries in Q3', symbols: ['TSLA'], time_label: '28 min ago', sentiment: 'positive' },
-  { headline: 'Microsoft expands cloud partnership', symbols: ['MSFT'], time_label: '1 hour ago', sentiment: 'neutral' },
-  { headline: 'Amazon announces new logistics network', symbols: ['AMZN'], time_label: '2 hours ago', sentiment: 'positive' },
-  { headline: 'Fed minutes signal cautious rate outlook', symbols: ['Macro'], time_label: '3 hours ago', sentiment: 'neutral' },
-];
-const DEMO_EARN = [
-  { symbol: 'AVGO', name: 'Broadcom', label: 'After Close' },
-  { symbol: 'COST', name: 'Costco Wholesale', label: 'After Close' },
-  { symbol: 'ORCL', name: 'Oracle', label: 'Before Open' },
-  { symbol: 'ADBE', name: 'Adobe', label: 'After Close' },
-  { symbol: 'FDX', name: 'FedEx', label: 'After Close' },
-];
+// The landing panels show what this server measured, or they say they have nothing. They used to be
+// seeded with a representative set - NVDA at $184.72, the S&P at 5682.14, invented headlines - so the
+// page "always rendered populated like the design". A reader cannot tell a specimen price from a real
+// one, and these were shown as the product's own figures. A panel with no data now says so.
+/** What a panel shows when it has nothing: the reason, not an empty box and never a specimen. */
+function PanelNote({ loading, what }: { loading: boolean; what: string }) {
+  return (
+    <div className="anp-trow anp-mute" style={{ padding: '14px 0', display: 'block' }}>
+      {loading ? 'Loading…' : `No ${what} right now.`}
+    </div>
+  );
+}
+
 const sparkFor = (up: boolean, real?: number[]) =>
-  (real && real.length > 1) ? real : (up ? SPARK_UP : SPARK_DN);
+  (real && real.length > 1) ? real : null;      // no series, no drawing - never an invented shape
 
 function LandingPanels({ onPick, ctx }: { onPick: (s: string) => void; ctx: PageContext }) {
   const navigate = useNavigate();
@@ -341,22 +334,20 @@ function LandingPanels({ onPick, ctx }: { onPick: (s: string) => void; ctx: Page
   const [mv, setMv] = useState<'active' | 'gainers' | 'losers'>('active');
   const [ev, setEv] = useState<'news' | 'earnings'>('news');
 
+  // The day's movers, from the provider. This panel never had a real source at all: it sorted a fixed
+  // six-row specimen set and presented it as the market.
+  const moversApi = useApi<any>((s) => api2.movers(25, s), [], { refreshMs: 300_000 });
   const movers = useMemo(() => {
-    const r = [...DEMO_MOVERS];
-    if (mv === 'active') r.sort((a, b) => b.volume - a.volume);
-    else if (mv === 'gainers') r.sort((a, b) => b.change_percent - a.change_percent);
-    else r.sort((a, b) => a.change_percent - b.change_percent);
-    return r;
-  }, [mv]);
+    const r = [...(moversApi.data?.rows || [])].filter((x: any) => x && x.symbol);
+    if (mv === 'active') r.sort((a, b) => (b.volume || 0) - (a.volume || 0));
+    else if (mv === 'gainers') r.sort((a, b) => (b.change_percent || 0) - (a.change_percent || 0));
+    else r.sort((a, b) => (a.change_percent || 0) - (b.change_percent || 0));
+    return r.slice(0, 6);
+  }, [mv, moversApi.data]);
 
-  // Real indices/news when they're loaded; the representative set otherwise so
-  // the panels are never blank.
-  const realIdx: any[] = ctx.indices.data?.indices || [];
-  const indices: any[] = (realIdx.length ? realIdx : DEMO_INDICES).slice(0, 6);
-  const realArt: any[] = news.data?.articles || [];
-  const articles: any[] = (realArt.length ? realArt : DEMO_NEWS).slice(0, 5);
-  const realEarn: any[] = upcoming.data?.rows || [];
-  const earnings: any[] = (realEarn.length ? realEarn : DEMO_EARN).slice(0, 5);
+  const indices: any[] = (ctx.indices.data?.indices || []).slice(0, 6);
+  const articles: any[] = (news.data?.articles || []).slice(0, 5);
+  const earnings: any[] = (upcoming.data?.rows || []).slice(0, 5);
 
   const tab = (on: boolean) => `anp-tab ${on ? 'on' : ''}`;
 
@@ -376,6 +367,7 @@ function LandingPanels({ onPick, ctx }: { onPick: (s: string) => void; ctx: Page
           <span>Symbol</span><span className="r">Price</span><span className="r">Change</span>
           <span className="r">Volume</span><span className="r">Chart</span>
         </div>
+        {!movers.length && <PanelNote loading={moversApi.loading} what="movers" />}
         {movers.map((m) => {
           const up = m.change_percent >= 0;
           return (
@@ -384,7 +376,9 @@ function LandingPanels({ onPick, ctx }: { onPick: (s: string) => void; ctx: Page
               <span className="r">{money(m.price)}</span>
               <span className={`r ${up ? 'pos' : 'neg'}`}>{signedPct(m.change_percent)}</span>
               <span className="r anp-mute">{compact(m.volume)}</span>
-              <span className="r"><Spark data={sparkFor(up)} up={up} /></span>
+              {/* The movers feed carries no price series, so this cell stays empty rather than
+                  drawing a shape that is not this symbol's. */}
+              <span className="r anp-mute">—</span>
             </button>
           );
         })}
@@ -399,6 +393,7 @@ function LandingPanels({ onPick, ctx }: { onPick: (s: string) => void; ctx: Page
         <div className="anp-trow anp-thead">
           <span>Index</span><span className="r">Price</span><span className="r">Change</span><span className="r">Day Chart</span>
         </div>
+        {!indices.length && <PanelNote loading={ctx.indices.loading} what="index prices" />}
         {indices.map((r) => {
           const up = (r.change_percent ?? 0) >= 0;
           return (
@@ -406,7 +401,10 @@ function LandingPanels({ onPick, ctx }: { onPick: (s: string) => void; ctx: Page
               <span className="anp-sym">{r.label}</span>
               <span className="r">{num(r.value, 2)}</span>
               <span className={`r ${up ? 'pos' : 'neg'}`}>{signedPct(r.change_percent)}</span>
-              <span className="r"><Spark data={sparkFor(up, r.spark)} up={up} /></span>
+              <span className="r">{(() => {
+                const series = sparkFor(up, r.spark);
+                return series ? <Spark data={series} up={up} /> : <span className="anp-mute">—</span>;
+              })()}</span>
             </div>
           );
         })}
@@ -424,6 +422,8 @@ function LandingPanels({ onPick, ctx }: { onPick: (s: string) => void; ctx: Page
             <button className="anp-viewall" onClick={() => navigate('/news')}>View All →</button>
           </div>
         </div>
+        {ev === 'news' && !articles.length && <PanelNote loading={news.loading} what="headlines" />}
+        {ev === 'earnings' && !earnings.length && <PanelNote loading={upcoming.loading} what="upcoming earnings" />}
         {ev === 'news'
           ? articles.map((a, i) => (
             <a key={a.id || i} className="anp-news" href={safeHref(a.url)}
@@ -452,24 +452,23 @@ function LandingPanels({ onPick, ctx }: { onPick: (s: string) => void; ctx: Page
   );
 }
 
-function SearchScreen({
-  draft, onDraft, onAnalyse, horizon, onHorizon, session, readOnly, ctx,
+/**
+ * The controls that START an analysis: the horizon switch, the ticker box and the suggestion chips.
+ *
+ * They live in ONE component because two landings now show them - the old SearchScreen and the
+ * redesigned NewAnalysisLanding. Copying them would mean two versions of the thing that launches a
+ * run, and the second copy is the one that quietly stops matching.
+ */
+function LandingControls({
+  draft, onDraft, onAnalyse, horizon, onHorizon, session, readOnly,
 }: {
   draft: string; onDraft: (v: string) => void; onAnalyse: (s: string) => void;
-  horizon: Horizon; onHorizon: (h: Horizon) => void; session?: string;
-  readOnly?: boolean; ctx: PageContext;
+  horizon: Horizon; onHorizon: (h: Horizon) => void; session?: string; readOnly?: boolean;
 }) {
   const chip = horizon === 'TODAY' ? 'Today · ET'
     : horizon === 'SWING' ? 'Swing · ~5 days' : 'Next session · ET';
-
   return (
-    <div className="anh">
-      <div className="anh-grid">
-        <div className="anh-left">
-          <div className="anh-eyebrow">Global Market Intelligence</div>
-          <h1 className="anh-title">For Smarter <span>Decisions</span></h1>
-          <p className="anh-sub">Real data. Deep analysis. AI-powered insights for US markets.</p>
-
+    <>
           {/* Chosen before the run, because it changes what the run reads. */}
           <div className="anh-horizon">
             <HorizonSwitch value={horizon} onChange={onHorizon} session={session} />
@@ -510,19 +509,49 @@ function SearchScreen({
               ))}
             </div>
           )}
+    </>
+  );
+}
+
+function SearchScreen({
+  draft, onDraft, onAnalyse, horizon, onHorizon, session, readOnly, ctx,
+}: {
+  draft: string; onDraft: (v: string) => void; onAnalyse: (s: string) => void;
+  horizon: Horizon; onHorizon: (h: Horizon) => void; session?: string;
+  readOnly?: boolean; ctx: PageContext;
+}) {
+  return (
+    <div className="anh">
+      <div className="anh-grid">
+        <div className="anh-left">
+          <div className="anh-eyebrow">Global Market Intelligence</div>
+          <h1 className="anh-title">For Smarter <span>Decisions</span></h1>
+          <p className="anh-sub">Real data. Deep analysis. AI-powered insights for US markets.</p>
+
+          <LandingControls draft={draft} onDraft={onDraft} onAnalyse={onAnalyse}
+            horizon={horizon} onHorizon={onHorizon} session={session} readOnly={readOnly} />
         </div>
 
         <div className="anh-right">
-          <img className="anh-heroimg" src={analysisHero} alt="Global market intelligence"
+          {/* The four figures on this artwork used to be painted into it. The image is now the globe
+              alone and the cards are real elements, so what a visitor reads first is measured. */}
+          <img className="anh-heroimg" src={analysisHero} alt="" aria-hidden="true"
             loading="eager" />
+          <HeroStatCards ctx={ctx} />
         </div>
       </div>
 
       <div className="anh-stats">
+        {/* FOUR, not twelve: Unusual Whales, Finnhub, Finviz and SEC/EDGAR. The figure was simply
+            wrong, and a wrong count is a claim about the product a reader cannot check. */}
         <div className="anh-stat"><span className="anh-sic green"><Database size={18} /></span>
-          <div><b>12</b><span>Data Sources</span></div></div>
+          <div><b>4</b><span>Data Sources</span></div></div>
+        {/* How many parameters a model scores is a model internal (B.1), so it is an administrator's
+            figure, not a selling point on a landing page. */}
+        {ctx.isAdmin && (
         <div className="anh-stat"><span className="anh-sic violet"><Gauge size={18} /></span>
           <div><b>20</b><span>Scored Parameters</span></div></div>
+        )}
         <div className="anh-stat"><span className="anh-sic red"><BarChart3 size={18} /></span>
           <div><b>US</b><span>Market Coverage</span></div></div>
         <div className="anh-stat"><span className="anh-sic amber"><Zap size={18} /></span>

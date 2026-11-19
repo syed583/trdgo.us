@@ -12,6 +12,19 @@ import {
 } from './demo';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
+import NewSidebar from './components/NewSidebar';
+import NewTopBar from './components/NewTopBar';
+import NewStrategyTradesPage from './pages/NewStrategyTradesPage';
+import NewPreEarningsPage from './pages/NewPreEarningsPage';
+import NewUnusualActivityPage from './pages/NewUnusualActivityPage';
+import NewIvCrushPage from './pages/NewIvCrushPage';
+import NewSignalHistoryPage from './pages/NewSignalHistoryPage';
+import NewForwardScoreboardPage from './pages/NewForwardScoreboardPage';
+import NewHistoricalBacktestPage from './pages/NewHistoricalBacktestPage';
+import NewStocksPage from './pages/NewStocksPage';
+import NewNewsPage from './pages/NewNewsPage';
+import { resolveTheme, applyTheme, saveTheme } from './lib/theme';
+import './new-shell.css';
 import ErrorBoundary from './components/ErrorBoundary';
 import { Loading } from './pages/shared';
 const AssistantWidget = lazy(() => import('./components/AssistantWidget'));
@@ -78,6 +91,8 @@ const NewsDeskPage = lazy(() => import('./pages/NewsDeskPage'));
 const InsightsPage = lazy(() => import('./pages/InsightsPage'));
 const BacktestPage = lazy(() => import('./pages/BacktestPage'));
 const SmartMoveEngine20Page = lazy(() => import('./pages/SmartMoveEngine20Page'));
+const NewSmartMovePage = lazy(() => import('./pages/NewSmartMovePage'));
+const NewMarketOverviewPage = lazy(() => import('./pages/NewMarketOverviewPage'));
 const workspace = () => import('./pages/WorkspacePages');
 const AlertsPage = lazy(() => workspace().then((m) => ({ default: m.AlertsPage })));
 const CommunityPage = lazy(() => workspace().then((m) => ({ default: m.CommunityPage })));
@@ -145,6 +160,13 @@ export interface PageContext {
   // A regular (non-admin) account is view-only: it can read every page but
   // cannot run analysis or change anything. Pages use this to disable actions.
   readOnly: boolean;
+  // Whether this account is an ADMINISTRATOR, straight from the server. This is NOT the inverse of
+  // readOnly: a non-admin with full_access has readOnly false, and so does an account whose `me` request
+  // has not loaded yet. Gating admin-only content on !readOnly showed it to both (the Historical snapshot
+  // tab, kit G). Anything admin-only reads THIS.
+  isAdmin: boolean;
+  /** The redesigned shell is on for this account. Read by the Analysis landing, which chooses its design. */
+  newUi: boolean;
 }
 
 function Shell() {
@@ -237,6 +259,22 @@ function Shell() {
 
   const me = useApi<any>((s) => (demo ? Promise.resolve({ is_admin: false, authenticated: false }) : api2.me(s)), [demo]);
   const isAdmin = !!me.data?.is_admin;
+  // Stage 1 of the redesign. The server decides per account (ui_flags.py) and fails closed, so an
+  // unreadable flag serves the existing interface rather than a half-finished one.
+  // DEV ONLY: ?newui=1 lets the redesign be looked at on a developer's machine, where there is no
+  // backend to ask. `import.meta.env.DEV` is replaced with `false` at build time, so this branch is
+  // removed from the production bundle entirely - it cannot be reached on the server by any URL.
+  const newUi = !!me.data?.new_ui
+    || (import.meta.env.DEV && new URLSearchParams(location.search).get('newui') === '1');
+  const [theme, setTheme] = React.useState(() => resolveTheme());
+  const toggleTheme = React.useCallback(() => {
+    setTheme((t) => {
+      const next = t === 'light' ? 'dark' : 'light';
+      applyTheme(next); saveTheme(next);
+      return next;
+    });
+  }, []);
+  const [railOpen, setRailOpen] = React.useState(false);
   // Until the account loads, isAdmin is false -- redirecting on that would bounce
   // an admin off an /admin/* page they opened directly or refreshed. Hold the
   // guard (render nothing) until the check resolves, then decide.
@@ -260,7 +298,7 @@ function Shell() {
         : <Navigate to={`/strategy-trades${location.search}`} replace />);
 
   const ctx: PageContext = {
-    symbol, demo, onSymbol, indices, strip, quote, search: location.search, readOnly,
+    symbol, demo, onSymbol, indices, strip, quote, search: location.search, readOnly, isAdmin, newUi,
   };
 
   // Signed out (and not demo): hand off to the SPA's own login page. The backend
@@ -273,10 +311,21 @@ function Shell() {
   }
 
   return (
-    <div className="app">
+    <div className={newUi ? 'app app-nu' : 'app'}>
+      {newUi ? (
+        <NewSidebar isAdmin={isAdmin} mt5Operator={mt5Operator} search={location.search}
+                    open={railOpen} onClose={() => setRailOpen(false)} />
+      ) : (
       <Sidebar optionsMode={optionsMode} search={location.search} isAdmin={isAdmin} mt5Operator={mt5Operator} symbol={symbol} smAlert={smAlertList.length ? (smAlertList[0].acknowledged ? 'ack' : 'critical') : undefined} />
+      )}
 
       <div className="app-main">
+        {newUi ? (
+          <NewTopBar displayName={me.data?.display_name} username={me.data?.username}
+                     role={me.data?.role} isAdmin={isAdmin}
+                     alerts={smAlertList.filter((a: any) => !a.acknowledged).length}
+                     theme={theme} onTheme={toggleTheme} onBurger={() => setRailOpen(true)} />
+        ) : (
         <TopBar
           variant={optionsMode ? 'options' : 'earnings'}
           symbol={symbol}
@@ -291,6 +340,7 @@ function Shell() {
           username={me.data?.username}
           displayName={me.data?.display_name}
         />
+        )}
 
         {mt5Operator && <SmartMoveAlertStrip alerts={smAlertList} />}
 
@@ -344,9 +394,11 @@ function Shell() {
         <Suspense fallback={<div className="page"><Loading /></div>}>
         <Routes>
           <Route path="/" element={<Navigate to={`${isAdmin ? '/admin' : '/dashboard'}${location.search}`} replace />} />
+          {/* The redesigned Dashboard is served ONLY to an account the flag names. Everyone else gets
+              the existing Overview page, unchanged - the route, its data and its behaviour are untouched. */}
           <Route path="/dashboard" element={<OverviewPage ctx={ctx} />} />
           <Route path="/dashboard/:symbol" element={<OverviewPage ctx={ctx} />} />
-          <Route path="/stocks" element={<StocksPage ctx={ctx} />} />
+          <Route path="/stocks" element={newUi ? <NewStocksPage ctx={ctx} /> : <StocksPage ctx={ctx} />} />
 
           <Route path="/earnings" element={<Navigate to={`/earnings/${DEFAULT_SYMBOL}${location.search}`} replace />} />
           <Route path="/earnings/:symbol" element={<EarningsPage ctx={ctx} />} />
@@ -354,7 +406,7 @@ function Shell() {
 
           <Route path="/scanner" element={<ScannerPage ctx={ctx} />} />
           <Route path="/watchlist" element={<WatchlistBoardPage ctx={ctx} />} />
-          <Route path="/market" element={<MarketPulsePage ctx={ctx} />} />
+          <Route path="/market" element={newUi ? <NewMarketOverviewPage ctx={ctx} /> : <MarketPulsePage ctx={ctx} />} />
 
           <Route path="/options-flow" element={<Navigate to={`/options-flow/${DEFAULT_SYMBOL}${location.search}`} replace />} />
           <Route path="/options-flow/:symbol" element={<OptionsFlowPage ctx={ctx} />} />
@@ -368,10 +420,10 @@ function Shell() {
           {/* Signals now live inside the Trade Plan screen. */}
           <Route path="/signals" element={<Navigate to={`/trade-plan/${DEFAULT_SYMBOL}${location.search}`} replace />} />
           <Route path="/signal-history" element={<SignalHistoryPage ctx={ctx} />} />
-          <Route path="/smart-move/engine20" element={<SmartMoveEngine20Page ctx={ctx} />} />
-          <Route path="/earnings-signals" element={<EarningsSignalHistoryPage ctx={ctx} />} />
-          <Route path="/forward-scoreboard" element={<ForwardScoreboardPage />} />
-          <Route path="/historical-backtest" element={<HistoricalBacktestPage />} />
+          <Route path="/smart-move/engine20" element={newUi ? <NewSmartMovePage ctx={ctx} /> : <SmartMoveEngine20Page ctx={ctx} />} />
+          <Route path="/earnings-signals" element={newUi ? <NewSignalHistoryPage ctx={ctx} /> : <EarningsSignalHistoryPage ctx={ctx} />} />
+          <Route path="/forward-scoreboard" element={newUi ? <NewForwardScoreboardPage ctx={ctx} /> : <ForwardScoreboardPage />} />
+          <Route path="/historical-backtest" element={newUi ? <NewHistoricalBacktestPage ctx={ctx} /> : <HistoricalBacktestPage />} />
           <Route path="/post-earnings-forward" element={<PostEarningsForwardPage />} />
           {/* Old split routes now point at the combined grid. */}
           <Route path="/earnings-stock-history"
@@ -404,7 +456,9 @@ function Shell() {
           <Route path="/all-models" element={<AllModelsPage ctx={ctx} />} />
           <Route path="/model-accuracy" element={<ModelAccuracyPage />} />
           <Route path="/institutional-intel" element={<InstitutionalPage />} />
-          <Route path="/strategy-trades" element={<StrategyTradesPage />} />
+          {/* The redesigned blotter for an account the flag names; everyone else keeps the existing
+              page, untouched. Same endpoint, same data, same A.26 agent mapping. */}
+          <Route path="/strategy-trades" element={newUi ? <NewStrategyTradesPage ctx={ctx} /> : <StrategyTradesPage />} />
           <Route path="/mt5" element={operatorGate(<Mt5AccountView />)} />
           <Route path="/mt5/symbols" element={operatorGate(<Mt5SymbolsView />)} />
           <Route path="/mt5/audit" element={operatorGate(<Mt5AuditView />)} />
@@ -418,9 +472,9 @@ function Shell() {
           <Route path="/gemini-intraday" element={<IntradayBoardPage ctx={ctx} cfg={GEMINI_INTRADAY_CFG} />} />
           <Route path="/gemini-intraday/:symbol" element={<AgentModelDetail ctx={ctx} model={{ base: '/gemini-intraday', title: 'Agent 4 Intraday', detail: (s: string, sig?: AbortSignal) => api2.geminiIntradayDetail(s, sig) }} />} />
           <Route path="/all-intraday-models" element={<AllIntradayModelsPage ctx={ctx} />} />
-          <Route path="/option-scanner" element={<OptionScannerPage ctx={ctx} />} />
-          <Route path="/unusual-activity" element={<UnusualActivityPage ctx={ctx} />} />
-          <Route path="/pre-earnings-direction" element={<PreEarningsDirectionPage ctx={ctx} />} />
+          <Route path="/option-scanner" element={newUi ? <NewIvCrushPage ctx={ctx} /> : <OptionScannerPage ctx={ctx} />} />
+          <Route path="/unusual-activity" element={newUi ? <NewUnusualActivityPage ctx={ctx} /> : <UnusualActivityPage ctx={ctx} />} />
+          <Route path="/pre-earnings-direction" element={newUi ? <NewPreEarningsPage ctx={ctx} /> : <PreEarningsDirectionPage ctx={ctx} />} />
           <Route path="/earnings-equity" element={<EarningsEquityPage ctx={ctx} />} />
           <Route path="/earnings-equity/:symbol" element={<EarningsEquityPage ctx={ctx} />} />
           <Route path="/earnings-options" element={<EarningsOptionsPage ctx={ctx} />} />
@@ -440,7 +494,7 @@ function Shell() {
           <Route path="/options-chain" element={<Navigate to={`/options-flow/${DEFAULT_SYMBOL}${location.search}`} replace />} />
           <Route path="/options-chain/:symbol" element={<ChainRedirect />} />
 
-          <Route path="/news" element={<NewsDeskPage ctx={ctx} />} />
+          <Route path="/news" element={newUi ? <NewNewsPage ctx={ctx} /> : <NewsDeskPage ctx={ctx} />} />
           <Route path="/news/:symbol" element={<NewsPage ctx={ctx} />} />
 
           <Route path="/ai-insights" element={<Navigate to={`/ai-insights/${DEFAULT_SYMBOL}${location.search}`} replace />} />

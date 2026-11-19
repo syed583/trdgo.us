@@ -835,6 +835,10 @@ export const api2 = {
     `/api/earnings/calendar?range=${range}&sort=${sort}` +
     `${q ? `&q=${encodeURIComponent(q)}` : ''}`, s),
 
+  /** The day's biggest movers, as the provider ranks them. Server-cached for 5 minutes. */
+  movers: (limit = 25, s?: AbortSignal) =>
+    request<any>(`/api/movers?limit=${limit}`, s),
+
   // market-wide options flow
   flowMarketSummary: (s?: AbortSignal) =>
     request<any>('/api/flow/market/summary', s),

@@ -1,0 +1,306 @@
+/* The redesigned Dashboard (Figma frame 2:2). Scoped under .app-nu .nd so it cannot touch any existing
+ * page, and built from the --nu-* tokens in new-shell.css, which were read from the Figma file itself.
+ * No hex here: a colour typed into a rule is a colour that will be wrong in the other theme (F.1a).
+ */
+
+.app-nu .nd { padding: 0 0 28px; }
+
+/* ---------------------------------------------------------------- hero */
+.app-nu .nd-hero {
+  display: flex; gap: 24px; align-items: center;
+  min-height: 277px;                       /* the design's hero height */
+  padding: 28px 34px;
+  background: linear-gradient(to right, #010b21 0%, #0a2863 100%);
+  overflow: hidden;
+}
+.app-nu .nd-hero { position: relative; }
+.app-nu .nd-hero-left { flex: 1 1 46%; min-width: 0; position: relative; z-index: 2; }
+/* The photograph fills the hero's right edge and fades into the panel, as in the design. */
+.app-nu .nd-hero-img {
+  position: absolute; right: 0; top: 0; height: 100%; width: 30%;
+  object-fit: cover; object-position: center; z-index: 0;
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 22%);
+  mask-image: linear-gradient(to right, transparent 0%, #000 22%);
+}
+.app-nu .nd-eyebrow {
+  display: inline-block; padding: 7px 16px; border-radius: 999px;
+  border: 1px solid var(--nu-on-photo-line); background: rgba(255, 255, 255, .10);
+  color: var(--nu-on-photo); font-size: 13px;
+}
+.app-nu .nd-hero h1 {
+  margin: 16px 0 10px; color: #fff;
+  font-size: 42px; line-height: 1.12; font-weight: 700; letter-spacing: -.5px;
+}
+.app-nu .nd-hero h1 em { font-style: normal; color: var(--nu-accent-2); }
+.app-nu .nd-hero p { margin: 0 0 20px; color: var(--nu-on-photo-dim); font-size: 15px; }
+.app-nu .nd-hero-cta { display: flex; gap: 12px; flex-wrap: wrap; }
+.app-nu .nd-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 12px 22px; border-radius: 999px;
+  font-size: 14px; font-weight: 600; text-decoration: none; white-space: nowrap;
+}
+.app-nu .nd-btn-primary { background: #fff; color: #0b1220; }
+.app-nu .nd-btn-primary:hover { background: #eef2ff; }
+.app-nu .nd-btn-ghost {
+  background: rgba(255, 255, 255, .07); color: #fff;
+  border: 1px solid var(--nu-rail-line);
+}
+.app-nu .nd-btn-ghost:hover { background: rgba(255, 255, 255, .13); }
+
+.app-nu .nd-hero-right { position: relative; z-index: 2; flex: 0 0 374px; display: flex; flex-direction: column; gap: 8px; }
+.app-nu .nd-hero-feat {
+  display: flex; align-items: center; gap: 13px;
+  padding: 11px 14px; border-radius: var(--nu-r-sm);
+  /* These sit OVER the photograph, as in the design, so they have to be opaque enough to read
+     against it - at 5% white the image came straight through the text. */
+  background: rgba(9, 19, 44, .82);
+  -webkit-backdrop-filter: blur(9px); backdrop-filter: blur(9px);
+  border: 1px solid rgba(255, 255, 255, .14);
+  text-decoration: none;
+}
+.app-nu .nd-hero-feat:hover { background: rgba(14, 28, 62, .92); border-color: var(--nu-accent-2); }
+.app-nu .nd-hero-feat > span:last-child { display: flex; flex-direction: column; line-height: 1.3; }
+.app-nu .nd-hero-feat b { color: #fff; font-size: 14.5px; }
+.app-nu .nd-hero-feat i { font-style: normal; color: var(--nu-on-photo-dim); font-size: 12.5px; }
+.app-nu .nd-feat-ico {
+  display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: 11px; flex: 0 0 auto; color: #fff;
+}
+.app-nu .nd-feat-ico.violet { background: linear-gradient(145deg, #7c3aed, #5b21b6); }
+.app-nu .nd-feat-ico.amber { background: linear-gradient(145deg, #c2703a, #9a4f1d); }
+.app-nu .nd-feat-ico.green { background: linear-gradient(145deg, #15803d, #0f5c2e); }
+.app-nu .nd-feat-ico.blue { background: linear-gradient(145deg, #2563eb, #1642e8); }
+
+/* ---------------------------------------------------------------- index strip */
+.app-nu .nd-indices,
+.app-nu .nd-stats,
+.app-nu .nd-row { display: grid; gap: var(--nu-gap); padding: 0 21px; margin-top: 16px; }
+.app-nu .nd-indices { grid-template-columns: repeat(4, 1fr); }
+/* These sit on the PAGE, not on the navy rail, and the page is light in light mode. Styling them
+   with the rail's light-on-dark colours made them invisible there - the F.1a mistake again, in the
+   other direction. They use the card tokens, which flip with the theme. */
+.app-nu .nd-index {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  min-height: 67px; padding: 10px 16px; box-sizing: border-box;
+  border-radius: var(--nu-r-sm);
+  background: var(--nu-card); border: 1px solid var(--nu-line);
+  box-shadow: var(--nu-shadow);
+}
+.app-nu .nd-index-txt { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.app-nu .nd-index-txt span { color: var(--nu-ink-dim); font-size: 12px; font-weight: 600; }
+.app-nu .nd-index-txt b { color: var(--nu-ink); font-size: 18px; }
+.app-nu .nd-index-txt i { font-style: normal; font-size: 12.5px; font-weight: 600; }
+.app-nu .nd-skel { background: var(--nu-card-2); box-shadow: none; }
+
+/* ---------------------------------------------------------------- stat row */
+.app-nu .nd-stats { grid-template-columns: repeat(4, 1fr); }
+.app-nu .nd-stat {
+  display: flex; align-items: center; gap: 14px;
+  min-height: 73px; padding: 12px 18px; box-sizing: border-box;
+  background: var(--nu-card); border-radius: var(--nu-r); box-shadow: var(--nu-shadow);
+}
+.app-nu .nd-stat > div { display: flex; flex-direction: column; line-height: 1.25; }
+.app-nu .nd-stat b { color: var(--nu-ink); font-size: 23px; }
+.app-nu .nd-stat span { color: var(--nu-ink-dim); font-size: 12.5px; }
+.app-nu .nd-stat-ico {
+  display: flex; align-items: center; justify-content: center;
+  width: 42px; height: 42px; border-radius: 12px; flex: 0 0 auto;
+}
+.app-nu .nd-stat-ico.blue { background: #e8efff; color: #1c61f5; }
+.app-nu .nd-stat-ico.violet { background: #f0eaff; color: #7c3aed; }
+.app-nu .nd-stat-ico.red { background: #ffe9e9; color: #dc2626; }
+
+/* ---------------------------------------------------------------- cards */
+.app-nu .nd-row-1 { grid-template-columns: 1fr 1.12fr 0.92fr; }
+.app-nu .nd-row-2 { grid-template-columns: 1.18fr 0.92fr 0.9fr; }
+.app-nu .nd-card {
+  background: var(--nu-card); border-radius: var(--nu-r); box-shadow: var(--nu-shadow);
+  padding: 16px 18px; min-width: 0; color: var(--nu-ink);
+}
+.app-nu .nd-card-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px;
+}
+.app-nu .nd-card-head h3 {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0; font-size: 17px; font-weight: 700; color: var(--nu-ink); min-width: 0;
+}
+.app-nu .nd-card-head h3 small { font-weight: 500; color: var(--nu-ink-dim); font-size: 13px; }
+.app-nu .nd-viewall {
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+  color: var(--nu-accent); font-size: 12.5px; font-weight: 600; text-decoration: none;
+}
+.app-nu .nd-viewall:hover { text-decoration: underline; }
+
+.app-nu .nd-tabs { display: inline-flex; gap: 4px; margin-bottom: 10px; }
+.app-nu .nd-tabs button {
+  padding: 6px 13px; border-radius: 8px; border: 0; cursor: pointer;
+  background: transparent; color: var(--nu-ink-dim); font-size: 12.5px; font-weight: 600;
+}
+.app-nu .nd-tabs button.is-on { background: var(--nu-accent); color: #fff; }
+
+.app-nu .nd-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.app-nu .nd-table th {
+  text-align: left; padding: 6px 8px; font-size: 11.5px; font-weight: 600;
+  color: var(--nu-ink-dim); border-bottom: 1px solid var(--nu-line);
+}
+.app-nu .nd-table td { padding: 8px; border-bottom: 1px solid var(--nu-line); color: var(--nu-ink); }
+.app-nu .nd-table tr:last-child td { border-bottom: 0; }
+.app-nu .nd-sym { color: var(--nu-ink); font-weight: 700; text-decoration: none; }
+.app-nu .nd-sym:hover { color: var(--nu-accent); }
+
+.app-nu .up { color: var(--nu-up); }
+.app-nu .down { color: var(--nu-down); }
+
+.app-nu .nd-chip {
+  display: inline-block; padding: 2px 9px; border-radius: 6px;
+  font-size: 11.5px; font-weight: 700;
+}
+.app-nu .nd-chip.call { background: #e7f7ed; color: var(--nu-up); }
+.app-nu .nd-chip.put { background: #ffe9e9; color: var(--nu-down); }
+.app-nu .nd-dotchip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+}
+.app-nu .nd-dotchip.up { background: #e7f7ed; color: var(--nu-up); }
+.app-nu .nd-dotchip.down { background: #ffe9e9; color: var(--nu-down); }
+
+.app-nu .nd-price { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.app-nu .nd-price b { font-size: 25px; color: var(--nu-ink); }
+.app-nu .nd-price i { font-style: normal; font-size: 14px; font-weight: 600; }
+
+.app-nu .nd-cal-list, .app-nu .nd-sector-list { list-style: none; margin: 0; padding: 0; }
+.app-nu .nd-cal-list li {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center;
+  padding: 9px 0; border-bottom: 1px solid var(--nu-line); font-size: 13px;
+}
+.app-nu .nd-cal-list li:last-child { border-bottom: 0; }
+.app-nu .nd-cal-list span { color: var(--nu-ink-dim); font-size: 12px; }
+.app-nu .nd-cal-list b { font-size: 13px; }
+
+.app-nu .nd-sector-list li {
+  display: grid; grid-template-columns: 1fr 86px 56px; gap: 10px; align-items: center;
+  padding: 6px 0; font-size: 12.5px;
+}
+.app-nu .nd-sector-name { color: var(--nu-ink); }
+.app-nu .nd-bar { height: 7px; border-radius: 4px; background: var(--nu-card-2); overflow: hidden; }
+.app-nu .nd-bar i { display: block; height: 100%; border-radius: 4px; }
+.app-nu .nd-bar i.up { background: var(--nu-up); }
+.app-nu .nd-bar i.down { background: var(--nu-down); }
+.app-nu .nd-sector-list b { text-align: right; font-size: 12.5px; }
+
+.app-nu .nd-sent-body { display: flex; align-items: center; gap: 16px; }
+.app-nu .nd-gauge { position: relative; flex: 0 0 150px; }
+.app-nu .nd-gauge-txt {
+  position: absolute; left: 0; right: 0; bottom: 4px;
+  display: flex; flex-direction: column; align-items: center; line-height: 1.1;
+}
+.app-nu .nd-gauge-txt b { font-size: 28px; color: var(--nu-ink); }
+.app-nu .nd-gauge-txt span { font-size: 12px; color: var(--nu-ink-dim); }
+.app-nu .nd-sent-legend { list-style: none; margin: 0; padding: 0; flex: 1 1 auto; }
+.app-nu .nd-sent-legend li {
+  display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12.5px;
+  color: var(--nu-ink-dim);
+}
+.app-nu .nd-sent-legend b { margin-left: auto; color: var(--nu-ink); }
+.app-nu .nd-sent-legend i { width: 9px; height: 9px; border-radius: 50%; }
+.app-nu .nd-sent-legend i.up { background: var(--nu-up); }
+.app-nu .nd-sent-legend i.flat { background: var(--nu-ink-dim); }
+.app-nu .nd-sent-legend i.down { background: var(--nu-down); }
+
+.app-nu .nd-empty, .app-nu .nd-note {
+  color: var(--nu-ink-dim); font-size: 12.5px; padding: 10px 0; margin: 0;
+}
+.app-nu .nd-note { font-size: 11.5px; line-height: 1.45; }
+
+.app-nu .nd-ops { margin: 16px 21px 0; color: var(--nu-page-ink-dim); font-size: 12px; }
+.app-nu .nd-ops > summary { cursor: pointer; padding: 4px 0; }
+.app-nu .nd-err {
+  display: flex; align-items: center; gap: 8px; margin: 14px 21px 0;
+  padding: 10px 14px; border-radius: var(--nu-r-sm);
+  background: var(--nu-card); border: 1px solid var(--nu-line);
+  color: var(--nu-ink); font-size: 13px; box-shadow: var(--nu-shadow);
+}
+
+/* ---------------------------------------------------------------- narrower screens */
+@media (max-width: 1280px) {
+  .app-nu .nd-row-1, .app-nu .nd-row-2 { grid-template-columns: 1fr 1fr; }
+  .app-nu .nd-indices, .app-nu .nd-stats { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 900px) {
+  .app-nu .nd-hero { flex-direction: column; align-items: stretch; padding: 22px 18px; }
+  .app-nu .nd-hero-img { display: none; }   /* no room for it beside the text on a phone */
+  .app-nu .nd-hero-right { flex: 1 1 auto; }
+  .app-nu .nd-hero h1 { font-size: 30px; }
+  .app-nu .nd-row-1, .app-nu .nd-row-2,
+  .app-nu .nd-indices, .app-nu .nd-stats { grid-template-columns: 1fr; }
+  .app-nu .nd-indices, .app-nu .nd-stats, .app-nu .nd-row { padding: 0 12px; }
+}
+
+/* ============================================================================
+   The Analysis Intraday landing in the redesigned shell (NewAnalysisLanding).
+
+   STYLING ONLY. The panels restyled here are the LIVE ones (LandingPanels in
+   InsightsPage), handed to the landing as a node, so their markup and class
+   names belong to the classic page and are not ours to change. That is why
+   these rules reach in by `.nal .anp-*` instead of being written on new
+   elements: the alternative was a second copy of the panels, which is the copy
+   that quietly stops matching. Class names below were read off LandingPanels,
+   and every token below is one new-shell.css actually declares.
+   ========================================================================= */
+
+.nal .nal-controls { margin-top: 22px; max-width: 560px; }
+/* The hero owns the spacing now, so the controls' own top margin would double it. */
+.nal .nal-controls .anh-horizon { margin-top: 0; }
+/* On the photograph, so fixed light ink. --nu-page-ink-dim is dark in light mode, which is how this
+   line came up navy-on-navy - my own rule, repeating the fault the on-photo tokens exist to prevent. */
+.nal .nal-controls .anh-basis { color: var(--nu-on-photo-dim); }
+.nal .nal-controls .anh-try > span { color: var(--nu-on-photo-dim); }
+
+.nal .nal-feats { display: grid; gap: 10px; align-content: center; }
+
+.nal .nal-panels { margin-top: 26px; }
+
+/* The classic panel grid keeps its columns; only the surface changes. */
+.nal .anp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.nal .anp-card {
+  background: var(--nu-card);
+  border: 1px solid var(--nu-line);
+  border-radius: var(--nu-r);
+  box-shadow: var(--nu-shadow);
+  padding: 16px 18px;
+}
+.nal .anp-head { color: var(--nu-ink); }
+.nal .anp-thead,
+.nal .anp-mute,
+.nal .anp-m,
+.nal .anp-news-m { color: var(--nu-ink-dim); }
+.nal .anp-trow { border-color: var(--nu-line); }
+.nal .anp-sym,
+.nal .anp-news-h { color: var(--nu-ink); }
+
+/* The panel tabs (Most Active / Gainers / Losers, News / Earnings) as pills. */
+.nal .anp-tab {
+  border-radius: 999px;
+  padding: 4px 11px;
+  font-size: 12px;
+  color: var(--nu-ink-dim);
+  background: transparent;
+  border: 1px solid transparent;
+}
+.nal .anp-tab.on {
+  background: var(--nu-pill-grad);
+  border-color: var(--nu-pill-line);
+  color: var(--nu-pill-ink);
+}
+
+.nal .nal-admin { margin-top: 14px; font-size: 12px; color: var(--nu-page-ink-dim); }
+
+@media (max-width: 900px) {
+  .nal .nal-controls { max-width: none; }
+  .nal .nal-feats { grid-template-columns: 1fr 1fr; }
+}

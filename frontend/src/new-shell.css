@@ -1,0 +1,309 @@
+/* Stage 1 of the redesign: the shell only - sidebar, top bar, page background.
+ *
+ * Scoped under .app-nu so NOTHING here can reach the existing interface. Every rule begins with that
+ * class; a bare element selector would leak into the old shell the moment the flag is off for someone.
+ *
+ * COLOURS ARE TOKENS, NOT HEX. The design is drawn dark-only, but the site must work in both themes
+ * (F.1a: hard-coded colours are exactly how My Broker became unreadable in light mode). So the frame's
+ * values are declared ONCE here as --nu-* tokens for dark, and overridden for light. Every rule below
+ * uses the token. To restyle, change the token block - never a rule.
+ */
+
+.app-nu {
+  /* READ FROM THE FIGMA FILE over the MCP, not eyeballed. The rail, bar, hero and page are GRADIENTS in
+     the design, not flat fills, so they are declared as gradients. Every value below is the design's. */
+  --nu-bg: #050f28;                       /* solid fallback under the page gradient */
+  --nu-bg-grad: radial-gradient(ellipse 110% 51% at 57% 50%,
+                rgba(25,60,107,1) 0%, rgba(18,44,87,1) 32.5%,
+                rgba(10,28,66,1) 65%, rgba(3,13,38,1) 100%);
+  --nu-rail-grad: linear-gradient(to right, #030e29 0%, #071b4a 100%);
+  --nu-bar-grad: linear-gradient(to right, #04112f 0%, #081d4e 100%);
+  --nu-rail-hover: rgba(255, 255, 255, .055);
+  --nu-rail-line: #20375e;                /* the sidebar divider */
+  --nu-rail-ink: #e8edf9;
+  --nu-rail-ink-dim: #93a0bd;
+
+  /* the active nav pill is a gradient with its own border */
+  --nu-pill-grad: linear-gradient(to right, #1c61f5 0%, #1642e8 100%);
+  --nu-pill-line: #4876ff;
+  --nu-pill-ink: #ffffff;
+
+  --nu-card: #fcfdff;                     /* content cards */
+  --nu-card-2: #f7f9fe;
+  --nu-ink: #0b1220;
+  --nu-ink-dim: #5b6782;
+  /* Text that sits on the PAGE, not on a card. The two fields invert between themes - navy page with
+     white cards in dark, light page with white cards in light - so one ink token cannot serve both.
+     Using the card's ink on the page is how a heading went invisible twice. */
+  --nu-page-ink: #e8edf9;
+  --nu-page-ink-dim: #93a0bd;
+  /* Text that sits ON a hero PHOTOGRAPH. The photograph is dark in BOTH themes, so this ink is
+     declared HERE and deliberately NOT repeated in the light block below, which overrides only what
+     it lists. Using the rail's ink instead - light in dark mode, DARK in light mode - is what put the
+     hero subtitle, the feature captions, the Strategy rulebar and the Analysis basis line
+     dark-on-dark the moment anyone switched to light. Same fault as the page-ink/card-ink split
+     above, in a third place. */
+  --nu-on-photo: #ffffff;
+  --nu-on-photo-dim: rgba(233, 239, 252, .82);
+  --nu-on-photo-line: rgba(255, 255, 255, .22);
+  --nu-line: #e1e6f0;
+  --nu-shadow: 0 5px 13px 0 rgba(51, 107, 178, .22);
+
+  --nu-accent: #1c61f5;
+  --nu-accent-2: #4876ff;
+  --nu-accent-ink: #ffffff;
+  --nu-up: #16a34a;
+  --nu-down: #dc2626;
+  --nu-warn: #d97706;
+
+  --nu-rail-w: 247px;                     /* the design's sidebar width */
+  --nu-rail-w-collapsed: 72px;
+  --nu-bar-h: 67px;                       /* the design's top-bar height */
+  --nu-r: 16px;                           /* the design's card radius */
+  --nu-r-sm: 12px;                        /* the design's pill radius */
+  --nu-gap: 16px;
+
+  --nu-preview-bg: #0a1022;        /* dev design preview backdrop */
+  --nu-preview-ink: #1a1205;       /* text on the amber preview notice */
+  --nu-promo-1: #11204d;
+  --nu-promo-2: #0c1636;
+  --nu-promo-3: #131c4a;
+}
+
+/* Light theme: the rail stays deep navy - it is the brand surface and the design's anchor - but the page
+ * behind the cards becomes light, so a light-mode user is not reading white cards on a near-black field.
+ * This is an interpretation: the frame has no light counterpart, and it is flagged as such to the owner. */
+/* Light mode is NO LONGER an interpretation. The Stocks frame (30:251) and the other frames added on
+   2026-11-18 are drawn light, so these are the design's own values: a WHITE rail and header rather than
+   the navy I had kept, read from that frame rather than guessed. */
+:root[data-theme='light'] .app-nu {
+  --nu-bg: #f5f8ff;
+  --nu-bg-grad: none;
+  --nu-rail-grad: linear-gradient(to right, #fdfeff 0%, #fdfeff 100%);
+  --nu-bar-grad: linear-gradient(to right, #fdfeff 0%, #fdfeff 100%);
+  --nu-rail-line: #e0e5f2;
+  --nu-rail-ink: #090f29;
+  --nu-rail-ink-dim: #505c82;
+  --nu-rail-hover: rgba(0, 59, 255, .055);
+
+  /* the selected nav item is a pale blue pill with blue text, not a solid blue bar */
+  --nu-pill-grad: linear-gradient(to right, #e0e6ff 0%, #e0e6ff 100%);
+  --nu-pill-line: #cdd7ff;
+  --nu-pill-ink: #003bff;
+
+  --nu-card: #fcfdff;
+  --nu-card-2: #eceff6;
+  --nu-ink: #060b1d;
+  --nu-ink-dim: #4e587f;
+  --nu-page-ink: #060b1d;
+  --nu-page-ink-dim: #4e587f;
+  --nu-line: #d8e0f3;
+  --nu-shadow: 0 5px 12px 0 rgba(51, 89, 166, .09);
+
+  --nu-accent: #003bff;
+  --nu-accent-2: #0739ff;
+  --nu-up: #00a42c;
+  --nu-down: #e50015;
+
+  --nu-preview-bg: #f5f8ff;
+  /* The promo card sits ON the rail, and the rail is white here - so it lightens too. Leaving it navy
+     put dark text on a dark card: the F.1a fault, in a place I had already fixed once. */
+  --nu-promo-1: #eef2ff;
+  --nu-promo-2: #e6ecff;
+  --nu-promo-3: #f2f5ff;
+}
+
+/* ---------------------------------------------------------------- the frame */
+/* `.app.app-nu`, not `.app-nu`: styles.css already styles `.app`, and at equal specificity the later
+   stylesheet wins - which silently left the page on the OLD background. Two classes settle it. */
+.app.app-nu { background: var(--nu-bg); background-image: var(--nu-bg-grad); min-height: 100vh; }
+.app.app-nu .app-main { background: transparent; }
+
+/* ---------------------------------------------------------------- sidebar */
+.nu-rail {
+  width: var(--nu-rail-w); flex: 0 0 var(--nu-rail-w);
+  background: var(--nu-rail-grad); color: var(--nu-rail-ink);
+  border-right: 1px solid var(--nu-rail-line);
+  display: flex; flex-direction: column;
+  height: 100vh; position: sticky; top: 0;
+}
+.nu-rail.is-collapsed { width: var(--nu-rail-w-collapsed); flex-basis: var(--nu-rail-w-collapsed); }
+
+.nu-rail-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 18px 16px; border-bottom: 1px solid var(--nu-rail-line);
+  min-height: var(--nu-bar-h); box-sizing: border-box;
+}
+.nu-rail-head img { width: 32px; height: 32px; object-fit: contain; flex: 0 0 auto; }
+.nu-logo-light { display: none; }
+:root[data-theme='light'] .app-nu .nu-logo-dark { display: none; }
+:root[data-theme='light'] .app-nu .nu-logo-light { display: block; }
+.nu-rail-brand { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.nu-rail-brand b { font-size: 19px; letter-spacing: -0.2px; color: var(--nu-rail-ink); }
+.nu-rail-brand span { font-size: 10.5px; color: var(--nu-rail-ink-dim); white-space: nowrap; }
+
+.nu-nav { flex: 1 1 auto; overflow-y: auto; padding: 12px 10px; }
+.nu-nav::-webkit-scrollbar { width: 6px; }
+.nu-nav::-webkit-scrollbar-thumb { background: var(--nu-rail-line); border-radius: 3px; }
+
+.nu-nav-head {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--nu-rail-ink-dim); padding: 14px 12px 6px;
+}
+.nu-link {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px; margin: 2px 0; border-radius: var(--nu-r-sm);
+  color: var(--nu-rail-ink-dim); text-decoration: none;
+  font-size: 14px; font-weight: 500; white-space: nowrap;
+  transition: background .12s ease, color .12s ease;
+}
+.nu-link:hover { background: var(--nu-rail-hover); color: var(--nu-rail-ink); }
+.nu-link svg { flex: 0 0 auto; }
+.nu-link.is-active {
+  background: var(--nu-pill-grad); color: var(--nu-pill-ink); font-weight: 600;
+  border: 1px solid var(--nu-pill-line);
+}
+.nu-rail.is-collapsed .nu-link { justify-content: center; padding: 11px 0; }
+.nu-rail.is-collapsed .nu-link span,
+.nu-rail.is-collapsed .nu-nav-head,
+.nu-rail.is-collapsed .nu-rail-brand,
+.nu-rail.is-collapsed .nu-promo { display: none; }
+
+/* the promo card at the foot of the rail */
+.nu-promo {
+  margin: 10px; padding: 16px; border-radius: var(--nu-r);
+  background: linear-gradient(145deg, var(--nu-promo-1) 0%, var(--nu-promo-2) 60%, var(--nu-promo-3) 100%);
+  border: 1px solid var(--nu-rail-line);
+}
+.nu-promo-badge {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 11px; border-radius: 9px; background: rgba(255, 255, 255, .07);
+  font-weight: 700; font-size: 14px; color: var(--nu-rail-ink);
+}
+.nu-promo h4 { margin: 12px 0 4px; font-size: 14px; color: var(--nu-rail-ink); }
+.nu-promo p { margin: 0 0 12px; font-size: 12px; line-height: 1.45; color: var(--nu-rail-ink-dim); }
+.nu-promo a {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 10px; border-radius: var(--nu-r-sm);
+  background: var(--nu-accent); color: var(--nu-accent-ink);
+  font-size: 13px; font-weight: 600; text-decoration: none;
+}
+.nu-promo a:hover { background: var(--nu-accent-2); }
+
+.nu-rail-foot { padding: 8px 10px 14px; border-top: 1px solid var(--nu-rail-line); }
+.nu-rail-toggle {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 12px; border: 0; border-radius: var(--nu-r-sm);
+  background: transparent; color: var(--nu-rail-ink-dim);
+  font-size: 13px; cursor: pointer;
+}
+.nu-rail-toggle:hover { background: var(--nu-rail-hover); color: var(--nu-rail-ink); }
+
+/* ---------------------------------------------------------------- top bar */
+.nu-bar {
+  display: flex; align-items: center; gap: 16px;
+  height: var(--nu-bar-h); padding: 0 20px; box-sizing: border-box;
+  background: var(--nu-bar-grad); border-bottom: 1px solid var(--nu-rail-line);
+  position: sticky; top: 0; z-index: 30;
+}
+.nu-burger {
+  display: none; background: transparent; border: 0; cursor: pointer;
+  color: var(--nu-rail-ink); padding: 6px;
+}
+.nu-search {
+  flex: 1 1 auto; max-width: 800px; position: relative;
+  display: flex; align-items: center;
+}
+.nu-search svg { position: absolute; left: 16px; color: var(--nu-rail-ink-dim); pointer-events: none; }
+.nu-search input {
+  width: 100%; height: 42px; padding: 0 16px 0 44px; box-sizing: border-box;
+  border-radius: 999px; border: 1px solid var(--nu-rail-line);
+  background: rgba(255,255,255,.05); color: var(--nu-rail-ink); font-size: 14px;
+}
+.nu-search input::placeholder { color: var(--nu-rail-ink-dim); }
+.nu-search input:focus { outline: 2px solid var(--nu-accent); outline-offset: 1px; }
+
+.nu-bar-right { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.nu-plan {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 15px; border-radius: 999px;
+  border: 1px solid var(--nu-rail-line); background: rgba(255,255,255,.05);
+  color: var(--nu-rail-ink); font-size: 13px; font-weight: 600; white-space: nowrap;
+}
+.nu-icon {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; border-radius: 50%;
+  border: 1px solid var(--nu-rail-line); background: rgba(255,255,255,.05);
+  color: var(--nu-rail-ink); cursor: pointer;
+}
+.nu-icon:hover { border-color: var(--nu-accent); }
+.nu-dot {
+  position: absolute; top: 7px; right: 8px; width: 7px; height: 7px;
+  border-radius: 50%; background: var(--nu-down);
+}
+.nu-user { display: flex; align-items: center; gap: 10px; padding-left: 4px; }
+.nu-avatar {
+  width: 40px; height: 40px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--nu-accent); color: var(--nu-accent-ink);
+  font-weight: 700; font-size: 14px; flex: 0 0 auto;
+}
+.nu-user-txt { display: flex; flex-direction: column; line-height: 1.2; }
+.nu-user-txt b { font-size: 14px; color: var(--nu-rail-ink); }
+.nu-user-txt span { font-size: 11.5px; color: var(--nu-rail-ink-dim); }
+
+/* ---------------------------------------------------------------- mobile */
+.nu-scrim { display: none; }
+
+/* 900, not 1024. Three of the design's frames are drawn at a 1024-wide canvas and ALL THREE show the
+   full sidebar, so collapsing it at `max-width: 1024px` hid the rail at exactly the width the design
+   shows it - the page came up with a hamburger where the frame has a menu. 900 keeps the rail on a
+   1024 canvas and still folds it away on tablets and phones. */
+@media (max-width: 900px) {
+  .nu-rail {
+    position: fixed; left: 0; top: 0; z-index: 60;
+    transform: translateX(-100%); transition: transform .18s ease;
+  }
+  .nu-rail.is-open { transform: translateX(0); }
+  .nu-rail.is-collapsed { width: var(--nu-rail-w); flex-basis: var(--nu-rail-w); }
+  .nu-rail.is-collapsed .nu-link { justify-content: flex-start; padding: 10px 12px; }
+  .nu-rail.is-collapsed .nu-link span,
+  .nu-rail.is-collapsed .nu-nav-head,
+  .nu-rail.is-collapsed .nu-rail-brand,
+  .nu-rail.is-collapsed .nu-promo { display: revert; }
+  .nu-rail-foot { display: none; }
+  .nu-burger { display: inline-flex; }
+  .nu-scrim {
+    display: block; position: fixed; inset: 0; z-index: 55;
+    background: rgba(3, 7, 18, .6);
+  }
+  .nu-plan, .nu-user-txt { display: none; }
+}
+
+@media (max-width: 640px) {
+  .nu-bar { padding: 0 12px; gap: 10px; }
+  .nu-search input { height: 38px; font-size: 13px; }
+  .nu-icon { width: 34px; height: 34px; }
+}
+
+/* Someone who asked the system for less motion gets none of the drawer's. */
+@media (prefers-reduced-motion: reduce) {
+  .nu-rail, .nu-link { transition: none; }
+}
+
+/* DEV ONLY: the design-preview wrapper. The frames are drawn at a fixed canvas size, so the stage
+   scrolls rather than stretching them - a stretched frame is no longer the design.
+
+   Each frame is a COMPLETE page, its own sidebar and top bar included, so while one is on screen the
+   app's own rail and bar are hidden. Otherwise there are two sidebars and two search fields, and the
+   design cannot be judged through the duplicate. */
+.app-nu:has(.dev-figma) .nu-rail,
+.app-nu:has(.dev-figma) .nu-bar,
+.app-nu:has(.dev-figma) .nu-scrim { display: none !important; }
+.app-nu:has(.dev-figma) { background: var(--nu-preview-bg); background-image: none; }
+.app-nu .dev-figma { padding: 0; }
+.app-nu .dev-figma-note {
+  padding: 8px 14px; font-size: 12px;
+  background: var(--nu-warn); color: var(--nu-preview-ink); font-weight: 600;
+}
+.app-nu .dev-figma-stage { overflow: auto; }

@@ -809,3 +809,45 @@
 
 .anh-chip-try { display: inline-flex; align-items: center; gap: 6px; }
 .anh-try-logo { width: 16px; height: 16px; border-radius: 4px; object-fit: contain; background: #fff; padding: 1px; box-sizing: border-box; }
+
+/* The hero's four cards. They sit at the positions the artwork's painted cards occupied, so the
+   blurred patches left behind are covered. Percentages, not pixels: the image scales with the column. */
+/* .anh-right is ALREADY absolutely positioned (it fills the hero's right 54%), so it is a positioning
+   context as it stands. Giving it `position: relative` pulled it back into normal flow and stacked the
+   hero - a one-line override that undid the layout. The cards only need to sit above its ::before wash. */
+.anh-hcards { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.anh-hc {
+  position: absolute; display: flex; gap: 10px; align-items: flex-start;
+  padding: 12px 14px; box-sizing: border-box;
+  border-radius: 14px; border: 1px solid rgba(255, 255, 255, .17);
+  background: rgba(12, 22, 48, .82);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  color: #eaf1ff; overflow: hidden;
+}
+.anh-hcards .anh-hc:nth-child(1) { left: 12.2%; top: 9.3%;  width: 33.0%; height: 27.6%; }
+.anh-hcards .anh-hc:nth-child(2) { left: 53.7%; top: 9.3%;  width: 36.1%; height: 27.6%; }
+.anh-hcards .anh-hc:nth-child(3) { left: 12.2%; top: 56.7%; width: 33.0%; height: 29.3%; }
+.anh-hcards .anh-hc:nth-child(4) { left: 57.2%; top: 56.7%; width: 32.6%; height: 29.3%; }
+.anh-hc-ico {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 10px; flex: 0 0 auto;
+}
+.anh-hc-ico.green { background: rgba(22, 163, 74, .22); color: #4ade80; }
+.anh-hc-ico.blue { background: rgba(37, 99, 235, .25); color: #7dabff; }
+.anh-hc-ico.amber { background: rgba(217, 119, 6, .22); color: #fbbf24; }
+.anh-hc-b { min-width: 0; }
+.anh-hc-t { font-size: 13px; font-weight: 600; color: #cfe0ff; }
+.anh-hc-v { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+.anh-hc-v b { font-size: 24px; line-height: 1.1; }
+.anh-hc-s { font-size: 11.5px; color: #9fb4d8; margin-top: 2px; }
+.anh-hc-badge {
+  padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
+  background: rgba(22, 163, 74, .25); color: #4ade80;
+}
+@media (max-width: 900px) {
+  .anh-hc { padding: 8px 10px; border-radius: 10px; }
+  .anh-hc-ico { width: 26px; height: 26px; border-radius: 8px; }
+  .anh-hc-v b { font-size: 17px; }
+  .anh-hc-t { font-size: 11px; }
+  .anh-hc-s { font-size: 10px; }
+}

@@ -145,9 +145,17 @@ def test_shaped_routes_answer_a_non_admin_without_the_working(monkeypatch, name,
 
 # --------------------------------------------------------------------------- B.1a: the menu, pinned
 def test_all_models_and_model_accuracy_left_the_non_admin_menu():
-    """Owner decision 2026-11-15 (option B). NAV_GROUPS is the non-admin menu; an admin reaches both by URL."""
-    sidebar = (Path(__file__).resolve().parents[2] / "frontend" / "src" / "components" / "Sidebar.tsx").read_text(
-        encoding="utf-8")
+    """Owner decision 2026-11-15 (option B). An admin reaches both by URL.
+
+    The menu moved out of Sidebar.tsx into navModel.tsx when the redesigned shell was added, so both
+    shells read ONE list. This test follows it: checking Sidebar.tsx alone would now pass for the wrong
+    reason - there is no menu in it to find.
+    """
+    src = Path(__file__).resolve().parents[2] / "frontend" / "src" / "components"
+    menu = (src / "navModel.tsx").read_text(encoding="utf-8")
     for entry in ("to: '/all-models'", "to: '/model-accuracy'"):
-        assert entry not in sidebar, "%s is back in the user menu" % entry
-    assert "/all-models" in sidebar, "the note explaining why it was removed should stay"
+        assert entry not in menu, "%s is back in the user menu" % entry
+        # and neither shell may declare its own copy
+        for shell in ("Sidebar.tsx", "NewSidebar.tsx"):
+            assert entry not in (src / shell).read_text(encoding="utf-8"),                 "%s is back, in %s" % (entry, shell)
+    assert "/all-models" in menu, "the note explaining why it was removed should stay"

@@ -1,0 +1,329 @@
+/* Strategy Trades in the redesigned shell. Scoped under .app-nu .nst, built from the --nu-* tokens
+ * so it follows both themes; no hex here for the same reason as everywhere else (F.1a).
+ */
+
+.app-nu .nst-hero { min-height: 190px; }
+.app-nu .nst-hero h1 { font-size: 34px; margin: 14px 0 8px; color: #fff; }
+.app-nu .nst-hero p { max-width: 54ch; }
+.app-nu .nst-hero .nd-eyebrow { display: inline-flex; align-items: center; gap: 7px; }
+
+/* the live rules, stated rather than implied */
+.app-nu .nst-rulebar { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.app-nu .nst-rulebar span {
+  padding: 5px 11px; border-radius: 999px;
+  /* on the hero PHOTOGRAPH, so fixed light ink - the rail's dim ink is dark in light mode */
+  border: 1px solid var(--nu-on-photo-line); background: rgba(255, 255, 255, .10);
+  color: var(--nu-on-photo-dim); font-size: 12px;
+}
+.app-nu .nst-rulebar span.on { color: var(--nu-accent-ink); border-color: var(--nu-up); }
+
+.app-nu .nst-stats { grid-template-columns: repeat(5, 1fr); }
+.app-nu .nst-stat-sub { font-style: normal; font-size: 11px; color: var(--nu-ink-dim); opacity: .85; }
+
+/* ---------------------------------------------------------------- filters */
+.app-nu .nst-filters {
+  display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap;
+  padding: 0 21px; margin-top: 16px;
+}
+.app-nu .nst-field { display: flex; flex-direction: column; gap: 4px; }
+.app-nu .nst-field > span { font-size: 11px; font-weight: 600; color: var(--nu-page-ink-dim); }
+.app-nu .nst-field select,
+.app-nu .nst-field input {
+  height: 36px; padding: 0 11px; box-sizing: border-box;
+  border-radius: var(--nu-r-sm); border: 1px solid var(--nu-line);
+  background: var(--nu-card); color: var(--nu-ink); font-size: 13px; min-width: 140px;
+}
+.app-nu .nst-field select:focus,
+.app-nu .nst-field input:focus { outline: 2px solid var(--nu-accent); outline-offset: 1px; }
+.app-nu .nst-count { margin-left: auto; color: var(--nu-page-ink-dim); font-size: 12.5px; padding-bottom: 9px; }
+
+/* ---------------------------------------------------------------- the table */
+.app-nu .nst-card { margin: 16px 21px 0; padding: 0; overflow: hidden; }
+.app-nu .nst-scroll { overflow-x: auto; }
+.app-nu .nst-table { min-width: 1020px; }
+.app-nu .nst-table th, .app-nu .nst-table td { padding: 10px 12px; white-space: nowrap; }
+.app-nu .nst-table thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--nu-card-2); border-bottom: 1px solid var(--nu-line);
+}
+.app-nu .nst-table th.r, .app-nu .nst-table td.r { text-align: right; }
+.app-nu .nst-table tbody tr:hover td { background: var(--nu-card-2); }
+.app-nu .nst-sub { font-size: 11px; color: var(--nu-ink-dim); font-weight: 400; margin-top: 2px; }
+.app-nu .nst-mute { color: var(--nu-ink-dim); }
+
+.app-nu .nst-status {
+  display: inline-block; padding: 3px 10px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 600; border: 1px solid transparent;
+}
+.app-nu .nst-status.open { background: var(--nu-card-2); color: var(--nu-accent); border-color: var(--nu-accent); }
+.app-nu .nst-status.win { background: #e7f7ed; color: var(--nu-up); }
+.app-nu .nst-status.loss { background: #ffe9e9; color: var(--nu-down); }
+.app-nu .nst-status.flat { background: var(--nu-card-2); color: var(--nu-ink-dim); }
+
+.app-nu .nst-card .nd-note { padding: 10px 14px; margin: 0; border-top: 1px solid var(--nu-line); }
+
+@media (max-width: 1280px) {
+  .app-nu .nst-stats { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 900px) {
+  .app-nu .nst-stats { grid-template-columns: 1fr 1fr; }
+  .app-nu .nst-hero h1 { font-size: 26px; }
+  .app-nu .nst-filters, .app-nu .nst-card { padding-left: 12px; padding-right: 12px; margin-left: 0; margin-right: 0; }
+  .app-nu .nst-card { padding: 0; margin: 16px 12px 0; }
+  .app-nu .nst-count { margin-left: 0; }
+}
+
+/* ---------------------------------------------------------------- Pre-Earnings Direction */
+.app-nu .npe-split {
+  display: grid; grid-template-columns: 1fr 1.25fr; gap: var(--nu-gap);
+  padding: 0 21px; margin-top: 16px;
+}
+.app-nu .npe-ring-body { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.app-nu .npe-ring-n { fill: var(--nu-ink); font-size: 22px; font-weight: 700; }
+.app-nu .npe-ring-l { fill: var(--nu-ink-dim); font-size: 9px; }
+.app-nu .npe-ring-body .nd-sent-legend { flex: 1 1 140px; }
+
+.app-nu .npe-read { list-style: none; margin: 0; padding: 0; }
+.app-nu .npe-read li {
+  padding: 7px 0 7px 16px; position: relative;
+  font-size: 13px; line-height: 1.5; color: var(--nu-ink-dim);
+  border-bottom: 1px solid var(--nu-line);
+}
+.app-nu .npe-read li:last-child { border-bottom: 0; }
+.app-nu .npe-read li::before {
+  content: ''; position: absolute; left: 0; top: 15px;
+  width: 6px; height: 6px; border-radius: 50%; background: var(--nu-accent);
+}
+.app-nu .npe-read b { color: var(--nu-ink); }
+
+/* a company name is the one column allowed to wrap - some are very long */
+.app-nu .npe-co { white-space: normal; max-width: 220px; }
+
+@media (max-width: 1100px) {
+  .app-nu .npe-split { grid-template-columns: 1fr; }
+}
+@media (max-width: 900px) {
+  .app-nu .npe-split { padding: 0 12px; }
+}
+
+/* ---------------------------------------------------------------- Unusual Activity */
+/* This frame has no hero photograph - a title band only. */
+.app-nu .nua-head { padding: 22px 21px 0; }
+.app-nu .nua-head h1 {
+  display: flex; align-items: center; gap: 10px;
+  margin: 0; font-size: 26px; color: var(--nu-page-ink);
+}
+.app-nu .nua-head p { margin: 6px 0 0; color: var(--nu-page-ink-dim); font-size: 13.5px; max-width: 70ch; }
+.app-nu .nua-stats { grid-template-columns: repeat(6, 1fr); }
+.app-nu .nua-bstats { grid-template-columns: repeat(2, minmax(0, 240px)); }
+
+.app-nu .nua-explain {
+  margin: 14px 21px 0; padding: 12px 16px;
+  border-radius: var(--nu-r-sm); border: 1px solid var(--nu-line);
+  background: var(--nu-card-2); color: var(--nu-ink-dim);
+  font-size: 12.5px; line-height: 1.55;
+}
+.app-nu .nua-explain b { color: var(--nu-ink); }
+
+@media (max-width: 1400px) { .app-nu .nua-stats { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 900px) {
+  .app-nu .nua-stats { grid-template-columns: 1fr 1fr; }
+  .app-nu .nua-head, .app-nu .nua-explain { padding-left: 12px; padding-right: 12px; margin-left: 0; margin-right: 0; }
+  .app-nu .nua-explain { margin: 14px 12px 0; }
+}
+
+/* ---------------------------------------------------------------- IV Crush Check */
+.app-nu .niv-top { margin-bottom: 0; }
+.app-nu .niv-top-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.app-nu .niv-top-list li {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 13px; border-radius: var(--nu-r-sm);
+  border: 1px solid var(--nu-line); background: var(--nu-card-2);
+  font-size: 12.5px;
+}
+.app-nu .niv-top-list b { font-size: 13px; }
+
+/* ---------------------------------------------------------------- Signal History */
+.app-nu .nsh-table th, .app-nu .nsh-table td { padding: 8px 10px; }
+.app-nu .nsh-move { font-weight: 700; font-size: 13px; }
+.app-nu .nsh-move.up { color: var(--nu-up); }
+.app-nu .nsh-move.down { color: var(--nu-down); }
+.app-nu .nsh-calls { grid-template-columns: repeat(3, minmax(0, 240px)); }
+.app-nu .nsh-lookup { position: relative; display: inline-flex; align-items: center; }
+.app-nu .nsh-lookup svg { position: absolute; right: 9px; color: var(--nu-ink-dim); pointer-events: none; }
+.app-nu .nsh-lookup input { padding-right: 30px; min-width: 210px; }
+.app-nu .nsh-clear {
+  align-self: flex-end; height: 36px; padding: 0 12px; cursor: pointer;
+  border-radius: var(--nu-r-sm); border: 1px solid var(--nu-accent);
+  background: transparent; color: var(--nu-accent); font-size: 12.5px; font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- Forward Scoreboard */
+.app-nu .nfs-warn {
+  display: flex; align-items: flex-start; gap: 10px;
+  margin: 14px 21px 0; padding: 12px 16px;
+  border-radius: var(--nu-r-sm);
+  border: 1px solid var(--nu-warn); background: var(--nu-card);
+  color: var(--nu-ink); font-size: 12.5px; line-height: 1.55;
+}
+.app-nu .nfs-warn svg { flex: 0 0 auto; color: var(--nu-warn); margin-top: 1px; }
+.app-nu .nfs-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--nu-gap);
+  padding: 0 21px; margin-top: 16px;
+}
+.app-nu .nfs-grid .nd-table th { font-size: 11px; }
+@media (max-width: 1200px) { .app-nu .nfs-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 900px) {
+  .app-nu .nfs-grid { grid-template-columns: 1fr; padding: 0 12px; }
+  .app-nu .nfs-warn { margin: 14px 12px 0; }
+}
+
+/* ---------------------------------------------------------------- Stocks */
+/* The frame sets the ticker in a bold sans and every figure in a monospace, so the columns line up
+   digit by digit down a 500-row list. That alignment is the whole readability of this page. */
+.app-nu .nsk-head { padding: 4px 4px 10px; }
+.app-nu .nsk-table thead th { background: var(--nu-card-2); }
+.app-nu .nsk-sort {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: inherit; font: inherit; font-weight: 600;
+}
+.app-nu .nsk-sort:hover { color: var(--nu-accent); }
+.app-nu .nsk-row { cursor: pointer; }
+.app-nu .nsk-sym { color: var(--nu-accent); font-size: 15px; font-weight: 700; }
+.app-nu .nsk-num {
+  font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13.5px; font-variant-numeric: tabular-nums;
+}
+.app-nu .nsk-filters .nsh-lookup input { min-width: 320px; }
+@media (max-width: 900px) {
+  .app-nu .nsk-filters .nsh-lookup input { min-width: 0; width: 100%; }
+}
+
+/* ---------------------------------------------------------------- News & Sentiment */
+.app-nu .nnw-head { display: flex; align-items: flex-start; gap: 14px; }
+.app-nu .nnw-head > div { flex: 1 1 auto; min-width: 0; }
+.app-nu .nnw-back, .app-nu .nnw-refresh {
+  display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+  border-radius: var(--nu-r-sm); border: 1px solid var(--nu-line);
+  background: var(--nu-card); color: var(--nu-ink);
+  font-size: 13px; font-weight: 600;
+}
+.app-nu .nnw-back { width: 36px; height: 36px; justify-content: center; margin-top: 4px; }
+.app-nu .nnw-refresh { height: 36px; padding: 0 14px; margin-top: 4px; }
+.app-nu .nnw-back:hover, .app-nu .nnw-refresh:hover { border-color: var(--nu-accent); color: var(--nu-accent); }
+
+.app-nu .nnw-top { display: grid; grid-template-columns: 1.4fr 1fr; gap: var(--nu-gap); padding: 0 21px; margin-top: 16px; }
+.app-nu .nnw-quote { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.app-nu .nnw-sym { font-size: 22px; color: var(--nu-ink); display: block; }
+.app-nu .nnw-price { text-align: right; }
+.app-nu .nnw-price b { font-size: 24px; color: var(--nu-ink); }
+.app-nu .nnw-price i { display: block; font-style: normal; font-size: 13px; font-weight: 600; }
+.app-nu .nnw-score-body { display: flex; align-items: center; gap: 12px; }
+.app-nu .nnw-score-body b { font-size: 34px; color: var(--nu-ink); }
+.app-nu .nnw-score-body b small { font-size: 14px; color: var(--nu-ink-dim); font-weight: 500; }
+.app-nu .nnw-score-body b.up { color: var(--nu-up); }
+.app-nu .nnw-score-body b.down { color: var(--nu-down); }
+
+.app-nu .nnw-n {
+  margin-left: 6px; padding: 1px 6px; border-radius: 999px;
+  background: rgba(0, 0, 0, .08); font-size: 11px;
+}
+.app-nu .nd-tabs button.is-on .nnw-n { background: rgba(255, 255, 255, .25); }
+
+.app-nu .nnw-list { list-style: none; margin: 0; padding: 0; }
+.app-nu .nnw-list li {
+  display: grid; grid-template-columns: 112px 1fr auto auto; gap: 12px; align-items: center;
+  padding: 9px 4px; border-bottom: 1px solid var(--nu-line); font-size: 13px;
+}
+.app-nu .nnw-list li:last-child { border-bottom: 0; }
+.app-nu .nnw-time { color: var(--nu-ink-dim); font-size: 11.5px; white-space: nowrap; }
+.app-nu .nnw-headline {
+  color: var(--nu-ink); text-decoration: none; line-height: 1.45;
+  display: inline-flex; align-items: baseline; gap: 6px;
+}
+.app-nu .nnw-headline:hover { color: var(--nu-accent); }
+.app-nu .nnw-prov {
+  padding: 2px 9px; border-radius: 6px; background: var(--nu-card-2);
+  color: var(--nu-ink-dim); font-size: 11px; white-space: nowrap;
+}
+
+.app-nu .nnw-bottom { display: grid; grid-template-columns: 1fr 1.2fr 0.9fr; gap: var(--nu-gap); padding: 0 21px; margin-top: 16px; }
+.app-nu .nnw-alerts, .app-nu .nnw-provs { list-style: none; margin: 0; padding: 0; }
+.app-nu .nnw-alerts li { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--nu-line); }
+.app-nu .nnw-alerts li:last-child { border-bottom: 0; }
+.app-nu .nnw-alerts b { font-size: 13px; color: var(--nu-ink); display: block; }
+.app-nu .nnw-alerts p { margin: 3px 0 0; font-size: 12px; color: var(--nu-ink-dim); line-height: 1.45; }
+.app-nu .nnw-alerts i { font-style: normal; font-size: 11px; color: var(--nu-ink-dim); opacity: .8; }
+.app-nu .nnw-sev {
+  flex: 0 0 auto; align-self: flex-start; padding: 2px 9px; border-radius: 6px;
+  font-size: 11px; font-weight: 700; text-transform: capitalize;
+  background: var(--nu-card-2); color: var(--nu-ink-dim);
+}
+.app-nu .nnw-sev.high { background: #ffe9e9; color: var(--nu-down); }
+.app-nu .nnw-sev.medium { background: #fff4e0; color: var(--nu-warn); }
+.app-nu .nnw-provs li { padding: 9px 0; border-bottom: 1px solid var(--nu-line); font-size: 13px; color: var(--nu-ink); }
+.app-nu .nnw-provs li:last-child { border-bottom: 0; }
+
+@media (max-width: 1100px) {
+  .app-nu .nnw-top, .app-nu .nnw-bottom { grid-template-columns: 1fr; }
+}
+@media (max-width: 900px) {
+  .app-nu .nnw-top, .app-nu .nnw-bottom { padding: 0 12px; }
+  .app-nu .nnw-list li { grid-template-columns: 1fr; gap: 4px; }
+}
+
+/* ---------------------------------------------------------------------------
+   Smart Money Move in the redesigned shell (NewSmartMovePage).
+
+   STYLING ONLY. The four views below the header are the LIVE ones, imported
+   from SmartMoveEngine20Page, so their `sm-*` markup belongs to that page and
+   is not ours to change; these rules only re-surface it. No scanner behaviour,
+   wording or category is touched here.
+   ------------------------------------------------------------------------ */
+
+.app-nu .nsm-hero { min-height: 180px; }
+.app-nu .nsm-hero h1 { font-size: 34px; margin: 14px 0 8px; color: #fff; }
+.app-nu .nsm-hero p { max-width: 58ch; }
+.app-nu .nsm-hero .nd-eyebrow { display: inline-flex; align-items: center; gap: 7px; }
+
+.app-nu .nsm-tabs { padding-left: 0; padding-right: 0; }
+.app-nu .nsm .sm-tab {
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  color: var(--nu-ink-dim);
+  background: transparent;
+  border: 1px solid var(--nu-line);
+}
+.app-nu .nsm .sm-tab.on {
+  background: var(--nu-pill-grad);
+  border-color: var(--nu-pill-line);
+  color: var(--nu-pill-ink);
+}
+
+/* The count tiles and the results table as cards on the new surface. */
+.app-nu .nsm .sm-card,
+.app-nu .nsm .sm-table-wrap,
+.app-nu .nsm .sm-q-banner,
+.app-nu .nsm .sm-q-state {
+  background: var(--nu-card);
+  border: 1px solid var(--nu-line);
+  border-radius: var(--nu-r);
+  box-shadow: var(--nu-shadow);
+}
+.app-nu .nsm .sm-card-k { color: var(--nu-ink-dim); }
+.app-nu .nsm .sm-card-v { color: var(--nu-ink); }
+.app-nu .nsm .sm-q-muted { color: var(--nu-ink-dim); }
+.app-nu .nsm .sm-table th { color: var(--nu-ink-dim); }
+.app-nu .nsm .sm-table td { border-color: var(--nu-line); }
+
+@media (max-width: 900px) {
+  .app-nu .nsm-hero h1 { font-size: 26px; }
+}
+
+/* The Smart Money Move band carries no image on purpose - see NewSmartMovePage.tsx. The gradient is
+   the frame's own, so the header still reads as designed without printing invented figures. */
+.app-nu .nsm-hero {
+  background: linear-gradient(180deg, rgb(2, 17, 47) 0%, rgb(2, 22, 56) 38%, rgb(23, 49, 110) 100%);
+}

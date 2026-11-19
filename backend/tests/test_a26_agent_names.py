@@ -16,7 +16,10 @@ sys.path.insert(0, str(ROOT))
 import demo_trade_service as dts  # noqa: E402
 import mt5_autotrade as mt5  # noqa: E402
 
-SIDEBAR = (ROOT.parent / "frontend" / "src" / "components" / "Sidebar.tsx").read_text(encoding="utf-8")
+# The menu moved from Sidebar.tsx into navModel.tsx when the redesigned shell was added, so the
+# existing sidebar and the new one read ONE list. These checks follow it; a separate test
+# (test_stage1_shell_flag) pins that neither shell declares a menu of its own.
+SIDEBAR = (ROOT.parent / "frontend" / "src" / "components" / "navModel.tsx").read_text(encoding="utf-8")
 APP = (ROOT.parent / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
 PAGE = (ROOT.parent / "frontend" / "src" / "pages" / "StrategyTradesPage.tsx").read_text(encoding="utf-8")
 ROUTES = (ROOT / "api_routes.py").read_text(encoding="utf-8")
