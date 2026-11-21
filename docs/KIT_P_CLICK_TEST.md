@@ -147,3 +147,58 @@ trades, so the table and pager do not exist until a trading date is chosen).
 3. **Raw internal codes in the row detail**: "blocked: SUSPECT_WINDOW, INSUFFICIENT_COVERAGE" is
    shown to users. Same class as the factor codes the owner made admin-only in M12 ("plain wording
    for users, codes for administrators"). Owner's call whether to apply the same rule here.
+
+## Page 4 - Watchlist - DONE (non-admin, dark). Kit O shipped this page.
+
+| control | result |
+|---------|--------|
+| Search (US common stock + ADRs) | **works**, and the universe built: 3,755 tickers. "BAB" -> 2, "BABA" -> "BABA Alibaba Group Holding Ltd ADR" |
+| Add from a result | **works** - BABA added, selected, search and results cleared, persisted to localStorage |
+| Remove (bin icon) | **works** - 5 -> 4 |
+| Select a symbol | **works** - detail heading and the live quote follow |
+| TradingView widgets | **both mount**, both attribution blocks render |
+
+### Defects
+
+1. **Bid / Ask / Spread read "$0.00" when the market is closed.** The provider returns a literal
+   `0` (a number, not null) for bid and ask out of hours, and the formatter prints it as a price.
+   A bid of zero is not a bid - it reads as a real quote of nothing. Treat 0 as absent and say so.
+2. **The provenance line prints raw seconds**: "read once when you picked AAPL, 32973s ago".
+   That is 9.2 hours. Format it, or say "at the last session's close".
+3. Minor: the first search after a restart can come back empty while the 24h universe builds. That
+   is the fail-closed design working, but the reader just sees an empty box.
+
+## Page 5 - News & Sentiment - DONE (non-admin, dark)
+
+| control | result |
+|---------|--------|
+| Tone tabs All / Positive / Neutral / Negative / No score | **all work** - 40 / 8 / 1 / 7 / 24, and 8+1+7+24 = 40 |
+| Headline search | **works** - "Huang" gives 4 of 40 |
+| Pagination (kit O) | **works live** - "Showing 1-20 of 40 headlines", buttons 1 / 2 / >, page 2 shows 21-40 |
+| Sidebar navigation to and from the page | **works** |
+| Sentiment score, providers | render (55/100; Blockchain News, Tradex, PR NewsWire) |
+
+### Defect
+
+4. **Every headline is a dead link.** All 40 items come back with `url: null` - from every
+   provider - so the feed genuinely carries no links. That part is not ours. What IS ours: we
+   still render an `<a>` for each one, so it looks clickable, takes the cursor, and does nothing.
+   Render a headline with no URL as plain text.
+
+### Two of my own test errors, recorded
+
+- I reported News as showing "0 headlines". It does not: I navigated with `history.pushState`,
+  which does not remount the component, so nothing refetched. A hard load and the real sidebar
+  link both show 40. Driving an SPA by pushState is not the same as using it.
+- I reported the headline search as doing nothing, having searched "Nvidia" on the NVDA page -
+  where every headline matches. The query was meaningless, not the feature.
+
+## Page 6 - Market Overview - DONE (non-admin, dark). No defects found.
+
+| control | result |
+|---------|--------|
+| "What do these numbers mean?" | **toggles** - 0 -> 629px and back |
+| Refresh | **works** - no crash, 5 index cards and 5 sparklines still render |
+| Heatmap tile (53 of them) | **works** - NVDA -> /earnings/NVDA, which renders (12 cards) |
+| Stock search + Go | **works** - TSLA -> /dashboard/TSLA, which renders ("TSLA - Tesla, INC.", 10 cards) |
+| Index cards / sparklines / sectors / gainers / tide | 5 / 5 / 11 / 10 / present |
