@@ -79,7 +79,12 @@ def main() -> int:
     # deliberately: it is the natural Windows shape, PowerShell reads either, and the published
     # SHA-256 is the hash of what is actually on disk. Regenerating it to win a cosmetic argument
     # would invalidate a hash the operator already holds.
-    io.open(DST, "w", encoding="utf-8", newline="\r\n").write(out)
+    # newline="" PRESERVES whatever the source used instead of translating it. Kit N's runner is
+    # CRLF, and asking Python to write CRLF turned every existing CR-LF pair into CR-CR-LF: the
+    # file still ran, but PowerShell counted 503 lines where there are 253, so no stated hash
+    # could be trusted. Kit N never hit this because ITS source was LF and the translation was a
+    # no-op. Preserving is correct whichever shape the previous letter used.
+    io.open(DST, "w", encoding="utf-8", newline="").write(out)
     digest = hashlib.sha256(DST.read_bytes()).hexdigest()
     print(f"wrote {DST}")
     print(f"  bytes      {DST.stat().st_size}")
