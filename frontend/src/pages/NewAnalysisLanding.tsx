@@ -4,7 +4,7 @@ import { CalendarDays, Database, Gauge, Layers, Radio, Target, Zap } from 'lucid
 import {
   Area, AreaChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
-import { api2 } from '../api/client';
+import { api, api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import type { PageContext } from '../App';
 import type { LandingParts } from './InsightsPage';
@@ -140,7 +140,7 @@ export default function NewAnalysisLanding({
     if (range === '1D' || !featSym || extra[`${featSym}:${range}`]) return;
     let live = true;
     const ctrl = new AbortController();
-    api2.chart(featSym, range, ctrl.signal)
+    api.chart(featSym, range, ctrl.signal)
       .then((r: any) => { if (live) setExtra((p) => ({ ...p, [`${featSym}:${range}`]: r?.bars || [] })); })
       .catch(() => { /* the card keeps the range it has */ });
     return () => { live = false; ctrl.abort(); };

@@ -1,0 +1,1 @@
+function e(){throw Error(`design preview is development-only`)}export{e as default};
