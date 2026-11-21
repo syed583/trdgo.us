@@ -320,8 +320,11 @@
 .nal .nal-strip-item i.up, .nal .up { color: var(--nu-up); }
 .nal .nal-strip-item i.down, .nal .down { color: var(--nu-down); }
 
+/* Two columns, not three: Options flow moved up into .nal-row3 as the frame's contract table, and
+   a 3-column grid holding 2 cards left an empty third of the page. */
 .nal .nal-row2 {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--nu-gap); margin-top: var(--nu-gap);
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+  gap: var(--nu-gap); margin-top: var(--nu-gap);
 }
 .nal .nal-mini { padding: 14px 16px; }
 .nal .nal-mini .nd-card-head { padding: 0 0 10px; }
@@ -357,3 +360,97 @@
   .nal .nal-row2 { grid-template-columns: 1fr; }
 }
 .nal .nal-strip-item i.flat, .nal .nal-sectors i.flat { color: var(--nu-ink-dim); }
+
+/* --------------------------------------- landing: proxy labels, stat row, featured card */
+/* "via SPY" beside the label. The number IS the proxy's price; saying so is what makes it right. */
+.nal .nal-via, .anp-via {
+  font-style: normal; margin-left: 6px; padding: 1px 6px; border-radius: 999px;
+  font-size: 10px; letter-spacing: .02em;
+  background: var(--nu-card-2); border: 1px solid var(--nu-line); color: var(--nu-ink-dim);
+}
+/* "unavailable" / "no reading" are words, not numbers - they must not read as a value. */
+.nal .nal-na { font-style: normal; font-size: 12px; font-weight: 500; color: var(--nu-ink-dim); }
+.nal b.nal-na { font-size: 13px; }
+
+.nal .nal-stats {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--nu-gap); margin-top: var(--nu-gap);
+}
+.nal .nal-stat {
+  display: flex; align-items: center; gap: 12px; padding: 13px 15px;
+  background: var(--nu-card); border: 1px solid var(--nu-line);
+  border-radius: var(--nu-r); box-shadow: var(--nu-shadow);
+}
+.nal .nal-stat-ico {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border-radius: 10px; flex: 0 0 36px;
+}
+.nal .nal-stat-ico.blue   { background: rgba(28, 97, 245, .12); color: var(--nu-accent-2); }
+.nal .nal-stat-ico.violet { background: rgba(124, 77, 255, .12); color: #7c4dff; }
+.nal .nal-stat-ico.green  { background: rgba(22, 163, 74, .12); color: var(--nu-up); }
+.nal .nal-stat-ico.amber  { background: rgba(217, 119, 6, .14); color: var(--nu-warn); }
+.nal .nal-stat b { display: block; font-size: 19px; color: var(--nu-ink); line-height: 1.15; }
+.nal .nal-stat span { display: block; font-size: 12.5px; color: var(--nu-ink); }
+.nal .nal-stat i { display: block; font-style: normal; font-size: 11px; color: var(--nu-ink-dim); }
+
+.nal .nal-featured { margin-top: var(--nu-gap); padding: 14px 16px; }
+.nal .nal-feat-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; flex-wrap: wrap; padding-bottom: 12px; border-bottom: 1px solid var(--nu-line);
+}
+.nal .nal-feat-head h3 { margin: 0; font-size: 20px; color: var(--nu-ink); }
+.nal .nal-feat-price { text-align: right; }
+.nal .nal-feat-price b { display: block; font-size: 22px; color: var(--nu-ink); }
+.nal .nal-feat-price i { font-style: normal; font-size: 12.5px; }
+.nal .nal-feat-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 12px;
+}
+.nal .nal-feat-grid > div {
+  padding: 8px 10px; border-radius: var(--nu-r-sm);
+  background: var(--nu-card-2); border: 1px solid var(--nu-line);
+}
+.nal .nal-feat-grid span { display: block; font-size: 11px; color: var(--nu-ink-dim); }
+.nal .nal-feat-grid b { display: block; margin-top: 2px; font-size: 14.5px; color: var(--nu-ink); }
+.nal .nal-feat-note { margin: 10px 0 0; font-size: 11.5px; color: var(--nu-ink-dim); }
+
+@media (max-width: 900px) {
+  .nal .nal-stats { grid-template-columns: 1fr; }
+  .nal .nal-feat-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* ------------------------------------ landing: earnings calendar, flow tape, sector bars */
+.nal .nal-row3 {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+  gap: var(--nu-gap); margin-top: var(--nu-gap);
+}
+.nal .nal-cal, .nal .nal-tape { padding: 14px 16px; }
+.nal .nal-cal .nd-card-head, .nal .nal-tape .nd-card-head { padding: 0 0 10px; flex-wrap: wrap; gap: 8px; }
+.nal .nal-cal h3, .nal .nal-tape h3 {
+  display: inline-flex; align-items: center; gap: 7px; font-size: 13.5px;
+}
+.nal .nal-chip-n {
+  font-style: normal; margin-left: 6px; padding: 0 5px; border-radius: 999px;
+  font-size: 10px; background: var(--nu-card-2); color: var(--nu-ink-dim);
+}
+.nal .nd-tabs button.is-on .nal-chip-n { background: rgba(255,255,255,.2); color: inherit; }
+.nal .nal-cal-co { font-size: 11px; }
+.nal .nal-cal-table td, .nal .nal-tape-table td { padding-top: 7px; padding-bottom: 7px; }
+
+.nal .nal-flow-sum {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  font-size: 11.5px; color: var(--nu-ink-dim);
+}
+.nal .nal-flow-sum b { color: var(--nu-ink); }
+.nal .nal-flow-sum b.up { color: var(--nu-up); }
+.nal .nal-flow-sum b.down { color: var(--nu-down); }
+
+/* sector bars: name, bar, percentage */
+.nal .nal-sectors li { display: grid; grid-template-columns: 1fr 90px auto; align-items: center; gap: 10px; }
+.nal .nal-bar {
+  display: block; height: 6px; border-radius: 999px; background: var(--nu-card-2);
+  border: 1px solid var(--nu-line); overflow: hidden;
+}
+.nal .nal-bar i { display: block; height: 100%; border-radius: 999px; }
+.nal .nal-bar i.up { background: var(--nu-up); }
+.nal .nal-bar i.down { background: var(--nu-down); }
+
+@media (max-width: 1100px) { .nal .nal-row3 { grid-template-columns: 1fr; } }

@@ -52,7 +52,7 @@ const NAV_GROUPS: NavGroup[] = [
     // Comparison left the menu. Their ROUTES still work (/tradgo-call, /trade-plan, /signal-history, /peers) and every
     // module stays on disk, because the earnings pages, the signal-colouring route and the snapshot warmer import them.
     // Nothing was deleted. Trade Plan's background scanner and its Claude read are off (main.py, trade_plan_service).
-    { to: '/smart-move/engine20', label: 'Smart Money Move (LIVE)', icon: <Gauge size={S} /> },
+    { to: '/smart-move/engine20', label: 'Smart Money (LIVE)', icon: <Gauge size={S} /> },
   ] },
   { heading: 'Earnings & news', items: [
     { to: '/earnings-calendar', label: 'Earnings Calendar', icon: <CalendarDays size={S} /> },

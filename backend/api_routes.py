@@ -2100,11 +2100,162 @@ def fundamentals(symbol: str) -> dict:
 
 
 @router.get("/movers")
-def market_movers(limit: int = 25) -> dict:
-    """The day's biggest movers."""
+def market_movers(limit: int = 25, min_price: float = 5.0,
+                  min_market_cap: float = 2_000_000_000.0) -> dict:
+    """The day's biggest movers, above a price and size floor.
+
+    The floor defaults to $5 and $2bn (owner decision 2026-11-20) because the raw feed ranks by
+    volume alone and filled the panel with sub-dollar micro-caps. Pass 0 for either to switch it off.
+    """
     import uw_screener_service as screen
 
-    return swr.serve(f"movers:{limit}", lambda: screen.movers(limit), 300)
+    mp = max(0.0, float(min_price or 0))
+    mc = max(0.0, float(min_market_cap or 0))
+    return swr.serve(f"movers:{limit}:{mp}:{mc}",
+                     lambda: screen.movers(limit, mp, mc), 300)
+
+
+def _landing_sparkline_symbols() -> list[str]:
+    """The symbols the landing would draw a sparkline for: the index proxies and the movers shown."""
+    import market_pulse_service as mp
+    import uw_screener_service as screen
+
+    names: list[str] = []
+    for card in mp.INDEX_CARDS:
+        proxy = card.get("proxy")
+        if proxy and proxy not in names:
+            names.append(str(proxy).upper())
+    # The UNION of what each tab shows, not the feed's own first six. The panel sorts its 25 rows
+    # by volume, by gain and by loss and takes six - so seeding this from rows[:6] produced a set
+    # that matched none of the three, and every line came back empty. Measured locally: the Most
+    # Active six and the feed's first six had no symbol in common.
+    try:
+        rows = [r for r in ((screen.movers(25) or {}).get("rows") or []) if r.get("symbol")]
+        orders = (
+            sorted(rows, key=lambda r: r.get("volume") or 0, reverse=True),
+            sorted(rows, key=lambda r: r.get("change_percent") or 0, reverse=True),
+            sorted(rows, key=lambda r: r.get("change_percent") or 0),
+        )
+        for order in orders:
+            for row in order[:6]:
+                sym = str(row["symbol"]).upper()
+                if sym not in names:
+                    names.append(sym)
+    except Exception:  # noqa: BLE001 - the index proxies alone are still a usable answer
+        pass
+    return names
+
+
+@router.get("/landing/sparklines")
+def landing_sparklines() -> dict:
+    """Intraday closes for the landing's index cards and movers rows - one shared, cached payload.
+
+    ON, by the owner's decision of 2026-11-20 once the cost was measured. Neither the pulse nor the
+    movers feed carries a price series, so every line here is a provider request - there was no free
+    path and saying so was the point. LANDING_SPARKLINES=0 turns it off again, and in that state the
+    cards render with no line at all rather than a placeholder.
+
+    Switched on it costs a FIXED number of requests per 300s window shared by every reader - at
+    most 22 (4 index proxies + the union of the movers panel's three tabs, each six rows), so about
+    2,100 a trading day, roughly 2% of the 100k essential rail. Not one per visit, not one per row.
+    """
+    import os
+
+    # ON by default since 2026-11-20, the owner having seen the cost: at most 22 chart requests per
+    # 300s window shared by every reader (4 index proxies + the union of the movers panel's three
+    # tabs), about 2,100 a trading day, roughly 2% of the 100k essential rail. Set
+    # LANDING_SPARKLINES=0 to turn it off again without a deploy.
+    if str(os.getenv("LANDING_SPARKLINES", "1")).strip().lower() not in {"1", "true", "yes", "on"}:
+        return {"status": "DISABLED", "series": {},
+                "note": "LANDING_SPARKLINES is set to off."}
+
+    def build() -> dict:
+        series: dict[str, list] = {}
+        for symbol in _landing_sparkline_symbols():
+            try:
+                bars = (market.get_chart(symbol, "1D") or {}).get("bars") or []
+            except Exception:  # noqa: BLE001 - one missing line is not a failed payload
+                bars = []
+            closes = [b.get("close") for b in bars if b and b.get("close") is not None]
+            if len(closes) > 1:
+                series[symbol] = [round(float(c), 4) for c in closes]
+        return {"status": "OK", "series": series, "symbols": list(series)}
+
+    return swr.serve("landing:sparklines", build, 300.0)
+
+
+@router.get("/landing/featured")
+def landing_featured() -> dict:
+    """The symbol the Analysis landing draws its detail card for, with its quote and chart.
+
+    ONE SHARED REQUEST, NOT ONE PER PAGE LOAD. The landing has no symbol of its own, so without a
+    cached pick here every visit to the busiest page in the app would cost a quote and a chart.
+    This picks once, caches for everyone, and the browser just reads the result.
+
+    The pick is the largest-cap name among today's movers, so the card shows a name a reader
+    recognises; NVDA is the fallback when the movers feed has nothing to offer.
+    """
+    import uw_screener_service as screen
+
+    def build() -> dict:
+        symbol = "NVDA"
+        try:
+            rows = (screen.movers(25) or {}).get("rows") or []
+            ranked = [r for r in rows if r.get("market_cap")]
+            if ranked:
+                symbol = str(max(ranked, key=lambda r: r["market_cap"])["symbol"]).upper()
+            elif rows:
+                symbol = str(rows[0]["symbol"]).upper()
+        except Exception:  # noqa: BLE001 - the fallback symbol is always usable
+            pass
+        quote = market.get_quote(symbol) or {}
+        # The frame's detail card draws an INTRADAY chart (its axis reads 10:00 to 15:00), so 1D is
+        # what the card opens on. 5D and 1M are fetched by the browser from /api/chart only when a
+        # reader actually presses that tab - both are shared, server-cached series, so the tabs cost
+        # nothing on a visit that does not use them.
+        chart = {}
+        try:
+            chart = market.get_chart(symbol, "1D") or {}
+        except Exception:  # noqa: BLE001 - a card without its chart still carries the quote
+            chart = {"status": "DATA_UNAVAILABLE"}
+
+        # RSI(14), ATR(14) and the trend read in the frame's tiles are computed from DAILY bars that
+        # this builder fetches once and shares. They are arithmetic over a series, not a provider
+        # product, so they cost one cached chart request per window and nothing per reader.
+        #
+        # The frame's fourth tile, "AI Score", is NOT here: that number comes from an analysis run,
+        # nothing stores a finished run per symbol, and starting one on every visit to the busiest
+        # page is exactly the per-visit cost this endpoint exists to avoid. The card hides the tile
+        # rather than showing a figure it cannot stand behind.
+        technicals: dict = {}
+        try:
+            from technical_service import calculate_technicals
+
+            daily = (market.get_chart(symbol, "6M") or {}).get("bars") or []
+            technicals = calculate_technicals(daily) or {}
+        except Exception:  # noqa: BLE001 - the tiles are omitted, the card still stands
+            technicals = {}
+        # The landing's "names tracked" figure. Taken from the screener snapshot this builder has
+        # already loaded (movers joins it for the cap floor), so the count costs nothing extra and
+        # is a real count rather than a number typed into the page.
+        tracked = None
+        try:
+            import screener_service as sc
+
+            tracked = (sc.get_all_stocks() or {}).get("count")
+        except Exception:  # noqa: BLE001
+            tracked = None
+        return {"status": "OK", "symbol": symbol, "quote": quote, "chart": chart,
+                "technicals": {
+                    "rsi_14": technicals.get("rsi_14"),
+                    "atr_14": technicals.get("atr_14"),
+                    "trend": technicals.get("trend"),
+                },
+                "names_tracked": tracked,
+                "picked": "largest market cap among today's movers, else NVDA"}
+
+    # Same cadence as the movers panel beside it, so the card and the list never disagree.
+    return swr.serve("landing:featured", build, market.session_ttl(60, 900))
 
 
 @router.get("/shorts/{symbol}")

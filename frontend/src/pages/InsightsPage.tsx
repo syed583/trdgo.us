@@ -220,8 +220,9 @@ export default function InsightsPage({ ctx }: { ctx: PageContext }) {
     );
     // The panels are the live ones, built here and handed over, so the redesign cannot drift from
     // what the classic landing shows.
-    const panels = (
-      <LandingPanels ctx={ctx} onPick={(sym) => { setDraft(sym); if (!ctx.readOnly) analyse(sym); }} />
+    const panels = (layout?: (p: LandingParts) => React.ReactNode) => (
+      <LandingPanels ctx={ctx} layout={layout}
+        onPick={(sym) => { setDraft(sym); if (!ctx.readOnly) analyse(sym); }} />
     );
     if (ctx.newUi) return <NewAnalysisLanding ctx={ctx} controls={controls} panels={panels} />;
     return (
@@ -326,7 +327,19 @@ function PanelNote({ loading, what }: { loading: boolean; what: string }) {
 const sparkFor = (up: boolean, real?: number[]) =>
   (real && real.length > 1) ? real : null;      // no series, no drawing - never an invented shape
 
-function LandingPanels({ onPick, ctx }: { onPick: (s: string) => void; ctx: PageContext }) {
+/** The three live landing panels.
+ *
+ * `layout` exists because frame 2:2 does not stack these three in one strip: Top Movers sits in a
+ * three-up row beside the featured symbol and the earnings calendar. Rendering the panels as parts
+ * lets the redesigned landing place them where the frame puts them WITHOUT a second copy of their
+ * data logic - the hooks below still run once, in this component, whoever arranges the output.
+ */
+export type LandingParts = { movers: React.ReactNode; overview: React.ReactNode; news: React.ReactNode };
+
+function LandingPanels({ onPick, ctx, layout }: {
+  onPick: (s: string) => void; ctx: PageContext;
+  layout?: (p: LandingParts) => React.ReactNode;
+}) {
   const navigate = useNavigate();
   const news = useApi<any>((s) => api2.newsDesk(s), [], { refreshMs: 120_000 });
   const upcoming = useApi<any>((s) => api2.earningsUpcoming(10, s), []);
@@ -337,6 +350,30 @@ function LandingPanels({ onPick, ctx }: { onPick: (s: string) => void; ctx: Page
   // The day's movers, from the provider. This panel never had a real source at all: it sorted a fixed
   // six-row specimen set and presented it as the market.
   const moversApi = useApi<any>((s) => api2.movers(25, s), [], { refreshMs: 300_000 });
+  // Frame 2:2 draws a line beside each mover. /api/movers has no series - see the note below - so
+  // it comes from the landing's shared sparkline payload, which answers DISABLED until the owner
+  // switches it on. Disabled means the column is not rendered at all.
+  const sparkApi = useApi<any>((s) => api2.landingSparklines(s), [], { refreshMs: 300_000 });
+  const sparkSeries: Record<string, number[]> = sparkApi.data?.series || {};
+  const hasSparks = Object.keys(sparkSeries).length > 0;
+  const Spark = ({ symbol, up }: { symbol: string; up: boolean }) => {
+    const pts = sparkSeries[String(symbol).toUpperCase()];
+    if (!pts || pts.length < 2) return <span className="r" />;
+    const lo = Math.min(...pts);
+    const hi = Math.max(...pts);
+    const span = hi - lo || 1;
+    const d = pts.map((v, i) => {
+      const x = (i / (pts.length - 1)) * 100;
+      const y = 100 - ((v - lo) / span) * 100;
+      return `${i ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`;
+    }).join(' ');
+    return (
+      <svg className="anp-spark r" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        <path d={d} fill="none" strokeWidth={4} vectorEffect="non-scaling-stroke"
+          stroke={up ? '#15c86e' : '#fe374a'} />
+      </svg>
+    );
+  };
   const movers = useMemo(() => {
     const r = [...(moversApi.data?.rows || [])].filter((x: any) => x && x.symbol);
     if (mv === 'active') r.sort((a, b) => (b.volume || 0) - (a.volume || 0));
@@ -351,9 +388,7 @@ function LandingPanels({ onPick, ctx }: { onPick: (s: string) => void; ctx: Page
 
   const tab = (on: boolean) => `anp-tab ${on ? 'on' : ''}`;
 
-  return (
-    <div className="anp-grid">
-      {/* Top Movers */}
+  const moversCard = (
       <div className="anp-card">
         <div className="anp-head">
           <h3>Top Movers</h3>
@@ -363,54 +398,67 @@ function LandingPanels({ onPick, ctx }: { onPick: (s: string) => void; ctx: Page
             <button className={tab(mv === 'losers')} onClick={() => setMv('losers')}>Losers</button>
           </div>
         </div>
-        <div className="anp-trow anp-m5 anp-thead">
+        <div className={`anp-trow anp-m5 anp-thead${hasSparks ? ' anp-m5s' : ''}`}>
           <span>Symbol</span><span className="r">Price</span><span className="r">Change</span>
-          <span className="r">Volume</span><span className="r">Chart</span>
+          {/* The Chart column exists only when a series does. /api/movers carries none of its own. */}
+          {hasSparks && <span className="r">Chart</span>}
+          <span className="r">Volume</span>
         </div>
         {!movers.length && <PanelNote loading={moversApi.loading} what="movers" />}
         {movers.map((m) => {
           const up = m.change_percent >= 0;
           return (
-            <button key={m.symbol} className="anp-trow anp-m5 anp-click" onClick={() => onPick(m.symbol)}>
+            <button key={m.symbol} className={`anp-trow anp-m5 anp-click${hasSparks ? ' anp-m5s' : ''}`}
+              onClick={() => onPick(m.symbol)}>
               <span className="anp-sym"><Dot sym={m.symbol} /> {m.symbol}</span>
               <span className="r">{money(m.price)}</span>
               <span className={`r ${up ? 'pos' : 'neg'}`}>{signedPct(m.change_percent)}</span>
+              {hasSparks && <Spark symbol={m.symbol} up={up} />}
               <span className="r anp-mute">{compact(m.volume)}</span>
               {/* The movers feed carries no price series, so this cell stays empty rather than
                   drawing a shape that is not this symbol's. */}
-              <span className="r anp-mute">—</span>
             </button>
           );
         })}
       </div>
 
-      {/* Market Overview */}
+  );
+
+  const overviewCard = (
       <div className="anp-card">
         <div className="anp-head">
           <h3>Market Overview</h3>
           <div className="anp-tabs"><button className="anp-tab on">Indices</button></div>
         </div>
         <div className="anp-trow anp-thead">
-          <span>Index</span><span className="r">Price</span><span className="r">Change</span><span className="r">Day Chart</span>
+          {/* No "Day Chart" column: /api/indices carries no price series, so it rendered a dash on
+              every row. An empty column implies data that is coming; no column states the truth. */}
+          <span>Index</span><span className="r">Price</span><span className="r">Change</span>
         </div>
         {!indices.length && <PanelNote loading={ctx.indices.loading} what="index prices" />}
         {indices.map((r) => {
           const up = (r.change_percent ?? 0) >= 0;
           return (
             <div key={r.instrument || r.label} className="anp-trow">
-              <span className="anp-sym">{r.label}</span>
-              <span className="r">{num(r.value, 2)}</span>
-              <span className={`r ${up ? 'pos' : 'neg'}`}>{signedPct(r.change_percent)}</span>
-              <span className="r">{(() => {
-                const series = sparkFor(up, r.spark);
-                return series ? <Spark data={series} up={up} /> : <span className="anp-mute">—</span>;
-              })()}</span>
+              <span className="anp-sym">
+                {r.label}
+                {/* The figure is the PROXY's price, not the index level: SPY at 710 is not the S&P
+                    at 6,800. Naming the instrument is the difference between a wrong number and a
+                    correct one. */}
+                {r.is_proxy && !!r.instrument && <em className="anp-via">via {r.instrument}</em>}
+              </span>
+              <span className="r">{r.value != null ? num(r.value, 2) : <span className="anp-mute">unavailable</span>}</span>
+              <span className={`r ${r.change_percent == null ? 'anp-mute' : up ? 'pos' : 'neg'}`}>
+                {r.change_percent != null ? signedPct(r.change_percent) : 'no reading'}
+              </span>
             </div>
           );
         })}
       </div>
 
-      {/* Earnings & News */}
+  );
+
+  const newsCard = (
       <div className="anp-card">
         <div className="anp-head">
           <h3>Earnings &amp; News</h3>
@@ -448,8 +496,11 @@ function LandingPanels({ onPick, ctx }: { onPick: (s: string) => void; ctx: Page
             </button>
           ))}
       </div>
-    </div>
   );
+
+  const parts: LandingParts = { movers: moversCard, overview: overviewCard, news: newsCard };
+  if (layout) return <>{layout(parts)}</>;
+  return <div className="anp-grid">{moversCard}{overviewCard}{newsCard}</div>;
 }
 
 /**

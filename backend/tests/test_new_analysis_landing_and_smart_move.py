@@ -82,7 +82,11 @@ def test_the_landing_is_handed_the_live_pieces_and_reads_only_page_level_sources
     code = _code(LANDING)
     assert "controls: React.ReactNode" in code and "panels: React.ReactNode" in code
     calls = set(re.findall(r"api2\.([a-zA-Z0-9_]+)", code))
-    allowed = {"marketPulse", "flowMarketSummary"}
+    # Five page-level reads, each server-cached and none keyed by a symbol the reader chose:
+    # the pulse, the flow summary and the flow tape, the earnings calendar, and the featured card
+    # (which picks its own symbol on the server and caches it for everyone - see /api/landing/featured).
+    allowed = {"marketPulse", "flowMarketSummary", "flowMarketTape",
+               "earningsUpcoming", "landingFeatured"}
     assert calls <= allowed, f"the landing reads a source it should not: {sorted(calls - allowed)}"
     for per_symbol in ("optionChain", "optionIvHistory", "api2.quote", "api2.news", "api2.sentiment"):
         assert per_symbol not in code, f"a per-symbol request on the landing: {per_symbol}"

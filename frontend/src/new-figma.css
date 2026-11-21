@@ -1,0 +1,1057 @@
+/* ============================================================================
+   Values taken from the Figma file, node by node — not matched by eye.
+
+   Source: file UOrIf5woaw2qhj1xJS4xdN, frame 2:2 "Market intelligence dashboard"
+   (1536 x 1024, dark). Each block below names the node it came from so the next
+   person can re-read the same node instead of guessing what "about right" meant.
+
+   A correction worth recording: the index cards in this frame are DARK navy
+   gradient, while the panels below them are LIGHT (#fcfdff -> #e9effa) with a
+   blue-tinted shadow. One is not a mistake for the other - reading the index
+   card alone and concluding "the whole dark frame uses dark cards" was wrong,
+   and the panel node settles it.
+   ========================================================================= */
+
+/* ---------------------------------------------------------------- 2:126 index card */
+.app-nu .nal-strip-item {
+  /* bg-gradient-to-b from-[#172a47] to-[#0b1730], border #47658c, rounded-[16px] */
+  background: linear-gradient(180deg, #172a47 0%, #0b1730 100%);
+  border: 1px solid #47658c;
+  border-radius: 16px;
+  box-shadow: none;
+  height: 67px;
+  padding: 12px 22px;
+  justify-content: center;
+  gap: 2px;
+}
+/* 2:127 label — Roboto Bold 16, white */
+.app-nu .nal-strip-k {
+  font-size: 16px; font-weight: 700; color: #ffffff; line-height: normal;
+  display: flex; align-items: center; gap: 6px;
+}
+/* 2:128 value — Roboto Bold 17.5, white */
+.app-nu .nal-strip-item b {
+  font-size: 17.5px; font-weight: 700; color: #ffffff; line-height: normal;
+}
+/* 2:129 change — Roboto Medium 16, #49e890 up / #ff4559 down */
+.app-nu .nal-strip-item i {
+  font-size: 16px; font-weight: 500; line-height: normal; font-style: normal;
+}
+.app-nu .nal-strip-item i.up { color: #49e890; }
+.app-nu .nal-strip-item i.down { color: #ff4559; }
+.app-nu .nal-strip-item i.flat,
+.app-nu .nal-strip-item .nal-na { color: #9fb3d4; }
+.app-nu .nal-strip-item .nal-via {
+  background: rgba(255, 255, 255, .10); border-color: #47658c; color: #b9cae6;
+}
+
+/* ---------------------------------------------------------------- 2:13 panel surface */
+.app-nu .nal .nd-card,
+.app-nu .nal .anp-card {
+  /* bg-gradient-to-b from-[#fcfdff] to-[#e9effa], rounded-[16px],
+     shadow-[0px_5px_13px_0px_rgba(51,107,178,0.22)] */
+  background: linear-gradient(180deg, #fcfdff 0%, #e9effa 100%);
+  border-radius: 16px;
+  box-shadow: 0px 5px 13px 0px rgba(51, 107, 178, 0.22);
+}
+/* 2:398 panel title — Roboto Bold 18, #090f20 */
+.app-nu .nal .nd-card-head h3,
+.app-nu .nal .anp-head h3 {
+  font-size: 18px; font-weight: 700; color: #090f20; line-height: normal;
+}
+/* 2:399 "View All" — Roboto Medium 12, #0835d9 */
+.app-nu .nal .nal-more,
+.app-nu .nal .anp-viewall {
+  font-size: 12px; font-weight: 500; color: #0835d9;
+}
+
+/* ---------------------------------------------------------------- 2:404/405 sector bars */
+.app-nu .nal .nal-sectors li {
+  /* icon 21 @ x21, label @ x52, track @ x158 w162, value @ x332 — 24.5px row pitch */
+  grid-template-columns: 106px 162px auto;
+  gap: 12px;
+  padding: 6px 2px;
+}
+/* 2:403 row label — Roboto Regular 12, #080f24 */
+.app-nu .nal .nal-sectors li > span:first-child {
+  font-size: 12px; font-weight: 400; color: #080f24;
+}
+/* 2:404 track — #e3ebf6, 162 x 12, rounded-[5px] */
+.app-nu .nal .nal-bar {
+  height: 12px; border-radius: 5px; background: #e3ebf6; border: 0;
+}
+/* 2:405 fill — up #007e33 -> #15c86e, down #cb1c2b -> #fe374a */
+.app-nu .nal .nal-bar i.up { background: linear-gradient(90deg, #007e33 0%, #15c86e 100%); }
+.app-nu .nal .nal-bar i.down { background: linear-gradient(90deg, #cb1c2b 0%, #fe374a 100%); }
+.app-nu .nal .nal-bar i { border-radius: 0 5px 5px 0; }
+/* 2:406 value — Roboto Medium 14, #07832f up / #d02635 down */
+.app-nu .nal .nal-sectors i:last-child { font-size: 14px; font-weight: 500; }
+.app-nu .nal .nal-sectors i.up { color: #07832f; }
+.app-nu .nal .nal-sectors i.down { color: #d02635; }
+.app-nu .nal .nal-sectors i.flat { color: #55617d; }
+
+/* ---------------------------------------------------------------- frame geometry (2:2)
+   Content column is 1289 wide beside a 247 sidebar; cards sit at x=267/268 with
+   ~10px gaps, not the 16px the shell uses elsewhere. */
+.app-nu .nal .nal-strip,
+.app-nu .nal .nal-stats,
+.app-nu .nal .nal-panels .anp-grid,
+.app-nu .nal .nal-row2,
+.app-nu .nal .nal-row3 { gap: 10px; }
+.app-nu .nal .nal-strip { margin-top: 0; }
+
+/* 2:7 statistics row — cards 73 tall, icon 55x53 @ x31, figure 29px, label 16px */
+.app-nu .nal .nal-stat { height: 73px; padding: 11px 31px; gap: 20px; }
+.app-nu .nal .nal-stat-ico { width: 55px; height: 53px; border-radius: 12px; flex: 0 0 55px; }
+.app-nu .nal .nal-stat b { font-size: 29px; font-weight: 700; line-height: 1; color: #090f20; }
+.app-nu .nal .nal-stat span { font-size: 16px; color: #3b4864; }
+.app-nu .nal .nal-stat i { font-size: 11px; color: #6b7a99; }
+
+/* ---------------------------------------------------------------- 2:2 row C and row D
+   Measured off the frame, not chosen: content column x=267..1556 (1289 wide, 1252 of it
+   usable inside the 18px gutter), ten-pixel gaps.
+
+   Row C  y=516  h=304 : Top Movers 404 | featured 464 | earnings calendar 363
+   Row D  y=830  h=174 : options flow 466 | market sentiment 375 | sector performance 393
+
+   Columns are fr-ratios of those pixel widths rather than the pixels themselves, so the row
+   still fills a window that is not exactly 1536 wide instead of leaving a gap at the right. */
+.app-nu .nal .nal-rowC,
+.app-nu .nal .nal-rowD { display: grid; gap: 10px; margin-top: 10px; }
+.app-nu .nal .nal-rowC { grid-template-columns: 404fr 464fr 363fr; }
+.app-nu .nal .nal-rowD { grid-template-columns: 466fr 375fr 393fr; }
+.app-nu .nal .nal-rowC > * { height: 304px; }
+.app-nu .nal .nal-rowD > * { height: 174px; }
+.app-nu .nal .nal-rowC > *,
+.app-nu .nal .nal-rowD > * { min-width: 0; overflow: hidden; display: flex; flex-direction: column; }
+/* The body of a fixed-height card scrolls rather than pushing the row taller - a 304px card that
+   grows to 500 because one list ran long is the thing that made the page not match the frame. */
+.app-nu .nal .nal-rowC > * > :last-child,
+.app-nu .nal .nal-rowD > * > :last-child { overflow: auto; min-height: 0; }
+.app-nu .nal .nal-rowC .anp-card { padding: 14px 16px; }
+
+/* Below 900 the frame's three-up rows have nowhere to go. */
+@media (max-width: 900px) {
+  .app-nu .nal .nal-rowC,
+  .app-nu .nal .nal-rowD { grid-template-columns: 1fr; }
+  .app-nu .nal .nal-rowC > *,
+  .app-nu .nal .nal-rowD > * { height: auto; }
+}
+
+/* 2:126 — the frame's index strip is FOUR cards across the full 1252, not five that wrap. */
+.app-nu .nal .nal-strip { display: grid; grid-template-columns: repeat(4, 1fr); }
+/* 2:7 — the frame draws FOUR statistics cards; two of them ("150+ Analytical Signals",
+   "85% Backtest Coverage") are figures nothing here measures and the owner ruled them out, so the
+   row is three across the same 1252. Three equal cards read as a row; four with one blank does
+   not. This is a stated difference from the frame, not an oversight. */
+.app-nu .nal .nal-stats { display: grid; grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 900px) {
+  .app-nu .nal .nal-strip,
+  .app-nu .nal .nal-stats { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ---------------------------------------------------------------- 2:5 hero
+   The frame's hero is 1289 x 277 and every element in it has a fixed place:
+     artwork        x=790  w=499  h=277 (flush right, full height)
+     platform pill  x=37   y=22   261 x 33
+     headline       y=65 and y=110, 51 tall each
+     sub-line       y=169  16 tall
+     two buttons    y=208  40 tall  (Analyze Now 165, Watch How It Works 195)
+     feature cards  x=536  w=311  h=58, pitch 56 (y 29 / 85 / 141 / 197)
+
+   The live hero was 450 tall, which pushed every row below it off the frame's grid. It is now
+   277. The one deliberate departure: the frame's two buttons are replaced by the controls that
+   actually start an analysis (horizon switch + ticker box + Analyze, then the basis line and the
+   Try chips). Those need two rows rather than one, so the control block starts at 193 instead of
+   208 and ends at 257 - inside the frame's own 277. No control is removed to make it fit. */
+.app-nu .nal .nal-hero {
+  position: relative; height: 277px; padding: 0; overflow: hidden;
+}
+.app-nu .nal .nal-hero .nd-hero-img {
+  position: absolute; right: 0; top: 0; width: 499px; height: 277px; object-fit: cover;
+}
+.app-nu .nal .nal-hero .nd-hero-left {
+  position: absolute; left: 37px; top: 0; width: 499px; height: 100%;
+  display: block; padding: 0;
+}
+/* 2:88/2:89 platform pill */
+.app-nu .nal .nal-hero .nd-eyebrow {
+  position: absolute; left: 0; top: 22px; height: 33px; min-width: 261px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 500; border-radius: 17px;
+}
+/* 2:90-2:92 headline: two 51-tall lines from y=65 */
+.app-nu .nal .nal-hero h1 {
+  position: absolute; left: 0; top: 60px; margin: 0; width: 520px;
+  font-size: 40px; font-weight: 700; line-height: 51px; letter-spacing: -0.5px;
+}
+/* 2:93 sub-line */
+.app-nu .nal .nal-hero > .nd-hero-left > p {
+  position: absolute; left: 1px; top: 167px; margin: 0;
+  font-size: 13px; line-height: 16px;
+}
+/* the control block, in place of 2:94/2:98 */
+.app-nu .nal .nal-hero .nal-controls {
+  position: absolute; left: 1px; top: 193px; width: 498px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.app-nu .nal .nal-controls .anh-horizon { margin: 0; gap: 6px; }
+.app-nu .nal .nal-controls .anh-basis { display: none; }   /* the chip labels say the same thing */
+.app-nu .nal .nal-controls .anh-search { margin: 0; height: 40px; }
+.app-nu .nal .nal-controls .anh-try { margin: 0; font-size: 11px; gap: 6px; }
+.app-nu .nal .nal-controls .anh-chip-try { padding: 2px 7px; font-size: 11px; }
+
+/* 2:102-2:125 feature cards: 311 wide, 58 tall, first at y=29, pitch 56 */
+.app-nu .nal .nal-hero .nal-feats {
+  position: absolute; left: 536px; top: 29px; width: 311px;
+  display: flex; flex-direction: column; gap: 0; padding: 0;
+}
+.app-nu .nal .nal-hero .nal-feats .nd-hero-feat {
+  height: 58px; margin-bottom: -2px; border-radius: 12px; padding: 8px 11px; gap: 15px;
+  align-items: center;
+}
+.app-nu .nal .nal-hero .nal-feats .nd-feat-ico {
+  width: 41px; height: 41px; border-radius: 12px; flex: 0 0 41px;
+}
+.app-nu .nal .nal-hero .nal-feats b { font-size: 16px; font-weight: 700; }
+.app-nu .nal .nal-hero .nal-feats i { font-size: 12px; font-style: normal; }
+
+@media (max-width: 900px) {
+  .app-nu .nal .nal-hero { height: auto; }
+  .app-nu .nal .nal-hero .nd-hero-img { display: none; }
+  .app-nu .nal .nal-hero .nd-hero-left,
+  .app-nu .nal .nal-hero .nd-eyebrow,
+  .app-nu .nal .nal-hero h1,
+  .app-nu .nal .nal-hero > .nd-hero-left > p,
+  .app-nu .nal .nal-hero .nal-controls,
+  .app-nu .nal .nal-hero .nal-feats { position: static; width: auto; }
+  .app-nu .nal .nal-hero .nd-hero-left { padding: 20px 16px; }
+}
+
+/* ---------------------------------------------------------------- 2:126-2:131 index card rows
+   The frame puts the value and the change on ONE line (both at y=36/37), with the label above
+   them - not three stacked lines. */
+.app-nu .nal-strip-item { display: grid; grid-template-areas: 'k k' 'v c'; grid-template-columns: auto 1fr;
+  align-content: center; column-gap: 16px; row-gap: 3px; }
+.app-nu .nal-strip-k { grid-area: k; }
+.app-nu .nal-strip-item b { grid-area: v; }
+.app-nu .nal-strip-item i:last-child { grid-area: c; align-self: center; }
+
+/* 2:102 exact fill: translucent navy over the artwork, NOT the light panel surface the frame's
+   export appears to show at a glance. rgba(21,44,89,0.67), 1px #38517f, radius 18. */
+.app-nu .nal .nal-hero .nal-feats .nd-hero-feat {
+  background: rgba(21, 44, 89, 0.67);
+  border: 1px solid #38517f;
+  border-radius: 18px;
+  backdrop-filter: blur(2px);
+}
+/* The control block needs the whole band from the sub-line to the hero's floor. Starting it at
+   the frame's button y (208) clipped the ticker box and hid the Try chips entirely. */
+.app-nu .nal .nal-hero .nal-controls { top: 189px; }
+.app-nu .nal .nal-controls .anh-horizon { font-size: 11px; }
+.app-nu .nal .nal-controls .anh-horizon button,
+.app-nu .nal .nal-controls .anh-horizon .anh-chip { padding: 3px 9px; font-size: 11px; }
+.app-nu .nal .nal-controls .anh-search { height: 36px; }
+.app-nu .nal .nal-controls .anh-search input { font-size: 13px; }
+
+/* Two rows would not fit the frame's 277: the ticker box was clipped at the hero's floor and the
+   Try chips fell off it entirely. The chips move beside the box instead of under it, so the whole
+   control block ends at 225 - well inside the frame - and nothing is cut. */
+.app-nu .nal .nal-hero .nal-controls {
+  top: 189px; width: 740px; display: grid; gap: 6px 10px;
+  grid-template-areas: 'h h' 's t'; grid-template-columns: 300px 1fr; align-items: center;
+}
+.app-nu .nal .nal-controls .anh-horizon { grid-area: h; }
+.app-nu .nal .nal-controls .anh-search { grid-area: s; width: 300px; }
+.app-nu .nal .nal-controls .anh-try { grid-area: t; flex-wrap: wrap; }
+/* Anchored to the hero's floor rather than measured down from its top: the block is then the
+   right height whatever the sub-line above it does, and the ticker box cannot be clipped. */
+.app-nu .nal .nal-hero .nal-controls { top: auto; bottom: 16px; }
+.app-nu .nal .nal-controls .anh-try { flex-wrap: nowrap; overflow: hidden; }
+
+/* ---------------------------------------------------------------- 2:2 content inset
+   Measured, not chosen: the hero is full-bleed 1289 at x=247, but every row below it is inset to
+   x=268 and 1252 wide - 21 on the left, 16 on the right. The rows were running the hero's full
+   width, which is what made the index cards and the panels sit wider than the frame draws them. */
+.app-nu .nal .nal-strip,
+.app-nu .nal .nal-stats,
+.app-nu .nal .nal-rowC,
+.app-nu .nal .nal-rowD { margin-left: 21px; margin-right: 16px; }
+/* Cards carry their own bottom margin elsewhere in the shell; inside a fixed-height frame row it
+   is what made the row 320 tall where the frame draws 304. */
+.app-nu .nal .nal-rowC > *,
+.app-nu .nal .nal-rowD > * { margin: 0; }
+@media (max-width: 900px) {
+  .app-nu .nal .nal-strip,
+  .app-nu .nal .nal-stats,
+  .app-nu .nal .nal-rowC,
+  .app-nu .nal .nal-rowD { margin-left: 0; margin-right: 0; }
+}
+/* 2:90 headline baseline sat 5px high against the frame. */
+.app-nu .nal .nal-hero h1 { top: 65px; }
+
+/* Vertical rhythm, measured off 2:2 rather than inherited from the shell's default stack:
+   hero ends 344, strip 343..410, stats 430..503, row C 516..820, row D 830..1004. */
+.app-nu .nal .nal-strip { margin-top: -1px; }
+.app-nu .nal .nal-stats { margin-top: 20px; }
+.app-nu .nal .nal-rowC  { margin-top: 13px; }
+.app-nu .nal .nal-rowD  { margin-top: 10px; }
+
+/* ---------------------------------------------------------------- panel ink
+   The 2:13 surface above is LIGHT, and the dark theme's ambient text colour is light. Any cell
+   without a colour of its own - the Top Movers price column, the flow table's strike and expiry -
+   was therefore near-white on near-white. Setting the ink on the panel fixes every unstyled cell
+   at once rather than one column at a time. 2:398 gives #090f20 for panel text. */
+.app-nu .nal .nd-card,
+.app-nu .nal .anp-card { color: #090f20; }
+.app-nu .nal .nd-card .nst-mute,
+.app-nu .nal .anp-card .anp-mute,
+.app-nu .nal .anp-card .anp-thead,
+.app-nu .nal .nd-card .nd-table thead th { color: #55617d; }
+.app-nu .nal .nd-card .up, .app-nu .nal .anp-card .pos { color: #07832f; }
+.app-nu .nal .nd-card .down, .app-nu .nal .anp-card .neg { color: #d02635; }
+
+/* ---------------------------------------------------------------- row density
+   Row C is 304 tall and row D is 174. The shell's default row height fits three lines into row D
+   where the frame draws five, so the tables are tightened to the frame's own pitch: the sector
+   list is 24.5 per row (2:403..2:406) and the flow and movers tables match it. */
+.app-nu .nal .nal-rowD .nd-table th,
+.app-nu .nal .nal-rowD .nd-table td { padding: 3px 8px; font-size: 12px; line-height: 16px; }
+.app-nu .nal .nal-rowD .nd-card-head { padding-bottom: 4px; }
+.app-nu .nal .nal-rowD .nd-card-head h3 { font-size: 15px; }
+.app-nu .nal .nal-rowC .anp-trow { padding: 4px 0; font-size: 12px; line-height: 18px; }
+.app-nu .nal .nal-rowC .nd-table th,
+.app-nu .nal .nal-rowC .nd-table td { padding: 5px 8px; font-size: 12px; }
+.app-nu .nal .nal-sectors li { padding: 2px 2px; }
+/* A <button> does not inherit `color`, so the panel ink above never reached the clickable mover
+   rows and their price column stayed white on the light panel. */
+.app-nu .nal .anp-card button.anp-trow,
+.app-nu .nal .anp-card button.anp-news { color: #090f20; }
+
+/* ============================================================================
+   SIDEBAR — frame 2:3
+
+   The menu itself is the owner's (A.25 / A.26): the items, their order and the
+   section headings stay exactly as they are. Only the STYLING comes from the
+   frame. Width 247, the rail gradient and the #20375e divider already matched;
+   everything below did not.
+
+     brand        x=30  y=12   188 x 53
+     first item   icon y=108, 23 x 23 at x=34; label at x=72, 16px white
+     item pitch   44
+     active pill  x=12 w=225 h=46, radius 12,
+                  linear-gradient(90deg,#1c61f5,#1642e8), border #4876ff
+     promo card   x=13 y=653 224 x 222, #040e2c, border #163d7b, radius 24
+     explore      x=31 187 x 39, radius 11,
+                  linear-gradient(90deg,#1b5dfa,#1136dc), Bold 16
+   ========================================================================= */
+.app-nu .nu-rail-head { padding: 12px 30px; min-height: 65px; border-bottom: 0; }
+.app-nu .nu-nav { padding: 31px 10px 12px; }
+
+/* 2:17-2:19 — a row is 44 tall; the icon sits 22 in from the pill, the label 38 further. */
+.app-nu .nu-link {
+  height: 44px; padding: 0 12px 0 22px; margin: 0; gap: 15px;
+  border-radius: 12px; border: 1px solid transparent;
+  font-size: 16px; font-weight: 400; color: #ffffff;
+}
+.app-nu .nu-link svg { width: 23px; height: 23px; }
+/* 2:16 active pill */
+.app-nu .nu-link.is-active {
+  background: linear-gradient(90deg, #1c61f5 0%, #1642e8 100%);
+  border-color: #4876ff; color: #ffffff; font-weight: 500;
+}
+/* Inactive rows are full white in the frame, so hover cannot be "brighter". It is a wash. */
+.app-nu .nu-link:hover { background: rgba(255, 255, 255, .07); color: #ffffff; }
+.app-nu .nu-nav-head {
+  font-size: 11px; letter-spacing: .08em; color: #7e92bb; padding: 14px 12px 6px 22px;
+}
+
+/* 2:53-2:60 promotion card */
+.app-nu .nu-promo {
+  margin: 10px 11px; padding: 18px 18px 16px; border-radius: 24px;
+  background: #040e2c; border: 1px solid #163d7b;
+}
+.app-nu .nu-promo h4 { font-size: 16px; font-weight: 700; color: #ffffff; margin: 12px 0 6px; }
+.app-nu .nu-promo p { font-size: 14px; line-height: 20px; color: #e1e6fc; margin: 0 0 14px; }
+.app-nu .nu-promo a {
+  height: 39px; padding: 0; border-radius: 11px; gap: 10px;
+  background: linear-gradient(90deg, #1b5dfa 0%, #1136dc 100%);
+  font-size: 16px; font-weight: 700; color: #ffffff;
+}
+.app-nu .nu-promo a:hover { background: linear-gradient(90deg, #2a6bff 0%, #1a45ef 100%); }
+/* 2:29/2:30 the AI badge is a 30x19 rounded-4 chip in #5039d1, Bold 14. */
+.app-nu .nu-promo-badge {
+  padding: 5px 10px; border-radius: 9px; font-size: 14px; font-weight: 700; color: #fff;
+}
+
+/* The light theme keeps its own ink: the values above are the dark frame's. */
+:root[data-theme='light'] .app-nu .nu-link,
+:root[data-theme='light'] .app-nu .nu-promo h4 { color: var(--nu-rail-ink); }
+:root[data-theme='light'] .app-nu .nu-link:hover { color: var(--nu-rail-ink); background: var(--nu-rail-hover); }
+:root[data-theme='light'] .app-nu .nu-promo { background: var(--nu-promo-1); border-color: var(--nu-rail-line); }
+:root[data-theme='light'] .app-nu .nu-promo p { color: var(--nu-rail-ink-dim); }
+:root[data-theme='light'] .app-nu .nu-link.is-active { color: #ffffff; }
+
+/* ---------------------------------------------------------------- 2:2 detail card (row C middle)
+   464 x 304: header, range tabs, chart, then the tiles. The chart takes what the fixed rows
+   leave, so the card never grows past the frame's row height. */
+.app-nu .nal .nal-featured { display: flex; flex-direction: column; gap: 6px; }
+.app-nu .nal .nal-feat-tabs { display: flex; gap: 4px; flex: 0 0 auto; }
+.app-nu .nal .nal-feat-tabs button {
+  padding: 2px 10px; border-radius: 6px; border: 1px solid transparent;
+  background: transparent; color: #55617d; font-size: 11px; font-weight: 500;
+}
+.app-nu .nal .nal-feat-tabs button.is-on {
+  background: linear-gradient(90deg, #1c61f5 0%, #1642e8 100%);
+  border-color: #4876ff; color: #ffffff;
+}
+.app-nu .nal .nal-feat-chart { flex: 1 1 auto; min-height: 96px; }
+.app-nu .nal .nal-feat-tiles,
+.app-nu .nal .nal-feat-grid { display: grid; gap: 6px; flex: 0 0 auto; }
+.app-nu .nal .nal-feat-tiles { grid-template-columns: repeat(3, 1fr); }
+.app-nu .nal .nal-feat-grid { grid-template-columns: repeat(4, 1fr); }
+.app-nu .nal .nal-feat-tiles > div,
+.app-nu .nal .nal-feat-grid > div {
+  background: rgba(255, 255, 255, .62); border: 1px solid #dde5f3; border-radius: 9px;
+  padding: 4px 8px; min-width: 0;
+}
+.app-nu .nal .nal-feat-tiles span,
+.app-nu .nal .nal-feat-grid span { display: block; font-size: 10px; color: #55617d; }
+.app-nu .nal .nal-feat-tiles b,
+.app-nu .nal .nal-feat-grid b { font-size: 13px; font-weight: 700; color: #090f20; }
+.app-nu .nal .nal-feat-tiles b.up { color: #07832f; }
+.app-nu .nal .nal-feat-tiles b.down { color: #d02635; }
+/* The provenance note is a line, not a paragraph, at this height. */
+.app-nu .nal .nal-feat-note { margin: 0; font-size: 10px; line-height: 13px; color: #55617d; }
+/* Long menu labels ("Smart Money Move (LIVE)") ran past the rail's edge. */
+/* No ellipsis in the rail (owner, 2026-11-20): the longest label was shortened to
+   "Smart Money (LIVE)" so every item fits whole at 15px. If one ever overruns again it
+   should be visible, not quietly trimmed. */
+.app-nu .nu-link span { min-width: 0; }
+
+/* The detail card holds header + tabs + chart + 3 tiles + 4 quote cells inside 304. Measured, it
+   overflowed by about 30 and clipped the quote row, so the fixed rows give the chart what is left
+   rather than claiming a minimum it cannot have. */
+.app-nu .nal .nal-feat-chart { min-height: 0; }
+.app-nu .nal .nal-featured { gap: 5px; padding: 12px 14px; }
+.app-nu .nal .nal-feat-tiles > div,
+.app-nu .nal .nal-feat-grid > div { padding: 3px 7px; }
+.app-nu .nal .nal-feat-note {
+  display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;
+}
+/* Row D is 174 tall: a 132-tall half-ring plus a card header does not fit, and the gauge was cut
+   off at the card's floor. */
+.app-nu .nal .nal-rowD .nal-gauge .recharts-responsive-container { height: 92px !important; }
+.app-nu .nal .nal-rowD .nal-gauge { position: relative; }
+/* Five sector rows is what the frame draws and what 174 holds. */
+.app-nu .nal .nal-sectors li:nth-child(n+6) { display: none; }
+
+/* Row D, measured: the flow card's head is 46 (its Calls/Puts summary wraps) and its rows were
+   29 apart, so only one and a bit fitted in 174 and the table scrolled. The frame shows three
+   rows. Head on one line, rows at 24, three rows - 46 + 3x24 is inside the card. */
+.app-nu .nal .nal-tape .nd-card-head { flex-wrap: nowrap; }
+.app-nu .nal .nal-tape .nal-flow-sum { flex-wrap: nowrap; white-space: nowrap; font-size: 11px; }
+.app-nu .nal .nal-tape tbody tr:nth-child(n+4) { display: none; }
+.app-nu .nal .nal-tape tbody td { height: 24px; padding: 0 8px; }
+/* A two-line sector label ("Communication Services") pushed the fifth row past the floor. */
+.app-nu .nal .nal-sectors li > span:first-child {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* "Options flow" itself wrapped once its summary was told not to. */
+.app-nu .nal .nal-rowD .nd-card-head h3 { white-space: nowrap; flex: 0 0 auto; }
+.app-nu .nal .nal-rowD .nd-card-head { align-items: center; gap: 10px; min-height: 0; }
+.app-nu .nal .nal-tape thead th { height: 20px; padding: 0 8px; }
+/* 106 + 162 + the value column overran the 393-wide sector card and cut the figures off. */
+.app-nu .nal .nal-sectors li { grid-template-columns: 96px 1fr 54px; gap: 10px; }
+.app-nu .nal .nal-sectors i:last-child { text-align: right; }
+
+/* ---------------------------------------------------------------- 2:130/2:131 sparklines
+   83 x 33 in the index card, sitting to the right of the value. The line is drawn only when the
+   server actually sent a series (/api/landing/sparklines answers DISABLED by default), so these
+   rules style something that is either real or not there at all. */
+/* `auto`, not 83px: with sparklines off the card would otherwise hold open an empty 83px
+   column and the value would sit left of centre for no visible reason. */
+.app-nu .nal-strip-item { grid-template-areas: 'k k s' 'v c s'; grid-template-columns: auto 1fr auto; }
+.app-nu .nal-spark { grid-area: s; width: 83px; height: 33px; align-self: center; }
+/* The movers table gains a chart column only when the column has something in it. */
+.app-nu .nal .anp-trow.anp-m5s { grid-template-columns: 1.25fr .85fr .85fr 70px .8fr; }
+.app-nu .nal .anp-spark { width: 70px; height: 18px; justify-self: end; }
+/* The index label and its proxy badge wrapped once the sparkline claimed 83px. */
+.app-nu .nal-strip-k { white-space: nowrap; }
+.app-nu .nal-strip-item { column-gap: 12px; }
+.app-nu .nal-strip-item .nal-via { font-size: 10px; padding: 1px 5px; }
+/* The frame's own menu labels are short ("Earnings", "Sectors"); the owner's are not
+   ("Pre-Earnings Direction", "Smart Money Move (LIVE)"). At the frame's 16px those truncated
+   inside the 247 rail. 15px with a tighter icon gap fits the longest of them whole, which matters
+   more than the last pixel of type size. */
+.app-nu .nu-link { font-size: 15px; gap: 12px; padding-left: 20px; }
+
+/* The floating launcher is replaced by a top-bar button in this shell - at 1536x1024 a corner
+   bubble sits on top of the last row of every page. The PANEL is untouched. */
+.app-nu .asst-fab { display: none; }
+
+/* ============================================================================
+   STRATEGY TRADES — frame 2:430 (1024 x 1536, dark)
+
+   Read from the file, content-relative (the frame draws a 162 rail and a 51 bar;
+   the app has one 247 rail and one 67 bar, so x and y are measured from the
+   content column and the bar's bottom):
+
+     hero      0,0    862 x 143   artwork x=482 w=380, full height
+       title   51,16  221 x 36    two sub-lines at y=60 and y=78, 14 tall
+       tabs    7,107  476 x 36
+     stats     7,156  844 x 75    five cards 74 tall, 10 apart, icon 40 at (12,14)
+     filters   7,245  846 x 58    segmented 270x39 @ (5,12); three selects 29 tall
+                                  @ x=288/407/536; search 180x31 @ (663,15)
+     table     7,313  846 x 1034  navy header 36, rows 38
+     pager     7,1366 846 x 50
+   ========================================================================= */
+.app-nu .nst .nst-hero {
+  position: relative; height: 143px; min-height: 143px; padding: 0; overflow: hidden;
+}
+.app-nu .nst .nst-hero .nd-hero-img {
+  position: absolute; right: 0; top: 0; width: 44.1%; height: 143px; object-fit: cover;
+}
+.app-nu .nst .nst-hero .nd-hero-left {
+  position: absolute; left: 17px; top: 0; right: 44.1%; height: 100%; padding: 0; display: block;
+}
+/* The frame has no eyebrow here - the title sits at y=16 with nothing above it, and 143px has no
+   room for one. "Paper only" is already the second thing the sub-line says. */
+.app-nu .nst .nst-hero .nd-eyebrow { display: none; }
+.app-nu .nst .nst-hero h1 {
+  position: absolute; left: 0; top: 12px; margin: 0;
+  font-size: 30px; font-weight: 700; line-height: 36px;
+}
+.app-nu .nst .nst-hero > .nd-hero-left > p {
+  position: absolute; left: 0; top: 56px; margin: 0; max-width: none;
+  font-size: 12px; line-height: 18px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.app-nu .nst .nst-rulebar {
+  position: absolute; left: 0; top: 103px; height: 36px; margin: 0;
+  flex-wrap: nowrap; align-items: center; overflow: hidden;
+}
+
+.app-nu .nst .nd-stats.nst-stats {
+  grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 13px 9px 0 7px;
+}
+.app-nu .nst .nst-stats .nd-stat { height: 74px; padding: 12px; gap: 12px; }
+.app-nu .nst .nst-stats .nd-stat-ico { width: 40px; height: 40px; flex: 0 0 40px; border-radius: 11px; }
+.app-nu .nst .nst-stats .nd-stat b { font-size: 22px; line-height: 26px; }
+.app-nu .nst .nst-stats .nd-stat span { font-size: 11px; }
+.app-nu .nst .nst-stats .nst-stat-sub { font-size: 10px; }
+
+.app-nu .nst .nst-filters {
+  height: 58px; margin: 14px 9px 0 7px; padding: 0 5px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; overflow: hidden;
+}
+.app-nu .nst .nst-filters .nd-tabs { height: 39px; flex: 0 0 auto; }
+.app-nu .nst .nst-field { flex-direction: row; align-items: center; gap: 6px; flex: 0 0 auto; }
+.app-nu .nst .nst-field > span { font-size: 11px; white-space: nowrap; }
+.app-nu .nst .nst-field select { height: 29px; }
+.app-nu .nst .nst-find { flex: 1 1 180px; min-width: 120px; }
+.app-nu .nst .nst-find input { height: 31px; width: 100%; }
+.app-nu .nst .nst-count { margin-left: auto; white-space: nowrap; font-size: 11px; }
+
+.app-nu .nst .nst-card { margin: 10px 9px 0 7px; }
+/* 2:614 the table header is a navy band, not a tinted row. */
+.app-nu .nst .nst-table thead th {
+  height: 36px; background: linear-gradient(180deg, #16294a 0%, #0f1f3d 100%);
+  color: #cfdcf2; font-size: 11px; font-weight: 500; border: 0;
+}
+.app-nu .nst .nst-table tbody td { height: 38px; padding: 0 10px; font-size: 12px; }
+.app-nu .nst .nst-pager { height: 50px; margin: 19px 9px 0 7px; display: flex; align-items: center; }
+
+@media (max-width: 900px) {
+  .app-nu .nst .nst-hero { height: auto; min-height: 0; }
+  .app-nu .nst .nst-hero .nd-hero-img { display: none; }
+  .app-nu .nst .nst-hero .nd-hero-left,
+  .app-nu .nst .nst-hero h1,
+  .app-nu .nst .nst-hero > .nd-hero-left > p,
+  .app-nu .nst .nst-rulebar { position: static; padding: 0; }
+  .app-nu .nst .nst-hero .nd-hero-left { padding: 18px 16px; }
+  .app-nu .nst .nd-stats.nst-stats { grid-template-columns: 1fr 1fr; }
+  .app-nu .nst .nst-filters { height: auto; flex-wrap: wrap; padding: 10px 5px; }
+}
+/* 2:628.. the frame's rows are 38 tall even where a cell carries a second line (entry time,
+   "at breakeven", the spread percentage). Ours were 44.5, which put the table 115 over the
+   frame's 1034 across a 25-row page. The sub-line is tightened rather than dropped. */
+.app-nu .nst .nst-table tbody tr { height: 38px; }
+.app-nu .nst .nst-table tbody td { height: 38px; line-height: 15px; }
+.app-nu .nst .nst-table .nst-sub { font-size: 10px; line-height: 12px; }
+.app-nu .nst .nst-pager { margin: 19px 9px 0 7px; padding: 0; }
+/* 2:436 — the frame's table block is 1034 where its 25 rows plus the 36 header come to 986: the
+   card carries 48 of trailing space below the last row. That is the file's number, and it is what
+   puts the pager at 1366. */
+.app-nu .nst .nst-card { padding: 0 0 48px; }
+/* The frame's stat labels are two or three words ("Avg. R:R", "Win Rate (Backtest)"); ours carry
+   a sub-line that says what the figure is measured over, and at 74px those were colliding. The
+   sub-line is what makes the number checkable, so it is tightened rather than dropped. */
+.app-nu .nst .nst-stats .nd-stat > div { min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+.app-nu .nst .nst-stats .nd-stat b { line-height: 24px; margin: 0; }
+.app-nu .nst .nst-stats .nd-stat span { line-height: 13px; }
+.app-nu .nst .nst-stats .nst-stat-sub {
+  line-height: 12px; font-style: normal;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+/* The rule chips are a single 36px line in the frame's hero, not a wrapping block. */
+.app-nu .nst .nst-rulebar span { white-space: nowrap; }
+
+/* ============================================================================
+   SMART MONEY MOVE — frame 2:1253 (1536 x 1024, dark)
+
+   Content-relative (the frame draws a 226 rail and a 66 bar; the app has one
+   247 rail and one 67 bar):
+
+     tab row        0,0     1310 x 47   active tab 141 x 41 @ (17,6), radius
+     status band    0,47    1310 x 253  title 47 tall @ y=14, two 19-tall lines
+                                        at y=69/91, warning 1271 x 64 @ y=126,
+                                        two 16-tall status lines at y=208/230
+     counts         12,307  1285 x 90   five cards 246-250 wide, 10 apart,
+                                        icon disc 60 @ (15,15), figure 39 tall
+     filters        13,420  1285 x 40   tab strip 950 wide, Reload 111, Live 83
+     results card   13,472  1285 x 455  header 62, navy table head 40, rows 58
+
+   DISPLAY ONLY: every rule here is CSS on classes the page already had.
+   ========================================================================= */
+.app-nu .sm .sm-tabs[role='tablist'] {
+  height: 47px; margin: 0; padding: 6px 17px 0; gap: 27px;
+  border-top: 1px solid var(--nu-line); border-bottom: 1px solid var(--nu-line);
+  align-items: flex-start;
+}
+.app-nu .sm .sm-tabs[role='tablist'] .sm-tab {
+  height: 41px; padding: 0 25px; border-radius: 10px 10px 0 0;
+  font-size: 14px; font-weight: 500; border: 0; background: transparent;
+}
+.app-nu .sm .sm-tabs[role='tablist'] .sm-tab.on {
+  background: linear-gradient(180deg, #1c61f5 0%, #1642e8 100%); color: #fff;
+}
+
+/* 2:1341-2:1344 the status band's heading.
+   This styles the PageHead the live view already renders - "Smart Money Move - LIVE scanner" with
+   the engine version and the ledger sentence - rather than adding a second heading beside it. I
+   wrote one before noticing the page already had it, which would have said the same thing twice. */
+.app-nu .nd.nsm .page-head { padding: 14px 0 0; margin: 0 0 12px; display: block; }
+/* The colour is the point here, not just the size: PageHead inherits the classic stylesheet's
+   ink, which is near-black, and on this shell's dark page the title was invisible. The side-by-
+   side is what showed it - the geometry was already exact. */
+/* Shell-wide, not just this page: PageHead is used by dozens of pages and it inherits the classic
+   stylesheet's near-black ink, so on this shell's dark pages every one of those titles was
+   invisible. The side-by-side is what showed it - the geometry was already exact. */
+.app-nu .page-head h1,
+.app-nu .page-head h2 { color: var(--nu-page-ink); }
+.app-nu .page-head p,
+.app-nu .page-head .sub { color: var(--nu-page-ink-dim); }
+/* 2:1341 sizes it on Smart Money Move. */
+.app-nu .nd.nsm .page-head h1,
+.app-nu .nd.nsm .page-head h2 {
+  margin: 0; font-size: 36px; line-height: 47px; font-weight: 700;
+}
+.app-nu .nd.nsm .page-head p {
+  margin: 8px 0 0; font-size: 14px; line-height: 19px; max-width: 710px;
+}
+/* 2:1345 the warning is a full-width 64-tall band, not a paragraph. */
+.app-nu .sm [data-testid='sm-live-state'].sm-q-banner,
+.app-nu .sm [data-testid='sm-live-state'].sm-fresh { min-height: 64px; align-items: center; }
+.app-nu .sm [data-testid='sm-live-status'],
+.app-nu .sm [data-testid='sm-live-requests'] { font-size: 12px; line-height: 16px; margin-top: 6px; }
+
+/* 2:1352-2:1384 five count cards */
+.app-nu .sm .sm-summary {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; height: 90px; margin-top: 7px;
+}
+.app-nu .sm .sm-summary .sm-card {
+  height: 90px; display: flex; align-items: center; gap: 15px; padding: 15px;
+}
+.app-nu .sm .sm-summary .sm-card-k { font-size: 13px; font-weight: 500; line-height: 16px; }
+.app-nu .sm .sm-summary .sm-card-v { font-size: 32px; font-weight: 700; line-height: 39px; }
+
+/* 2:1260 filter row */
+.app-nu .sm .sm-filters { height: 40px; margin-top: 12px; align-items: center; gap: 13px; }
+.app-nu .sm .sm-filters .sm-tabs { height: 40px; }
+.app-nu .sm .sm-filters .sm-tab { height: 40px; padding: 0 16px; font-size: 13px; }
+
+/* 2:1418 the results table: navy header 40, rows 58 */
+.app-nu .sm .sm-q-table thead th {
+  height: 40px; background: linear-gradient(180deg, #16294a 0%, #0f1f3d 100%);
+  color: #cfdcf2; font-size: 13px; font-weight: 500; border: 0;
+}
+.app-nu .sm .sm-q-table tbody tr.sm-q-row { height: 58px; }
+.app-nu .sm .sm-q-table tbody tr.sm-q-row > td { height: 58px; font-size: 13px; }
+.app-nu .sm .sm-q-table .sm-q-muted { font-size: 12px; line-height: 16px; }
+/* 2:1256-2:1261 — the content inset on this page is 12/13 either side of the 1310 column. */
+/* 2:1256 the tab row spans the FULL column - its top and bottom rules are 1310 wide - while the
+   blocks below it are inset 13. */
+.app-nu .nd.nsm .sm { padding-left: 13px; padding-right: 13px; }
+.app-nu .nd.nsm .nsm-tabs { padding-left: 0; padding-right: 0; }
+.app-nu .nd.nsm .sm-tabs[role='tablist'] { padding-left: 17px; padding-right: 17px; }
+/* The band begins 14 under the tab row (2:1341 sits at y=14 inside a block that starts at 47). */
+.app-nu .nd.nsm .sm { padding-top: 0; }
+
+/* Vertical rhythm of the status band, measured off 2:1257: heading 47..152, warning 173..237,
+   the two status lines at 208 and 230 (16 tall), counts 307..397, filters 420. */
+.app-nu .nd.nsm .page-head { padding-bottom: 5px; margin-bottom: 0; }
+.app-nu .nd.nsm [data-testid='sm-live-state'] { margin-top: 21px; margin-bottom: 0; }
+.app-nu .nd.nsm [data-testid='sm-live-status'] { margin-top: 17px; }
+.app-nu .nd.nsm .sm-summary { margin-top: 15px; }
+.app-nu .nd.nsm .sm-filters { margin-top: 23px; }
+/* 2:1353 etc — the 60px tinted disc on each count card. */
+.app-nu .sm .sm-summary .sm-card-ico {
+  width: 60px; height: 60px; flex: 0 0 60px; border-radius: 15px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.app-nu .sm .sm-summary .sm-card-ico.up   { background: rgba(21, 200, 110, .14); color: #15c86e; }
+.app-nu .sm .sm-summary .sm-card-ico.down { background: rgba(254, 55, 74, .14);  color: #fe374a; }
+.app-nu .sm .sm-summary .sm-card-ico.flat { background: rgba(80, 57, 209, .16);  color: #8e7bff; }
+.app-nu .sm .sm-summary .sm-card-ico.warn { background: rgba(28, 97, 245, .14);  color: #4f8bff; }
+.app-nu .sm .sm-summary .sm-card-ico.wait { background: rgba(255, 176, 32, .14); color: #ffb020; }
+.app-nu .sm .sm-summary .sm-card > div { min-width: 0; }
+
+/* ============================================================================
+   NEWS & SENTIMENT — frame 24:2 (1024 x 1536, light)
+
+   Content-relative (the frame draws a 194 rail and a 60 header):
+
+     heading      19,25    795 x 61   back 21, title 32 tall, sub 14, Refresh 101x39
+     quote+score  19,100   795 x 76   quote 494 | score 288, 13 apart
+     filters      19,192   798 x 47   search 228x31, five tone tabs, count at the right
+     headlines    19,252   798 x 727  title 19, rows 25..37 tall, pager at the foot
+     sentiment    19,999   361 x 252  | filings 396,999  422 x 252   (15 apart)
+     providers    19,1269  799 x 142
+   ========================================================================= */
+/* margin, not padding: getBoundingClientRect includes padding, so an inset drawn as padding
+   leaves the block itself full-width and the frame's 19px inset never shows up in a diff. */
+.app-nu .nnw .nnw-head {
+  height: 61px; margin: 25px 19px 0; padding: 0;
+  display: flex; align-items: flex-start; gap: 18px;
+}
+.app-nu .nnw .nnw-head h1 { margin: 0; font-size: 24px; line-height: 32px; font-weight: 700; }
+.app-nu .nnw .nnw-head p { margin: 5px 0 0; font-size: 12px; line-height: 14px; }
+.app-nu .nnw .nnw-back { width: 21px; height: 21px; margin-top: 9px; flex: 0 0 21px; }
+.app-nu .nnw .nnw-refresh { width: 101px; height: 39px; margin-left: auto; flex: 0 0 101px; }
+
+.app-nu .nnw .nnw-top {
+  display: grid; grid-template-columns: 494fr 288fr; gap: 13px;
+  height: 76px; margin: 14px 19px 0;
+}
+.app-nu .nnw .nnw-top > * { height: 76px; padding: 10px 16px; overflow: hidden; }
+.app-nu .nnw .nnw-quote { display: flex; align-items: center; gap: 17px; }
+.app-nu .nnw .nnw-sym { font-size: 19px; font-weight: 700; line-height: 23px; }
+.app-nu .nnw .nnw-price b { font-size: 24px; font-weight: 700; line-height: 29px; }
+.app-nu .nnw .nnw-score .nd-card-head { padding: 0; margin: 0; }
+.app-nu .nnw .nnw-score .nd-card-head h3 { font-size: 12px; line-height: 14px; }
+.app-nu .nnw .nnw-score-body b { font-size: 27px; line-height: 32px; }
+.app-nu .nnw .nnw-score-body b small { font-size: 13px; }
+
+.app-nu .nnw .nst-filters { height: 47px; margin: 16px 19px 0; padding: 0 7px; }
+.app-nu .nnw .nst-card { margin: 13px 19px 0; }
+/* 24:125.. a headline row is a single line of 16 with 12 of time beside it; only a long headline
+   wraps to a second line. The list was drawn as cards and ran three times the frame's height. */
+.app-nu .nnw .nnw-list > li {
+  display: grid; grid-template-columns: 96px 1fr auto auto; gap: 14px; align-items: center;
+  min-height: 25px; padding: 4px 4px 5px;
+}
+.app-nu .nnw .nnw-time { font-size: 12px; line-height: 14px; white-space: nowrap; }
+.app-nu .nnw .nnw-headline { font-size: 13px; line-height: 16px; }
+.app-nu .nnw .nnw-prov { font-size: 11px; line-height: 14px; }
+
+.app-nu .nnw .nnw-bottom {
+  display: grid; grid-template-columns: 361fr 422fr; gap: 15px;
+  margin: 20px 19px 0; align-items: stretch;
+}
+.app-nu .nnw .nnw-bottom > * { height: 252px; overflow: hidden; }
+.app-nu .nnw .nnw-provs-card { margin: 18px 19px 0; height: 142px; overflow: hidden; }
+
+@media (max-width: 900px) {
+  .app-nu .nnw .nnw-top,
+  .app-nu .nnw .nnw-bottom { grid-template-columns: 1fr; height: auto; }
+  .app-nu .nnw .nnw-top > *,
+  .app-nu .nnw .nnw-bottom > * { height: auto; }
+  .app-nu .nnw .nnw-head { height: auto; flex-wrap: wrap; }
+}
+/* 24:111-24:122 — the frame puts the headline search FIRST (228 x 31 at x=7), then the five tone
+   tabs, then the count at the right. Ours had the tabs first. */
+.app-nu .nnw .nst-filters { gap: 14px; }
+.app-nu .nnw .nst-filters .nst-find { order: -1; flex: 0 0 228px; }
+.app-nu .nnw .nst-filters .nst-find > span:first-child { display: none; }
+.app-nu .nnw .nst-filters .nsh-lookup input { width: 228px; height: 31px; }
+.app-nu .nnw .nst-filters .nd-tabs { flex: 1 1 auto; gap: 22px; }
+.app-nu .nnw .nst-filters .nst-count { margin-left: auto; }
+/* The providers note is the last line of a 142-tall card; it was being cut off. */
+.app-nu .nnw .nnw-provs-card { display: flex; flex-direction: column; }
+.app-nu .nnw .nnw-provs { flex: 1 1 auto; overflow: auto; min-height: 0; margin: 0; }
+.app-nu .nnw .nnw-provs-card .nd-note {
+  flex: 0 0 auto; margin: 0; padding-top: 6px; font-size: 11px; line-height: 14px;
+}
+
+/* ============================================================================
+   MARKET OVERVIEW — frame 24:327 (1024 x 1536, light)
+
+   Content-relative (the frame draws a 160 rail and a 53 header):
+
+     head + indices  16,12    836 x 239   five cards 81 tall, 3 then 2, ~9 apart
+     Market Tide     16,262   836 x 281
+     Sector          16,554   364 x 403   | Heatmap  387,554  465 x 403
+     Breadth         16,967   348 x 93
+     Indicators      16,1069  348 x 175
+     Gainers        377,967   229 x 166   | Losers  618,967   234 x 166
+     Global         377,1142  476 x 102
+     Sentiment       16,1255  433 x 200   | Put/Call 465,1255 388 x 200
+
+   The middle band interleaves two of the page's own wrappers: Breadth and Key
+   Indicators come from .mo-side inside .mo-grid, while Gainers, Losers and
+   Global are in .mo-grid-3 beside it. They are siblings in the DOM, so the only
+   way to lay them out as ONE band without rewriting MarketPulsePage - which the
+   classic UI also renders - is `display: contents` on the wrappers and a single
+   grid on the page. That is what the block below does.
+   ========================================================================= */
+.app-nu .nmo .page {
+  display: grid;
+  /* minmax(0, Nfr), not plain fr: an fr track still takes its MINIMUM from its content, so one
+     wide table inside the heatmap or Global Markets inflated the whole grid 38px past the column
+     it lives in and every block measured over. */
+  grid-template-columns: minmax(0, 364fr) minmax(0, 23fr) minmax(0, 229fr) minmax(0, 12fr) minmax(0, 234fr);
+  gap: 0 0; align-content: start;
+  padding: 12px 16px 0;
+}
+/* Full-width rows. */
+.app-nu .nmo .mo-head,
+.app-nu .nmo .mo-indices,
+.app-nu .nmo .mo-explain,
+.app-nu .nmo .mo-tide,
+.app-nu .nmo .mo-grid-2 { grid-column: 1 / -1; }
+
+/* 24:417.. five index cards: three across, then two. 81 tall. */
+.app-nu .nmo .mo-indices {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-top: 14px;
+}
+.app-nu .nmo .mo-index { height: 81px; padding: 11px 15px; }
+.app-nu .nmo .mo-index-label { font-size: 13px; font-weight: 600; }
+.app-nu .nmo .mo-index-value { font-size: 21px; line-height: 25px; font-weight: 700; }
+
+/* Only .mo-grid dissolves. The middle band's two columns FLOW INDEPENDENTLY in the frame - the
+   left runs Breadth 93 then Indicators 175, the right runs Gainers/Losers 166 then Global 102,
+   and the two stacks happen to come to the same 277 - which a shared grid row cannot express,
+   because one row has one height. So .mo-side and .mo-grid-3 stay real boxes, each placed in the
+   page grid and each laying out its own children. */
+.app-nu .nmo .mo-grid { display: contents; }
+
+/* 24:331 — Market Tide spans the whole column. */
+.app-nu .nmo .page > section.panel { grid-column: 1 / -1; height: 281px; margin-top: 14px; }
+/* 24:332 / 24:333 — Sector and Heatmap, 403 tall, on one row. */
+.app-nu .nmo .mo-grid > *:nth-child(1) { grid-column: 1; height: 403px; margin-top: 11px; }
+.app-nu .nmo .mo-grid > *:nth-child(2) { grid-column: 3 / -1; height: 403px; margin-top: 11px; }
+/* The band below the sector row sat 15 low against 24:334. */
+.app-nu .nmo .mo-grid .mo-side,
+.app-nu .nmo .mo-grid-3 { margin-top: -6px; }
+/* 24:334 / 24:335 — Breadth then Key Indicators, left column, its own stack. */
+.app-nu .nmo .mo-grid .mo-side {
+  display: flex; flex-direction: column; gap: 9px; grid-column: 1; margin-top: 9px;
+}
+.app-nu .nmo .mo-side > *:nth-child(1) { height: 93px; flex: 0 0 93px; }
+.app-nu .nmo .mo-side > *:nth-child(2) { height: 175px; flex: 0 0 175px; }
+/* 24:336 / 24:337 / 24:338 — Gainers | Losers, then Global across both, its own stack. */
+.app-nu .nmo .mo-grid-3 {
+  display: grid; grid-template-columns: minmax(0, 229fr) minmax(0, 12fr) minmax(0, 234fr); gap: 9px 0;
+  grid-column: 3 / -1; margin-top: 9px; align-content: start;
+}
+.app-nu .nmo .mo-grid-3 > *:nth-child(1) { grid-column: 1; height: 166px; }
+.app-nu .nmo .mo-grid-3 > *:nth-child(2) { grid-column: 3; height: 166px; }
+.app-nu .nmo .mo-grid-3 > *:nth-child(3) { grid-column: 1 / -1; height: 102px; }
+/* 24:339 / 24:340 */
+.app-nu .nmo .mo-grid-2 {
+  display: grid; grid-template-columns: minmax(0, 433fr) minmax(0, 388fr); gap: 16px; margin-top: 11px;
+}
+.app-nu .nmo .mo-grid-2 > * { height: 200px; overflow: hidden; }
+
+@media (max-width: 900px) {
+  .app-nu .nmo .page { display: block; padding: 12px 10px 0; }
+  .app-nu .nmo .mo-grid,
+  .app-nu .nmo .mo-grid-3,
+  .app-nu .nmo .mo-side { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  .app-nu .nmo .page > section.panel { height: auto; }
+  .app-nu .nmo .mo-grid > *,
+  .app-nu .nmo .mo-side > *,
+  .app-nu .nmo .mo-grid-3 > *,
+  .app-nu .nmo .mo-grid-2 > * { height: auto; grid-column: auto; }
+  .app-nu .nmo .mo-indices { grid-template-columns: 1fr 1fr; }
+}
+/* 24:403-24:416 — the header is ONE 51-tall row: title and subtitle on the left, the stock search
+   (210 x 30), the Closed dot and Refresh (82 x 31) on the right. Ours wrapped to three lines and
+   measured 162, which pushed the whole page 111 down. */
+.app-nu .nmo .mo-head {
+  height: 51px; display: flex; align-items: flex-start; gap: 16px; margin: 0;
+}
+.app-nu .nmo .mo-head h1 { margin: 0; font-size: 27px; line-height: 35px; font-weight: 700; }
+.app-nu .nmo .mo-head p {
+  margin: 3px 0 0; font-size: 12px; line-height: 13px; white-space: nowrap;
+}
+.app-nu .nmo .mo-head-right {
+  margin-left: auto; display: flex; align-items: center; gap: 13px; flex: 0 0 auto;
+}
+.app-nu .nmo .mo-search { width: 210px; height: 30px; }
+.app-nu .nmo .mo-head-right .ghost-btn { height: 31px; padding: 0 14px; }
+/* 24:457 — "What do these numbers mean?" is not a row of its own. The frame tucks it at
+   (559,180) inside the index block, beside the second row of cards, which has an empty third
+   column. Pulled up into that gap rather than left as a full-width strip that pushed every block
+   below it 50px down. */
+.app-nu .nmo .mo-explain {
+  margin: -70px 0 0 559px; width: 224px; min-height: 34px;
+}
+.app-nu .nmo .mo-explain-head { height: 34px; }
+@media (max-width: 900px) {
+  .app-nu .nmo .mo-explain { margin: 10px 0 0; width: auto; }
+}
+/* The subtitle was `white-space: nowrap`, and a grid column takes its minimum from its content -
+   so one unbreakable line made the WHOLE page grid 38px wider than the column it sits in, and
+   every block measured over. Grid children need an explicit min-width:0 to be allowed to shrink. */
+.app-nu .nmo .mo-head p {
+  white-space: normal; overflow: hidden; text-overflow: ellipsis;
+  display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
+}
+.app-nu .nmo .page > *,
+.app-nu .nmo .mo-grid > *,
+.app-nu .nmo .mo-grid-3 > *,
+.app-nu .nmo .mo-side > * { min-width: 0; }
+/* Final vertical alignment for Market Overview, measured: the sector row and everything under it
+   sat 10-15 below the frame. Appended so these win on order over the block rules above. */
+.app-nu .nmo .mo-grid > *:nth-child(1),
+.app-nu .nmo .mo-grid > *:nth-child(2) { margin-top: 1px; }
+.app-nu .nmo .mo-grid .mo-side,
+.app-nu .nmo .mo-grid-3 { margin-top: 4px; }
+
+/* Market Overview: the frame's panel heights are fixed, so their CONTENT has to live inside them.
+   Without this the Tide chart, the heatmap tiles and the gainers/losers tables simply drew past
+   their cards and over the row below - the blocks measured right and the page looked broken. */
+.app-nu .nmo .page > section.panel,
+.app-nu .nmo .mo-grid > *,
+.app-nu .nmo .mo-side > *,
+.app-nu .nmo .mo-grid-3 > *,
+.app-nu .nmo .mo-grid-2 > * {
+  overflow: hidden; display: flex; flex-direction: column; min-height: 0;
+}
+.app-nu .nmo .panel > *:last-child { min-height: 0; overflow: auto; }
+
+/* 24:470-24:523 — the Tide plot is 148 tall inside a 281 card, with its legend and note beneath. */
+.app-nu .nmo .page > section.panel .recharts-responsive-container { height: 170px !important; }
+
+/* 24:575.. heatmap tiles: 20-30 tall with an 11px label, not the 44 the page drew. */
+.app-nu .nmo .mo-heat-title { font-size: 11px; line-height: 14px; margin: 4px 0 2px; }
+.app-nu .nmo .mo-heat-tiles { gap: 3px; }
+.app-nu .nmo .mo-heat-tile {
+  min-height: 22px; padding: 2px 6px; font-size: 11px; line-height: 12px;
+}
+.app-nu .nmo .mo-heat-tile i { font-size: 10px; }
+
+/* 24:750.. gainers / losers: a 21-tall header band and 20-tall rows fit five in 166. */
+.app-nu .nmo .mo-grid-3 .tbl th { height: 21px; padding: 0 6px; font-size: 11px; }
+.app-nu .nmo .mo-grid-3 .tbl td { height: 20px; padding: 0 6px; font-size: 12px; }
+
+/* 24:716.. indicators: five 17.5-tall rows and the note, inside 175. */
+.app-nu .nmo .mo-side .mo-row { min-height: 17px; font-size: 12px; }
+.app-nu .nmo .mo-side .hint,
+.app-nu .nmo .mo-grid .hint { font-size: 10px; line-height: 13px; }
+/* 24:802.. global markets: one 102-tall row of five columns. */
+.app-nu .nmo .mo-grid-3 > *:nth-child(3) .mo-rows { display: flex; gap: 0; }
+/* The search box is 210 wide in the frame but its input was a fixed 150 plus padding and the Go
+   button, which came to 226 - so Go spilled out of the box and sat on top of the Dow Jones card. */
+.app-nu .nmo .mo-search { width: 210px; overflow: hidden; }
+.app-nu .nmo .mo-search input { width: auto; min-width: 0; flex: 1 1 auto; }
+.app-nu .nmo .mo-search-go { flex: 0 0 auto; padding: 5px 12px; }
+/* The Tide legend was drawn over the plot: 148 of chart in a 281 card leaves room for both. */
+.app-nu .nmo .page > section.panel .recharts-responsive-container { height: 148px !important; }
+.app-nu .nmo .mo-legend { flex: 0 0 auto; padding-top: 4px; }
+/* 24:592.. the frame's heatmap tiles are 35-60 wide and 20-30 tall, seven to eleven per sector
+   row. Ours were four across and twice the height, so a 403 card held three sectors instead of
+   eight. Auto-fill lets a row hold as many as the width allows. */
+.app-nu .nmo .mo-heat-tiles {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 3px;
+}
+.app-nu .nmo .mo-heat-tile {
+  min-height: 21px; padding: 1px 4px; font-size: 10px; line-height: 11px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+/* .mo-head wraps by default, so the search / Closed / Refresh group dropped onto a second line -
+   outside the 51-tall head - and landed on top of the index cards. That is what put the "Go"
+   button over Dow Jones. Nowrap, and the title block shrinks instead. */
+.app-nu .nmo .mo-head { flex-wrap: nowrap; }
+.app-nu .nmo .mo-head > div:first-child { min-width: 0; flex: 1 1 auto; }
+/* The Tide legend sits under the plot, not across it. */
+.app-nu .nmo .page > section.panel > *:last-child { overflow: visible; }
+.app-nu .nmo .page > section.panel .mo-legend { order: 99; }
+/* The responsive container was capped but the chart's own svg kept its height, so the legend was
+   drawn across the plot. Cap the wrapper and the svg too. */
+.app-nu .nmo .page > section.panel .recharts-wrapper,
+.app-nu .nmo .page > section.panel .recharts-wrapper > svg,
+.app-nu .nmo .page > section.panel .recharts-surface { height: 148px !important; }
+.app-nu .nmo .page > section.panel .recharts-responsive-container { overflow: hidden; flex: 0 0 auto; }
+/* 24:423/24:424 — the index card's sparkline, 97 x 39, to the right of the value. Rendered only
+   when the server actually sent a series; a card without one draws no line at all. */
+.app-nu .nmo .mo-index { position: relative; }
+.app-nu .nmo .mo-index-spark {
+  position: absolute; right: 15px; top: 31px; width: 97px; height: 39px; pointer-events: none;
+}
+/* 2:1406 — the search field in the results toolbar. */
+.app-nu .sm .sm-find {
+  display: inline-flex; align-items: center; gap: 8px; height: 37px; padding: 0 12px;
+  border: 1px solid var(--nu-line); border-radius: 10px; background: var(--nu-card);
+  color: var(--nu-page-ink-dim); margin-left: auto; flex: 0 0 212px;
+}
+.app-nu .sm .sm-find input {
+  border: 0; outline: 0; background: transparent; color: var(--nu-page-ink);
+  font-size: 13px; width: 100%; min-width: 0;
+}
+.app-nu .sm .sm-filters .ghost-btn { height: 37px; flex: 0 0 auto; }
+
+/* ============================================================================
+   PAGES WITH NO FIGMA FRAME — Earnings Calendar, Post-Earnings AI, Overview,
+   Options (owner, 2026-11-20: "new shell styling only ... no layout invention")
+
+   The file has no frame for any of these, so there is nothing to lay them out
+   against and inventing one would be guessing at a design nobody drew. What
+   they get instead is the SHELL'S OWN LOOK: Roboto (already applied to .app-nu),
+   the card surface and its border, the design's radius and shadow, and the
+   PageHead ink that was fixed shell-wide.
+
+   This is done by REMAPPING THE CLASSIC TOKENS inside .app-nu rather than by
+   writing rules for each page. Every classic primitive - .panel, .tbl,
+   .ghost-btn, .badge - is already drawn from these variables, so one block
+   restyles all four pages and anything else the new shell shows, and not one
+   layout rule is touched: no width, no padding, no display, no position
+   changes here. Only colour, border, radius and shadow.
+
+   Verified with the geometry harness after the change: all five framed pages
+   still measure exactly as they did before it.
+   ========================================================================= */
+.app-nu {
+  --panel: var(--nu-card);
+  --panel-2: var(--nu-card-2);
+  --panel-3: var(--nu-card-2);
+  --border: var(--nu-line);
+  --border-2: var(--nu-line);
+  --text: var(--nu-ink);
+  --text-dim: var(--nu-ink-dim);
+  --text-mute: var(--nu-ink-dim);
+  --r-lg: var(--nu-r);
+  --r: var(--nu-r-sm);
+  --shadow-1: var(--nu-shadow);
+  --green: var(--nu-up);
+  --red: var(--nu-down);
+  --amber: var(--nu-warn);
+  --blue: var(--nu-accent);
+  --blue-2: var(--nu-accent-2);
+  --font: 'Roboto', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+/* The page background belongs to the shell, not to each page. */
+.app-nu .page { background: transparent; }
+/* A panel head is a card head here: the design draws no rule under it. */
+.app-nu .panel-head { border-bottom-color: var(--nu-line); }
+/* --nu-ink, NOT --nu-page-ink: a panel title sits ON a card, and the page ink is the light text
+   used against the dark page. Using the page ink here would have put white on white. */
+.app-nu .panel-title { font-weight: 700; color: var(--nu-ink); }
+.app-nu .panel { color: var(--nu-ink); }
+/* The promo badge is a white wash at 7% opacity, which is invisible on the light rail - the
+   "Tradgo.AI" chip simply vanished in light theme. */
+:root[data-theme='light'] .app-nu .nu-promo-badge {
+  background: rgba(28, 97, 245, .10); color: var(--nu-rail-ink);
+}

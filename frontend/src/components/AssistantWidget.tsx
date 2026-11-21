@@ -41,6 +41,16 @@ function BotLogo({ size = 24 }: { size?: number }) {
  * the backend's system prompt holds that line.
  */
 export default function AssistantWidget({ symbol }: { symbol: string }) {
+  // The redesigned shell opens this from the top bar instead of a floating bubble, because at the
+  // design's own canvas size a corner bubble sits on top of the last row of every page. One event
+  // rather than lifted state: the bar and the widget are on opposite sides of the tree, and the
+  // widget already owns everything about being open.
+  useEffect(() => {
+    const onAsk = () => setOpen(true);
+    window.addEventListener('trdgo:assistant-open', onAsk);
+    return () => window.removeEventListener('trdgo:assistant-open', onAsk);
+  }, []);
+
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);

@@ -117,7 +117,30 @@ function IndicesExplainer() {
 }
 
 /** An index card: level, move, and whether it is the index or a stand-in. */
-function IndexCard({ row }: { row: any }) {
+/** The frame's sparkline (24:423/24:424), or nothing.
+ *
+ * Nothing is deliberate: with no series there is no line, no flat rule and no dash. A shape drawn
+ * from one price would say something the data does not.
+ */
+function IndexSpark({ points, up }: { points?: number[]; up: boolean }) {
+  if (!points || points.length < 2) return null;
+  const lo = Math.min(...points);
+  const hi = Math.max(...points);
+  const span = hi - lo || 1;
+  const d = points.map((v, i) => {
+    const x = (i / (points.length - 1)) * 100;
+    const y = 100 - ((v - lo) / span) * 100;
+    return `${i ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`;
+  }).join(' ');
+  return (
+    <svg className="mo-index-spark" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      <path d={d} fill="none" strokeWidth={4} vectorEffect="non-scaling-stroke"
+        stroke={up ? '#15c86e' : '#fe374a'} />
+    </svg>
+  );
+}
+
+function IndexCard({ row, spark }: { row: any; spark?: number[] }) {
   const dir = tone(row.change_percent);
   return (
     <div className="mo-index">
@@ -145,6 +168,7 @@ function IndexCard({ row }: { row: any }) {
               && `${row.change > 0 ? '▲' : '▼'} ${Math.abs(row.change).toFixed(2)} `}
             ({pct(row.change_percent)})
           </span>
+          <IndexSpark points={spark} up={(row.change_percent ?? 0) >= 0} />
         </>
       )}
     </div>
@@ -254,6 +278,20 @@ export default function MarketPulsePage({ ctx }: { ctx: PageContext }) {
     const t = stockQ.trim().toUpperCase();
     if (t) navigate(`/dashboard/${encodeURIComponent(t)}${ctx.search || ''}`);
   };
+  // Sparklines for the index cards (24:423) - NEW UI ONLY, by the owner's decision of
+  // 2026-11-20: the classic UI must look exactly as it does now. The guard is on the REQUEST, not
+  // just the render, because this page is shown by both shells and an unconditional fetch would
+  // spend the sparkline budget for readers who would never see a line.
+  //
+  // No new paid call: /api/landing/sparklines is the same shared, server-cached payload the
+  // Analysis landing already uses, and it covers these five proxies because it builds its symbol
+  // list from market_pulse_service.INDEX_CARDS - these very cards.
+  const sparks = useApi<any>(
+    (s) => (ctx.newUi ? api2.landingSparklines(s) : Promise.resolve({ status: 'OFF', series: {} })),
+    [ctx.newUi], { refreshMs: 300_000 },
+  );
+  const sparkSeries: Record<string, number[]> = ctx.newUi ? (sparks.data?.series || {}) : {};
+
   const pulse = useApi<any>((s) => api2.marketPulse(s), [tick], {
     refreshMs: 60000,
   });
@@ -329,7 +367,8 @@ export default function MarketPulsePage({ ctx }: { ctx: PageContext }) {
 
       <div className="mo-indices">
         {(d.indices || []).map((row: any) => (
-          <IndexCard row={row} key={row.label} />
+          <IndexCard row={row} key={row.label}
+            spark={sparkSeries[String(row.instrument || row.symbol || '').toUpperCase()]} />
         ))}
       </div>
 

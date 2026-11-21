@@ -91,6 +91,10 @@ export default function NewStrategyTradesPage({ ctx }: { ctx: PageContext }) {
   const winRate = closed ? (wins / closed) * 100 : null;
   const rrs = rows.map(rr).filter((x): x is number => x !== null);
   const avgRr = rrs.length ? rrs.reduce((a, b) => a + b, 0) / rrs.length : null;
+  // A stop moved to breakeven has zero risk, so its reward:risk is undefined - not zero. Those
+  // rows are the dashes in the column, and the tile is an average over the rest. Counting them
+  // here is what stops the two reading as a contradiction.
+  const rrSkipped = rows.length - rrs.length;
 
   const stats = [
     { icon: <Activity size={18} />, tone: 'blue', value: d.count != null ? String(d.count) : '—',
@@ -98,7 +102,10 @@ export default function NewStrategyTradesPage({ ctx }: { ctx: PageContext }) {
     { icon: <CheckCircle2 size={18} />, tone: 'green', value: winRate != null ? `${winRate.toFixed(1)}%` : '—',
       label: 'Win rate', sub: closed ? `${wins} of ${closed} closed` : 'nothing closed yet' },
     { icon: <Target size={18} />, tone: 'violet', value: avgRr != null ? `1 : ${avgRr.toFixed(2)}` : '—',
-      label: 'Average reward to risk', sub: rrs.length ? `across ${rrs.length} trades` : '' },
+      label: 'Average reward to risk',
+      sub: rrs.length
+        ? `across ${rrs.length} of ${rows.length}${rrSkipped ? ` — ${rrSkipped} at breakeven` : ''}`
+        : 'no trade still carries risk' },
     { icon: <TrendingUp size={18} />, tone: d.total_profit >= 0 ? 'green' : 'red',
       value: d.total_profit != null ? money(d.total_profit) : '—',
       label: 'P&L, trades opened on this date', sub: d.total_pct != null ? pct(d.total_pct) : '' },
@@ -192,7 +199,8 @@ export default function NewStrategyTradesPage({ ctx }: { ctx: PageContext }) {
                 <tr>
                   <th>Symbol</th><th>Model</th><th>Signal</th>
                   <th className="r">Entry</th><th className="r">Target</th><th className="r">Stop</th>
-                  <th className="r">R:R</th><th className="r">Price</th><th className="r">Change</th>
+                  <th className="r">R:R</th><th className="r">Bid</th><th className="r">Ask</th>
+                  <th className="r">Spread</th><th className="r">Price</th><th className="r">Change</th>
                   <th className="r">P&amp;L</th><th className="r">Score</th><th>Status</th>
                 </tr>
               </thead>
@@ -219,7 +227,19 @@ export default function NewStrategyTradesPage({ ctx }: { ctx: PageContext }) {
                         {n2(r.stop)}
                         {r.be_moved && <div className="nst-sub">at breakeven</div>}
                       </td>
-                      <td className="r">{ratio != null ? `1:${ratio.toFixed(2)}` : '—'}</td>
+                      {/* A dash here is not missing data: once the stop is at breakeven the risk
+                          is zero, so the ratio is undefined. Saying so stops it reading as a gap. */}
+                      <td className="r">
+                        {ratio != null
+                          ? `1:${ratio.toFixed(2)}`
+                          : <span className="nst-mute" title="stop at breakeven — no risk left to measure against">—</span>}
+                      </td>
+                      <td className="r nst-mute">{n2(r.bid)}</td>
+                      <td className="r nst-mute">{n2(r.ask)}</td>
+                      <td className="r nst-mute">
+                        {r.spread != null ? n2(r.spread) : '—'}
+                        {r.spread_pct != null && <div className="nst-sub">{(Number(r.spread_pct)).toFixed(2)}%</div>}
+                      </td>
                       <td className="r">{n2(r.last_price)}</td>
                       <td className={`r ${dir(r.profit_pct)}`}>{pct(r.profit_pct)}</td>
                       <td className={`r ${dir(r.profit)}`}>{money(r.profit)}</td>
@@ -235,45 +255,37 @@ export default function NewStrategyTradesPage({ ctx }: { ctx: PageContext }) {
           </div>
         )}
 
-        {/* The frame's pager. Only shown when there is more than one page to walk. */}
-        {pages > 1 && (
-          <div className="nst-pager">
-            <span className="nst-mute">
-              Showing {(page - 1) * perPage + 1}–{Math.min(page * perPage, shown.length)} of {shown.length}
-            </span>
-            <div className="nst-pager-btns">
-              <button type="button" className="ghost-btn" disabled={page === 1}
-                onClick={() => setPage((x) => Math.max(1, x - 1))}>Previous</button>
-              {Array.from({ length: Math.min(pages, 6) }).map((_, i) => {
-                const n = i + 1;
-                return (
-                  <button type="button" key={n} className={page === n ? 'is-on' : ''}
-                    onClick={() => setPage(n)}>{n}</button>
-                );
-              })}
-              {pages > 6 && <span className="nst-mute">… {pages}</span>}
-              <button type="button" className="ghost-btn" disabled={page === pages}
-                onClick={() => setPage((x) => Math.min(pages, x + 1))}>Next</button>
-            </div>
-            <label className="nst-field nst-perpage">
-              <span>Rows</span>
-              <select value={perPage} onChange={(e) => setPerPage(Number(e.target.value))}>
-                {[10, 25, 50, 100].map((x) => <option key={x} value={x}>{x}</option>)}
-              </select>
-            </label>
-          </div>
-        )}
-
-        {/* Positions carried from an earlier date are deliberately outside the table and the totals. */}
-        {!!d.carried_open_count && (
-          <p className="nd-note">
-            {d.carried_open_count} position{d.carried_open_count === 1 ? '' : 's'} opened on an earlier date
-            {' '}are still open. Their P&amp;L stays attributed to the day they were opened, so they are not in
-            the table or the totals above.
-          </p>
-        )}
-        {!!d.realized_note && <p className="nd-note">{d.realized_note}</p>}
       </section>
+
+      {/* 2:430 draws the pager BELOW the table card, not inside it. */}
+        {/* The frame's pager. Only shown when there is more than one page to walk. */}
+      {pages > 1 && (
+        <div className="nst-pager">
+          <span className="nst-mute">
+            Showing {(page - 1) * perPage + 1}–{Math.min(page * perPage, shown.length)} of {shown.length}
+          </span>
+          <div className="nst-pager-btns">
+            <button type="button" className="ghost-btn" disabled={page === 1}
+              onClick={() => setPage((x) => Math.max(1, x - 1))}>Previous</button>
+            {Array.from({ length: Math.min(pages, 6) }).map((_, i) => {
+              const n = i + 1;
+              return (
+                <button type="button" key={n} className={page === n ? 'is-on' : ''}
+                  onClick={() => setPage(n)}>{n}</button>
+              );
+            })}
+            {pages > 6 && <span className="nst-mute">… {pages}</span>}
+            <button type="button" className="ghost-btn" disabled={page === pages}
+              onClick={() => setPage((x) => Math.min(pages, x + 1))}>Next</button>
+          </div>
+          <label className="nst-field nst-perpage">
+            <span>Rows</span>
+            <select value={perPage} onChange={(e) => setPerPage(Number(e.target.value))}>
+              {[10, 25, 50, 100].map((x) => <option key={x} value={x}>{x}</option>)}
+            </select>
+          </label>
+        </div>
+      )}
 
       {isAdmin && (
         <details className="nd-ops">
@@ -291,6 +303,24 @@ export default function NewStrategyTradesPage({ ctx }: { ctx: PageContext }) {
       {q.error && (
         <div className="nd-err"><AlertTriangle size={15} /> The blotter could not be loaded. Nothing is shown rather than a stale book.</div>
       )}
+        {/* What the design asks for and the blotter does not record. Stated rather than left as a
+          silent gap, so nobody wonders whether it is broken or simply absent. */}
+      <p className="nd-note nst-absent">
+        A trade here carries one target, no setup class and no sector, so the design&apos;s
+        Setup, Target 2, Sector and Market columns have nothing behind them and are left out.
+        There is no per-trade price series either, so there is no trend sparkline.
+      </p>
+
+      {/* Positions carried from an earlier date are deliberately outside the table and the totals. */}
+      {!!d.carried_open_count && (
+        <p className="nd-note">
+          {d.carried_open_count} position{d.carried_open_count === 1 ? '' : 's'} opened on an earlier date
+          {' '}are still open. Their P&amp;L stays attributed to the day they were opened, so they are not in
+          the table or the totals above.
+        </p>
+      )}
+      {!!d.realized_note && <p className="nd-note">{d.realized_note}</p>}
+
     </div>
   );
 }

@@ -1161,7 +1161,11 @@ INDEX_FALLBACK = {
     "S&P 500": ["SPX", "SPY"],
     "NASDAQ": ["NDX", "QQQ"],
     "DOW": ["DIA"],
-    "VIX": ["VIX"],
+    # No spot VIX from the feed - the row was null on every page. VIXY tracks short-term VIX
+    # futures and sits in the VIX's range; the pulse already stands it in, so the same fallback
+    # applies here. It is flagged is_proxy (candidate != index symbol) and is NOT scaled: VIXY is a
+    # stand-in for the level, not a fraction of it.
+    "VIX": ["VIX", "VIXY"],
 }
 
 
@@ -1228,6 +1232,35 @@ def _provider_indices() -> Optional[dict]:
     }
 
 
+def _scale_proxy_rows(rows: list) -> list:
+    """Raise a proxy ETF's price to the index level it tracks.
+
+    The multipliers live in market_pulse_service.INDEX_CARDS and are read from there rather than
+    copied, so the strip and the Market Overview card can never disagree about what the S&P is.
+    Only the absolute level is scaled; the percentage change is the same either way.
+    """
+    try:
+        import market_pulse_service as mp
+
+        mult = {c["label"]: (c.get("mult") or 1.0) for c in mp.INDEX_CARDS}
+        # the pulse labels two of them differently
+        mult.setdefault("NASDAQ", mult.get("Nasdaq 100", 1.0))
+        mult.setdefault("DOW", mult.get("Dow Jones", 1.0))
+    except Exception:  # noqa: BLE001 - without the table, leave the rows exactly as they are
+        return rows
+
+    for r in rows:
+        m = mult.get(r.get("label"))
+        if not m or m == 1.0 or not r.get("is_proxy"):
+            continue
+        if r.get("value") is not None:
+            r["value"] = round(r["value"] * m, 2)
+        if r.get("change") is not None:
+            r["change"] = round(r["change"] * m, 2)
+        r["index_scaled"] = True
+    return rows
+
+
 def get_indices(ttl: Optional[float] = None) -> dict:
     cached = cache.get("indices", ttl if ttl is not None else session_ttl(20.0, 600.0))
     if cached:
@@ -1235,6 +1268,9 @@ def get_indices(ttl: Optional[float] = None) -> dict:
 
     result = _provider_indices()
     if result:
+        # A proxy row carries the ETF's price; raise it to the index level before anyone caches or
+        # renders it, so no page can show SPY's 710 under the heading "S&P 500".
+        result["indices"] = _scale_proxy_rows(result.get("indices") or [])
         cache.put("indices", result)
         return result
 

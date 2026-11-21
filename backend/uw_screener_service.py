@@ -131,23 +131,68 @@ def fundamentals(symbol: str) -> dict:
             "source": SOURCE}
 
 
-def movers(limit: int = 25) -> dict:
-    """The day's biggest movers, as they rank them."""
-    out = uw.get("/api/market/movers", {"limit": limit})
+def _caps_by_symbol() -> dict:
+    """Market cap per symbol, from the screener list that is already cached.
+
+    The movers feed does not publish a market cap, so the only way to apply a size floor without a
+    second provider call is to look it up in the screener snapshot the app already holds.
+    """
+    try:
+        import screener_service as sc
+
+        return {str(r.get("symbol") or "").upper(): r.get("market_cap")
+                for r in (sc.get_all_stocks() or {}).get("rows") or []}
+    except Exception:  # noqa: BLE001 - a missing cap must never break the movers list
+        return {}
+
+
+def movers(limit: int = 25, min_price: float = 5.0,
+           min_market_cap: float = 2_000_000_000.0) -> dict:
+    """The day's biggest movers, as they rank them, above a price and size floor.
+
+    The floor exists because the raw feed ranks by volume alone, which fills the panel with
+    sub-dollar micro-caps - the page showed ANT, VIVS at $0.29 and CHSN at $0.10 while the design
+    shows the names a reader recognises. Both limits are arguments, so a caller that genuinely
+    wants the unfiltered tape can ask for it.
+    """
+    out = uw.get("/api/market/movers", {"limit": max(int(limit) * 4, 100)})
     if out["status"] != "OK":
         return {"status": out["status"], "rows": [],
                 "detail": out.get("detail"), "source": SOURCE}
 
-    rows = [{
-        "symbol": r.get("ticker"),
-        "name": r.get("full_name"),
-        "price": _f(r.get("close") or r.get("price")),
-        "change_percent": _f(r.get("perc_change") or r.get("change_percent")),
-        "volume": _f(r.get("volume")),
-        "sector": r.get("sector"),
-    } for r in uw._rows(out)]
+    caps = _caps_by_symbol() if min_market_cap else {}
+    rows = []
+    dropped_price = dropped_cap = 0
+    for r in uw._rows(out):
+        sym = str(r.get("ticker") or "").upper()
+        price = _f(r.get("close") or r.get("price"))
+        cap = caps.get(sym)
+        if min_price and price is not None and price < min_price:
+            dropped_price += 1
+            continue
+        # An unknown cap is NOT treated as zero: the screener covers the 500 largest optionable
+        # names, so a name missing from it is usually small - but guessing would hide a real mover.
+        # It is kept when it clears the price floor, and the count is reported.
+        if min_market_cap and cap is not None and cap < min_market_cap:
+            dropped_cap += 1
+            continue
+        rows.append({
+            "symbol": sym or r.get("ticker"),
+            "name": r.get("full_name"),
+            "price": price,
+            "change_percent": _f(r.get("perc_change") or r.get("change_percent")),
+            "volume": _f(r.get("volume")),
+            "sector": r.get("sector"),
+            "market_cap": cap,
+        })
+        if len(rows) >= limit:
+            break
     return {"status": "OK" if rows else "NO_DATA", "rows": rows,
-            "count": len(rows), "source": SOURCE}
+            "count": len(rows), "source": SOURCE,
+            "floor": {"min_price": min_price, "min_market_cap": min_market_cap,
+                      "dropped_below_price": dropped_price,
+                      "dropped_below_market_cap": dropped_cap,
+                      "caps_known": len(caps)}}
 
 
 def short_interest(symbol: str) -> dict:

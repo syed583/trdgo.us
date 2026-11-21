@@ -881,6 +881,12 @@ export const api2 = {
     request<any>('/api/earnings/calendar/context', s),
 
   /** The implied-volatility series behind the IV trend chart (one request per symbol opened). */
+  /** Intraday closes for the landing's sparklines. Answers DISABLED unless the server is told
+   *  to spend the requests - see /api/landing/sparklines. */
+  landingSparklines: (s?: AbortSignal) => request<any>('/api/landing/sparklines', s),
+  /** The Analysis landing's featured symbol: one shared, server-cached quote + chart. */
+  landingFeatured: (s?: AbortSignal) => request<any>('/api/landing/featured', s),
+
   optionIvHistory: (symbol: string, days = 30, s?: AbortSignal) =>
     request<any>(`/api/options/iv-history/${encodeURIComponent(symbol)}?days=${days}`, s),
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Crown, Headphones, Menu, Search, Sun, Moon, ChevronDown } from 'lucide-react';
+import { Bell, Bot, Crown, Headphones, Menu, Search, Sun, Moon, ChevronDown } from 'lucide-react';
 
 /**
  * Stage 1 of the redesign: the top bar, drawn to the Figma frame.
@@ -77,6 +77,14 @@ export default function NewTopBar({
           <Bell size={17} />
           {/* Only when there is genuinely something unread. */}
           {!!alerts && alerts > 0 && <span className="nu-dot" aria-hidden="true" />}
+        </button>
+
+        {/* The assistant. It used to be a bubble pinned to the bottom-right corner, which at the
+            design's 1536x1024 canvas sat on top of the last row of every page. */}
+        <button type="button" className="nu-icon" aria-label="Ask the Trdgo assistant"
+          title="Ask the Trdgo assistant"
+          onClick={() => window.dispatchEvent(new Event('trdgo:assistant-open'))}>
+          <Bot size={17} />
         </button>
 
         <button type="button" className="nu-icon" aria-label="Help" onClick={() => navigate('/settings')}>

@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react';
-import { AlertTriangle, Info, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Clock, Download, Info, Layers, RefreshCw, Search, TrendingDown, TrendingUp } from 'lucide-react';
 import type { PageContext } from '../App';
 import { earningsMonitor, smartMoveEngine20 } from '../api/client';
 import { SmartMoveAlertCard } from '../components/SmartMoveAlert';
@@ -35,6 +35,32 @@ export function sortUpcomingFirst<T extends { label?: string; symbol?: string }>
 /** The BUY / SELL badge pulses only while the event is still ahead (upcoming); past events never blink. */
 export function blinkClass(r: { label?: string; signal_code?: string }): string | undefined {
   return isUpcoming(r) && (r.signal_code === 'BUY' || r.signal_code === 'SELL') ? 'sm-blink' : undefined;
+}
+
+/** What a missing factor is called for the reader in front of it.
+ *
+ * The raw entries are "F7: NOT_CAPTURED_LIVE_IN_WINDOW" and the like. Which factor a model scores,
+ * and what it is called, is a model internal (A.29) - so a non-administrator gets the plain reason
+ * and an administrator keeps the code. The mapping is on the PLAIN side only: no code is invented
+ * here, and anything unrecognised degrades to a general phrase rather than leaking the raw string.
+ */
+const PLAIN_MISSING: Array<[RegExp, string]> = [
+  [/INSUFFICIENT_HISTORY/i, 'not enough past reports'],
+  [/NOT_CAPTURED_LIVE_IN_WINDOW/i, 'evidence not captured while the window was open'],
+  [/RETRIEVED_BEFORE_WINDOW/i, 'evidence predates the window'],
+  [/NO_SECTOR_MAPPING|ETF_EVIDENCE/i, 'no sector comparison available'],
+  [/NO_PREDICTION|nothing is back-filled/i, 'no prediction was made before the window closed'],
+];
+
+export function plainMissing(entries: any[], isAdmin: boolean): string {
+  const list = (entries || []).map((x) => String(x));
+  if (!list.length) return 'none';
+  if (isAdmin) return list.join('; ');
+  const plain = list.map((raw) => {
+    const hit = PLAIN_MISSING.find(([re]) => re.test(raw));
+    return hit ? hit[1] : 'an input was unavailable';
+  });
+  return Array.from(new Set(plain)).join('; ');
 }
 
 export function missingText(r: { missing_factors?: any[] }): string {
@@ -133,16 +159,69 @@ const LIVE_CATS = ['', 'BUY', 'SELL', 'NO_TRADE', 'NO_VALID_PREDICTION', 'PENDIN
 const LIVE_CAT_LABEL: Record<string, string> = { '': 'All', BUY: 'BUY', SELL: 'SELL', NO_TRADE: 'NO TRADE', NO_VALID_PREDICTION: 'NO VALID PREDICTION', PENDING_REFRESH: 'PENDING (not a prediction)', MISSED: 'Missed windows' };
 
 /** The LIVE scanner: the collector's own append-only prediction ledger and status, read from files by the server. This page computes no score and never relabels a missed window as a prediction. */
-export function LiveView() {
+/** Write the rows on screen to a CSV file, in the browser.
+ *
+ * Nothing is uploaded and no request is made: this serialises the payload the page already holds.
+ * The columns are the ones the table shows, in the same order, so the file and the screen agree.
+ */
+function exportRows(rows: any[], category: string, find: string): void {
+  const cols: Array<[string, (r: any) => any]> = [
+    ['Symbol', (r) => r.symbol],
+    ['Company', (r) => r.company],
+    ['Earnings date', (r) => r.earnings_date],
+    ['Session', (r) => r.session],
+    ['Prediction', (r) => r.signal_code],
+    ['Label', (r) => r.label],
+    ['Bull', (r) => r.bull],
+    ['Bear', (r) => r.bear],
+    ['Coverage', (r) => r.coverage],
+    ['Evidence age (h)', (r) => r.evidence_age_h],
+    ['Liquidity', (r) => r.liquidity],
+    ['ADV20 (USD)', (r) => r.adv20_usd],
+    ['Window closes (ET)', (r) => r.window_cutoff_et],
+  ];
+  // A value holding a comma, a quote or a newline has to be quoted or the file silently gains a
+  // column. Company names contain commas often enough that this is not hypothetical.
+  const cell = (v: any) => {
+    const t = v == null ? '' : String(v);
+    return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+  };
+  const csv = [cols.map(([h]) => cell(h)).join(',')]
+    .concat(rows.map((r) => cols.map(([, get]) => cell(get(r))).join(',')))
+    .join('\r\n');
+
+  const stamp = new Date().toISOString().slice(0, 10);
+  const tag = [category || 'all', find.trim() ? 'filtered' : ''].filter(Boolean).join('-');
+  // The BOM is for spreadsheet apps, which otherwise read a UTF-8 CSV as the system codepage and
+  // mangle any non-ASCII company name.
+  const url = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `smart-money-move-${tag}-${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export function LiveView({ isAdmin = false }: { isAdmin?: boolean }) {
+  const isAdminLive = isAdmin;
   const live = useApi<any>((s) => earningsMonitor.smartLive(s), [], { refreshMs: 60_000 });
   const [cat, setCat] = useState('');
+  const [find, setFind] = useState('');
   const [open, setOpen] = useState('');
   const d = live.data;
   const all: any[] = d?.rows || [];
   const missed = all.filter((r) => r.label === 'WINDOW MISSED');
   const calls = all.filter((r) => r.label !== 'WINDOW MISSED');
   const n = (code: string) => calls.filter((r) => r.signal_code === code).length;
-  const shown = sortUpcomingFirst(cat === 'MISSED' ? missed : calls.filter((r) => !cat || r.signal_code === cat), (r) => r.earnings_date);
+  const inCat = sortUpcomingFirst(cat === 'MISSED' ? missed : calls.filter((r) => !cat || r.signal_code === cat), (r) => r.earnings_date);
+  // 2:1406 - the search narrows what the tabs produced. It never goes back to the server and
+  // it cannot surface a row the current category excludes.
+  const needle = find.trim().toLowerCase();
+  const shown = needle
+    ? inCat.filter((r: any) => `${r.symbol || ''} ${r.company || ''}`.toLowerCase().includes(needle))
+    : inCat;
   const firstPast = shown.findIndex((r) => !isUpcoming(r));                 // where the "past earnings" section starts (-1: none)
   const s = d?.scan || {};
   const q = d?.requests || {};
@@ -169,15 +248,38 @@ export function LiveView() {
           </div>
           <div className="sm-q-muted" data-testid="sm-live-requests">
             Provider requests by the collector today: <b>{q.used_today ?? 'unknown'}</b> of {q.daily_limit ?? 'unknown'} · remaining <b>{q.remaining_today ?? 'unknown'}</b> · per run ≤ {q.run_limit ?? 'unknown'}
-            {d.calendar?.through && <> · calendar through {d.calendar.through} (age {d.calendar.age_h} h)</>}
+            {d.calendar?.through && (
+              <> · calendar through {d.calendar.through} (age{' '}
+                {/* Formatted, not raw: age_h 5.227 rendered through a comma-decimal locale as
+                    "5,227 h", turning a five-hour-old calendar into a seven-month-old one. */}
+                {Number(d.calendar.age_h).toLocaleString('en-US', { maximumFractionDigits: 1 })} h)</>
+            )}
             {e.open_scanned != null && <> · events in an open window scanned: <b>{e.open_scanned}</b></>}
+            {/* A bare zero above reads as "nothing happened". These are the events the collector
+                held back, and why - the largest reason is usually a stale calendar observation. */}
+            {!!e.skipped && Object.keys(e.skipped).length > 0 && (
+              <div className="sm-q-muted" data-testid="sm-live-skipped">
+                Held back this pass:{' '}
+                {Object.entries(e.skipped as Record<string, number>)
+                  .filter(([, n]) => Number(n) > 0)
+                  .sort((a, b) => Number(b[1]) - Number(a[1]))
+                  .map(([reason, n]) => `${Number(n).toLocaleString('en-US')} ${reason}`)
+                  .join(' · ')}
+              </div>
+            )}
           </div>
+          {/* 2:1352-2:1384 — each count card carries a 60px tinted disc with its own icon. */}
           <div className="sm-summary" data-testid="live-counts">
-            <div className="sm-card"><div className="sm-card-k">BUY</div><div className="sm-card-v">{n('BUY')}</div></div>
-            <div className="sm-card"><div className="sm-card-k">SELL</div><div className="sm-card-v">{n('SELL')}</div></div>
-            <div className="sm-card"><div className="sm-card-k">NO TRADE (genuine)</div><div className="sm-card-v">{n('NO_TRADE')}</div></div>
-            <div className="sm-card"><div className="sm-card-k">NO VALID PREDICTION</div><div className="sm-card-v">{n('NO_VALID_PREDICTION')}</div></div>
-            <div className="sm-card"><div className="sm-card-k">PENDING (not a prediction)</div><div className="sm-card-v">{n('PENDING_REFRESH')}</div></div>
+            <div className="sm-card"><span className="sm-card-ico up"><TrendingUp size={30} /></span>
+              <div><div className="sm-card-k">BUY</div><div className="sm-card-v">{n('BUY')}</div></div></div>
+            <div className="sm-card"><span className="sm-card-ico down"><TrendingDown size={30} /></span>
+              <div><div className="sm-card-k">SELL</div><div className="sm-card-v">{n('SELL')}</div></div></div>
+            <div className="sm-card"><span className="sm-card-ico flat"><Layers size={30} /></span>
+              <div><div className="sm-card-k">NO TRADE (genuine)</div><div className="sm-card-v">{n('NO_TRADE')}</div></div></div>
+            <div className="sm-card"><span className="sm-card-ico warn"><Search size={30} /></span>
+              <div><div className="sm-card-k">NO VALID PREDICTION</div><div className="sm-card-v">{n('NO_VALID_PREDICTION')}</div></div></div>
+            <div className="sm-card"><span className="sm-card-ico wait"><Clock size={30} /></span>
+              <div><div className="sm-card-k">PENDING (not a prediction)</div><div className="sm-card-v">{n('PENDING_REFRESH')}</div></div></div>
           </div>
           <div className="sm-filters">
             <div className="sm-tabs" role="group" aria-label="Category filter">
@@ -185,6 +287,20 @@ export function LiveView() {
                 <button key={k || 'all'} className={`sm-tab ${cat === k ? 'on' : ''}`} aria-pressed={cat === k} onClick={() => setCat(k)}>{LIVE_CAT_LABEL[k]}{k === 'MISSED' ? ` (${missed.length})` : ''}</button>
               ))}
             </div>
+            {/* 2:1406 */}
+            <label className="sm-find">
+              <Search size={15} aria-hidden="true" />
+              <input value={find} onChange={(e) => setFind(e.target.value)}
+                placeholder="Search symbol..." aria-label="Search the rows on screen" />
+            </label>
+            {/* 2:1410 - writes the rows ON SCREEN, in the order they are on screen. The
+                frame's Columns button (2:1414) is not built: which columns exist is a
+                question about the model's shape, and hiding one client-side would not
+                change what the payload carries. */}
+            <button className="ghost-btn" onClick={() => exportRows(shown, cat, find)}
+              disabled={!shown.length} data-testid="sm-live-export">
+              <Download size={14} /> Export
+            </button>
             <button className="ghost-btn" onClick={() => live.refresh()}><RefreshCw size={14} /> Reload</button>
           </div>
           {!shown.length && <div className="sm-none" data-testid="sm-live-none">{all.length ? 'No event in this category.' : 'No live prediction has been recorded yet.'}</div>}
@@ -206,7 +322,7 @@ export function LiveView() {
                       <td>{r.coverage ?? '—'}</td>
                       <td>{r.evidence_age_h != null ? <span className={r.evidence_warning ? 'sm-fresh stale' : undefined}>{r.evidence_age_h} h old{r.evidence_warning ? ' — old evidence' : ''}</span> : 'none'}<div className="sm-q-muted">{r.evidence_latest_et ?? ''}</div></td>
                       <td>{r.liquidity ?? '—'}{r.adv20_usd != null && <div className="sm-q-muted">ADV20 ${(r.adv20_usd / 1e6).toFixed(0)}M</div>}</td>
-                      <td>{r.missing?.length ? r.missing.join('; ') : 'none'}</td>
+                      <td>{plainMissing(r.missing, isAdminLive)}</td>
                       <td>{r.window_cutoff_et ?? '—'}{r.hours_to_cutoff != null && <div className="sm-q-muted">{r.hours_to_cutoff} h left</div>}</td>
                     </tr>
                     {open === k && <tr><td colSpan={11}><div data-testid="live-detail"><div><b>Why:</b> {r.reason ?? '—'}</div><div className="sm-q-muted">Generated {r.generated_at_et ?? '—'} · mode {r.mode ?? '—'} · record {r.record_sha256}</div></div></td></tr>}
@@ -377,6 +493,9 @@ export default function SmartMoveEngine20Page({ ctx }: { ctx: PageContext }) {
   // G: the Historical snapshot is a frozen record of ONE earnings day (4 Nov 2026, 20 stocks) that nothing
   // regenerates. Beside three live tabs it reads as a broken live view, so it is shown to administrators
   // only. Display gating: the route and the snapshot file are untouched, and Smart Move stays frozen.
+  // NOTE: this is "not a view-only account", which is NOT the same as an administrator.
+  // It gates the snapshot TAB only. Anything that must be administrator-only - the factor
+  // codes in the live table, for one - uses ctx.isAdmin instead.
   const isAdmin = !ctx.readOnly;
   const [view, setView] = useState<'live' | 'universe' | 'mondaybmo' | 'snapshot'>('live');
   return (
@@ -389,7 +508,7 @@ export default function SmartMoveEngine20Page({ ctx }: { ctx: PageContext }) {
           {isAdmin && <button role="tab" aria-selected={view === 'snapshot'} className={`sm-tab ${view === 'snapshot' ? 'on' : ''}`} data-testid="tab-snapshot" onClick={() => setView('snapshot')}>Historical snapshot (20 stocks)</button>}
         </div>
       </div>
-      {view === 'live' ? <LiveView /> : view === 'universe' ? <UniverseView /> : view === 'mondaybmo' ? <MondayBmoView /> : <SnapshotView isAdmin={isAdmin} />}
+      {view === 'live' ? <LiveView isAdmin={!!ctx.isAdmin} /> : view === 'universe' ? <UniverseView /> : view === 'mondaybmo' ? <MondayBmoView /> : <SnapshotView isAdmin={isAdmin} />}
     </div>
   );
 }

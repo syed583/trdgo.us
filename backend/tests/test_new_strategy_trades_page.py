@@ -53,8 +53,17 @@ def test_the_label_comes_from_the_server():
 @pytest.mark.parametrize("absent", ["Swing", "Position", "Target 2", "All Sectors", "All Signals",
                                     "Setup"])
 def test_columns_we_cannot_fill_are_not_drawn(absent):
-    """The frame asks for these; the blotter cannot supply them, so they are not on the page."""
-    assert absent not in _code(), f"{absent!r} is drawn but nothing fills it"
+    """The frame asks for these; the blotter cannot supply them, so no COLUMN is drawn for them.
+
+    The check is on the table headers, not on the whole file. It used to be "this string appears
+    nowhere", which failed the moment the page added a sentence NAMING the missing columns to
+    explain their absence - the opposite of drawing them, and exactly what the owner asked for
+    (2026-11-20: "leave out what has no data, and say so").
+    """
+    code = _code()
+    headers = re.findall(r"<th[^>]*>(.*?)</th>", code, re.S)
+    for h in headers:
+        assert absent not in h, f"{absent!r} is drawn as a column but nothing fills it"
 
 
 def test_reward_to_risk_is_computed_from_the_trade_levels():

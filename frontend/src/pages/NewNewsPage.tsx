@@ -22,7 +22,12 @@ import '../new-strategy.css';
  * HEADLINES by tone. Those are different things, and labelling a headline count as a term count would
  * misdescribe the measurement, so the counters here say headlines.
  *
- * Nothing is scraped: the headlines come from the market data feed and each links out to its publisher.
+ * Nothing is scraped: the headlines come from the market data feed.
+ *
+ * THEY DO NOT LINK OUT. The page used to promise that every headline linked to its publisher;
+ * checked against the live feed on 2026-11-20, `url` is null on every item, so the promise was
+ * false and is gone. A headline becomes a link only where a URL actually arrives. Why the feed
+ * sends none is a separate question the owner is picking up.
  */
 
 type Any = any;
@@ -93,7 +98,7 @@ export default function NewNewsPage({ ctx }: { ctx: PageContext }) {
           <h1><Newspaper size={22} /> News &amp; Sentiment{symbol ? ` — ${symbol}` : ''}</h1>
           <p>
             Headlines from the market data feed, each carrying the tickers it is about. Nothing is
-            scraped, and every headline links out to its publisher.
+            scraped.
           </p>
         </div>
         <button type="button" className="nnw-refresh" onClick={() => setNonce((n) => n + 1)}>
@@ -171,7 +176,7 @@ export default function NewNewsPage({ ctx }: { ctx: PageContext }) {
               const t = TONE_OF(n.sentiment ?? n.tone);
               return (
                 <li key={String(n.id ?? n.url ?? i)}>
-                  <span className="nnw-time">{n.time || n.time_label || n.published_at || ''}</span>
+                  <span className="nnw-time">{n.time_label || n.time || n.published_at || ''}</span>
                   <a className="nnw-headline" href={n.url || undefined} target="_blank"
                      rel="noopener noreferrer"
                      onClick={(e) => { if (!n.url) e.preventDefault(); }}>
@@ -209,7 +214,10 @@ export default function NewNewsPage({ ctx }: { ctx: PageContext }) {
                   <tr><td>Negative headlines</td><td className="r"><b>{counts.negative}</b></td></tr>
                   <tr><td>Neutral headlines</td><td className="r"><b>{counts.neutral}</b></td></tr>
                   <tr>
-                    <td>Headlines scored</td>
+                    {/* This fraction is the SENTIMENT service's own window, which is not the list
+                        above: the page showed "8 / 20" beside a list of 40 and the two looked like
+                        a contradiction. Saying whose window it is costs one line. */}
+                    <td>Headlines scored<div className="nnw-sub">in the sentiment window</div></td>
                     <td className="r"><b>{s.headlines_scored ?? '—'} / {s.headlines_total ?? items.length}</b></td>
                   </tr>
                 </tbody>
@@ -247,18 +255,24 @@ export default function NewNewsPage({ ctx }: { ctx: PageContext }) {
           )}
         </section>
 
-        <section className="nd-card">
-          <header className="nd-card-head"><h3>Providers</h3></header>
-          {providers.length ? (
-            <ul className="nnw-provs">
-              {providers.map((p) => <li key={String(p)}>{String(p)}</li>)}
-            </ul>
-          ) : <div className="nd-empty">No provider named on these headlines.</div>}
-          <p className="nd-note">
-            Headlines are read on request rather than streamed, and each links out to its publisher.
-          </p>
-        </section>
       </div>
+
+      {/* 24:11 — Providers is its own full-width row under the two cards, not a third column.
+          Its note was an EMPTY <p>: it used to carry the frame's "each links out to its
+          publisher", which was removed because some feed items have no URL. Correct to remove,
+          but what was left said nothing at all. */}
+      <section className="nd-card nnw-provs-card">
+        <header className="nd-card-head"><h3>Providers</h3></header>
+        {providers.length ? (
+          <ul className="nnw-provs">
+            {providers.map((p) => <li key={String(p)}>{String(p)}</li>)}
+          </ul>
+        ) : <div className="nd-empty">No provider named on these headlines.</div>}
+        <p className="nd-note">
+          Headlines are read on request rather than streamed. Where the feed carries a link to the
+          publisher the headline opens it; some items arrive without one, and those do not.
+        </p>
+      </section>
 
       {isAdmin && (
         <details className="nd-ops">

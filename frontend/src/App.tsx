@@ -23,7 +23,9 @@ import NewForwardScoreboardPage from './pages/NewForwardScoreboardPage';
 import NewHistoricalBacktestPage from './pages/NewHistoricalBacktestPage';
 import NewStocksPage from './pages/NewStocksPage';
 import NewNewsPage from './pages/NewNewsPage';
+import DevFigmaPreview, { hasFigmaFrame } from './DevFigmaPreview';
 import { resolveTheme, applyTheme, saveTheme } from './lib/theme';
+import './roboto.css';   // Roboto 400/500/700, self-hosted, for the redesigned shell only
 import './new-shell.css';
 import ErrorBoundary from './components/ErrorBoundary';
 import { Loading } from './pages/shared';
@@ -392,6 +394,10 @@ function Shell() {
             keeps a render error on one page from blanking the whole app. */}
         <ErrorBoundary key={location.pathname}>
         <Suspense fallback={<div className="page"><Loading /></div>}>
+        {/* DEV ONLY: with the redesign flag on, the nine designed pages render their Figma frame so the
+            look can be judged inside the real shell. hasFigmaFrame() is false in any production build
+            (import.meta.env.DEV compiles to false), so this branch cannot exist on the server. */}
+        {newUi && hasFigmaFrame(location.pathname, location.search) ? <DevFigmaPreview /> : (
         <Routes>
           <Route path="/" element={<Navigate to={`${isAdmin ? '/admin' : '/dashboard'}${location.search}`} replace />} />
           {/* The redesigned Dashboard is served ONLY to an account the flag names. Everyone else gets
@@ -515,6 +521,7 @@ function Shell() {
 
           <Route path="*" element={<NotFound />} />
         </Routes>
+        )}
         </Suspense>
         </ErrorBoundary>
       </div>

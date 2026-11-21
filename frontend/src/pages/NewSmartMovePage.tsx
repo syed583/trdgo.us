@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Zap } from 'lucide-react';
 import type { PageContext } from '../App';
 import { LiveView, SnapshotView, UniverseView, MondayBmoView } from './SmartMoveEngine20Page';
 import '../new-dashboard.css';
@@ -35,21 +34,17 @@ import '../new-dashboard.css';
  */
 export default function NewSmartMovePage({ ctx }: { ctx: PageContext }) {
   // The same condition the live page uses, so the snapshot tab appears for the same people.
+  // NOTE: this is "not a view-only account", which is NOT the same as an administrator.
+  // It gates the snapshot TAB only. Anything that must be administrator-only - the factor
+  // codes in the live table, for one - uses ctx.isAdmin instead.
   const isAdmin = !ctx.readOnly;
   const [view, setView] = useState<'live' | 'universe' | 'mondaybmo' | 'snapshot'>('live');
 
   return (
     <div className="nd nsm">
-      <section className="nd-hero nsm-hero">
-        <div className="nd-hero-left">
-          <span className="nd-eyebrow"><Zap size={13} /> Live scanner</span>
-          <h1>Smart Money Move</h1>
-          <p>
-            Calls recorded before each earnings window closes. The scanner's own state, counts and
-            reasons are shown exactly as it reports them.
-          </p>
-        </div>
-      </section>
+      {/* NO HERO: frame 2:1253 puts the tab row directly under the top bar and the title
+          inside the status band below it (sm-fig-head), beside the artwork. A hero here put
+          every block on the page 203px below where the frame draws it. */}
 
       <div className="sm nsm-tabs" style={{ paddingBottom: 0 }}>
         <div className="sm-tabs" role="tablist" aria-label="Smart Money Move view">
@@ -71,7 +66,7 @@ export default function NewSmartMovePage({ ctx }: { ctx: PageContext }) {
       </div>
 
       <div className="nsm-body">
-        {view === 'live' ? <LiveView />
+        {view === 'live' ? <LiveView isAdmin={!!ctx.isAdmin} />
           : view === 'universe' ? <UniverseView />
             : view === 'mondaybmo' ? <MondayBmoView />
               : <SnapshotView isAdmin={isAdmin} />}
