@@ -80,16 +80,32 @@ def test_the_landing_is_handed_the_live_pieces_and_reads_only_page_level_sources
     This is the busiest page in the app, so a per-row call multiplies across every visit.
     """
     code = _code(LANDING)
-    assert "controls: React.ReactNode" in code and "panels: React.ReactNode" in code
+    # Both are still handed in. `panels` became a PLACER rather than a finished node (frame 2:2
+    # puts Top Movers in a three-up row beside the featured card and the calendar), so the test
+    # checks what it is really here to guard - that the landing receives the live pieces and does
+    # not rebuild them - instead of one spelling of the type.
+    assert "controls: React.ReactNode" in code
+    assert "panels: (" in code and "LandingParts" in code, "the landing must be HANDED its panels"
+    assert "function LandingPanels" not in code, "the landing re-implemented the panels"
     calls = set(re.findall(r"api2\.([a-zA-Z0-9_]+)", code))
-    # Five page-level reads, each server-cached and none keyed by a symbol the reader chose:
-    # the pulse, the flow summary and the flow tape, the earnings calendar, and the featured card
-    # (which picks its own symbol on the server and caches it for everyone - see /api/landing/featured).
+    # Six page-level reads, each server-cached and none keyed by a symbol the reader chose: the
+    # pulse, the flow summary and the flow tape, the earnings calendar, the featured card (which
+    # picks its own symbol on the server and caches it for everyone) and the sparkline payload
+    # (one request covering every line on the page).
     allowed = {"marketPulse", "flowMarketSummary", "flowMarketTape",
-               "earningsUpcoming", "landingFeatured"}
+               "earningsUpcoming", "landingFeatured", "landingSparklines"}
     assert calls <= allowed, f"the landing reads a source it should not: {sorted(calls - allowed)}"
     for per_symbol in ("optionChain", "optionIvHistory", "api2.quote", "api2.news", "api2.sentiment"):
         assert per_symbol not in code, f"a per-symbol request on the landing: {per_symbol}"
+
+    # The featured card's range tabs are the ONE symbol-keyed request on this page, and they are
+    # allowed only because a visit that does not press 5D or 1M never makes them. Assert the
+    # guard, not just the call: without it this is a chart request on every visit to the busiest
+    # page in the app.
+    assert code.count("api.chart(") <= 1, "more than one chart request on the landing"
+    if "api.chart(" in code:
+        guard = code.index("if (range === '1D'")
+        assert guard < code.index("api.chart("), "the 1D early return must precede the chart fetch"
 
 
 def test_the_controls_that_start_an_analysis_exist_once():
