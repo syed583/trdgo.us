@@ -52,6 +52,45 @@ const PLAIN_MISSING: Array<[RegExp, string]> = [
   [/NO_PREDICTION|nothing is back-filled/i, 'no prediction was made before the window closed'],
 ];
 
+/** Strip model internals out of text the SERVER produced, for readers who are not administrators.
+ *
+ * The live payload's `note` says "Rows are the frozen score40-v1 engine's own output...". That
+ * string is not in this file and never was - it arrives from the server, and
+ * backend/smart_move_* is protected, so the redaction has to happen here, on the way to the
+ * screen. Administrators see it untouched.
+ */
+function redactEngine(text: string, isAdmin: boolean): string {
+  if (isAdmin || !text) return text;
+  return text
+    .replace(/\s*\(score\d+-v\d+\)/gi, '')
+    .replace(/\s*score\d+-v\d+\s*/gi, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+/** What a blocker code is called for the reader in front of it.
+ *
+ * Same rule the owner set in M12 for the factor codes: plain wording for readers, the code itself
+ * for administrators. An unrecognised code degrades to a general phrase rather than leaking the
+ * raw identifier.
+ */
+const PLAIN_BLOCKER: Array<[RegExp, string]> = [
+  [/SUSPECT_WINDOW/i, 'the earnings window looks wrong'],
+  [/INSUFFICIENT_COVERAGE/i, 'not enough of the evidence was collected'],
+  [/STALE_CALENDAR|CALENDAR_STALE/i, 'the calendar reading was too old'],
+  [/NOT_CONFIRMED|UNCONFIRMED/i, 'the date is not confirmed by two sources'],
+  [/SESSION_UNKNOWN/i, 'the reporting session is unknown'],
+  [/LIQUIDITY|ADV/i, 'the stock is too thinly traded'],
+];
+
+export function plainBlockers(text: string, isAdmin: boolean): string {
+  if (isAdmin || !text) return text;
+  return text.replace(/\b[A-Z][A-Z0-9_]{5,}\b/g, (code) => {
+    const hit = PLAIN_BLOCKER.find(([re]) => re.test(code));
+    return hit ? hit[1] : 'an input was unavailable';
+  });
+}
+
 export function plainMissing(entries: any[], isAdmin: boolean): string {
   const list = (entries || []).map((x) => String(x));
   if (!list.length) return 'none';
@@ -140,7 +179,7 @@ export function SnapshotView({ isAdmin = false, modelAdmin = false }:
                     <td>{missingText(r)}</td>
                     <td data-testid="outcome">{o ? (o.comparison === 'NOT_AVAILABLE' ? nice(o.outcome_state) : `${CMP_LABEL[o.comparison]}${o.move_pct != null ? ` (${o.move_pct}%)` : ''}`) : '—'}</td>
                   </tr>
-                  {open === k && <tr><td colSpan={11}><div data-testid="detail"><div><b>Why:</b> {r.reason}</div><div className="sm-q-muted">{r.category_text}</div><div className="sm-q-muted">{r.snapshot_label} · window closes {fmtTime(r.window_cutoff_utc)}</div></div></td></tr>}
+                  {open === k && <tr><td colSpan={11}><div data-testid="detail"><div><b>Why:</b> {plainBlockers(String(r.reason || ''), modelAdmin)}</div><div className="sm-q-muted">{r.category_text}</div><div className="sm-q-muted">{r.snapshot_label} · window closes {fmtTime(r.window_cutoff_utc)}</div></div></td></tr>}
                 </Fragment>
               );
             })}</tbody>
@@ -240,7 +279,7 @@ export function LiveView({ isAdmin = false }: { isAdmin?: boolean }) {
       {live.initialLoading && <div className="sm-none" role="status">Loading the live scanner…</div>}
       {live.error && <div className="sm-fresh stale" role="alert"><AlertTriangle size={14} /> The live scanner could not be loaded: {live.error} <button className="ghost-btn" onClick={() => live.refresh()}><RefreshCw size={14} /> Retry</button></div>}
       {d && !d.configured && (
-        <div className="sm-q-state" role="status" data-testid="sm-live-off"><b>The live scanner is not installed here</b><div>{d.note}</div></div>
+        <div className="sm-q-state" role="status" data-testid="sm-live-off"><b>The live scanner is not installed here</b><div>{redactEngine(String(d.note || ''), isAdmin)}</div></div>
       )}
       {d?.configured && (
         <>
@@ -333,13 +372,15 @@ export function LiveView({ isAdmin = false }: { isAdmin?: boolean }) {
                       <td>{plainMissing(r.missing, isAdminLive)}</td>
                       <td>{r.window_cutoff_et ?? '—'}{r.hours_to_cutoff != null && <div className="sm-q-muted">{r.hours_to_cutoff} h left</div>}</td>
                     </tr>
-                    {open === k && <tr><td colSpan={11}><div data-testid="live-detail"><div><b>Why:</b> {r.reason ?? '—'}</div><div className="sm-q-muted">Generated {r.generated_at_et ?? '—'} · mode {r.mode ?? '—'} · record {r.record_sha256}</div></div></td></tr>}
+                    {open === k && <tr><td colSpan={11}><div data-testid="live-detail"><div><b>Why:</b> {plainBlockers(String(r.reason ?? '—'), isAdminLive)}</div><div className="sm-q-muted">Generated {r.generated_at_et ?? '—'} · mode {r.mode ?? '—'} · record {r.record_sha256}</div></div></td></tr>}
                   </Fragment>
                 );
               })}</tbody>
             </table></div>
           )}
-          <div className="sm-q-muted">{d.note}</div>
+          {/* The SERVER writes "Rows are the frozen score40-v1 engine's own output..." here.
+              backend/smart_move_* is protected, so the version is stripped on the way out. */}
+          <div className="sm-q-muted">{redactEngine(String(d.note || ''), isAdminLive)}</div>
         </>
       )}
     </div>
@@ -501,10 +542,11 @@ export default function SmartMoveEngine20Page({ ctx }: { ctx: PageContext }) {
   // G: the Historical snapshot is a frozen record of ONE earnings day (4 Nov 2026, 20 stocks) that nothing
   // regenerates. Beside three live tabs it reads as a broken live view, so it is shown to administrators
   // only. Display gating: the route and the snapshot file are untouched, and Smart Move stays frozen.
-  // NOTE: this is "not a view-only account", which is NOT the same as an administrator.
-  // It gates the snapshot TAB only. Anything that must be administrator-only - the factor
-  // codes in the live table, for one - uses ctx.isAdmin instead.
-  const isAdmin = !ctx.readOnly;
+  // The snapshot TAB is administrator-only (owner, 2026-11-21). It used to be gated on
+  // `!ctx.readOnly`, which is NOT an administrator: any full-access account has readOnly false,
+  // so an ordinary member could open a frozen record of one past earnings day beside three live
+  // tabs. ctx.isAdmin is the real flag, and it is what every model internal on this page uses.
+  const isAdmin = !!ctx.isAdmin;
   const [view, setView] = useState<'live' | 'universe' | 'mondaybmo' | 'snapshot'>('live');
   return (
     <div>

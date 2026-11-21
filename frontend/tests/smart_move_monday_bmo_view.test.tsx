@@ -37,6 +37,6 @@ test('a missed Friday window and a broken variant ledger are shown, not hidden; 
 
 test('the page offers the Monday-BMO variant as its own tab between the universe and the snapshot', () => {
   g.__apiState = { emsmartlive: { data: { configured: false, note: 'x', rows: [] } } };
-  const h = renderToStaticMarkup(<SmartMoveEngine20Page ctx={{} as any} />);
+  const h = renderToStaticMarkup(<SmartMoveEngine20Page ctx={{ isAdmin: true } as any} />);
   assert.ok(h.indexOf('tab-universe') < h.indexOf('tab-monday-bmo') && h.indexOf('tab-monday-bmo') < h.indexOf('tab-snapshot')); assert.match(h, /Monday BMO \(Friday window\)/);
 });

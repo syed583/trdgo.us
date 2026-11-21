@@ -188,12 +188,17 @@ export default function NewNewsPage({ ctx }: { ctx: PageContext }) {
               return (
                 <li key={String(n.id ?? n.url ?? i)}>
                   <span className="nnw-time">{n.time_label || n.time || n.published_at || ''}</span>
-                  <a className="nnw-headline" href={n.url || undefined} target="_blank"
-                     rel="noopener noreferrer"
-                     onClick={(e) => { if (!n.url) e.preventDefault(); }}>
-                    {n.headline}
-                    {!!n.url && <ExternalLink size={12} />}
-                  </a>
+                  {/* EVERY item in this feed comes back with url:null, from every provider.
+                      An <a> with no href still looks clickable, takes the cursor and does
+                      nothing; a headline we cannot link to is text. */}
+                  {n.url ? (
+                    <a className="nnw-headline" href={n.url} target="_blank" rel="noopener noreferrer">
+                      {n.headline}
+                      <ExternalLink size={12} />
+                    </a>
+                  ) : (
+                    <span className="nnw-headline nnw-headline-plain">{n.headline}</span>
+                  )}
                   {t !== 'none' && (
                     <span className={`nst-status ${TONE_CLASS[t]}`}>
                       {t.charAt(0).toUpperCase() + t.slice(1)}

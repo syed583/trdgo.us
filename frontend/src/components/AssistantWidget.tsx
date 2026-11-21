@@ -181,7 +181,7 @@ export default function AssistantWidget({ symbol }: { symbol: string }) {
         </button>
       </div>
       <div className="asst-foot">
-        Analysis only · not financial advice · powered by Claude on your UW data
+        Analysis only · not financial advice · grounded on this account's own market data
       </div>
     </div>
   );

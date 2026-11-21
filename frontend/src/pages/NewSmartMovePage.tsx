@@ -34,10 +34,11 @@ import '../new-dashboard.css';
  */
 export default function NewSmartMovePage({ ctx }: { ctx: PageContext }) {
   // The same condition the live page uses, so the snapshot tab appears for the same people.
-  // NOTE: this is "not a view-only account", which is NOT the same as an administrator.
-  // It gates the snapshot TAB only. Anything that must be administrator-only - the factor
-  // codes in the live table, for one - uses ctx.isAdmin instead.
-  const isAdmin = !ctx.readOnly;
+  // The snapshot TAB is administrator-only (owner, 2026-11-21). It used to be gated on
+  // `!ctx.readOnly`, which is NOT an administrator: any full-access account has readOnly false,
+  // so an ordinary member could open a frozen record of one past earnings day beside three live
+  // tabs. ctx.isAdmin is the real flag, and it is what every model internal on this page uses.
+  const isAdmin = !!ctx.isAdmin;
   const [view, setView] = useState<'live' | 'universe' | 'mondaybmo' | 'snapshot'>('live');
 
   return (

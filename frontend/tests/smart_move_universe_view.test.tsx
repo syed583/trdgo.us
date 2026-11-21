@@ -42,6 +42,6 @@ test('no universe yet is explained, not faked', () => {
 
 test('the page offers LIVE scanner, event universe and the historical snapshot as separate tabs, LIVE first', () => {
   g.__apiState = { emsmartlive: { data: { configured: false, note: 'x', rows: [] } } };
-  const h = renderToStaticMarkup(<SmartMoveEngine20Page ctx={{} as any} />);
+  const h = renderToStaticMarkup(<SmartMoveEngine20Page ctx={{ isAdmin: true } as any} />);
   assert.ok(h.indexOf('tab-live') < h.indexOf('tab-universe') && h.indexOf('tab-universe') < h.indexOf('tab-snapshot')); assert.match(h, /Event universe \(30 days\)/); assert.match(h, /sm-live-view/);
 });

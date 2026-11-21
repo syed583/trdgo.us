@@ -161,12 +161,30 @@ def movers(limit: int = 25, min_price: float = 5.0,
                 "detail": out.get("detail"), "source": SOURCE}
 
     caps = _caps_by_symbol() if min_market_cap else {}
+    # Common stock and ADRs only. The size floor cannot exclude a leveraged or inverse ETF - the
+    # screener publishes no market cap for one, and an unknown cap is kept on purpose - so the
+    # list filled up with SOXL, SPDN, TQQQ and the like. This is the issue-type filter it actually
+    # needed, reusing the set watchlist_universe already builds once a day.
+    #
+    # FAILS OPEN: with no set, every row passes. An empty movers panel on the busiest page is a
+    # worse outcome than a few ETFs, which is the opposite trade-off from the Watchlist search.
+    equities = None
+    try:
+        import watchlist_universe
+
+        equities = watchlist_universe.tickers()
+    except Exception:  # noqa: BLE001 - the list must never fail because a filter is unavailable
+        equities = None
+
     rows = []
-    dropped_price = dropped_cap = 0
+    dropped_price = dropped_cap = dropped_kind = 0
     for r in uw._rows(out):
         sym = str(r.get("ticker") or "").upper()
         price = _f(r.get("close") or r.get("price"))
         cap = caps.get(sym)
+        if equities is not None and sym and sym not in equities:
+            dropped_kind += 1
+            continue
         if min_price and price is not None and price < min_price:
             dropped_price += 1
             continue
@@ -190,6 +208,9 @@ def movers(limit: int = 25, min_price: float = 5.0,
     return {"status": "OK" if rows else "NO_DATA", "rows": rows,
             "count": len(rows), "source": SOURCE,
             "floor": {"min_price": min_price, "min_market_cap": min_market_cap,
+                      "dropped_not_common_stock_or_adr": dropped_kind,
+                      "issue_type_filter": ("applied" if equities is not None
+                                            else "unavailable: every row passed"),
                       "dropped_below_price": dropped_price,
                       "dropped_below_market_cap": dropped_cap,
                       "caps_known": len(caps)}}

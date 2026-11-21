@@ -93,17 +93,19 @@ export default function NewSidebar({
               ))}
             </React.Fragment>
           ))}
-        </nav>
 
-        {/* The frame's promo card. It links to a page that exists; it makes no claim about the product. */}
-        {!isAdmin && (
-          <div className="nu-promo">
-            <span className="nu-promo-badge"><Cpu size={16} /> Tradgo.AI</span>
-            <h4>Market Intelligence</h4>
-            <p>Earnings, options flow and trade signals, from live market data.</p>
-            <NavLink to="/ai-insights">Explore Now <ArrowRight size={15} /></NavLink>
-          </div>
-        )}
+          {/* INSIDE the nav, as its last child, so it SCROLLS WITH THE MENU instead of
+              sitting in the rail's fixed area above it. Every menu item is reached first
+              (owner, 2026-11-21). It links to a page that exists and claims nothing. */}
+            {!isAdmin && (
+            <div className="nu-promo">
+              <span className="nu-promo-badge"><Cpu size={16} /> Tradgo.AI</span>
+              <h4>Market Intelligence</h4>
+              <p>Earnings, options flow and trade signals, from live market data.</p>
+              <NavLink to="/ai-insights">Explore Now <ArrowRight size={15} /></NavLink>
+            </div>
+          )}
+        </nav>
 
         <div className="nu-rail-foot">
           <button type="button" className="nu-rail-toggle" onClick={toggle}

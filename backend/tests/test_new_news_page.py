@@ -73,9 +73,18 @@ def test_an_unscored_headline_is_its_own_bucket():
 
 
 def test_a_headline_without_a_link_is_not_a_dead_link():
+    """A headline we cannot link to must not be rendered as a link.
+
+    This asserted `e.preventDefault()` - the old fix, an anchor that swallowed its own click.
+    The live sweep of 2026-11-21 showed why that was not enough: all 40 items come back with
+    url:null, so every headline was an <a> with no href, which still takes the link cursor and
+    still looks clickable. The anchor is now rendered only when there IS a url. The test follows
+    the intent in its own name rather than the mechanism that used to serve it.
+    """
     code = _code()
-    assert "e.preventDefault()" in code, \
-        "a headline with no url must not look clickable and do nothing"
+    assert "{n.url ? (" in code, "the anchor must be conditional on there being a url"
+    assert "nnw-headline-plain" in code, "a headline without a url must render as plain text"
+    assert "href={n.url}" in code, "a headline WITH a url must still link out"
 
 
 def test_the_route_is_wrapped(self_check=None):

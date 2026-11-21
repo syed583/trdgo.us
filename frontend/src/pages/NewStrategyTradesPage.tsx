@@ -211,7 +211,11 @@ export default function NewStrategyTradesPage({ ctx }: { ctx: PageContext }) {
                   return (
                     <tr key={r.id}>
                       <td>
-                        <NavLink to={`/ai-insights?symbol=${r.symbol}`} className="nd-sym">{r.symbol}</NavLink>
+                        {/* The route is /ai-insights/:symbol. Written as a query, the router kept the PREVIOUS
+    symbol in the path and nothing consumed the query, so this landed on the landing page
+    with the ticker lost. run=1 is the flag the page already honours to start at once. */}
+                        <NavLink to={`/ai-insights/${encodeURIComponent(r.symbol)}?run=1`}
+                          className="nd-sym">{r.symbol}</NavLink>
                         {r.entry_time && <div className="nst-sub">{r.entry_time}</div>}
                       </td>
                       {/* strategy_label is already "Agent 2" for a user - rendered, never resolved here (A.26) */}

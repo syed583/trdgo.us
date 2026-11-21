@@ -1,6 +1,10 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Bot, Crown, Headphones, Menu, Search, Sun, Moon, ChevronDown } from 'lucide-react';
+import {
+  Bell, Bot, Crown, HelpCircle, LogOut, Menu, Search, Settings, Sun, Moon, ChevronDown, Users,
+} from 'lucide-react';
+import TradeAlerts, { useUnseenAlerts } from './TradeAlerts';
+import { api2 } from '../api/client';
 
 /**
  * Stage 1 of the redesign: the top bar, drawn to the Figma frame.
@@ -33,6 +37,23 @@ export default function NewTopBar({
 }) {
   const navigate = useNavigate();
   const [q, setQ] = React.useState('');
+  const [bellOpen, setBellOpen] = React.useState(false);
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [signingOut, setSigningOut] = React.useState(false);
+  const menuRef = React.useRef<HTMLDivElement | null>(null);
+  const { unseen, markSeen } = useUnseenAlerts();
+
+  // A menu that will not close is worse than no menu: outside click and Escape both dismiss it.
+  React.useEffect(() => {
+    if (!menuOpen) return undefined;
+    const away = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+    document.addEventListener('mousedown', away);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', away); document.removeEventListener('keydown', esc); };
+  }, [menuOpen]);
 
   const name = (displayName || username || '').trim();
   // Initials for the avatar: first letters of the first two words, else the first two characters.
@@ -73,11 +94,18 @@ export default function NewTopBar({
       <div className="nu-bar-right">
         {plan && <span className="nu-plan"><Crown size={15} /> {plan}</span>}
 
-        <button type="button" className="nu-icon" aria-label="Alerts" onClick={() => navigate('/alerts')}>
-          <Bell size={17} />
-          {/* Only when there is genuinely something unread. */}
-          {!!alerts && alerts > 0 && <span className="nu-dot" aria-hidden="true" />}
-        </button>
+        {/* The bell OPENS A PANEL of the trades the models just opened. It used to jump to
+            /alerts, which is the price-rule builder - a different thing, still linked from the
+            panel's footer. The dot appears only when something has arrived that you have not
+            looked at. */}
+        <div className="nu-bell-wrap">
+          <button type="button" className="nu-icon" aria-label="Trade alerts"
+            aria-expanded={bellOpen} onClick={() => setBellOpen((v) => !v)}>
+            <Bell size={17} />
+            {unseen > 0 && <span className="nu-dot" aria-hidden="true" />}
+          </button>
+          {bellOpen && <TradeAlerts onClose={() => setBellOpen(false)} onSeen={markSeen} />}
+        </div>
 
         {/* The assistant. It used to be a bubble pinned to the bottom-right corner, which at the
             design's 1536x1024 canvas sat on top of the last row of every page. */}
@@ -87,23 +115,64 @@ export default function NewTopBar({
           <Bot size={17} />
         </button>
 
-        <button type="button" className="nu-icon" aria-label="Help" onClick={() => navigate('/settings')}>
-          <Headphones size={17} />
-        </button>
-
         <button type="button" className="nu-icon" onClick={onTheme}
                 aria-label={theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}>
           {theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}
         </button>
 
         {name && (
-          <div className="nu-user">
-            <span className="nu-avatar" aria-hidden="true">{initials}</span>
-            <span className="nu-user-txt">
-              <b>{name}</b>
-              <span>{isAdmin ? 'Administrator' : 'Member'}</span>
-            </span>
-            <ChevronDown size={16} style={{ color: 'var(--nu-rail-ink-dim)' }} aria-hidden="true" />
+          <div className={`nu-user-wrap${menuOpen ? ' is-open' : ''}`} ref={menuRef}>
+            {/* This was a <div> with no handler - clicking it did nothing at all. */}
+            <button type="button" className="nu-user" aria-haspopup="menu" aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((v) => !v)}>
+              <span className="nu-avatar" aria-hidden="true">{initials}</span>
+              <span className="nu-user-txt">
+                <b>{name}</b>
+                <span>{isAdmin ? 'Administrator' : 'Member'}</span>
+              </span>
+              <ChevronDown size={16} aria-hidden="true" />
+            </button>
+            {menuOpen && (
+              <div className="nu-menu" role="menu">
+                <div className="nu-menu-head">
+                  <span className="nu-avatar lg" aria-hidden="true">{initials}</span>
+                  <div><b>{name}</b><span>{isAdmin ? 'Administrator' : 'Member'}</span></div>
+                </div>
+                {/* Admin-only destinations, exactly as the classic menu gates them: /settings
+                    redirects a non-admin to the dashboard, so offering it to everyone would be a
+                    menu item that silently does the wrong thing. */}
+                {isAdmin && (
+                  <>
+                    <button type="button" className="nu-menu-item" role="menuitem"
+                      onClick={() => { setMenuOpen(false); navigate('/admin/users'); }}>
+                      <Users size={15} /> Manage users
+                    </button>
+                    <button type="button" className="nu-menu-item" role="menuitem"
+                      onClick={() => { setMenuOpen(false); navigate('/settings'); }}>
+                      <Settings size={15} /> Provider settings
+                    </button>
+                    <div className="nu-menu-sep" />
+                  </>
+                )}
+                {/* Help is the headphones' job, moved in here. It opens the assistant, which is a
+                    thing that exists and answers - there is no help PAGE to link to. */}
+                <button type="button" className="nu-menu-item" role="menuitem"
+                  onClick={() => { setMenuOpen(false); window.dispatchEvent(new Event('trdgo:assistant-open')); }}>
+                  <HelpCircle size={15} /> Help &amp; assistant
+                </button>
+                <div className="nu-menu-sep" />
+                <button type="button" className="nu-menu-item nu-menu-out" role="menuitem"
+                  disabled={signingOut}
+                  onClick={async () => {
+                    setSigningOut(true);
+                    try { await api2.logout(); } catch { /* the cookie is HttpOnly; the server clears it */ }
+                    // A hard navigation drops any in-memory state, as the classic menu does.
+                    window.location.href = '/login';
+                  }}>
+                  <LogOut size={15} /> {signingOut ? 'Signing out…' : 'Sign out'}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

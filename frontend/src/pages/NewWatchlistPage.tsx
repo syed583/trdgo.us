@@ -142,7 +142,18 @@ export default function NewWatchlistPage(_props: { ctx: PageContext }) {
   };
   const drop = (sym: string) => setList((prev) => prev.filter((x) => x !== sym));
 
-  const money = (v: any) => (v == null ? '—' : `$${Number(v).toFixed(2)}`);
+  // A bid of ZERO is not a bid. The provider returns a literal 0 for bid and ask out of
+  // hours, and printing it as $0.00 states a price of nothing as though it were real.
+  const money = (v: any) => (v == null || Number(v) === 0 ? '—' : `$${Number(v).toFixed(2)}`);
+  /** 32973 seconds is nine hours; say so. */
+  const ago = (s: any) => {
+    const n = Number(s);
+    if (!Number.isFinite(n) || n < 0) return null;
+    if (n < 90) return `${Math.round(n)} seconds ago`;
+    if (n < 5400) return `${Math.round(n / 60)} minutes ago`;
+    if (n < 172800) return `${Math.round(n / 3600)} hours ago`;
+    return `${Math.round(n / 86400)} days ago`;
+  };
   const age = quote?.quote_age_s ?? quote?.age_s;
 
   return (
@@ -245,7 +256,9 @@ export default function NewWatchlistPage(_props: { ctx: PageContext }) {
                 <div><span>Bid</span><b>{money(quote.bid)}</b></div>
                 <div><span>Ask</span><b>{money(quote.ask)}</b></div>
                 <div><span>Spread</span>
-                  <b>{quote.bid != null && quote.ask != null
+                  {/* A spread between two prices that are not there is not zero, it is unknown:
+                      out of hours the provider returns a literal 0 for both sides. */}
+                  <b>{Number(quote.bid) > 0 && Number(quote.ask) > 0
                     ? `$${(Number(quote.ask) - Number(quote.bid)).toFixed(2)}` : '—'}</b></div>
                 <div><span>Last</span><b>{money(quote.price)}</b></div>
               </>
@@ -254,8 +267,8 @@ export default function NewWatchlistPage(_props: { ctx: PageContext }) {
           <p className="nwl-note">
             Bid and ask are live from our market data provider, read once when you picked
             {picked ? ` ${picked}` : ' a symbol'}
-            {age != null ? `, ${Math.round(Number(age))}s ago` : ''}. The chart and the list below
-            are TradingView&apos;s delayed data.
+            {ago(age) ? `, ${ago(age)}` : ''}. The chart and the list below are
+            TradingView&apos;s delayed data.
           </p>
 
           {!!picked && (

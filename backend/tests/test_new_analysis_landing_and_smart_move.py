@@ -197,3 +197,38 @@ def test_the_landing_has_no_vendor_names():
     code = _code(LANDING)
     for vendor in ("Unusual Whales", "Finnhub", "Finviz"):
         assert vendor not in code, f"{vendor} is back on the Analysis landing"
+
+# --------------------------------------------------------------- kit P: the snapshot tab
+def test_the_snapshot_tab_is_administrator_only():
+    """The frozen snapshot of one past earnings day is for administrators, not every member.
+
+    It was gated on `!ctx.readOnly`, which is NOT an administrator: a full-access member has
+    readOnly false, so the owner's own non-admin account could open it beside three live tabs.
+    The live click test of 2026-11-21 found it open. Both the wrapper and the engine page are
+    checked, because either one rendering the tab is enough to expose it.
+    """
+    for path in (SMART, ENGINE):
+        code = _code(path)
+        if "tab-snapshot" not in code:
+            continue
+        assert "const isAdmin = !ctx.readOnly" not in code, (
+            f"{path.name}: the snapshot tab is gated on readOnly, which is not an administrator")
+        assert "const isAdmin = !!ctx.isAdmin" in code, (
+            f"{path.name}: the snapshot tab must be gated on ctx.isAdmin")
+
+
+def test_blocker_codes_and_the_engine_note_are_not_shown_raw():
+    """Server-supplied text must be redacted for non-administrators before it reaches the screen.
+
+    Two separate leaks, both found by clicking rather than by reading the source: the live
+    payload's `note` carries the engine version, and the row detail printed raw blocker codes
+    (SUSPECT_WINDOW, INSUFFICIENT_COVERAGE). backend/smart_move_* is protected, so both are
+    redacted on the way out.
+    """
+    code = _code(ENGINE)
+    assert "function redactEngine(" in code, "the engine-version redaction is gone"
+    assert "function plainBlockers(" in code, "the blocker wording is gone"
+    # `{d.note}` also appears in the "scanner is not installed" message, which carries no
+    # version, so a blanket ban on the expression would fail for the wrong reason.
+    assert 'className="sm-q-muted">{d.note}' not in code, "the live footnote is raw again"
+    assert "redactEngine(String(d.note" in code, "the note is no longer redacted"

@@ -26,8 +26,13 @@ test('an unconfigured server says so and shows no rows; a failed ledger shows no
 
 test('default export opens on the LIVE scanner and offers the historical snapshot tab', () => {
   g.__apiState = { emsmartlive: { data: base([row({})]) } };
-  const h = renderToStaticMarkup(<SmartMoveEngine20Page ctx={{} as any} />);
+  // The snapshot tab is ADMINISTRATOR-only since 2026-11-21. It was gated on !ctx.readOnly,
+  // which is true for any full-access member, so an ordinary account could open a frozen
+  // record of one past earnings day beside three live tabs.
+  const h = renderToStaticMarkup(<SmartMoveEngine20Page ctx={{ isAdmin: true } as any} />);
   assert.match(h, /data-testid="tab-live"/); assert.match(h, /Historical snapshot \(20 stocks\)/); assert.match(h, /sm-live-view/);
+  const member = renderToStaticMarkup(<SmartMoveEngine20Page ctx={{ isAdmin: false } as any} />);
+  assert.ok(!member.includes('tab-snapshot'), 'a member must not be offered the historical snapshot');
 });
 
 // ---------------------------------------------------------------- 2026-11-11: upcoming first, past last, only upcoming BUY/SELL blink

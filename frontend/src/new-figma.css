@@ -1173,3 +1173,96 @@
   border-color: #4876ff; color: #fff; font-weight: 600;
 }
 .app-nu .nnw .nnw-pager-btns button:disabled { opacity: .45; }
+
+/* ============================================================================
+   KIT P — the live click test's findings, 2026-11-21
+   ========================================================================= */
+
+/* 2. The five Strategy Trades tiles went unequal and clipped below ~1,100px: at a 1,032 viewport
+      they measured 114/137/121/171/171 instead of five equal columns, and two overflowed their own
+      box ("0 still open" cut, "across 95 of 118 - 23 at breakeven" cut mid-word). `1fr` lets a
+      track take its CONTENT's minimum, so the widest value stole width from the narrowest. */
+.app-nu .nst .nd-stats.nst-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.app-nu .nst .nst-stats .nd-stat > div { min-width: 0; }
+.app-nu .nst .nst-stats .nd-stat b,
+.app-nu .nst .nst-stats .nd-stat span,
+.app-nu .nst .nst-stats .nst-stat-sub { min-width: 0; overflow-wrap: anywhere; }
+/* Below the breakpoint, three then two reads better than five slivers. */
+@media (max-width: 1180px) {
+  .app-nu .nst .nd-stats.nst-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .app-nu .nst .nst-stats .nd-stat { height: auto; min-height: 74px; }
+}
+@media (max-width: 760px) {
+  .app-nu .nst .nd-stats.nst-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* 6. The promo now lives INSIDE the nav, as its last child, so it scrolls with the menu instead
+      of sitting above it in the rail's fixed area. It needs a little air above it and must not
+      stretch. */
+.app-nu .nu-nav .nu-promo { margin: 16px 1px 4px; flex: 0 0 auto; }
+.app-nu .nu-nav { min-height: 0; }
+
+/* 5. The bell's dropdown. */
+.app-nu .nu-bell-wrap { position: relative; }
+.app-nu .nu-alerts {
+  position: absolute; right: 0; top: calc(100% + 9px); width: 340px; z-index: 1200;
+  background: var(--nu-card); border: 1px solid var(--nu-line); border-radius: 14px;
+  box-shadow: var(--nu-shadow); color: var(--nu-ink); overflow: hidden;
+}
+.app-nu .nu-alerts > header {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 11px 13px; border-bottom: 1px solid var(--nu-line); font-size: 14px;
+}
+.app-nu .nu-alerts-mute {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 8px;
+  border: 1px solid var(--nu-line); background: transparent; color: var(--nu-ink-dim);
+  font-size: 11px; cursor: pointer;
+}
+.app-nu .nu-alerts-mute[aria-pressed='true'] { color: var(--nu-down); border-color: var(--nu-down); }
+.app-nu .nu-alerts-body { max-height: 330px; overflow-y: auto; }
+.app-nu .nu-alert-row {
+  display: grid; grid-template-columns: 46px 1fr auto auto; align-items: center; gap: 9px;
+  padding: 8px 13px; border-bottom: 1px solid var(--nu-line); font-size: 12px;
+}
+.app-nu .nu-alert-row:last-child { border-bottom: 0; }
+.app-nu .nu-alert-side {
+  font-size: 10px; font-weight: 700; text-align: center; padding: 2px 0; border-radius: 5px;
+}
+.app-nu .nu-alert-side.buy { background: rgba(22, 163, 74, .14); color: var(--nu-up); }
+.app-nu .nu-alert-side.sell { background: rgba(220, 38, 38, .14); color: var(--nu-down); }
+.app-nu .nu-alert-px { font-variant-numeric: tabular-nums; }
+.app-nu .nu-alert-at { color: var(--nu-ink-dim); font-size: 11px; }
+.app-nu .nu-alerts-none { padding: 22px 13px; text-align: center; color: var(--nu-ink-dim); font-size: 12px; }
+.app-nu .nu-alerts > footer {
+  display: flex; justify-content: space-between; gap: 10px;
+  padding: 9px 13px; border-top: 1px solid var(--nu-line); font-size: 12px;
+}
+.app-nu .nu-alerts > footer a { color: var(--nu-accent); display: inline-flex; align-items: center; gap: 4px; }
+
+/* 3. The profile menu. The chip was a div with no handler; it is a button now. */
+.app-nu .nu-user-wrap { position: relative; }
+.app-nu .nu-user { border: 0; background: transparent; cursor: pointer; }
+.app-nu .nu-menu {
+  position: absolute; right: 0; top: calc(100% + 9px); width: 232px; z-index: 1200;
+  background: var(--nu-card); border: 1px solid var(--nu-line); border-radius: 14px;
+  box-shadow: var(--nu-shadow); overflow: hidden; padding: 5px;
+}
+.app-nu .nu-menu-head {
+  display: flex; align-items: center; gap: 10px; padding: 10px 9px 11px;
+  border-bottom: 1px solid var(--nu-line); margin-bottom: 5px;
+}
+.app-nu .nu-menu-head b { display: block; font-size: 13px; color: var(--nu-ink); }
+.app-nu .nu-menu-head span { font-size: 11px; color: var(--nu-ink-dim); }
+.app-nu .nu-avatar.lg { width: 36px; height: 36px; font-size: 13px; }
+.app-nu .nu-menu-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px;
+  border: 0; border-radius: 9px; background: transparent; color: var(--nu-ink);
+  font-size: 13px; text-align: left; cursor: pointer;
+}
+.app-nu .nu-menu-item:hover { background: var(--nu-card-2); }
+.app-nu .nu-menu-item:disabled { opacity: .55; cursor: default; }
+.app-nu .nu-menu-sep { height: 1px; background: var(--nu-line); margin: 5px 2px; }
+.app-nu .nu-menu-out { color: var(--nu-down); }
+
+/* 13. A headline we cannot link to is text - it must not take the link cursor. */
+.app-nu .nnw .nnw-headline-plain { cursor: default; color: var(--nu-ink); }
