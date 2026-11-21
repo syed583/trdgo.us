@@ -1,1 +1,0 @@
-import{t as e,u as t}from"./jsx-runtime-1PaFmeBj.js";import n from"./MarketPulsePage-BWfw7y-t.js";import"./index-Xt-cG5Vx.js";t();var r=e();function i({ctx:e}){return(0,r.jsx)(`div`,{className:`nd nmo`,children:(0,r.jsx)(n,{ctx:e})})}export{i as default};

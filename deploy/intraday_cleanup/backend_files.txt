@@ -215,6 +215,7 @@ backend/uw_slots.py
 backend/uw_volatility_service.py
 backend/verify_all_models.py
 backend/warmer_doctor.py
+backend/watchlist_universe.py
 backend/watchlist_view_service.py
 backend/whatsapp_service.py
 backend/workspace_service.py
