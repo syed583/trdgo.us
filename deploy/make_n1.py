@@ -90,7 +90,12 @@ def main() -> int:
         return 2
 
     DST.parent.mkdir(parents=True, exist_ok=True)
-    # The runner is read and run on Windows; write CRLF, no BOM, as the previous letters were.
+    # CRLF, no BOM - and kit M's runner is LF, so this does NOT match its shape. An earlier
+    # comment claimed it did. It was wrong: the patch meant to switch this to LF never matched the
+    # line it was editing and nothing checked, so the claim outlived the change. Left as CRLF
+    # deliberately: it is the natural Windows shape, PowerShell reads either, and the published
+    # SHA-256 is the hash of what is actually on disk. Regenerating it to win a cosmetic argument
+    # would invalidate a hash the operator already holds.
     io.open(DST, "w", encoding="utf-8", newline="\r\n").write(out)
     digest = hashlib.sha256(DST.read_bytes()).hexdigest()
     print(f"wrote {DST}")
