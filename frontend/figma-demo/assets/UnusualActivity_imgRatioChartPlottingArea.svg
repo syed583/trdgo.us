@@ -1,0 +1,56 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="329.9" height="108.6" viewBox="0 0 329.9 108.6" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Ratio chart plotting area">
+<g id="Grid 3x">
+<rect width="326" height="0.6" transform="translate(0.900197)" fill="#EEF0F5"/>
+</g>
+<g id="Grid 2.5x">
+<rect width="326" height="0.6" transform="translate(0.900197 21.6)" fill="#EEF0F5"/>
+</g>
+<g id="Grid 2x">
+<rect width="326" height="0.6" transform="translate(0.900197 43.2)" fill="#EEF0F5"/>
+</g>
+<g id="Grid 1.5x">
+<rect width="326" height="0.6" transform="translate(0.900197 64.8)" fill="#EEF0F5"/>
+</g>
+<g id="Grid 1x">
+<rect width="326" height="0.6" transform="translate(0.900197 86.4)" fill="#EEF0F5"/>
+</g>
+<g id="Grid 0.5x">
+<rect width="326" height="0.6" transform="translate(0.900197 108)" fill="#EEF0F5"/>
+</g>
+<g id="Date gridline">
+<rect width="0.5" height="108" transform="translate(0.900197)" fill="#F2F4F8"/>
+</g>
+<g id="Date gridline_2">
+<rect width="0.5" height="108" transform="translate(47.5002)" fill="#F2F4F8"/>
+</g>
+<g id="Date gridline_3">
+<rect width="0.5" height="108" transform="translate(94.0002)" fill="#F2F4F8"/>
+</g>
+<g id="Date gridline_4">
+<rect width="0.5" height="108" transform="translate(140.6)" fill="#F2F4F8"/>
+</g>
+<g id="Date gridline_5">
+<rect width="0.5" height="108" transform="translate(187.2)" fill="#F2F4F8"/>
+</g>
+<g id="Date gridline_6">
+<rect width="0.5" height="108" transform="translate(233.8)" fill="#F2F4F8"/>
+</g>
+<g id="Date gridline_7">
+<rect width="0.5" height="108" transform="translate(280.3)" fill="#F2F4F8"/>
+</g>
+<g id="Date gridline_8">
+<rect width="0.5" height="108" transform="translate(326.9)" fill="#F2F4F8"/>
+</g>
+<path id="Today ratio area" d="M0.900197 78C8.9002 74 16.9002 66 24.9002 65C40.9002 62 50.9002 67 66.9002 65C76.9002 64 82.9002 60 92.9002 57C103.9 47 107.9 40 119.9 41C136.9 42 147.9 55 163.9 58C172.9 59 179.9 61 185.9 61C205.9 57 213.9 49 226.9 43C244.9 35 260.9 38 275.9 40C292.9 38 297.9 32 309.9 31C316.9 30 320.9 28 326.9 27V108H0.900197V78Z" fill="url(#paint0_linear_0_12)"/>
+<path id="Today premium ratio blue line" d="M0.900197 78C8.9002 74 16.9002 66 24.9002 65C40.9002 62 50.9002 67 66.9002 65C76.9002 64 82.9002 60 92.9002 57C103.9 47 107.9 40 119.9 41C136.9 42 147.9 55 163.9 58C172.9 59 179.9 61 185.9 61C205.9 57 213.9 49 226.9 43C244.9 35 260.9 38 275.9 40C292.9 38 297.9 32 309.9 31C316.9 30 320.9 28 326.9 27" stroke-width="1.8" stroke-linecap="round" stroke="#0757EE"/>
+<path id="20-day average gray dashed line" d="M0.900197 90L3.9002 89.4545M326.9 74L323.627 74.4091M8.9002 88.5455L14.9002 87.4545M19.9002 86.5455L22.9002 86L25.9002 86.2727M30.9002 86.7273L36.9002 87.2727M41.9002 87.7273L44.9002 88L47.9002 88.1364M52.9002 88.3636L58.9002 88.6364M63.9002 88.8636L66.9002 89L70.4457 88.3182M76.3547 87.1818L83.4457 85.8182M89.3547 84.6818L92.9002 84L96.0366 83.3182M101.264 82.1818L107.537 80.8182M112.764 79.6818L115.9 79L119.173 79.5455M124.627 80.4545L131.173 81.5455M136.627 82.4545L139.9 83L143.037 83.4091M148.264 84.0909L154.537 84.9091M159.764 85.5909L162.9 86L166.037 85.8636M171.264 85.6364L177.537 85.3636M182.764 85.1364L185.9 85L189.173 84.5909M194.627 83.9091L201.173 83.0909M206.627 82.4091L209.9 82L213.173 81.5909M218.627 80.9091L225.173 80.0909M230.627 79.4091L233.9 79H236.9M241.9 79H247.9M252.9 79H255.9L259.037 79.1364M264.264 79.3636L270.537 79.6364M275.764 79.8636L278.9 80L282.173 79.5909M287.627 78.9091L294.173 78.0909M299.627 77.4091L302.9 77L306.173 76.5909M311.627 75.9091L318.173 75.0909" stroke-width="1.6" stroke-linecap="round" stroke="#8C95A5"/>
+<circle id="Today endpoint 2.41x" cx="326.9" cy="27" r="2" fill="white" stroke-width="2" stroke="#0757EE"/>
+</g>
+<defs>
+<linearGradient id="paint0_linear_0_12" x1="163.9" y1="27" x2="163.9" y2="108" gradientUnits="userSpaceOnUse">
+<stop stop-color="#A8C8FF" stop-opacity="0.6"/>
+<stop offset="1" stop-color="#F7FAFF" stop-opacity="0.1"/>
+</linearGradient>
+</defs>
+</svg>

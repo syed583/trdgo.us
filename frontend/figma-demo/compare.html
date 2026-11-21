@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Figma vs demo — side by side</title>
+    <style>
+      :root { --ink: #dbe6ff; --dim: #8ea0c4; --line: #1d2a4d; --bg: #060b18; --accent: #1c61f5; }
+      html, body { margin: 0; background: var(--bg); color: var(--ink);
+        font: 14px/1.4 'Roboto', system-ui, sans-serif; }
+      header { position: sticky; top: 0; z-index: 9; background: var(--bg);
+        border-bottom: 1px solid var(--line); padding: 10px 14px;
+        display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+      header b { margin-right: 8px; }
+      button { background: transparent; color: var(--dim); border: 1px solid var(--line);
+        border-radius: 7px; padding: 6px 11px; cursor: pointer; font: inherit; font-size: 12.5px; }
+      button:hover { color: #fff; border-color: #2f4d8f; }
+      button.on { background: var(--accent); color: #fff; border-color: #4876ff; }
+      .modes { margin-left: auto; }
+      .stat { color: var(--dim); font-size: 12.5px; }
+      .stage { padding: 14px; }
+      /* side by side */
+      .pair { display: flex; gap: 14px; align-items: flex-start; }
+      .pane { flex: 1 1 0; min-width: 0; }
+      .pane h4 { margin: 0 0 6px; font-size: 12px; color: var(--dim); font-weight: 600; }
+      .pane img { width: 100%; display: block; border: 1px solid var(--line); border-radius: 6px; }
+      /* overlay with a wipe */
+      .wipe { position: relative; width: max-content; max-width: 100%; }
+      .wipe img { display: block; max-width: 100%; border: 1px solid var(--line); border-radius: 6px; }
+      .wipe .top { position: absolute; inset: 0; overflow: hidden; }
+      .wipe .top img { position: absolute; top: 0; left: 0; height: 100%; width: auto; max-width: none; }
+      input[type=range] { width: 100%; margin-top: 10px; accent-color: var(--accent); }
+      .hint { color: var(--dim); font-size: 12px; margin: 8px 0 0; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <b>Figma vs demo</b>
+      <span id="frames"></span>
+      <span class="modes">
+        <button data-mode="side" class="on">Side by side</button>
+        <button data-mode="wipe">Wipe</button>
+        <button data-mode="diff">Difference</button>
+      </span>
+      <span class="stat" id="stat"></span>
+    </header>
+    <div class="stage" id="stage"></div>
+    <script>
+      const FRAMES = {
+        dashboard: 'Market intelligence dashboard', strategy: 'Strategy trades',
+        smartmove: 'Smart Money Move live scanner', preearnings: 'Pre-earnings direction',
+        ivcrush: 'IV Crush Check', signals: 'Signal History',
+        forward: 'Genuine Forward Scoreboard', unusual: 'Unusual Activity',
+        backtest: 'Historical Backtest (Track B)',
+      };
+      const SCORES = {
+        dashboard: 3.02, strategy: 3.03, smartmove: 3.66, preearnings: 3.10, ivcrush: 3.38,
+        signals: 3.46, forward: 3.89, unusual: 2.92, backtest: 4.15,
+      };
+      let frame = location.hash.replace('#', '') || 'dashboard';
+      let mode = 'side';
+      const nav = document.getElementById('frames');
+      Object.entries(FRAMES).forEach(([k, label]) => {
+        const b = document.createElement('button');
+        b.textContent = label; b.dataset.frame = k;
+        b.onclick = () => { frame = k; location.hash = k; render(); };
+        nav.appendChild(b);
+      });
+      document.querySelectorAll('[data-mode]').forEach((b) => {
+        b.onclick = () => { mode = b.dataset.mode; render(); };
+      });
+      function render() {
+        document.querySelectorAll('[data-frame]').forEach((b) =>
+          b.classList.toggle('on', b.dataset.frame === frame));
+        document.querySelectorAll('[data-mode]').forEach((b) =>
+          b.classList.toggle('on', b.dataset.mode === mode));
+        document.getElementById('stat').textContent =
+          `mean difference ${SCORES[frame]} / 255`;
+        const f = `./_compare/figma/${frame}.png`;
+        const d = `./_compare/demo/${frame}.png`;
+        const s = document.getElementById('stage');
+        if (mode === 'side') {
+          s.innerHTML = `<div class="pair">
+            <div class="pane"><h4>Figma</h4><img src="${f}"></div>
+            <div class="pane"><h4>Demo (live)</h4><img src="${d}"></div></div>
+            <p class="hint">Both rendered at the frame's own canvas size, PNG against PNG.</p>`;
+        } else if (mode === 'wipe') {
+          s.innerHTML = `<div class="wipe" id="w"><img src="${d}" id="base">
+            <div class="top" id="top"><img src="${f}"></div></div>
+            <input type="range" min="0" max="100" value="50" id="r">
+            <p class="hint">Left of the handle is Figma, right is the demo.</p>`;
+          const r = document.getElementById('r'), top = document.getElementById('top');
+          const set = () => { top.style.width = r.value + '%'; };
+          r.oninput = set; set();
+        } else {
+          s.innerHTML = `<img src="./_compare/diff/${frame}.png" style="width:100%;border:1px solid var(--line);border-radius:6px">
+            <p class="hint">Brightness is amplified 3x. Black means identical. Everything still visible is
+            a glyph edge - Figma's text rasteriser against Chromium's, which cannot be matched from CSS.</p>`;
+        }
+      }
+      window.addEventListener('hashchange', () => { frame = location.hash.replace('#', '') || 'dashboard'; render(); });
+      render();
+    </script>
+  </body>
+</html>

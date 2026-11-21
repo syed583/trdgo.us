@@ -88,6 +88,17 @@ export default function NewNewsPage({ ctx }: { ctx: PageContext }) {
   const alertRows: Any[] = alerts.data?.rows || alerts.data?.alerts || [];
   const scoreTone = s.label === 'BULLISH' ? 'up' : s.label === 'BEARISH' ? 'down' : '';
 
+  // 24:263-24:269 - the frame pages the headlines twenty at a time. We were rendering all of them,
+  // which is the entire height the card ran over.
+  const PER_PAGE = 20;
+  const [page, setPage] = React.useState(1);
+  React.useEffect(() => { setPage(1); }, [tone, find, symbol]);
+  const pageCount = Math.max(1, Math.ceil(shown.length / PER_PAGE));
+  const pageSafe = Math.min(page, pageCount);
+  const pageRows = shown.slice((pageSafe - 1) * PER_PAGE, pageSafe * PER_PAGE);
+  const firstShown = shown.length ? (pageSafe - 1) * PER_PAGE + 1 : 0;
+  const lastShown = Math.min(pageSafe * PER_PAGE, shown.length);
+
   return (
     <div className="nd nst nua nnw">
       <section className="nua-head nnw-head">
@@ -172,7 +183,7 @@ export default function NewNewsPage({ ctx }: { ctx: PageContext }) {
 
         {!!shown.length && (
           <ul className="nnw-list">
-            {shown.map((n, i) => {
+            {pageRows.map((n, i) => {
               const t = TONE_OF(n.sentiment ?? n.tone);
               return (
                 <li key={String(n.id ?? n.url ?? i)}>
@@ -193,6 +204,25 @@ export default function NewNewsPage({ ctx }: { ctx: PageContext }) {
               );
             })}
           </ul>
+        )}
+
+        {/* 24:263-24:269 - "Showing 1-20 of 40" and the page buttons. Only when there is more
+            than one page: a pager over a single page is furniture, not a control. */}
+        {shown.length > PER_PAGE && (
+          <div className="nnw-pager">
+            <span className="nst-mute">
+              Showing {firstShown}&ndash;{lastShown} of {shown.length} headlines
+            </span>
+            <div className="nnw-pager-btns">
+              {Array.from({ length: pageCount }, (_, i) => i + 1).map((n) => (
+                <button type="button" key={n} className={n === pageSafe ? 'is-on' : ''}
+                  aria-current={n === pageSafe ? 'page' : undefined}
+                  onClick={() => setPage(n)}>{n}</button>
+              ))}
+              <button type="button" aria-label="Next page" disabled={pageSafe >= pageCount}
+                onClick={() => setPage((p) => Math.min(pageCount, p + 1))}>&rsaquo;</button>
+            </div>
+          </div>
         )}
       </section>
 

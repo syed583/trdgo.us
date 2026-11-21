@@ -1115,3 +1115,61 @@
 @media (max-width: 900px) {
   .app-nu .nwl .nwl-grid { grid-template-columns: 1fr; }
 }
+
+/* ============================================================================
+   KIT O — owner decisions and live-sweep defects, 2026-11-21
+   ========================================================================= */
+
+/* 1. The statistics row is gone from the markup, so the index strip runs straight into row C.
+      Row C's own 13px top margin is the only gap that should remain. */
+.app-nu .nal .nal-rowC { margin-top: 13px; }
+
+/* 4. The sidebar promo was 213 tall and pushed menu items off the rail. It stays pinned at the
+      foot - it always was, it was simply too big - and is now about 120, which gives the menu
+      roughly three more rows. The description is clamped rather than deleted: it is the only
+      thing on the rail that says what Tradgo.AI is. */
+.app-nu .nu-promo { margin: 8px 11px; padding: 12px 14px 13px; border-radius: 18px; }
+.app-nu .nu-promo-badge { padding: 3px 8px; font-size: 12px; border-radius: 7px; }
+.app-nu .nu-promo h4 { margin: 8px 0 3px; font-size: 14px; }
+.app-nu .nu-promo p {
+  margin: 0 0 10px; font-size: 12px; line-height: 15px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.app-nu .nu-promo a { height: 32px; font-size: 14px; border-radius: 9px; }
+
+/* 4b. The nav is what should absorb a short rail, not the promo: it already scrolls, but it had
+       no floor of its own, so the promo squeezed it instead. */
+.app-nu .nu-nav { min-height: 140px; }
+
+/* 5. Smart Money Move sat 16px low from the counts down on the live server, where the warning
+      band wraps to a line more than the fixture's. */
+.app-nu .nd.nsm .sm-summary { margin-top: -1px; }
+
+/* 7. Wide tables must scroll INSIDE their card, not past the right edge of the page. Seen live on
+      the Smart Money Move scanner (right=1499), the Options Flow tape (1658) and the classic
+      watchlist board (1175). The wrapper scrolls; the card keeps its width. */
+.app-nu .sm-table-wrap,
+.app-nu .mf-tape-wrap,
+.app-nu .nst-scroll { overflow-x: auto; max-width: 100%; }
+.app-nu .panel, .app-nu .nd-card, .app-nu section { max-width: 100%; }
+.app-nu table.tbl, .app-nu table.mf-tape, .app-nu table.sm-table { max-width: none; }
+/* A table with nowhere to scroll is a table that overflows: give every wide one a scroller. */
+.app-nu .page table, .app-nu .nd table { display: table; }
+.app-nu .panel-body, .app-nu .nd-card > .nst-scroll { overflow-x: auto; }
+
+/* 3. The news pager, matching the frame's 24:264-24:268. */
+.app-nu .nnw .nnw-pager {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 4px 2px; font-size: 12px;
+}
+.app-nu .nnw .nnw-pager-btns { display: flex; gap: 7px; }
+.app-nu .nnw .nnw-pager-btns button {
+  min-width: 34px; height: 28px; padding: 0 9px; border-radius: 8px;
+  border: 1px solid var(--nu-line); background: var(--nu-card); color: var(--nu-ink);
+  font-size: 13px;
+}
+.app-nu .nnw .nnw-pager-btns button.is-on {
+  background: linear-gradient(90deg, #1c61f5 0%, #1642e8 100%);
+  border-color: #4876ff; color: #fff; font-weight: 600;
+}
+.app-nu .nnw .nnw-pager-btns button:disabled { opacity: .45; }

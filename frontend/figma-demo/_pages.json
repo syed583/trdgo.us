@@ -1,0 +1,74 @@
+{
+ "dashboard": [
+  "/ai-insights",
+  1536,
+  1024,
+  "dark"
+ ],
+ "strategy": [
+  "/strategy-trades",
+  1024,
+  1536,
+  "dark"
+ ],
+ "smartmove": [
+  "/smart-move/engine20",
+  1536,
+  1024,
+  "dark"
+ ],
+ "preearnings": [
+  "/pre-earnings-direction",
+  1536,
+  1024,
+  "dark"
+ ],
+ "ivcrush": [
+  "/option-scanner",
+  1199,
+  1312,
+  "dark"
+ ],
+ "signals": [
+  "/earnings-signals",
+  1024,
+  1536,
+  "dark"
+ ],
+ "forward": [
+  "/forward-scoreboard",
+  1199,
+  1312,
+  "dark"
+ ],
+ "unusual": [
+  "/unusual-activity",
+  1536,
+  1024,
+  "dark"
+ ],
+ "backtest": [
+  "/historical-backtest",
+  1199,
+  1312,
+  "dark"
+ ],
+ "news": [
+  "/news",
+  1024,
+  1536,
+  "light"
+ ],
+ "market": [
+  "/market",
+  1024,
+  1536,
+  "light"
+ ],
+ "stocks": [
+  "/stocks",
+  1752,
+  897,
+  "light"
+ ]
+}

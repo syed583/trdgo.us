@@ -191,6 +191,51 @@ def _row(label: str, symbol: str, quotes: dict, *,
     }
 
 
+def _priced(value: Any) -> tuple[int, int]:
+    """How much of a pulse payload is actually filled in: (index cards priced, symbols measured).
+
+    Used to compare two readings. It counts what a reader can SEE - an index card with no price is
+    a blank box on the page - rather than whether the request succeeded.
+    """
+    if not isinstance(value, dict):
+        return (-1, -1)
+    rows = value.get("indices") or []
+    cards = sum(1 for r in rows
+                if isinstance(r, dict) and (r.get("price") is not None or r.get("value") is not None))
+    measured = 0
+    detail = str(value.get("detail") or "")
+    # the builder states "N of M symbols priced" in its own detail line
+    head = detail.split(" of ", 1)[0].strip().split()[-1:] if " of " in detail else []
+    if head and head[0].isdigit():
+        measured = int(head[0])
+    return (cards, measured)
+
+
+def _keep_better(fresh: Any) -> Any:
+    """Return whichever of the fresh build and the held reading a reader is better served by.
+
+    A restart empties the per-symbol quote memo; the first build after it can price a handful of
+    symbols out of eighty and would otherwise be cached over a complete reading. When that happens
+    the previous value is served again, marked with the time it was taken, and the next refresh
+    tries again. Nothing extra is requested either way.
+    """
+    try:
+        held = market.cache.get("market_pulse", PULSE_TTL_CLOSED * 8)
+    except Exception:  # noqa: BLE001 - without a previous reading there is nothing to compare
+        return fresh
+    if not isinstance(held, dict) or held.get("degraded"):
+        return fresh
+    f_cards, f_sym = _priced(fresh)
+    h_cards, h_sym = _priced(held)
+    if f_cards >= h_cards or f_sym >= h_sym:
+        return fresh
+    return {**held, "degraded": "LAST_GOOD",
+            "degraded_note": (f"The latest read priced {f_sym} symbols and {f_cards} index cards, "
+                              f"against {h_sym} and {h_cards} in the reading shown. Showing the "
+                              f"last complete one rather than a mostly empty page."),
+            "as_of": held.get("built_at") or held.get("generated_at") or held.get("now_et")}
+
+
 def get_pulse() -> dict:
     """Indices, sectors, breadth, movers, macro and global proxies."""
     cached = market.cache.get(
@@ -205,7 +250,7 @@ def get_pulse() -> dict:
     value, done = singleflight.call(
         "market_pulse", _build_pulse, timeout=PULSE_WAIT)
     if done and value is not None:
-        return value
+        return _keep_better(value)
     stale = market.cache.get("market_pulse", PULSE_TTL_CLOSED * 4)
     if stale:
         return {**stale, "status": "STALE", "building": True}

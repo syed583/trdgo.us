@@ -69,7 +69,11 @@ export function missingText(r: { missing_factors?: any[] }): string {
 }
 
 /** The newest immutable Engine20 prediction snapshot. A historical record of the frozen score40-v1 output at its generation time: this page computes no score, and it never presents a snapshot as a current live signal. */
-export function SnapshotView({ isAdmin = false }: { isAdmin?: boolean }) {
+export function SnapshotView({ isAdmin = false, modelAdmin = false }:
+  // isAdmin decides whether this view is REACHABLE (it is `!ctx.readOnly`, which is not an
+  // administrator). modelAdmin is ctx.isAdmin - the real one - and is what model internals
+  // such as the engine version must be gated on.
+  { isAdmin?: boolean; modelAdmin?: boolean }) {
   const [cat, setCat] = useState('');
   const [open, setOpen] = useState('');
   const snap = useApi<any>((s) => smartMoveEngine20.latest(s), [], { refreshMs: 60_000 });
@@ -83,7 +87,8 @@ export function SnapshotView({ isAdmin = false }: { isAdmin?: boolean }) {
 
   return (
     <div className="sm">
-      <PageHead title="Smart Move Snapshot (20 stocks)" subtitle="The frozen 40-point engine (score40-v1) output for the 20 approved stocks, kept as an immutable historical snapshot with its generation time and evidence." />
+      <PageHead title="Smart Move Snapshot (20 stocks)"
+        subtitle={`The frozen 40-point engine${modelAdmin ? ' (score40-v1)' : ''} output for the 20 approved stocks, kept as an immutable historical snapshot with its generation time and evidence.`} />
       <div className="sm-q-banner" role="note">
         <Info size={16} />
         <div><b>This is a historical snapshot, not a live signal.</b> It shows what the frozen engine said at the time it was generated. NO TRADE means every gate passed and the margin was too small; NO VALID PREDICTION means data was missing or insufficient and is never a neutral view.</div>
@@ -102,7 +107,7 @@ export function SnapshotView({ isAdmin = false }: { isAdmin?: boolean }) {
         <>
           {/* The age is not decay: this record is immutable by design, so it is stated plainly rather than
               styled as an alarm. The model version and audit verdict are internals and stay with the admin. */}
-          <div className="sm-fresh" data-testid="snapshot-label"><AlertTriangle size={14} /> Historical snapshot generated {fmtTime(d.generated_at)}{isAdmin ? ` (${d.snapshot_age_h} h ago) · model ${d.model_version} · audit ${d.audit?.verdict ?? ''}` : ''} · {d.window_open_now ? 'prediction window still open, but this page is not a live feed' : 'prediction window closed'}</div>
+          <div className="sm-fresh" data-testid="snapshot-label"><AlertTriangle size={14} /> Historical snapshot generated {fmtTime(d.generated_at)}{modelAdmin ? ` (${d.snapshot_age_h} h ago) · model ${d.model_version} · audit ${d.audit?.verdict ?? ''}` : ''} · {d.window_open_now ? 'prediction window still open, but this page is not a live feed' : 'prediction window closed'}</div>
           <div className="sm-summary" data-testid="counts">
             <div className="sm-card"><div className="sm-card-k">BUY</div><div className="sm-card-v">{d.counts.BUY}</div></div>
             <div className="sm-card"><div className="sm-card-k">SELL</div><div className="sm-card-v">{d.counts.SELL}</div></div>
@@ -228,7 +233,10 @@ export function LiveView({ isAdmin = false }: { isAdmin?: boolean }) {
   const e = d?.events || {};
   return (
     <div className="sm" data-testid="sm-live-view">
-      <PageHead title="Smart Money Move — LIVE scanner" subtitle="Live predictions of the frozen 40-point engine (score40-v1) from this server's own collector. Each call is recorded in an append-only ledger before its prediction window closes." />
+      {/* The engine VERSION is a model internal: administrators need to know which engine
+          produced a row, a reader does not, and it was on the page for everyone. */}
+      <PageHead title="Smart Money Move — LIVE scanner"
+        subtitle={`Live predictions of the frozen 40-point engine${isAdmin ? ' (score40-v1)' : ''} from this server's own collector. Each call is recorded in an append-only ledger before its prediction window closes.`} />
       {live.initialLoading && <div className="sm-none" role="status">Loading the live scanner…</div>}
       {live.error && <div className="sm-fresh stale" role="alert"><AlertTriangle size={14} /> The live scanner could not be loaded: {live.error} <button className="ghost-btn" onClick={() => live.refresh()}><RefreshCw size={14} /> Retry</button></div>}
       {d && !d.configured && (
@@ -508,7 +516,7 @@ export default function SmartMoveEngine20Page({ ctx }: { ctx: PageContext }) {
           {isAdmin && <button role="tab" aria-selected={view === 'snapshot'} className={`sm-tab ${view === 'snapshot' ? 'on' : ''}`} data-testid="tab-snapshot" onClick={() => setView('snapshot')}>Historical snapshot (20 stocks)</button>}
         </div>
       </div>
-      {view === 'live' ? <LiveView isAdmin={!!ctx.isAdmin} /> : view === 'universe' ? <UniverseView /> : view === 'mondaybmo' ? <MondayBmoView /> : <SnapshotView isAdmin={isAdmin} />}
+      {view === 'live' ? <LiveView isAdmin={!!ctx.isAdmin} /> : view === 'universe' ? <UniverseView /> : view === 'mondaybmo' ? <MondayBmoView /> : <SnapshotView isAdmin={isAdmin} modelAdmin={!!ctx.isAdmin} />}
     </div>
   );
 }

@@ -1,0 +1,11 @@
+import { chromium } from 'playwright';
+const b = await chromium.launch();
+const p = await b.newPage({ viewport:{width:1024,height:1536}, deviceScaleFactor:1, colorScheme:'light' });
+const calls = [];
+p.on('request', r => { if (r.url().includes('/api/landing/sparklines')) calls.push(1); });
+await p.goto('http://localhost:5311/market',{waitUntil:'domcontentloaded'});
+await p.waitForTimeout(3200);
+const shell = await p.evaluate(()=>document.querySelector('.app-nu') ? 'NEW' : 'CLASSIC');
+const n = await p.$$eval('.mo-index-spark', e=>e.length);
+console.log(`shell=${shell}  sparklines drawn=${n}  requests=${calls.length}`);
+await b.close();

@@ -1,0 +1,10 @@
+import { chromium } from 'playwright';
+const b = await chromium.launch();
+const p = await b.newPage({ viewport:{width:1440,height:1000}, deviceScaleFactor:1, colorScheme:'dark' });
+await p.addInitScript(()=>{try{localStorage.setItem('usr.theme','dark')}catch{}});
+const bad=[];
+p.on('response', r => { if (r.status() >= 400) bad.push(`${r.status()} ${r.url().slice(0,110)}`); });
+await p.goto('http://localhost:5311/watchlist?newui=1',{waitUntil:'domcontentloaded'});
+await p.waitForTimeout(6000);
+console.log(bad.length ? bad.join('\n') : 'no failing requests');
+await b.close();

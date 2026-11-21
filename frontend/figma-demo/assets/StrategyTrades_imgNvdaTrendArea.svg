@@ -1,0 +1,9 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="45" height="21" viewBox="0 0 45 21" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path id="NVDA trend area" d="M0 18L10 10L18 14L26 6L33 8L45 0V21H0V18Z" fill="url(#paint0_linear_0_19)"/>
+<defs>
+<linearGradient id="paint0_linear_0_19" x1="22.5" y1="0" x2="22.5" y2="21" gradientUnits="userSpaceOnUse">
+<stop stop-color="#3DC681" stop-opacity="0.12"/>
+<stop offset="1" stop-color="#3DC681" stop-opacity="0"/>
+</linearGradient>
+</defs>
+</svg>

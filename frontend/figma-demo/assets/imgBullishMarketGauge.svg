@@ -1,0 +1,11 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="153.924" height="98.0001" viewBox="0 0 153.924 98.0001" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path id="Bullish market gauge" d="M8 90.0001C8 74.0257 12.6659 58.3991 21.4245 45.04C30.1832 31.6809 42.6531 21.1709 57.3026 14.8011C71.952 8.43136 88.143 6.4792 103.887 9.18445C119.63 11.8897 134.241 19.1346 145.924 30.029" stroke-width="16" stroke-linecap="round" stroke="url(#paint0_linear_0_71)"/>
+<defs>
+<linearGradient id="paint0_linear_0_71" x1="8" y1="49" x2="145.924" y2="49" gradientUnits="userSpaceOnUse">
+<stop stop-color="#F32B3A"/>
+<stop offset="0.45" stop-color="#FFD23B"/>
+<stop offset="0.75" stop-color="#A0D83C"/>
+<stop offset="1" stop-color="#0AB25B"/>
+</linearGradient>
+</defs>
+</svg>

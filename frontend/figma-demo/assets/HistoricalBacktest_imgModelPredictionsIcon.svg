@@ -1,0 +1,13 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="MODEL PREDICTIONS icon" clip-path="url(#clip0_0_25)">
+<path id="Vector" d="M31.5 18C31.5 25.4558 25.4558 31.5 18 31.5C10.5442 31.5 4.5 25.4558 4.5 18C4.5 10.5442 10.5442 4.5 18 4.5C25.4558 4.5 31.5 10.5442 31.5 18Z" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" stroke="#0657ED"/>
+<path id="Vector_2" d="M25.5 18C25.5 22.1421 22.1421 25.5 18 25.5C13.8579 25.5 10.5 22.1421 10.5 18C10.5 13.8579 13.8579 10.5 18 10.5C22.1421 10.5 25.5 13.8579 25.5 18Z" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" stroke="#0657ED"/>
+<path id="Vector_3" d="M19.5 18C19.5 18.8284 18.8284 19.5 18 19.5C17.1716 19.5 16.5 18.8284 16.5 18C16.5 17.1716 17.1716 16.5 18 16.5C18.8284 16.5 19.5 17.1716 19.5 18Z" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" stroke="#0657ED"/>
+<path id="Vector_4" d="M18 0V4.5M18 31.5V36M0 18H4.5M31.5 18H36" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" stroke="#0657ED"/>
+</g>
+<defs>
+<clipPath id="clip0_0_25">
+<rect width="36" height="36" fill="white"/>
+</clipPath>
+</defs>
+</svg>

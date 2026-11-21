@@ -27,6 +27,8 @@ APP = SRC / "App.tsx"
 LANDING = SRC / "pages" / "NewAnalysisLanding.tsx"
 INSIGHTS = SRC / "pages" / "InsightsPage.tsx"
 SMART = SRC / "pages" / "NewSmartMovePage.tsx"
+# the subtitle, the counts and the live table live in the ENGINE page, not the wrapper
+ENGINE = SRC / "pages" / "SmartMoveEngine20Page.tsx"
 
 
 def _code(p: pathlib.Path) -> str:
@@ -167,3 +169,31 @@ def test_smart_move_leaves_out_export_columns_and_table_search():
     code = _code(SMART)
     for extra in ("Export", "Columns", "Search symbol", "placeholder="):
         assert extra not in code, f"a Figma-only control was built: {extra}"
+
+# --------------------------------------------------------------- kit O: the engine version
+def test_the_engine_version_is_administrator_only():
+    """"score40-v1" names WHICH engine produced a row, which is a model internal (A.29).
+
+    It sat in the Smart Money Move subtitle for every signed-in reader until 2026-11-21, when the
+    live sweep found it. The fix is a ternary, so the thing worth asserting is that the string
+    cannot appear except behind an isAdmin check - a later edit that drops the guard would put it
+    back in front of everyone without anything else noticing.
+    """
+    code = _code(ENGINE)
+    assert "score40-v1" in code, "the subtitle no longer mentions the engine at all - update this test"
+    for line in code.splitlines():
+        stripped = line.strip()
+        # a comment explaining the engine is not a leak; only rendered text counts
+        if stripped.startswith(("//", "*", "/*")):
+            continue
+        if "score40-v1" in line:
+            assert "modelAdmin" in line or "isAdmin" in line, (
+                f"the engine version is not behind an admin check: {stripped[:90]}")
+
+
+def test_the_landing_has_no_vendor_names():
+    """The owner removed the statistics row on 2026-11-21 because it was the only place in the
+    product that printed the data vendors' names. They must not come back by another route."""
+    code = _code(LANDING)
+    for vendor in ("Unusual Whales", "Finnhub", "Finviz"):
+        assert vendor not in code, f"{vendor} is back on the Analysis landing"

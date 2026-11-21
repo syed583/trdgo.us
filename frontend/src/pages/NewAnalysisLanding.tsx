@@ -264,32 +264,12 @@ export default function NewAnalysisLanding({
         </div>
       )}
 
-      {/* ------------------------------------------------------------- what we run on */}
-      {/* Every figure here is counted, not claimed. The frame also advertises "150+ Analytical
-          Signals" and "85% Backtest Coverage"; nothing measures either, so they are not here. */}
-      <div className="nal-stats">
-        <div className="nal-stat">
-          <span className="nal-stat-ico blue"><Database size={17} /></span>
-          <div><b>4</b><span>Data sources</span><i>Unusual Whales, Finnhub, Finviz, SEC EDGAR</i></div>
-        </div>
-        <div className="nal-stat">
-          <span className="nal-stat-ico violet"><Layers size={17} /></span>
-          <div>
-            <b>{stocksTracked != null ? stocksTracked.toLocaleString() : '—'}</b>
-            <span>Names tracked</span><i>optionable US stocks</i>
-          </div>
-        </div>
-        <div className="nal-stat">
-          <span className={`nal-stat-ico ${marketOpen ? 'green' : 'amber'}`}><Radio size={17} /></span>
-          <div>
-            <b>{marketOpen ? 'Live' : 'Closed'}</b>
-            <span>{marketOpen ? 'Market data streaming' : 'Last session’s close'}</span>
-            <i>{sessionLabel || ''}</i>
-          </div>
-        </div>
-      </div>
-
-      {/* The live panels      {/* Rows C and D of frame 2:2. Row C: Top Movers 404 | featured symbol 464 | earnings
+      {/* NO STATISTICS ROW. It held the only vendor names in the user interface
+          ("Unusual Whales, Finnhub, Finviz, SEC EDGAR"), which the owner ruled out of the
+          product entirely on 2026-11-21, and the other two boxes did not earn a row by
+          themselves. Removed rather than hidden: a box nobody should see is a box that should
+          not be built. The index strip now runs straight into row C. */}
+      {/* Rows C and D of frame 2:2. Row C: Top Movers 404 | featured symbol 464 | earnings
           calendar 363, all 304 tall. Row D: options flow 466 | sentiment 375 | sectors 393,
           174 tall. Top Movers is the live panel, placed here rather than re-implemented.
 
