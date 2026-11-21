@@ -1,1 +1,2 @@
 deploy/o1_run.ps1 -text
+deploy/p1_run.ps1 -text
