@@ -116,3 +116,34 @@ trades, so the table and pager do not exist until a trading date is chosen).
 - Kit O's table fix holds: the table is wider than the column but scrolls INSIDE its card
   (`.nst-scroll` scrolls, the page does not).
 - Models render as Agent 1-4 throughout; no vendor name anywhere on this page.
+
+## Page 3 - Smart Money Move - DONE (non-admin, dark)
+
+| control | result |
+|---------|--------|
+| View tabs: LIVE scanner / Event universe / Monday BMO / Historical snapshot | **all work** - 694 / 524 / 85 / 20 rows, each with its own heading |
+| Category tabs: All, BUY, SELL, NO TRADE, NO VALID PREDICTION, PENDING, Missed windows | **all work**, and the counts reconcile: 24+31+132+351+155 = 693, plus 300 missed = the 993 in the payload |
+| Search box (kit N) | **works**, case-insensitive - "BJ", "JOYY", "bj" each return their row. "AAPL" returns none because AAPL is genuinely not in the 993-row payload, which I checked rather than assumed |
+| Export (kit N) | **works** - produced `smart-money-move-all-2026-11-21.csv`, 80,938 bytes, `text/csv;charset=utf-8` |
+| Reload | **works** |
+| Row click | **works** - expands a detail line ("Why: blocked: ... Generated ... mode LIVE · record 830b5072f4a2") and collapses on a second click. Only one row is open at a time, by design |
+
+### Defects
+
+1. **`score40-v1` is STILL visible on the LIVE view - kit O did not fix it.** Kit O gated the two
+   occurrences in the TSX (live subtitle and snapshot subtitle, both now correct - the snapshot is
+   confirmed clean). This THIRD one comes from the SERVER: the live payload's `note` field reads
+   "Rows are the frozen score40-v1 engine's own output...", and the page renders it verbatim.
+   The test I wrote could never have caught it - it reads the TSX, and this string is not in the
+   TSX at all.
+   FIX, client-side only: redact the engine version from server-supplied text for non-admins.
+   `backend/smart_move_*` is on the protected list and must not be touched.
+
+2. **The Historical snapshot tab is reachable by a non-admin.** It is gated on `!ctx.readOnly`,
+   which is TRUE for any full-access account - this one (`role: user`, `is_admin: false`) sees it.
+   Pre-existing (kit G), not introduced here, but it is the owner's "admin-only stays admin-only"
+   rule and worth a decision.
+
+3. **Raw internal codes in the row detail**: "blocked: SUSPECT_WINDOW, INSUFFICIENT_COVERAGE" is
+   shown to users. Same class as the factor codes the owner made admin-only in M12 ("plain wording
+   for users, codes for administrators"). Owner's call whether to apply the same rule here.
