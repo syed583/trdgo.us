@@ -27,3 +27,10 @@ export const earningsMonitor = {
   health: () => ({ __k: 'emhealth' }),
   outcomes: () => ({ __k: 'emoutcomes' }),
 };
+
+// api2 is the newer client surface the redesigned pages use. Same marker trick: a call returns a
+// key, and the test puts the state for that key on globalThis.__apiState.
+export const api2 = {
+  strategyTrades: () => ({ __k: 'strategytrades' }),
+  logout: async () => ({ status: 'OK' }),
+};

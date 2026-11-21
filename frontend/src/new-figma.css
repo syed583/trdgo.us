@@ -1266,3 +1266,20 @@
 
 /* 13. A headline we cannot link to is text - it must not take the link cursor. */
 .app-nu .nnw .nnw-headline-plain { cursor: default; color: var(--nu-ink); }
+
+/* ---------------------------------------------------------------- the assistant, inside the new shell
+ * The assistant panel is a CLASSIC component and styles itself with the classic tokens
+ * (--bg-2, --text, --panel-2, --border). Those do not follow the new UI's light theme, so in light
+ * mode the panel painted white while its input stayed the classic dark: black box, dark text, on a
+ * white card. Seen in the kit P before/after shots - it is in the BEFORE too, so it is not new, but
+ * it is wrong on screen and the owner asked for it.
+ *
+ * The panel is not restyled; only the surfaces that were reading from the wrong palette are
+ * repointed at the new UI's own tokens, so it follows whichever theme the shell is in.
+ */
+.app-nu .asst-input { background: var(--nu-card-2); border-top-color: var(--nu-line); }
+.app-nu .asst-input textarea {
+  background: var(--nu-card); border-color: var(--nu-line); color: var(--nu-ink);
+}
+.app-nu .asst-input textarea::placeholder { color: var(--nu-page-ink-dim); }
+.app-nu .asst-input textarea:focus { border-color: var(--nu-accent); }

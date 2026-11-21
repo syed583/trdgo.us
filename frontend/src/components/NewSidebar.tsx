@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { ChevronsLeft, ChevronsRight, Cpu, ArrowRight } from 'lucide-react';
 import logoDark from '../assets/logo-dark.png';
+import { BrandMark } from './Brand';
 import logoLight from '../assets/logo.png';
 import { USER_GROUPS, ADMIN_GROUP, SYMBOL_SECTIONS, type NavGroup } from './navModel';
 
@@ -66,12 +67,17 @@ export default function NewSidebar({
         aria-label="Sections"
       >
         <div className="nu-rail-head">
-          {/* Two marks, one shown: the rail is navy in dark mode and white in light, and a single
-              image cannot read on both. CSS picks; neither is ever drawn twice. */}
-          <img className="nu-logo-dark" src={logoDark} alt="" />
-          <img className="nu-logo-light" src={logoLight} alt="" />
+          {/* THE WORDMARK IS THE BRAND. Two files, one shown: the rail is navy in dark mode and
+              white in light, and a single image cannot read on both. CSS picks; neither is ever
+              drawn twice. These are the same two files the classic UI uses, which sizes them
+              160px wide - they are 1386x480 wordmarks, and the 32x32 box they used to sit in
+              squashed them to an 11px sliver.
+              The name is NOT printed beside them: the wordmark already says it. */}
+          <img className="nu-logo-dark" src={logoDark} alt="Tradgo.us" />
+          <img className="nu-logo-light" src={logoLight} alt="Tradgo.us" />
+          {/* 72px of collapsed rail cannot hold a wordmark, so the brand's own mark stands in. */}
+          <span className="nu-logo-mark" aria-hidden="true"><BrandMark size={30} /></span>
           <div className="nu-rail-brand">
-            <b>Tradgo<span style={{ color: 'var(--nu-accent-2)' }}>.us</span></b>
             <span>Global Market Intelligence</span>
           </div>
         </div>

@@ -1,7 +1,8 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  Activity, AlertTriangle, ArrowRight, CheckCircle2, Clock, Crosshair, Target, TrendingUp,
+  Activity, AlertTriangle, ArrowRight, CheckCircle2, Clock, Crosshair, TrendingUp,
+  Volume2, VolumeX,
 } from 'lucide-react';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
@@ -19,8 +20,8 @@ import '../new-strategy.css';
  * removed rather than invented - so those columns and filters are absent, not filled with plausible
  * values. Everything that IS shown comes from /api/strategy-trades.
  *
- * R:R is the one derived figure, and it is arithmetic on the trade's own levels
- * (|target-entry| / |entry-stop|), not an estimate.
+ * No figure here is derived any more: R:R was the only one, and the owner removed it (2026-11-21).
+ * Everything rendered is a field of the payload.
  *
  * A.26: a non-administrator sees Agent 1-4, never which model a strategy is. The server already maps
  * this - `strategy_label` arrives as "Agent 2" for a user - so the page simply renders what it is given
@@ -39,14 +40,42 @@ const pct = (v: Any): string =>
   (v === null || v === undefined ? '—' : `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(2)}%`);
 const dir = (v: Any): string => (v === null || v === undefined ? '' : Number(v) >= 0 ? 'up' : 'down');
 
-/** |target − entry| / |entry − stop|, or null when a level is missing. Never a guess. */
-function rr(row: Any): number | null {
-  const e = Number(row.entry_price), s = Number(row.stop), t = Number(row.target);
-  if (!Number.isFinite(e) || !Number.isFinite(s) || !Number.isFinite(t)) return null;
-  const risk = Math.abs(e - s);
-  if (risk < 1e-9) return null;
-  return Math.abs(t - e) / risk;
+
+/* ---------------------------------------------------------------- voice alerts
+ * Ported from the classic Strategy Trades page so it behaves exactly as it did there. Both the
+ * AudioContext and the first utterance are created from the button press: a browser blocks audio
+ * that does not come from a user gesture, so building them lazily is not an optimisation, it is
+ * the only way this works at all.
+ */
+let _audio: AudioContext | null = null;
+
+function _beep(ok: boolean) {
+  try {
+    _audio = _audio || new (window.AudioContext || (window as any).webkitAudioContext)();
+    const ctx = _audio;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type = 'sine';
+    o.frequency.value = ok ? 880 : 300;          // high chime for a win, low tone for a loss
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.5);
+    o.start(); o.stop(ctx.currentTime + 0.52);
+  } catch { /* a machine with no audio is not an error worth surfacing */ }
 }
+
+function _say(text: string) {
+  try {
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 1.0; u.volume = 1.0;
+    window.speechSynthesis.speak(u);             // queue, do not cancel: events are read in turn
+  } catch { /* no speech engine */ }
+}
+
+/** Spell a ticker so it is read as letters ("A A P L"), not as a mangled word. */
+const spell = (s?: string) => (s || '').toUpperCase().split('').join(' ');
+const shortStrat = (s?: string) => (s || '').replace(' Intraday', '');
+const CLOSED_STATES = new Set(['TARGET', 'STOP', 'SCORE_EXIT', 'EOD_CLOSE', 'MARKET_CLOSE', 'CLEANUP']);
 
 const STATUS_TONE: Record<string, string> = {
   OPEN: 'open', TARGET: 'win', STOP: 'loss', SCORE_EXIT: 'flat', EOD_CLOSE: 'flat',
@@ -61,11 +90,65 @@ export default function NewStrategyTradesPage({ ctx }: { ctx: PageContext }) {
   const [view, setView] = React.useState<'all' | 'open' | 'closed'>('all');
   const [page, setPage] = React.useState(1);
   const [perPage, setPerPage] = React.useState(25);
+  const [sound, setSound] = React.useState(false);
+  const soundRef = React.useRef(false);
+  const seenRef = React.useRef<Map<number, string>>(new Map());
+  const initedRef = React.useRef(false);
 
   const q = useApi<Any>((s) => api2.strategyTrades(strategy, date, s), [strategy, date],
     { refreshMs: 15_000 });
   const d = q.data || {};
   const rows: Any[] = d.rows || [];
+
+  /* What changed since the last read, and say it. The FIRST read only seeds the baseline:
+     a page that announces twenty trades the moment you open it teaches you to turn it off. */
+  React.useEffect(() => {
+    const all: Any[] = d.rows || [];
+    if (!all.length) return;
+    const seen = seenRef.current;
+    if (!initedRef.current) {
+      all.forEach((r) => seen.set(r.id, r.status));
+      initedRef.current = true;
+      return;
+    }
+    const voice: { ok: boolean; text: string }[] = [];
+    for (const r of all) {
+      const prev = seen.get(r.id);
+      if (prev === undefined) {
+        if (r.status === 'OPEN') {
+          voice.push({
+            ok: r.side !== 'SHORT',
+            text: `New ${r.side === 'SHORT' ? 'sell' : 'buy'} trade, take it now. ${spell(r.symbol)},`
+              + ` ${shortStrat(r.strategy_label)}, entry ${Math.round((r.entry_price ?? 0) * 100) / 100}`,
+          });
+        }
+      } else if (prev === 'OPEN' && CLOSED_STATES.has(r.status)) {
+        const win = (r.profit ?? 0) >= 0;
+        const what = r.status === 'TARGET' ? 'hit target'
+          : r.status === 'STOP' ? 'stopped out'
+          : r.status === 'SCORE_EXIT' ? 'exited on signal drop' : 'closed at end of day';
+        voice.push({
+          ok: win,
+          text: `${spell(r.symbol)} ${shortStrat(r.strategy_label)} ${what},`
+            + ` ${win ? 'profit' : 'loss'} ${Math.abs(Math.round(r.profit ?? 0))} dollars`,
+        });
+      }
+      seen.set(r.id, r.status);
+    }
+    if (soundRef.current && voice.length) {
+      _beep(voice.some((e) => e.ok));
+      voice.slice(0, 4).forEach((e) => _say(e.text));   // four is plenty; the rest are on screen
+    }
+  }, [d]);
+
+  function toggleSound() {
+    const on = !sound;
+    setSound(on);
+    soundRef.current = on;
+    // Speak once, here, from the click: this is the gesture that unlocks audio for the tab.
+    if (on) { _beep(true); _say('Voice alerts on'); }
+    else { try { window.speechSynthesis.cancel(); } catch { /* none */ } }
+  }
 
   const shown = React.useMemo(() => {
     let r = rows;
@@ -89,28 +172,18 @@ export default function NewStrategyTradesPage({ ctx }: { ctx: PageContext }) {
   const closed = d.closed ?? 0;
   const wins = d.wins ?? 0;
   const winRate = closed ? (wins / closed) * 100 : null;
-  const rrs = rows.map(rr).filter((x): x is number => x !== null);
-  const avgRr = rrs.length ? rrs.reduce((a, b) => a + b, 0) / rrs.length : null;
-  // A stop moved to breakeven has zero risk, so its reward:risk is undefined - not zero. Those
-  // rows are the dashes in the column, and the tile is an average over the rest. Counting them
-  // here is what stops the two reading as a contradiction.
-  const rrSkipped = rows.length - rrs.length;
 
   const stats = [
     { icon: <Activity size={18} />, tone: 'blue', value: d.count != null ? String(d.count) : '—',
       label: 'Trades on this date', sub: d.open != null ? `${d.open} still open` : '' },
     { icon: <CheckCircle2 size={18} />, tone: 'green', value: winRate != null ? `${winRate.toFixed(1)}%` : '—',
       label: 'Win rate', sub: closed ? `${wins} of ${closed} closed` : 'nothing closed yet' },
-    { icon: <Target size={18} />, tone: 'violet', value: avgRr != null ? `1 : ${avgRr.toFixed(2)}` : '—',
-      label: 'Average reward to risk',
-      sub: rrs.length
-        ? `across ${rrs.length} of ${rows.length}${rrSkipped ? ` — ${rrSkipped} at breakeven` : ''}`
-        : 'no trade still carries risk' },
+    // `money` is a P&L, so the NUMBER carries the colour, not just the icon square beside it.
     { icon: <TrendingUp size={18} />, tone: d.total_profit >= 0 ? 'green' : 'red',
-      value: d.total_profit != null ? money(d.total_profit) : '—',
+      value: d.total_profit != null ? money(d.total_profit) : '—', pl: d.total_profit,
       label: 'P&L, trades opened on this date', sub: d.total_pct != null ? pct(d.total_pct) : '' },
     { icon: <Clock size={18} />, tone: 'amber',
-      value: d.realized_on_date != null ? money(d.realized_on_date) : '—',
+      value: d.realized_on_date != null ? money(d.realized_on_date) : '—', pl: d.realized_on_date,
       label: 'Realised on this date', sub: d.closed_on_date != null ? `${d.closed_on_date} positions closed` : '' },
   ];
 
@@ -141,7 +214,7 @@ export default function NewStrategyTradesPage({ ctx }: { ctx: PageContext }) {
           <div className="nd-stat" key={s.label}>
             <span className={`nd-stat-ico ${s.tone}`}>{s.icon}</span>
             <div>
-              <b>{s.value}</b>
+              <b className={s.pl != null ? dir(s.pl) : undefined}>{s.value}</b>
               <span>{s.label}</span>
               {!!s.sub && <i className="nst-stat-sub">{s.sub}</i>}
             </div>
@@ -179,6 +252,14 @@ export default function NewStrategyTradesPage({ ctx }: { ctx: PageContext }) {
           <input value={find} onChange={(e) => setFind(e.target.value)} placeholder="e.g. NVDA" />
         </label>
 
+        <button type="button" className={`nst-snd${sound ? ' is-on' : ''}`} onClick={toggleSound}
+          aria-pressed={sound}
+          title={sound ? 'Voice alerts are on - click to mute'
+            : 'Speak new trades and their stop or target as they happen'}>
+          {sound ? <Volume2 size={15} /> : <VolumeX size={15} />}
+          {sound ? 'Voice alerts on' : 'Enable voice alerts'}
+        </button>
+
         <span className="nst-count">{shown.length} of {rows.length}</span>
       </div>
 
@@ -199,14 +280,13 @@ export default function NewStrategyTradesPage({ ctx }: { ctx: PageContext }) {
                 <tr>
                   <th>Symbol</th><th>Model</th><th>Signal</th>
                   <th className="r">Entry</th><th className="r">Target</th><th className="r">Stop</th>
-                  <th className="r">R:R</th><th className="r">Bid</th><th className="r">Ask</th>
+                  <th className="r">Bid</th><th className="r">Ask</th>
                   <th className="r">Spread</th><th className="r">Price</th><th className="r">Change</th>
                   <th className="r">P&amp;L</th><th className="r">Score</th><th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {pageRows.map((r) => {
-                  const ratio = rr(r);
                   const tone = STATUS_TONE[r.status] || 'flat';
                   return (
                     <tr key={r.id}>
@@ -230,13 +310,6 @@ export default function NewStrategyTradesPage({ ctx }: { ctx: PageContext }) {
                       <td className="r">
                         {n2(r.stop)}
                         {r.be_moved && <div className="nst-sub">at breakeven</div>}
-                      </td>
-                      {/* A dash here is not missing data: once the stop is at breakeven the risk
-                          is zero, so the ratio is undefined. Saying so stops it reading as a gap. */}
-                      <td className="r">
-                        {ratio != null
-                          ? `1:${ratio.toFixed(2)}`
-                          : <span className="nst-mute" title="stop at breakeven — no risk left to measure against">—</span>}
                       </td>
                       <td className="r nst-mute">{n2(r.bid)}</td>
                       <td className="r nst-mute">{n2(r.ask)}</td>

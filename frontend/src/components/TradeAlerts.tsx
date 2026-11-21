@@ -152,7 +152,9 @@ export function useUnseenAlerts(): { unseen: number; markSeen: () => void } {
   const [seenId, setSeenId] = React.useState<string>(() => {
     try { return localStorage.getItem(SEEN_KEY) || ''; } catch { return ''; }
   });
-  const firstRead = React.useRef(true);
+  // The newest trade id as of the previous reading THAT HAD DATA. Empty means we have not had one
+  // yet, so there is nothing to compare against and nothing can be "new".
+  const prevTopRef = React.useRef<string>('');
 
   const unseen = React.useMemo(() => {
     if (!rows.length) return 0;
@@ -161,13 +163,25 @@ export function useUnseenAlerts(): { unseen: number; markSeen: () => void } {
     return at < 0 ? rows.length : at;
   }, [rows, seenId]);
 
-  // The sound: only for something that arrived AFTER this tab was already looking, and only when
-  // it is not muted. Never on the first read - an app that chimes when you open it is an app
-  // whose chime you learn to ignore.
+  // The sound: only for a trade that arrived AFTER this tab was already looking, and only when it
+  // is not muted.
+  //
+  // THIS USED TO CHIME ON EVERY PAGE LOAD. The guard was "skip the first run of this effect", but
+  // the first run happens before the fetch returns, with no rows and nothing unseen - so it was
+  // spent on an empty reading, and the real first reading a moment later chimed. Anyone opening
+  // the app with no seen-marker heard it immediately, which is exactly the thing that teaches
+  // people to ignore a chime.
+  //
+  // The guard is now about the DATA, not the render: remember the newest id from the last reading
+  // that actually had rows, and chime only when a different id appears at the top.
   React.useEffect(() => {
-    if (firstRead.current) { firstRead.current = false; return; }
-    if (unseen > 0 && !readMuted()) chime();
-  }, [unseen]);
+    if (!rows.length) return;
+    const top = rows[0].id;
+    const had = prevTopRef.current;
+    prevTopRef.current = top;
+    if (!had) return;                  // first reading with data: baseline only, never a sound
+    if (top !== had && unseen > 0 && !readMuted()) chime();
+  }, [rows, unseen]);
 
   const markSeen = React.useCallback(() => {
     try { setSeenId(localStorage.getItem(SEEN_KEY) || ''); } catch { /* private window */ }

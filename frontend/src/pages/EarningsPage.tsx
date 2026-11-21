@@ -344,7 +344,11 @@ function TickerRow({
     );
   }
 
-  if (watchlist.initialLoading || !watchlist.data) {
+  // `data` without `cards` is a real shape: a partial or error payload still deserialises to an
+  // object, and `data.cards.map` then takes the whole page down behind the error boundary. The
+  // guard below checked `data` only, so one missing array crashed a page that had nothing else
+  // wrong with it. Found by clicking a Market Overview row through to /earnings/:symbol.
+  if (watchlist.initialLoading || !watchlist.data || !Array.isArray(watchlist.data.cards)) {
     return (
       <div className="ticker-row">
         {Array.from({ length: 10 }).map((_, i) => (

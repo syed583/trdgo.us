@@ -454,3 +454,21 @@
 .nal .nal-bar i.down { background: var(--nu-down); }
 
 @media (max-width: 1100px) { .nal .nal-row3 { grid-template-columns: 1fr; } }
+
+/* ---------------------------------------------------------------- profit green, loss red
+ * `.app-nu .up` is (0,2,0) and `.app-nu .nd-table td` is (0,2,1), so EVERY table cell took the
+ * plain ink colour and a P&L of -$3.60 rendered the same near-black as the symbol beside it. The
+ * classes were on the cells all along; nothing was ever going to show through that rule.
+ *
+ * Same story for the stat tiles: `.nd-stat b` set its own colour, so a red icon square sat beside
+ * a black number.
+ *
+ * These carry the class, so they are scoped to the cells that genuinely hold a signed figure -
+ * a price or a count is still ink.
+ */
+.app-nu .nd-table td.up,
+.app-nu .nst-table td.up { color: var(--nu-up); }
+.app-nu .nd-table td.down,
+.app-nu .nst-table td.down { color: var(--nu-down); }
+.app-nu .nd-stat b.up { color: var(--nu-up); }
+.app-nu .nd-stat b.down { color: var(--nu-down); }
