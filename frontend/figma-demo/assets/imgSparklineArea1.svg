@@ -1,9 +1,0 @@
-<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="83" height="33" viewBox="0 0 83 33" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path id="Sparkline area" d="M0 0L5 7L10 5L17 14L23 11L29 16L35 13L43 23L51 18L57 24L63 22L69 29L76 27L83 33V33H0V0Z" fill="url(#paint0_linear_0_17)"/>
-<defs>
-<linearGradient id="paint0_linear_0_17" x1="41.5" y1="0" x2="41.5" y2="33" gradientUnits="userSpaceOnUse">
-<stop stop-color="#FA4F5C" stop-opacity="0.32"/>
-<stop offset="1" stop-color="#FA4F5C" stop-opacity="0"/>
-</linearGradient>
-</defs>
-</svg>

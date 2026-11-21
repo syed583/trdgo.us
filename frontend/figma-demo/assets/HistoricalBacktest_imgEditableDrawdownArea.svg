@@ -1,9 +1,0 @@
-<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="392" height="86" viewBox="0 0 392 86" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path id="Editable drawdown area" d="M0 0V0L5 2L10 1L15 4L20 7L24 4L30 6H36L42 9L47 15L52 13L57 16L62 22L67 21L72 26L78 24H84L89 22L94 30L98 35L104 37L110 36L116 35L123 36L129 45L134 43L139 48L146 47L152 45L159 42L164 46L171 50H176L183 54L189 50L194 48L200 54L205 50L211 54L217 49L222 47L228 43L233 40L239 48L245 51L251 57L256 60L262 56L267 61L273 64L279 71L285 65L291 68H297L303 73L309 75L315 77L321 76L327 73L333 78L339 80L345 86H351L356 84L362 80L368 75L373 76H379L386 80L392 0H0Z" fill="url(#paint0_linear_0_5)"/>
-<defs>
-<linearGradient id="paint0_linear_0_5" x1="196" y1="0" x2="196" y2="86" gradientUnits="userSpaceOnUse">
-<stop stop-color="#F6A7B0" stop-opacity="0.7"/>
-<stop offset="1" stop-color="#FFE9EB" stop-opacity="0.1"/>
-</linearGradient>
-</defs>
-</svg>

@@ -1,9 +1,0 @@
-<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="333" height="127" viewBox="0 0 333 127" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path id="Editable cumulative-return area" d="M0 127V0L3 4L7 5L10 4L14 9L18 13L21 8L24 7L29 9L33 10L37 13L42 20L45 18L48 22L51 21L55 28L59 32L64 35L68 32L72 33L77 37L82 33L87 31L91 41L94 46L97 49L102 47L107 49L112 47L118 46L123 45L127 49L132 55L138 53H144L148 51L154 52L159 58L164 62L169 66L172 62L175 66H179L183 59L187 61L191 57L194 50L199 49L202 55L205 53L209 62L213 68L217 70L220 75L224 72L227 80L231 83L235 79L240 87L244 84L249 89L254 88L259 95H264L268 93L274 95L279 91L284 96L289 103L292 110L298 106L303 102L308 100L312 96L316 99H321L325 104L329 105L333 127H0Z" fill="url(#paint0_linear_0_10)"/>
-<defs>
-<linearGradient id="paint0_linear_0_10" x1="166.5" y1="0" x2="166.5" y2="127" gradientUnits="userSpaceOnUse">
-<stop stop-color="#B6CEFC" stop-opacity="0.65"/>
-<stop offset="1" stop-color="#EDF3FF" stop-opacity="0.22"/>
-</linearGradient>
-</defs>
-</svg>

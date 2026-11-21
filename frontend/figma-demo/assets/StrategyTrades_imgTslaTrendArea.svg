@@ -1,9 +1,0 @@
-<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="45" height="21" viewBox="0 0 45 21" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path id="TSLA trend area" d="M0 0L10 9L18 4L26 11H33L45 18V21H0V0Z" fill="url(#paint0_linear_0_62)"/>
-<defs>
-<linearGradient id="paint0_linear_0_62" x1="22.5" y1="0" x2="22.5" y2="21" gradientUnits="userSpaceOnUse">
-<stop stop-color="#FF6268" stop-opacity="0.12"/>
-<stop offset="1" stop-color="#FF6268" stop-opacity="0"/>
-</linearGradient>
-</defs>
-</svg>
