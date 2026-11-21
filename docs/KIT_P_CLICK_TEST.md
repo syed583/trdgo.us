@@ -72,3 +72,47 @@ from 2115 to 1457 characters. That was a bad proxy: the analysed view is denser,
 screenshot showed a complete result (SELL, score 35/100, confidence 69%, key insights). Character
 counts do not tell you whether a page works.
 
+
+## Top bar - the two remaining controls
+
+| control | result |
+|---------|--------|
+| Theme toggle | **WORKS** - dark -> light -> dark, and the label follows ("Switch to dark theme") |
+| Profile chip | **DOES NOTHING.** It is a `<div>`, not a button: no menu, no handler, no navigation. |
+
+## Page 2 - Strategy Trades - DONE (non-admin, dark)
+
+39 controls with Friday's data loaded (the page opens on today, and today is a Saturday with no
+trades, so the table and pager do not exist until a trading date is chosen).
+
+| control | result |
+|---------|--------|
+| Tabs All trades / Open now / Closed | **work** - "Open now" correctly shows 0 of 118, everything closed |
+| Model select (All / Agent 1-4) | **works** - Agent 1 narrows 118 -> 33 |
+| Date picker | **works** - 2026-11-20 loads 118 trades |
+| Symbol filter | **works** - "GS" gives 4 of 118, every row GS |
+| Pager 1 / 2 / 3 / Next / Previous | **all work** - "Showing 26-50 of 118" etc. follow correctly |
+| Rows per page 10 / 25 / 50 / 100 | **works** |
+| Symbol link in a row | **BROKEN - see defect 1** |
+
+### Defects
+
+1. **Symbol links in the table are broken.** Clicking TSLA goes to
+   `/ai-insights/NVDA?symbol=TSLA` - the path keeps the previous symbol while the query names the
+   new one. The reader lands on the LANDING page with the ticker box EMPTY: TSLA is not analysed,
+   not pre-filled, not even remembered. The link is written `/ai-insights?symbol=TSLA`, but the
+   route is `/ai-insights/:symbol`, so the router keeps the old path segment and nothing consumes
+   the query. Every symbol in this table has the same problem.
+
+2. **The statistics tiles clip and go unequal below about 1,100px.** At a 1,032 viewport the five
+   tiles measure 114 / 137 / 121 / 171 / 171 instead of five equal columns, and two of them
+   overflow their own box: "0 still open" is cut, and "across 95 of 118 - 23 at breakeven" is cut
+   mid-word. `repeat(5, 1fr)` lets each track take its content's minimum, so the widest value
+   ($4128.84) steals width from the narrowest. It needs `minmax(0, 1fr)` and a sub-line that
+   clamps, or 3+2 below the breakpoint. This is what the owner's screenshot showed.
+
+### Checked and fine
+
+- Kit O's table fix holds: the table is wider than the column but scrolls INSIDE its card
+  (`.nst-scroll` scrolls, the page does not).
+- Models render as Agent 1-4 throughout; no vendor name anywhere on this page.
