@@ -881,6 +881,10 @@ export const api2 = {
     request<any>('/api/earnings/calendar/context', s),
 
   /** The implied-volatility series behind the IV trend chart (one request per symbol opened). */
+  /** Ticker search for the Watchlist: US common stock and ADRs only. The filter is a set the
+   *  server builds once a day, so typing costs no provider request. */
+  watchlistSearch: (q: string, limit = 10, s?: AbortSignal) =>
+    request<any>(`/api/watchlist/search?q=${encodeURIComponent(q)}&limit=${limit}`, s),
   /** Intraday closes for the landing's sparklines. Answers DISABLED unless the server is told
    *  to spend the requests - see /api/landing/sparklines. */
   landingSparklines: (s?: AbortSignal) => request<any>('/api/landing/sparklines', s),

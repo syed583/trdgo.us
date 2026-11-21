@@ -147,6 +147,47 @@ def provider_matrix(request: Request, deep: bool = False) -> dict:
 # ---------------------------------------------------------------------------
 
 
+@router.get("/watchlist/search")
+def watchlist_search(q: str = Query(""), limit: int = 12) -> dict:
+    """Ticker search for the Watchlist, restricted to US common stock and ADRs.
+
+    Two sources, neither scraped and neither charged per keystroke: the names come from the SEC
+    ticker registry that symbol_service already reads, and the allowed set comes from the
+    provider's screener, built once every 24 hours and shared by every reader (watchlist_universe).
+
+    FAILS CLOSED. With no set there are no matches and the reason is stated. The alternative -
+    letting every SEC registrant through - would put funds, trusts and foreign issuers in a box
+    that is supposed to hold US common stock and ADRs.
+    """
+    import watchlist_universe
+
+    allowed = watchlist_universe.tickers()
+    if allowed is None:
+        return {"query": q, "matches": [], "count": 0, "status": "UNIVERSE_UNAVAILABLE",
+                "detail": ("The US common-stock and ADR list could not be built, so the search "
+                           "cannot tell one kind of issue from another. It is rebuilt hourly in "
+                           "the background; try again shortly."),
+                "source": watchlist_universe.SOURCE}
+
+    # Ask for more than we need: the registry returns ETFs and trusts too, and those are dropped
+    # here, so a narrow first page could otherwise come back empty for a perfectly good query.
+    found = symbols.search(q, max(limit * 4, 40))
+    matches = []
+    for m in (found.get("matches") or []):
+        ticker = str(m.get("symbol") or m.get("ticker") or "").upper().strip()
+        issue = allowed.get(ticker)
+        if not issue:
+            continue
+        matches.append({**m, "symbol": ticker, "issue_type": issue})
+        if len(matches) >= limit:
+            break
+
+    return {"query": q, "matches": matches, "count": len(matches), "status": "OK",
+            "source": f"{found.get('source') or 'SEC ticker registry'} + {watchlist_universe.SOURCE}",
+            "issue_types": list(watchlist_universe.ISSUE_TYPES),
+            "universe_size": len(allowed)}
+
+
 @router.get("/symbols/search")
 def symbol_search(q: str = Query(""), limit: int = 12) -> dict:
     return symbols.search(q, limit)

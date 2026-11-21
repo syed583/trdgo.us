@@ -29,6 +29,7 @@ import './roboto.css';   // Roboto 400/500/700, self-hosted, for the redesigned 
 import './new-shell.css';
 import ErrorBoundary from './components/ErrorBoundary';
 import { Loading } from './pages/shared';
+const NewWatchlistPage = lazy(() => import('./pages/NewWatchlistPage'));
 const AssistantWidget = lazy(() => import('./components/AssistantWidget'));
 const EarningsPage = lazy(() => import('./pages/EarningsPage'));
 const OptionsFlowPage = lazy(() => import('./pages/OptionsFlowPage'));
@@ -411,7 +412,8 @@ function Shell() {
           <Route path="/earnings-calendar" element={<CalendarPage ctx={ctx} />} />
 
           <Route path="/scanner" element={<ScannerPage ctx={ctx} />} />
-          <Route path="/watchlist" element={<WatchlistBoardPage ctx={ctx} />} />
+          {/* New UI only: the classic board is untouched for everyone else. */}
+          <Route path="/watchlist" element={newUi ? <NewWatchlistPage ctx={ctx} /> : <WatchlistBoardPage ctx={ctx} />} />
           <Route path="/market" element={newUi ? <NewMarketOverviewPage ctx={ctx} /> : <MarketPulsePage ctx={ctx} />} />
 
           <Route path="/options-flow" element={<Navigate to={`/options-flow/${DEFAULT_SYMBOL}${location.search}`} replace />} />
