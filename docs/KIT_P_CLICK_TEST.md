@@ -202,3 +202,23 @@ trades, so the table and pager do not exist until a trading date is chosen).
 | Heatmap tile (53 of them) | **works** - NVDA -> /earnings/NVDA, which renders (12 cards) |
 | Stock search + Go | **works** - TSLA -> /dashboard/TSLA, which renders ("TSLA - Tesla, INC.", 10 cards) |
 | Index cards / sparklines / sectors / gainers / tide | 5 / 5 / 11 / 10 / present |
+
+## Kit P build - the thirteen items
+
+| # | item | where |
+|---|------|-------|
+| 1 | Strategy Trades symbol links analyse the clicked symbol | NewStrategyTradesPage |
+| 2 | Stat tiles: equal columns, no clipping under ~1100px | new-figma.css |
+| 3 | Profile menu (account, settings, logout) with Help inside | NewTopBar |
+| 4 | Remove the headphones icon | NewTopBar |
+| 5 | Bell -> dropdown panel: buy/sell alerts, sound, mute | NewTopBar + new component |
+| 6 | Promo box inside the scrolling nav, at the end | NewSidebar / new-figma.css |
+| 7 | Chat footer "powered by Claude on your UW data" | AssistantWidget |
+| 8 | Top Movers excludes leveraged/inverse ETFs | uw_screener_service |
+| 9 | score40-v1 redacted from the server note for non-admins | SmartMoveEngine20Page |
+| 10 | Snapshot tab gated on ctx.isAdmin, with a test | SmartMoveEngine20Page + test |
+| 11 | Blocker codes: plain wording for users, codes for admin | SmartMoveEngine20Page |
+| 12 | Watchlist: bid/ask of 0 is "unavailable"; readable quote age | NewWatchlistPage |
+| 13 | News: a headline with no URL is text, not a dead anchor | NewNewsPage |
+
+Build order: CSS (2, 6), top bar (3, 4, 5), pages (1, 7, 9, 10, 11, 12, 13), backend (8).
