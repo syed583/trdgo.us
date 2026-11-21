@@ -39,10 +39,13 @@
 }
 .app-nu .nst-field select:focus,
 .app-nu .nst-field input:focus { outline: 2px solid var(--nu-accent); outline-offset: 1px; }
-/* THE DATE PICKER'S OWN ICON. There was no rule for it, so the browser drew its default black
-   glyph - which on the dark theme's dark field is invisible, and the owner reported the calendar
-   button as missing. Inverted on dark, left alone on light, and given a hit area so it is easy to
-   press. */
+/* THE DATE PICKER'S OWN ICON, which the owner reported as missing.
+   The field is near-white in BOTH themes, but the page sets a dark colour-scheme, so the browser
+   drew the native control's icon in its DARK-MODE colour - white - on that white field. Not
+   missing: invisible. Inverting it on the dark theme puts a dark glyph back on the light field;
+   the light theme already gets a dark one and is left alone.
+   (Checked in pixels, not in computed style: Chrome does not report this pseudo-element's own
+   styles through getComputedStyle, which reads back "none" even where the rule is applying.) */
 .app-nu .nst-field input[type='date']::-webkit-calendar-picker-indicator {
   cursor: pointer; opacity: 0.85; padding: 3px; border-radius: 4px;
 }

@@ -1,9 +1,12 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { ChevronsLeft, ChevronsRight, Cpu, ArrowRight } from 'lucide-react';
-import logoDark from '../assets/logo-dark.png';
+// The file names describe the INK, not the theme: logo.png is the WHITE wordmark, which belongs on
+// the dark rail, and logo-dark.png is the dark one, which belongs on the light rail. They were
+// wired the other way round - invisible while both rendered 11 pixels tall, obvious at full size.
+import wordmarkOnDark from '../assets/logo.png';
 import { BrandMark } from './Brand';
-import logoLight from '../assets/logo.png';
+import wordmarkOnLight from '../assets/logo-dark.png';
 import { USER_GROUPS, ADMIN_GROUP, SYMBOL_SECTIONS, type NavGroup } from './navModel';
 
 /**
@@ -73,8 +76,8 @@ export default function NewSidebar({
               160px wide - they are 1386x480 wordmarks, and the 32x32 box they used to sit in
               squashed them to an 11px sliver.
               The name is NOT printed beside them: the wordmark already says it. */}
-          <img className="nu-logo-dark" src={logoDark} alt="Tradgo.us" />
-          <img className="nu-logo-light" src={logoLight} alt="Tradgo.us" />
+          <img className="nu-logo-dark" src={wordmarkOnDark} alt="Tradgo.us" />
+          <img className="nu-logo-light" src={wordmarkOnLight} alt="Tradgo.us" />
           {/* 72px of collapsed rail cannot hold a wordmark, so the brand's own mark stands in. */}
           <span className="nu-logo-mark" aria-hidden="true"><BrandMark size={30} /></span>
           <div className="nu-rail-brand">
