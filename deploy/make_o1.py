@@ -33,7 +33,7 @@ from pathlib import Path
 SRC = Path(r"C:/Users/initi/SmartMoveRun/release_candidates/n1/n1_run.ps1")
 DST = Path(r"C:/Users/initi/SmartMoveRun/release_candidates/o1/o1_run.ps1")
 
-SHA = "fca322200e8fe9f9d973c8dc8c4ab75a3813c6aa"
+SHA = "388124301fa2a465cf247503e7681b4474013666"
 ANCHOR = "646365670dd92dfaa2674bfebe48d6805866e6c14fa477eb03e37f4229edf595"
 
 HEADER = (
