@@ -173,7 +173,9 @@
   position: absolute; right: 0; top: 0; width: 499px; height: 277px; object-fit: cover;
 }
 .app-nu .nal .nal-hero .nd-hero-left {
-  position: absolute; left: 37px; top: 0; width: 499px; height: 100%;
+  /* 499px is the frame's width. min() keeps it wherever it fits and shrinks it when the hero is
+     narrower, instead of pushing the column off the page. 74px = the 37px inset, both sides. */
+  position: absolute; left: 37px; top: 0; width: min(499px, calc(100% - 74px)); height: 100%;
   display: block; padding: 0;
 }
 /* 2:88/2:89 platform pill */
@@ -184,7 +186,10 @@
 }
 /* 2:90-2:92 headline: two 51-tall lines from y=65 */
 .app-nu .nal .nal-hero h1 {
-  position: absolute; left: 0; top: 60px; margin: 0; width: 520px;
+  /* The frame says 520 inside a 499 box. Both cannot be true; the container wins, so the headline
+     wraps a touch earlier than the drawing shows. This was spilling at EVERY width, not just
+     narrow ones. */
+  position: absolute; left: 0; top: 60px; margin: 0; width: min(520px, 100%);
   font-size: 40px; font-weight: 700; line-height: 51px; letter-spacing: -0.5px;
 }
 /* 2:93 sub-line */
@@ -205,7 +210,12 @@
 
 /* 2:102-2:125 feature cards: 311 wide, 58 tall, first at y=29, pitch 56 */
 .app-nu .nal .nal-hero .nal-feats {
-  position: absolute; left: 536px; top: 29px; width: 311px;
+  /* Pinned at x=536 with a fixed 311px, so its right edge sat at 847px and it left the page on any
+     hero narrower than that - measured 43px off at 1051px. Both numbers now hold while they fit
+     and give way together when they do not, so the stack stays inside the hero at every width. */
+  position: absolute; top: 29px;
+  left: min(536px, calc(100% - 327px));
+  width: min(311px, calc(100% - 32px));
   display: flex; flex-direction: column; gap: 0; padding: 0;
 }
 .app-nu .nal .nal-hero .nal-feats .nd-hero-feat {
@@ -1321,3 +1331,28 @@
 
 /* A row of tabs that does not fit should wrap, not run off the right edge. */
 .app-nu .nd-tabs { flex-wrap: wrap; min-width: 0; }
+
+/* ---------------------------------------------------------------- kit Q: the last of the frame's literal widths
+ * .nal-controls and .anh-horizon were measured at 560px inside a 499px hero column - the same
+ * mistake as the hero itself, a frame number taken literally. max-width alone could not save them
+ * because their CHILDREN would not shrink (flex items default to min-width:auto), so the row stayed
+ * 560 wide whatever the parent said.
+ */
+.app-nu .nal .nal-controls { max-width: 100%; }
+.app-nu .nal .nal-controls > *,
+.app-nu .nal .nal-controls .anh-horizon > * { min-width: 0; }
+
+/* The options-flow summary is a single line of four figures; it wraps rather than running out of
+   its card (measured: 380px of content in a 132px box). */
+.app-nu .nal .nal-flow-sum { flex-wrap: wrap; min-width: 0; }
+
+/* TradingView sizes its own widget and asks for 10px more than the box we give it. */
+.app-nu .nwl .nwl-tv { min-height: 330px; }
+
+/* The flow summary wraps, but its OWN CHILDREN still would not shrink - the container had the
+   wrap, the items had the floor. Same lesson as the index strip, one level down. */
+.app-nu .nal .nal-flow-sum > * { min-width: 0; overflow-wrap: anywhere; }
+
+/* The Strategy Trades hero carries the same literal column width as the landing one. */
+.app-nu .nst .nst-hero .nd-hero-left { max-width: 100%; min-width: 0; }
+.app-nu .nst .nst-hero .nd-hero-left > * { min-width: 0; }
