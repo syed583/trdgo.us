@@ -350,8 +350,11 @@ export default function NewAnalysisLanding({
               </div>
             )}
             <div className="nal-feat-grid">
-              <div><span>Bid</span><b>{fq.bid != null ? Number(fq.bid).toFixed(2) : '—'}</b></div>
-              <div><span>Ask</span><b>{fq.ask != null ? Number(fq.ask).toFixed(2) : '—'}</b></div>
+              {/* A BID OF ZERO IS NOT A BID. The provider returns a literal 0 for both sides out
+                  of hours; `!= null` lets that through and the card printed 0.00 as though it were
+                  a price. Kit P fixed this on the Watchlist page and missed this copy. */}
+              <div><span>Bid</span><b>{Number(fq.bid) > 0 ? Number(fq.bid).toFixed(2) : '—'}</b></div>
+              <div><span>Ask</span><b>{Number(fq.ask) > 0 ? Number(fq.ask).toFixed(2) : '—'}</b></div>
               <div><span>Day range</span>
                 <b>{fq.low != null && fq.high != null
                   ? `${Number(fq.low).toFixed(2)} – ${Number(fq.high).toFixed(2)}` : '—'}</b></div>

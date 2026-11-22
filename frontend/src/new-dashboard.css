@@ -307,7 +307,11 @@
 
 /* ------------------------------------------------ the landing's added modules */
 .nal .nal-strip {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--nu-gap); margin-top: 18px;
+  /* repeat(4, 1fr) is minmax(AUTO, 1fr): the auto floor stops a column shrinking below its
+     own content, so at 1100px the four cards needed 933px in an 808px box and VIX was cut
+     in half at the page edge. auto-fit wraps them instead. */
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--nu-gap); margin-top: 18px;
 }
 .nal .nal-strip-item {
   display: flex; flex-direction: column; gap: 2px;

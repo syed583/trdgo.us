@@ -38,7 +38,14 @@ const money = (v: Any): string => {
 };
 const pct = (v: Any): string =>
   (v === null || v === undefined ? '—' : `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(2)}%`);
-const dir = (v: Any): string => (v === null || v === undefined ? '' : Number(v) >= 0 ? 'up' : 'down');
+/** up / down / neither. ZERO GETS NO COLOUR: a flat $0.00 painted green reads as a profit,
+ *  which is what the whole stat row did on a day with no trades. */
+const dir = (v: Any): string => {
+  if (v === null || v === undefined) return '';
+  const n = Number(v);
+  if (!Number.isFinite(n) || n === 0) return '';
+  return n > 0 ? 'up' : 'down';
+};
 
 
 /* ---------------------------------------------------------------- voice alerts

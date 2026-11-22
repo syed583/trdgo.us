@@ -19,7 +19,9 @@
   border: 1px solid #47658c;
   border-radius: 16px;
   box-shadow: none;
-  height: 67px;
+  /* Was a fixed 67px from the frame. Now that the card is allowed to shrink sideways its text
+     wraps, and a pinned height clipped the wrap instead. */
+  min-height: 67px;
   padding: 12px 22px;
   justify-content: center;
   gap: 2px;
@@ -545,7 +547,7 @@
   height: 58px; margin: 14px 9px 0 7px; padding: 0 5px;
   display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; overflow: hidden;
 }
-.app-nu .nst .nst-filters .nd-tabs { height: 39px; flex: 0 0 auto; }
+.app-nu .nst .nst-filters .nd-tabs { min-height: 39px; flex: 0 0 auto; }
 .app-nu .nst .nst-field { flex-direction: row; align-items: center; gap: 6px; flex: 0 0 auto; }
 .app-nu .nst .nst-field > span { font-size: 11px; white-space: nowrap; }
 .app-nu .nst .nst-field select { height: 29px; }
@@ -658,7 +660,11 @@
 
 /* 2:1352-2:1384 five count cards */
 .app-nu .sm .sm-summary {
-  display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; height: 90px; margin-top: 7px;
+  /* The frame drew ONE row of five. The Monday BMO variant has EIGHT cards, so it is two
+     rows - and a fixed 90px box let the second row escape and the banner below land on top
+     of it. auto-fit lets it wrap at narrow widths instead of slicing the last card. */
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-auto-rows: 90px; gap: 10px; min-height: 90px; margin-top: 7px;
 }
 .app-nu .sm .sm-summary .sm-card {
   height: 90px; display: flex; align-items: center; gap: 15px; padding: 15px;
@@ -667,7 +673,10 @@
 .app-nu .sm .sm-summary .sm-card-v { font-size: 32px; font-weight: 700; line-height: 39px; }
 
 /* 2:1260 filter row */
-.app-nu .sm .sm-filters { height: 40px; margin-top: 12px; align-items: center; gap: 13px; }
+/* Wraps once there are more filter chips than fit: min-height, and allow the wrap. */
+.app-nu .sm .sm-filters {
+  min-height: 40px; margin-top: 12px; align-items: center; gap: 13px; flex-wrap: wrap;
+}
 .app-nu .sm .sm-filters .sm-tabs { height: 40px; }
 .app-nu .sm .sm-filters .sm-tab { height: 40px; padding: 0 16px; font-size: 13px; }
 
@@ -722,7 +731,7 @@
 /* margin, not padding: getBoundingClientRect includes padding, so an inset drawn as padding
    leaves the block itself full-width and the frame's 19px inset never shows up in a diff. */
 .app-nu .nnw .nnw-head {
-  height: 61px; margin: 25px 19px 0; padding: 0;
+  min-height: 61px; margin: 25px 19px 0; padding: 0;
   display: flex; align-items: flex-start; gap: 18px;
 }
 .app-nu .nnw .nnw-head h1 { margin: 0; font-size: 24px; line-height: 32px; font-weight: 700; }
@@ -880,7 +889,7 @@
    (210 x 30), the Closed dot and Refresh (82 x 31) on the right. Ours wrapped to three lines and
    measured 162, which pushed the whole page 111 down. */
 .app-nu .nmo .mo-head {
-  height: 51px; display: flex; align-items: flex-start; gap: 16px; margin: 0;
+  min-height: 51px; display: flex; align-items: flex-start; gap: 16px; margin: 0;
 }
 .app-nu .nmo .mo-head h1 { margin: 0; font-size: 27px; line-height: 35px; font-weight: 700; }
 .app-nu .nmo .mo-head p {
@@ -1182,14 +1191,18 @@
       they measured 114/137/121/171/171 instead of five equal columns, and two overflowed their own
       box ("0 still open" cut, "across 95 of 118 - 23 at breakeven" cut mid-word). `1fr` lets a
       track take its CONTENT's minimum, so the widest value stole width from the narrowest. */
-.app-nu .nst .nd-stats.nst-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+/* Four tiles since reward-to-risk went. auto-fit puts four across when they fit and 2x2
+   when they do not; a fixed three left the fourth stranded on its own row. */
+.app-nu .nst .nd-stats.nst-stats {
+  grid-template-columns: repeat(auto-fit, minmax(205px, 1fr));
+}
 .app-nu .nst .nst-stats .nd-stat > div { min-width: 0; }
 .app-nu .nst .nst-stats .nd-stat b,
 .app-nu .nst .nst-stats .nd-stat span,
 .app-nu .nst .nst-stats .nst-stat-sub { min-width: 0; overflow-wrap: anywhere; }
 /* Below the breakpoint, three then two reads better than five slivers. */
 @media (max-width: 1180px) {
-  .app-nu .nst .nd-stats.nst-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .app-nu .nst .nd-stats.nst-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .app-nu .nst .nst-stats .nd-stat { height: auto; min-height: 74px; }
 }
 @media (max-width: 760px) {
@@ -1283,3 +1296,28 @@
 }
 .app-nu .asst-input textarea::placeholder { color: var(--nu-page-ink-dim); }
 .app-nu .asst-input textarea:focus { border-color: var(--nu-accent); }
+
+/* ---------------------------------------------------------------- kit Q: let flex and grid children shrink
+ * A grid track of `1fr` is `minmax(auto, 1fr)`, and a flex item defaults to `min-width: auto`.
+ * BOTH mean "never narrower than my content". That is why the index strip asked for 1047px inside
+ * an 804px box and the last card was sliced at the page edge: the cards simply refused to get
+ * smaller. Widening the track did nothing - the floor is the CONTENT, so the fix has to be on the
+ * child, not the track.
+ *
+ * `min-width: 0` removes that floor. Long values then wrap or ellipsis inside their card instead
+ * of pushing the row off the screen. Measured, not guessed: each selector below is one the live
+ * audit flagged on 2026-11-22.
+ */
+.app-nu .nal .nal-strip-item,
+.app-nu .nal .nal-feats > *,
+.app-nu .nd-card-head,
+.app-nu .nd-card-head > *,
+.app-nu .nd-hero-left,
+.app-nu .nst .nst-filters > * { min-width: 0; }
+
+/* The index cards: let a long number wrap rather than widen the card. */
+.app-nu .nal .nal-strip-item b,
+.app-nu .nal .nal-strip-item span { min-width: 0; overflow-wrap: anywhere; }
+
+/* A row of tabs that does not fit should wrap, not run off the right edge. */
+.app-nu .nd-tabs { flex-wrap: wrap; min-width: 0; }
