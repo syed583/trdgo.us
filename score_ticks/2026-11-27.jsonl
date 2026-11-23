@@ -11,3 +11,9 @@
 {"trade_id": 1, "strategy": "grok", "symbol": "AAA", "side": "LONG", "at": "2026-11-27T17:44:00+00:00", "score": 70.0, "score_at_entry": 70.0, "status": "OPEN"}
 {"trade_id": 1, "strategy": "grok", "symbol": "AAA", "side": "LONG", "at": "2026-11-27T17:44:00+00:00", "score": 69.0, "score_at_entry": 70.0, "status": "OPEN"}
 {"trade_id": 1, "strategy": "grok", "symbol": "AAA", "side": "LONG", "at": "2026-11-27T17:44:00+00:00", "score": 70.0, "score_at_entry": 70.0, "status": "OPEN"}
+{"trade_id": 1, "strategy": "grok", "symbol": "AAA", "side": "LONG", "at": "2026-11-27T17:44:00+00:00", "score": 69.0, "score_at_entry": 70.0, "status": "OPEN", "price": null, "stop": 99.0, "target": 102.0}
+{"trade_id": 1, "strategy": "grok", "symbol": "AAA", "side": "LONG", "at": "2026-11-27T17:44:00+00:00", "score": 70.0, "score_at_entry": 70.0, "status": "OPEN", "price": 100.0, "stop": 99.0, "target": 101.0}
+{"trade_id": 1, "strategy": "grok", "symbol": "AAA", "side": "LONG", "at": "2026-11-27T17:44:00+00:00", "score": 69.0, "score_at_entry": 70.0, "status": "OPEN", "price": null, "stop": 99.0, "target": 102.0}
+{"trade_id": 1, "strategy": "grok", "symbol": "AAA", "side": "LONG", "at": "2026-11-27T17:44:00+00:00", "score": 70.0, "score_at_entry": 70.0, "status": "OPEN", "price": 100.0, "stop": 99.0, "target": 101.0}
+{"trade_id": 1, "strategy": "grok", "symbol": "AAA", "side": "LONG", "at": "2026-11-27T17:44:00+00:00", "score": 69.0, "score_at_entry": 70.0, "status": "OPEN", "price": null, "stop": 99.0, "target": 102.0}
+{"trade_id": 1, "strategy": "grok", "symbol": "AAA", "side": "LONG", "at": "2026-11-27T17:44:00+00:00", "score": 70.0, "score_at_entry": 70.0, "status": "OPEN", "price": 100.0, "stop": 99.0, "target": 101.0}
