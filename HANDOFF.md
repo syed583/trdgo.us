@@ -76,13 +76,14 @@ the GitHub archive of the pinned commit, verifies the manifest anchor, backs up,
 | P | `3b584832…` | `0db45073…` | `41EDCD54…` | **live** 2026-11-22 |
 | Q | `ee7ee0a1…` | `2505c3ca…` | `DFB0F88A…` | **live** 2026-11-23 04:39 VPS |
 | R | `d4b7bab6…` | `8d11a731…` | `57E35FD1…` | **live** 2026-11-23 09:22 VPS |
-| S | `5b8ac6a3ab28fe75011d58e32bc09fcd01e34823` | `859ff0472057ee21e69112bfb03a131e10aa5df8d68edc037128cdc795872bb6` | `3C3264DFCEED5E823CF04E6F068F001BED22B8CB10AD9ED0CCFFADB307C1A339` | **PUSHED, NOT INSTALLED** |
+| S | `5b8ac6a3ab28fe75011d58e32bc09fcd01e34823` | `859ff0472057ee21e69112bfb03a131e10aa5df8d68edc037128cdc795872bb6` | `3C3264DFCEED5E823CF04E6F068F001BED22B8CB10AD9ED0CCFFADB307C1A339` | **live** 2026-11-23 13:42 VPS |
 
 Kit S installer commit: **`ef9b90a6`**. Runner URL:
 `https://raw.githubusercontent.com/syed583/trdgo.us/ef9b90a6/deploy/s1_run.ps1`
 
 Rollback points on the VPS:
-`_backup_p1_20261122_200122`, `_backup_q1_20261123_043922`, `_backup_r1_20261123_092245`
+`_backup_p1_20261122_200122`, `_backup_q1_20261123_043922`, `_backup_r1_20261123_092245`,
+`_backup_s1_20261123_134229`
 (under `C:\apps\us-stock-reader\`).
 
 ### What kit S contains (pending install)
@@ -91,8 +92,11 @@ Rollback points on the VPS:
    `provider.last_status`, which does not exist (the module keeps `_last_status`). It fired on
    **any empty daily chart** — thin ticker, outage, exhausted budget — not just unknown symbols.
    Fixed with a public `unusualwhales_service.last_status()` accessor, read defensively.
-   The same wrong name in `api_routes.py:3772` sat behind a `hasattr` guard, so that endpoint had
-   been silently answering `NO_DATA` forever; the accessor fixes it too.
+   The same wrong name in `api_routes.py:3772` sat behind a `hasattr` guard. **Correction to an
+   earlier claim of mine:** that endpoint was NOT always answering `NO_DATA`. The broken call is
+   only in the EXCEPTION fallback - the normal path reads `uw.quote(sym).get("status")` and has
+   always worked. It degraded to `NO_DATA` only when a quote call threw, losing the real reason.
+   The accessor fixes that path; it is visible only during a provider failure.
 2. **Unknown symbols no longer run the 12 agents.** The SEC registry (free, cached 24h) is checked
    first; the feed is consulted only for symbols the registry does not list. A real company pays
    nothing extra; a typo costs 1 request instead of 12. Fails open at every step.
@@ -100,6 +104,10 @@ Rollback points on the VPS:
    `PRE_MARKET`/`AFTER_HOURS`/unknown stay at full rate. Measured ~19 → ~3 calls/min idle on live.
 4. **Telegram DB-down watchdog** (`deploy/db_watchdog.ps1`) — **NOT installed by the kit**, see §4.
 5. Card labels no longer break mid-word.
+
+Verified live after install: `ZZZQQX` -> 0 agents, 280 ms, "No US stock listed as ZZZQQX.";
+`P` -> 12 stages, no AttributeError; NVDA unchanged; 8/8 Smart Money labels intact, 0 values
+clipped.
 
 ### Install procedure
 
@@ -198,6 +206,37 @@ Always assert on every replacement anchor. Silent no-ops are the recurring failu
   Full report is in this conversation; architecture B (thin DLL bridge + C# connector) recommended.
   **Server half can be built without Takion** and is reusable: per-user token, signals endpoint,
   `POST /fills` with a server-issued idempotency key, symbol mapping, share quantity, reconciliation.
+
+### Next small kit — both agreed with the owner 2026-11-23
+
+1. **`covered: false` must skip the 12 agents.** Kit S made a genuinely unknown ticker cost zero
+   agent calls, but a symbol the SEC registry lists while the market feed cannot cover it still
+   runs the full pipeline. `"P"` is the live example:
+
+   ```
+   /api/symbols/validate/P
+   {"symbol":"P","name":"Everpure, Inc.","cik":"0001474432","valid":true,"covered":false,
+    "detail":"P is a registered issuer, but the market feed cannot cover it"}
+   ```
+
+   So `known_to_sec("P")` is correctly true, the pre-check steps aside, and the user waits several
+   seconds for a meaningless result. **Wanted:** treat `covered: false` as not analysable and show
+   **"No market data for this symbol"** - a different message from "No US stock listed as X",
+   because the two are different facts and the page should say which one applies. Never start the
+   agents. **Add a test** alongside the existing ones in
+   `backend/tests/test_analysis_unknown_symbol.py`.
+
+   It is a one-line extension of the same pre-check in `directional_score_service.get_directional_score`
+   - read `covered` from `symbol_service.validate()`. Keep it failing open: a missing `covered`
+   field, or any error reading it, must let the analysis proceed.
+
+2. **DB watchdog is written but NOT installed.** `deploy/db_watchdog.ps1` ships in the repo and no
+   kit installs it (`build_package.py` ships only `backend/` + `frontend_dist`). The owner will set
+   the Telegram bot token and chat id himself later, following `docs/DB_WATCHDOG_SETUP.md`:
+   BotFather -> token; message the bot then `getUpdates` -> chat id; create
+   `C:\SmartMoveRun\watchdog_secrets.ps1`; run `-TestMessage` until a message actually arrives;
+   **only then** register the per-minute scheduled task. Do not register it before the test message
+   works, or the first sign of trouble will be silence.
 
 ### Code work, unblocked
 
