@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AUTH_ERROR, MAINTENANCE_ERROR } from '../api/client';
+import { pollScale } from './marketClock';
 
 export interface AsyncState<T> {
   data: T | null;
@@ -133,12 +134,22 @@ export function useApi<T>(
     // ticking every couple of minutes quietly burned the provider's request
     // budget and tripped its rate limit. Skip ticks while hidden, and take one
     // fresh read on the way back so the screen is current when refocused.
+    // The timer keeps its own cadence; whether a tick is ACTED on depends on the market. Scaling
+    // the interval itself would mean tearing down and rebuilding every timer in the app each time
+    // the market opened or closed, so instead each tick asks whether enough time has passed for
+    // the current conditions. See hooks/marketClock.
+    let lastRun = Date.now();
     const id = window.setInterval(() => {
       if (typeof document !== 'undefined' && document.hidden) return;
+      const due = refreshMs * pollScale();
+      if (Date.now() - lastRun < due - 50) return;      // 50ms of slack for timer jitter
+      lastRun = Date.now();
       setTick((t) => t + 1);
     }, refreshMs);
     const onVisible = () => {
-      if (typeof document !== 'undefined' && !document.hidden) setTick((t) => t + 1);
+      // Refocus always takes a fresh read, whatever the market is doing - the screen a person is
+      // looking at again should never be the one they left.
+      if (typeof document !== 'undefined' && !document.hidden) { lastRun = Date.now(); setTick((t) => t + 1); }
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {

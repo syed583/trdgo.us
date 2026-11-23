@@ -7,6 +7,7 @@ import {
 import { api, api2 } from './api/client';
 import type { HealthPayload, IndicesPayload, WatchlistPayload } from './api/client';
 import { useApi } from './hooks/useApi';
+import { setMarketOpen } from './hooks/marketClock';
 import {
   DEMO_EARNINGS, DEMO_INDICES, DEMO_STATUS, DEMO_WATCHLIST, isDemoMode,
 } from './demo';
@@ -220,6 +221,14 @@ function Shell() {
     [demo],
     { refreshMs: demo ? undefined : 45_000 },
   );
+
+  // Tell the polling layer what the market is doing. Only a true CLOSED slows the app down:
+  // PRE_MARKET and AFTER_HOURS are not "open", but prices move in both, so they keep full rate.
+  // Unknown stays null, which means full rate - being wrong here costs requests, never staleness.
+  const marketSession = health.data?.market?.session;
+  React.useEffect(() => {
+    setMarketOpen(marketSession == null ? null : marketSession !== 'CLOSED');
+  }, [marketSession]);
 
   const indices = useApi<IndicesPayload>(
     (s) => (demo ? Promise.resolve(DEMO_INDICES) : api.indices(s)),

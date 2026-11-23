@@ -1363,4 +1363,7 @@
    exist to show. The value now holds its width and the LABEL wraps instead - a truncated label is
    still readable, a truncated number is wrong. */
 .app-nu .sm .sm-summary .sm-card-v { flex: 0 0 auto; white-space: nowrap; }
-.app-nu .sm .sm-summary .sm-card-k { min-width: 0; overflow-wrap: anywhere; }
+/* `anywhere` lets the browser break a word even when a better break exists, which turned
+   "BUY ACCURACY" into "BUY ACCURAC / Y". `break-word` prefers the space and only splits a
+   word when the word alone cannot fit. */
+.app-nu .sm .sm-summary .sm-card-k { min-width: 0; overflow-wrap: break-word; hyphens: none; }
