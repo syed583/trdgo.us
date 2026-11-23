@@ -22,8 +22,8 @@ param(
   [string]$ApproveCommit = '',
   [string]$ApproveManifest = ''
 )
-$s1Sha    = 'e3aace984b9c1e4fd8daa92b1a06d8df3faab93d'
-$s1Anchor = 'a4beb1e0ada7ce82b66de6a1ad252d11307c09b84464cd5d00f1c69655e12e74'
+$s1Sha    = '5b8ac6a3ab28fe75011d58e32bc09fcd01e34823'
+$s1Anchor = '859ff0472057ee21e69112bfb03a131e10aa5df8d68edc037128cdc795872bb6'
 $s1App    = 'C:\apps\us-stock-reader'
 $s1Svc    = 'USStockReader'
 $s1Base   = 'http://localhost:8000'
