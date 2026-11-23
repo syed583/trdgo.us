@@ -933,10 +933,28 @@ def _bars_fallback_note(intraday: bool) -> str:
 
     # Read each provider's latched status: probing with live calls would spend
     # the very requests being reported as exhausted.
+    def _status_of(mod):
+        """A provider's latched status, whatever shape it offers it in.
+
+        This read used to be `provider.last_status`, which does not exist - the attribute is
+        module-private - so building this note raised AttributeError and took the whole analysis
+        down with it. A note explaining why there are no bars must never be the reason a page
+        fails; a provider that cannot say degrades to "not reached yet".
+        """
+        value = getattr(mod, "last_status", None)
+        if callable(value):
+            try:
+                return value()
+            except Exception:  # noqa: BLE001 - a status read must never raise
+                return None
+        if value is not None:
+            return value
+        return getattr(mod, "_last_status", None)
+
     notes = []
     for provider in providers:
-        name = provider.SOURCE.replace("_", " ").title()
-        status = provider.last_status
+        name = getattr(provider, "SOURCE", "provider").replace("_", " ").title()
+        status = _status_of(provider)
         if status == cfg.RATE_LIMITED:
             notes.append(f"{name} is rate-limited (quota resets).")
         elif status == cfg.ENTITLEMENT_REQUIRED:

@@ -184,6 +184,26 @@ def search(query: str, limit: int = 12) -> dict:
     return result
 
 
+def known_to_sec(symbol: str) -> Optional[bool]:
+    """Does the SEC's own ticker registry list this symbol?
+
+    True = listed, False = the registry loaded and does not list it, None = the registry is not
+    available, so no claim either way.
+
+    This exists so a caller can rule a typo out WITHOUT spending a provider request. The registry
+    is already cached for 24 hours, whereas validate() always calls the feed for company info.
+    Answering "is this even a ticker" is the cheap half of that question, and the only half needed
+    before deciding whether to run twelve agents.
+    """
+    symbol = (symbol or "").strip().upper()
+    if not symbol:
+        return False
+    rows = _sec_universe()
+    if not rows:
+        return None                       # registry unavailable - make no claim
+    return any(row["symbol"] == symbol for row in rows)
+
+
 def validate(symbol: str) -> dict:
     """
     Is this a real US ticker, and does the feed carry it?

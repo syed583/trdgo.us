@@ -291,6 +291,29 @@ def get_directional_score(symbol: str, progress=None) -> dict:
     if not symbol:
         return {"symbol": symbol, "status": "INVALID_SYMBOL"}
 
+    # ASK BEFORE WORKING. The existence test further down used to run only AFTER _gather, so a
+    # typed fragment like "P" paid for all twelve agents before anything asked whether it was a
+    # stock.
+    #
+    # The cost is the reason it was late: validate() calls the feed. So the cheap half is asked
+    # first - the SEC registry, already cached for a day and free - and the feed is only consulted
+    # for a symbol the registry does NOT list, which is exactly the typo case. A real company
+    # therefore pays nothing extra, and a typo costs one request instead of twelve.
+    #
+    # It fails open at every step: registry unavailable, lookup raised, or any doubt at all means
+    # the analysis proceeds. Calling a real company unknown is the worse mistake, and the late
+    # check below still covers a real symbol whose reading came back empty in an outage.
+    try:
+        import symbol_service as _symbols
+
+        if _symbols.known_to_sec(symbol) is False and not _symbol_exists(symbol):
+            import live_market_service as _mkt
+            return {"symbol": symbol, "status": "UNKNOWN_SYMBOL", "signals": [],
+                    "detail": f"No US stock listed as {symbol}.",
+                    "market": _mkt.market_clock(), "model": "GENERAL_DIRECTIONAL"}
+    except Exception:  # noqa: BLE001 - never let the cheap pre-check break a real analysis
+        pass
+
     key = f"directional:{symbol}"
     ttl = market.session_ttl(CACHE_TTL_OPEN, CACHE_TTL_CLOSED)
 

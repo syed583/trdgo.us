@@ -291,6 +291,17 @@ _spent: dict = {"day": None, "count": 0}
 _blocked_until = 0.0
 _last_status: Optional[str] = None
 
+
+def last_status() -> Optional[str]:
+    """The latched status of the most recent provider call, or None before the first one.
+
+    Two call sites already assumed this existed: live_market_service read it as an ATTRIBUTE
+    and crashed with AttributeError, and api_routes called it as a FUNCTION behind a hasattr
+    guard, so it silently reported NO_DATA forever. A function satisfies both, and reading it
+    through here means the module-private name can change without breaking callers again.
+    """
+    return _last_status
+
 # Live flow metrics for the admin Workflow page: how many calls were served
 # from cache vs the network, how long the network and the pacing gate took, and
 # what the last call did. Rolling windows so the figures reflect "right now".
