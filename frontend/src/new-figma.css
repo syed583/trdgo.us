@@ -673,7 +673,7 @@
   /* The frame drew ONE row of five. The Monday BMO variant has EIGHT cards, so it is two
      rows - and a fixed 90px box let the second row escape and the banner below land on top
      of it. auto-fit lets it wrap at narrow widths instead of slicing the last card. */
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(205px, 1fr));
   grid-auto-rows: 90px; gap: 10px; min-height: 90px; margin-top: 7px;
 }
 .app-nu .sm .sm-summary .sm-card {
@@ -1356,3 +1356,11 @@
 /* The Strategy Trades hero carries the same literal column width as the landing one. */
 .app-nu .nst .nst-hero .nd-hero-left { max-width: 100%; min-width: 0; }
 .app-nu .nst .nst-hero .nd-hero-left > * { min-width: 0; }
+
+/* THE NUMBER MUST NEVER BE THE THING THAT SHRINKS. Letting the summary wrap (kit Q) made each card
+   narrower, and because the card is a flex row the 32px value was squeezed by its label: "+7.36%"
+   was given 41px of the 105px it needs, so seven of the eight cards were clipping the figure they
+   exist to show. The value now holds its width and the LABEL wraps instead - a truncated label is
+   still readable, a truncated number is wrong. */
+.app-nu .sm .sm-summary .sm-card-v { flex: 0 0 auto; white-space: nowrap; }
+.app-nu .sm .sm-summary .sm-card-k { min-width: 0; overflow-wrap: anywhere; }
