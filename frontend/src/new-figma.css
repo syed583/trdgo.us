@@ -554,8 +554,12 @@
 .app-nu .nst .nst-stats .nst-stat-sub { font-size: 10px; }
 
 .app-nu .nst .nst-filters {
-  height: 58px; margin: 14px 9px 0 7px; padding: 0 5px;
-  display: flex; align-items: center; gap: 12px; flex-wrap: nowrap; overflow: hidden;
+  /* Was `height: 58px; flex-wrap: nowrap; overflow: hidden` - the frame's row, pinned. The frame
+     has no voice-alert button; once kit P added one the row no longer fitted at 1024px and the
+     button was clipped on top of the Symbol box. The frame's height is now a minimum and the row
+     may wrap, so a control is never cut off to keep a drawing's proportions. */
+  min-height: 58px; margin: 14px 9px 0 7px; padding: 6px 5px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
 }
 .app-nu .nst .nst-filters .nd-tabs { min-height: 39px; flex: 0 0 auto; }
 .app-nu .nst .nst-field { flex-direction: row; align-items: center; gap: 6px; flex: 0 0 auto; }

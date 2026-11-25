@@ -430,3 +430,78 @@
   font-size: 10.5px; background: var(--nu-card-2); color: var(--nu-ink-dim);
 }
 .app-nu .nd-tabs button.is-on .npe-chip-n { background: rgba(255,255,255,.18); color: inherit; }
+
+/* ---------------------------------------------------------------- kit T: the live event strip
+ * In the page flow, directly under the hero. It is ALWAYS rendered - one row high even when empty -
+ * so it has room of its own, covers nothing, and the table does not jump when the first event
+ * arrives. The list scrolls sideways inside the strip rather than growing the page or running off
+ * the right edge (min-width:0 on the list is what lets it shrink: a flex child defaults to
+ * min-width:auto, which is the mistake kit Q was spent undoing).
+ */
+.app-nu .nst-events {
+  display: flex; align-items: center; gap: 12px;
+  margin: 14px 21px 0; padding: 8px 12px; min-height: 46px; box-sizing: border-box;
+  border-radius: var(--nu-r); border: 1px solid var(--nu-line);
+  background: var(--nu-card); color: var(--nu-ink); min-width: 0;
+}
+.app-nu .nst-events-h {
+  display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto;
+  font-size: 11px; font-weight: 700; letter-spacing: .8px; color: var(--nu-down);
+}
+.app-nu .nst-events.is-empty .nst-events-h { color: var(--nu-ink-dim); }
+.app-nu .nst-events-none { font-size: 12.5px; color: var(--nu-ink-dim); min-width: 0; }
+.app-nu .nst-events-list {
+  display: flex; align-items: center; gap: 8px; list-style: none; margin: 0; padding: 2px 0;
+  min-width: 0; flex: 1 1 auto; overflow-x: auto; scrollbar-width: thin;
+}
+.app-nu .nst-event {
+  display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; white-space: nowrap;
+  padding: 5px 10px; border-radius: 999px; font-size: 12.5px;
+  border: 1px solid var(--nu-line); background: var(--nu-card-2); color: var(--nu-ink);
+}
+.app-nu .nst-event-sym { font-weight: 700; }
+.app-nu .nst-event-tag {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .4px; padding: 2px 7px; border-radius: 999px;
+}
+.app-nu .nst-event-tag.up,   .app-nu .nst-row-badge.up   { background: rgba(22, 163, 74, .16);  color: var(--nu-up); }
+.app-nu .nst-event-tag.down, .app-nu .nst-row-badge.down { background: rgba(220, 38, 38, .16);  color: var(--nu-down); }
+.app-nu .nst-event-tag.warn, .app-nu .nst-row-badge.warn { background: rgba(217, 119, 6, .18);  color: var(--nu-warn); }
+.app-nu .nst-event-tag.flat, .app-nu .nst-row-badge.flat { background: var(--nu-card-2); color: var(--nu-ink-dim); }
+.app-nu .nst-event.up   { border-color: rgba(22, 163, 74, .45); }
+.app-nu .nst-event.down { border-color: rgba(220, 38, 38, .45); }
+.app-nu .nst-event.warn { border-color: rgba(217, 119, 6, .5); }
+.app-nu .nst-event-at { color: var(--nu-ink-dim); font-size: 11.5px; }
+.app-nu .nst-event-pl { font-weight: 700; }
+.app-nu .nst-event-pl.up { color: var(--nu-up); }
+.app-nu .nst-event-pl.down { color: var(--nu-down); }
+
+/* The blink. A few seconds, then it settles and the event simply stays. */
+@keyframes nst-blink-up   { 0%, 100% { background: var(--nu-card-2); } 50% { background: rgba(22, 163, 74, .30); } }
+@keyframes nst-blink-down { 0%, 100% { background: var(--nu-card-2); } 50% { background: rgba(220, 38, 38, .30); } }
+@keyframes nst-blink-warn { 0%, 100% { background: var(--nu-card-2); } 50% { background: rgba(217, 119, 6, .32); } }
+@keyframes nst-blink-flat { 0%, 100% { background: var(--nu-card-2); } 50% { background: var(--nu-line); } }
+.app-nu .nst-event.is-blink.up   { animation: nst-blink-up   .8s ease-in-out infinite; }
+.app-nu .nst-event.is-blink.down { animation: nst-blink-down .8s ease-in-out infinite; }
+.app-nu .nst-event.is-blink.warn { animation: nst-blink-warn .8s ease-in-out infinite; }
+.app-nu .nst-event.is-blink.flat { animation: nst-blink-flat .8s ease-in-out infinite; }
+
+/* The matching table row flashes for the same few seconds; its badge stays while the event is on
+   the strip. The td selector is needed for the same reason as the P&L colours: the table's own
+   cell rule would otherwise outrank a rule on the row. */
+@keyframes nst-row-up   { 0%, 100% { background: transparent; } 50% { background: rgba(22, 163, 74, .16); } }
+@keyframes nst-row-down { 0%, 100% { background: transparent; } 50% { background: rgba(220, 38, 38, .16); } }
+@keyframes nst-row-warn { 0%, 100% { background: transparent; } 50% { background: rgba(217, 119, 6, .18); } }
+.app-nu .nst-table tr.nst-row-flash.up   > td { animation: nst-row-up   .8s ease-in-out infinite; }
+.app-nu .nst-table tr.nst-row-flash.down > td { animation: nst-row-down .8s ease-in-out infinite; }
+.app-nu .nst-table tr.nst-row-flash.warn > td,
+.app-nu .nst-table tr.nst-row-flash.flat > td { animation: nst-row-warn .8s ease-in-out infinite; }
+.app-nu .nst-row-badge {
+  display: inline-block; margin-left: 7px; padding: 1px 6px; border-radius: 999px;
+  font-size: 9.5px; font-weight: 700; letter-spacing: .3px; vertical-align: middle;
+}
+
+/* Anyone who has asked their system for less motion gets the colour without the pulsing. */
+@media (prefers-reduced-motion: reduce) {
+  .app-nu .nst-event.is-blink, .app-nu .nst-table tr.nst-row-flash > td { animation: none; }
+  .app-nu .nst-event.is-blink { outline: 2px solid currentColor; outline-offset: 1px; }
+}

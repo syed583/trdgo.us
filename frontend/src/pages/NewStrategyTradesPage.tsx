@@ -8,6 +8,9 @@ import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import type { PageContext } from '../App';
 import strategyHero from '../assets/strategy-hero.webp';
+import StrategyEventStrip, {
+  diffTradeEvents, mergeEvents, EVENT_LABEL, EVENT_TONE, type TradeEvent,
+} from '../components/StrategyEventStrip';
 import '../new-dashboard.css';
 import '../new-strategy.css';
 
@@ -82,7 +85,9 @@ function _say(text: string) {
 /** Spell a ticker so it is read as letters ("A A P L"), not as a mangled word. */
 const spell = (s?: string) => (s || '').toUpperCase().split('').join(' ');
 const shortStrat = (s?: string) => (s || '').replace(' Intraday', '');
-const CLOSED_STATES = new Set(['TARGET', 'STOP', 'SCORE_EXIT', 'EOD_CLOSE', 'MARKET_CLOSE', 'CLEANUP']);
+/** How long a new event blinks before it settles. Long enough to catch the eye, short enough
+ *  that the strip is not a permanent disco. The event itself stays in the strip afterwards. */
+const BLINK_MS = 6000;
 
 const STATUS_TONE: Record<string, string> = {
   OPEN: 'open', TARGET: 'win', STOP: 'loss', SCORE_EXIT: 'flat', EOD_CLOSE: 'flat',
@@ -101,52 +106,67 @@ export default function NewStrategyTradesPage({ ctx }: { ctx: PageContext }) {
   const soundRef = React.useRef(false);
   const seenRef = React.useRef<Map<number, string>>(new Map());
   const initedRef = React.useRef(false);
+  // The last ten events, newest first, and which of them are still inside their blink window.
+  const [events, setEvents] = React.useState<TradeEvent[]>([]);
+  const [blinking, setBlinking] = React.useState<Set<string>>(() => new Set());
+  const timersRef = React.useRef<number[]>([]);
+  React.useEffect(() => () => { timersRef.current.forEach((t) => window.clearTimeout(t)); }, []);
 
   const q = useApi<Any>((s) => api2.strategyTrades(strategy, date, s), [strategy, date],
     { refreshMs: 15_000 });
   const d = q.data || {};
   const rows: Any[] = d.rows || [];
 
-  /* What changed since the last read, and say it. The FIRST read only seeds the baseline:
-     a page that announces twenty trades the moment you open it teaches you to turn it off. */
+  /* What changed since the last read: show it, flash its row, and say it.
+     The FIRST read only seeds the baseline - a page that announces twenty trades the moment you
+     open it teaches you to turn it off - and a refresh that changes nothing produces nothing,
+     because an event exists only when a status differs from the one remembered. */
   React.useEffect(() => {
     const all: Any[] = d.rows || [];
     if (!all.length) return;
-    const seen = seenRef.current;
-    if (!initedRef.current) {
-      all.forEach((r) => seen.set(r.id, r.status));
-      initedRef.current = true;
-      return;
-    }
-    const voice: { ok: boolean; text: string }[] = [];
-    for (const r of all) {
-      const prev = seen.get(r.id);
-      if (prev === undefined) {
-        if (r.status === 'OPEN') {
-          voice.push({
-            ok: r.side !== 'SHORT',
-            text: `New ${r.side === 'SHORT' ? 'sell' : 'buy'} trade, take it now. ${spell(r.symbol)},`
-              + ` ${shortStrat(r.strategy_label)}, entry ${Math.round((r.entry_price ?? 0) * 100) / 100}`,
-          });
+    const fresh = diffTradeEvents(seenRef.current, all, initedRef.current);
+    initedRef.current = true;
+    if (!fresh.length) return;
+
+    setEvents((cur) => mergeEvents(cur, fresh));
+    setBlinking((cur) => { const nx = new Set(cur); fresh.forEach((e) => nx.add(e.key)); return nx; });
+    timersRef.current.push(window.setTimeout(() => {
+      setBlinking((cur) => { const nx = new Set(cur); fresh.forEach((e) => nx.delete(e.key)); return nx; });
+    }, BLINK_MS));
+
+    // The same list drives the sound, so what is heard is exactly what is on the strip.
+    if (soundRef.current) {
+      const byId = new Map(all.map((r) => [r.id, r]));
+      const voice = fresh.map((e) => {
+        const r = byId.get(e.id) || {};
+        if (e.kind === 'BUY' || e.kind === 'SELL') {
+          return {
+            ok: e.kind === 'BUY',
+            text: `New ${e.kind === 'SELL' ? 'sell' : 'buy'} trade, take it now. ${spell(e.symbol)},`
+              + ` ${shortStrat(e.model)}, entry ${Math.round((r.entry_price ?? 0) * 100) / 100}`,
+          };
         }
-      } else if (prev === 'OPEN' && CLOSED_STATES.has(r.status)) {
-        const win = (r.profit ?? 0) >= 0;
-        const what = r.status === 'TARGET' ? 'hit target'
-          : r.status === 'STOP' ? 'stopped out'
-          : r.status === 'SCORE_EXIT' ? 'exited on signal drop' : 'closed at end of day';
-        voice.push({
+        const win = (e.profit ?? 0) >= 0;
+        const what = e.kind === 'TARGET' ? 'hit target'
+          : e.kind === 'STOP' ? 'stopped out'
+          : e.kind === 'SCORE_EXIT' ? 'exited on signal drop' : 'closed';
+        return {
           ok: win,
-          text: `${spell(r.symbol)} ${shortStrat(r.strategy_label)} ${what},`
-            + ` ${win ? 'profit' : 'loss'} ${Math.abs(Math.round(r.profit ?? 0))} dollars`,
-        });
-      }
-      seen.set(r.id, r.status);
-    }
-    if (soundRef.current && voice.length) {
-      _beep(voice.some((e) => e.ok));
-      voice.slice(0, 4).forEach((e) => _say(e.text));   // four is plenty; the rest are on screen
+          text: `${spell(e.symbol)} ${shortStrat(e.model)} ${what},`
+            + ` ${win ? 'profit' : 'loss'} ${Math.abs(Math.round(e.profit ?? 0))} dollars`,
+        };
+      });
+      _beep(voice.some((v) => v.ok));
+      voice.slice(0, 4).forEach((v) => _say(v.text));   // four is plenty; the rest are on screen
     }
   }, [d]);
+
+  // Which row carries which event: the newest event per trade, for the badge and the flash.
+  const eventByTrade = React.useMemo(() => {
+    const m = new Map<number, TradeEvent>();
+    for (let i = events.length - 1; i >= 0; i--) m.set(events[i].id, events[i]);
+    return m;
+  }, [events]);
 
   function toggleSound() {
     const on = !sound;
@@ -214,6 +234,11 @@ export default function NewStrategyTradesPage({ ctx }: { ctx: PageContext }) {
           </div>
         </div>
       </section>
+
+      {/* ---------------------------------------------------------------- live events
+          In the page flow, directly under the hero and ALWAYS rendered - so it has its own room,
+          covers nothing, and the table does not jump when the first event arrives. */}
+      <StrategyEventStrip events={events} blinking={blinking} />
 
       {/* ---------------------------------------------------------------- stat row */}
       <div className="nd-stats nst-stats">
@@ -295,14 +320,22 @@ export default function NewStrategyTradesPage({ ctx }: { ctx: PageContext }) {
               <tbody>
                 {pageRows.map((r) => {
                   const tone = STATUS_TONE[r.status] || 'flat';
+                  const rowEvent = eventByTrade.get(r.id);
                   return (
-                    <tr key={r.id}>
+                    <tr key={r.id} className={rowEvent && blinking.has(rowEvent.key)
+                      ? `nst-row-flash ${EVENT_TONE[rowEvent.kind]}` : undefined}>
                       <td>
                         {/* The route is /ai-insights/:symbol. Written as a query, the router kept the PREVIOUS
     symbol in the path and nothing consumed the query, so this landed on the landing page
     with the ticker lost. run=1 is the flag the page already honours to start at once. */}
                         <NavLink to={`/ai-insights/${encodeURIComponent(r.symbol)}?run=1`}
                           className="nd-sym">{r.symbol}</NavLink>
+                        {/* the small badge stays for as long as the event is on the strip */}
+                        {rowEvent && (
+                          <span className={`nst-row-badge ${EVENT_TONE[rowEvent.kind]}`}>
+                            {EVENT_LABEL[rowEvent.kind]}
+                          </span>
+                        )}
                         {r.entry_time && <div className="nst-sub">{r.entry_time}</div>}
                       </td>
                       {/* strategy_label is already "Agent 2" for a user - rendered, never resolved here (A.26) */}
