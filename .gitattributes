@@ -3,3 +3,4 @@ deploy/p1_run.ps1 -text
 deploy/q1_run.ps1 -text
 deploy/r1_run.ps1 -text
 deploy/s1_run.ps1 -text
+deploy/t1_run.ps1 -text
