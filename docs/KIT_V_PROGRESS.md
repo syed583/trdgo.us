@@ -42,4 +42,9 @@ literal colours until kit V is installed. Visual effect: none known.
 - Anchor `93af239ff3b9aaf11249b820c2546d0a68fd6109875464bb4c2d76bb80ef8d47`
 - Runner `deploy/v1_run.ps1`, SHA-256 `42AB693B7F85DC617CE7D06785C3B4EF85296B1594ECD901FC277677B36BA060`
 - PreCheck must read `backend files: 4 changed, 1 new`.
-- NOT pushed, NOT installed.
+- Pushed and INSTALLED by the owner 2026-11-26 15:43 VPS. PreCheck read `4 changed, 1 new, 219 identical`;
+  Update and PostCheck passed (/health 200, release_check PASS).
+  Backup: `C:\apps\us-stock-reader\_backup_v1_20261126_154315` (344 files).
+- Still to do after install: gateway check (`mt5_gateway_check.py --login 250094`), phantom list against the
+  broker, reconcile dry run, then apply only with the owner's approval. Not yet confirmed that the two
+  `MT5_GATEWAY_*` lines are in `backend\.env`.
