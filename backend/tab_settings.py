@@ -268,6 +268,10 @@ SS_MAX_ATM_SPREAD_PCT = 15.0      # maximum ATM bid-ask spread as a % of mid
 # Next-session reporters are re-fetched once at this New York time so the rows are
 # fresh right before the close (24h clock, America/New_York).
 SS_REFRESH_NY_HHMM = "15:55"
+# A held row is computed again when it priced nothing and is older than SS_EMPTY_RETRY_S, or when it
+# priced and is older than SS_MAX_AGE_S (see tab_b_service._needs_refill).
+SS_EMPTY_RETRY_S = 1800           # seconds before an empty row is tried again
+SS_MAX_AGE_S = 21600              # seconds a priced row is shown before it is refreshed (6h)
 SS_MIN_INFLATION = 1.15           # inflation_score below this -> NO REAL INFLATION
 SS_MOVE_RATIO_SELL = 1.2          # Move ratio >= this (with inflation) -> SELL STRADDLE
 SS_MOVE_RATIO_FLOOR = 1.0         # Move ratio < this -> NO EDGE (regardless of inflation)

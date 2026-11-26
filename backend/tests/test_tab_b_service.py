@@ -149,3 +149,53 @@ def test_scan_universe_is_next_10_trading_days(monkeypatch):
     got = {r["symbol"] for r in res["rows"]}
     assert "NOW1" in got and "SOON" in got     # both inside the 10-trading-day window
     assert "FAR" not in got and "OLD" not in got
+
+
+# ---------------------------------------------------------------- stuck rows (found 2026-11-26)
+# 57 of 64 live rows were computed EMPTY on 20-21 November and never computed again: scan() reads
+# held rows whatever their age, and only a missing row or a 15:55 next-session row was ever queued.
+
+def _stamp(seconds_ago):
+    from datetime import datetime, timedelta as _td, timezone
+    return (datetime.now(timezone.utc) - _td(seconds=seconds_ago)).isoformat()
+
+
+def test_an_old_empty_row_is_queued_again(monkeypatch):
+    nd = _next_trading_day(_next_trading_day(date.today()))          # not next-session: no 15:55 rule
+    cal_rows = [{"symbol": "STUCK", "date": nd.isoformat(), "reporting_time": "AMC"}]
+    cached = {"STUCK": {"symbol": "STUCK", "spot": 114.56, "call_now": None, "put_now": None,
+                        "expiry": None, "updated_at": _stamp(6 * 86400)}}
+    _scan_env(monkeypatch, cal_rows, cached)
+    res = tb.scan()
+    assert res["refetch"] == ["STUCK"]
+
+
+def test_a_fresh_empty_row_is_not_hammered(monkeypatch):
+    nd = _next_trading_day(_next_trading_day(date.today()))
+    cal_rows = [{"symbol": "NOOPT", "date": nd.isoformat(), "reporting_time": "AMC"}]
+    cached = {"NOOPT": {"symbol": "NOOPT", "call_now": None, "put_now": None, "updated_at": _stamp(120)}}
+    _scan_env(monkeypatch, cal_rows, cached)
+    assert tb.scan()["refetch"] == []
+
+
+def test_a_priced_row_refreshes_after_its_freshness_and_not_before(monkeypatch):
+    nd = _next_trading_day(_next_trading_day(date.today()))
+    cal_rows = [{"symbol": "OLD", "date": nd.isoformat(), "reporting_time": "AMC"},
+                {"symbol": "NEW", "date": nd.isoformat(), "reporting_time": "AMC"}]
+    leg = {"rate": 1, "iv": 40.0}
+    cached = {"OLD": {"symbol": "OLD", "call_now": leg, "put_now": leg, "updated_at": _stamp(7 * 3600)},
+              "NEW": {"symbol": "NEW", "call_now": leg, "put_now": leg, "updated_at": _stamp(600)}}
+    _scan_env(monkeypatch, cal_rows, cached)
+    res = tb.scan()
+    assert res["refetch"] == ["OLD"]
+    assert {r["symbol"] for r in res["rows"]} == {"OLD", "NEW"}      # the old value is still shown meanwhile
+
+
+def test_needs_refill_rules():
+    leg = {"rate": 1, "iv": 40.0}
+    assert tb._needs_refill({"call_now": None, "put_now": None, "updated_at": _stamp(1801)}) is True
+    assert tb._needs_refill({"call_now": None, "put_now": None, "updated_at": _stamp(60)}) is False
+    assert tb._needs_refill({"call_now": leg, "updated_at": _stamp(21601)}) is True
+    assert tb._needs_refill({"call_now": leg, "updated_at": _stamp(3600)}) is False
+    assert tb._needs_refill({"call_now": leg}) is True                # no stamp: age cannot be vouched for
+    assert tb._needs_refill({"call_now": leg, "updated_at": "not a date"}) is True

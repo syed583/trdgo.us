@@ -322,6 +322,43 @@ def _needs_1555_refresh(updated_at) -> bool:
     return ua < boundary
 
 
+def _row_age_s(row: dict) -> Optional[float]:
+    """Seconds since the row was computed, or None when it carries no usable stamp."""
+    try:
+        at = datetime.fromisoformat(str(row.get("updated_at")).replace("Z", "+00:00"))
+        if at.tzinfo is None:
+            at = at.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - at).total_seconds()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _is_empty(row: dict) -> bool:
+    """A row that was computed but priced nothing: no leg today on either side."""
+    return not row.get("call_now") and not row.get("put_now")
+
+
+def _needs_refill(row: dict) -> bool:
+    """True when a HELD row must be computed again.
+
+    scan() reads held rows with peek_many, which returns a value whatever its age. A row was only
+    ever recomputed if it was missing altogether or was a next-session name at 15:55 - so a row
+    computed EMPTY (a provider call that failed at that moment) stayed empty for as long as the
+    cache held it, and a priced row never refreshed after its first compute. Found on 2026-11-26:
+    57 of 64 rows were empty and dated 20-21 November.
+
+      empty row   -> again after SS_EMPTY_RETRY_S (a name with no options is not hammered)
+      priced row  -> again after SS_MAX_AGE_S     (the 6h freshness the cache key already declares)
+      no stamp    -> again now                    (its age cannot be shown to be acceptable)
+    """
+    age = _row_age_s(row)
+    if age is None:
+        return True
+    if _is_empty(row):
+        return age >= float(getattr(cfg, "SS_EMPTY_RETRY_S", 1800))
+    return age >= float(getattr(cfg, "SS_MAX_AGE_S", 21600))
+
+
 def _liquid_enough(row: dict) -> bool:
     """False when the event-expiry ATM is too thin to trade: combined call+put OI
     below SS_MIN_ATM_OI, or an ATM spread wider than SS_MAX_ATM_SPREAD_PCT."""
@@ -396,8 +433,9 @@ def scan(days: int = 15, warm: int = 0) -> dict:
             # Thin ATM at the event expiry -> not tradeable, drop it.
             if not _liquid_enough(row):
                 continue
-            # Next-session rows get a fresh pull once NY passes 15:55.
-            if ns and _needs_1555_refresh(t.get("updated_at")):
+            # Next-session rows get a fresh pull once NY passes 15:55; any held row that is empty
+            # or past its freshness is queued again instead of being shown as-is for ever.
+            if (ns and _needs_1555_refresh(t.get("updated_at"))) or _needs_refill(t):
                 refetch.append(s)
             out.append(row)
             computed.append(row)
