@@ -14,12 +14,13 @@
  */
 import { useCallback, useState } from 'react';
 import {
-  AlertTriangle, Link2, Loader2, Power, RefreshCw, Table2, Trash2, Wallet,
+  Activity, AlertTriangle, Layers, Link2, Loader2, Power, RefreshCw, Table2, Trash2, TrendingUp, Wallet,
 } from 'lucide-react';
 import { api2 } from '../api/client';
 import { useApi } from '../hooks/useApi';
 import { PageHead } from './shared';
 import MyBrokerSymbols from './MyBrokerSymbols';
+import heroArt from '../assets/analysis-hero.webp';
 import './my-broker.css';
 
 const SHARE_PRESETS = [10, 20, 30, 50, 100];
@@ -92,6 +93,42 @@ export default function MyBrokerPage() {
 
   return (
     <div className="page mb">
+      {/* Kit U: the redesigned shell's hero and tiles. Presentation only - the stylesheet shows them in the
+          new design and hides the classic page head there; the classic design never renders them visibly.
+          Nothing below this block changed: every handler, confirmation and field name is as it was. */}
+      <section className="nd-hero mb-hero">
+        <img className="nd-hero-img" src={heroArt} alt="" aria-hidden="true" loading="eager" />
+        <div className="nd-hero-left">
+          <span className="nd-eyebrow"><Link2 size={13} /> Your own account</span>
+          <h1>My <em>Broker</em></h1>
+          <p>Connect your own MetaTrader account and choose whether our trades are placed in it.
+            Real orders, your money, your responsibility.</p>
+          <button className="mb-btn mb-hero-refresh" onClick={info.refresh} disabled={info.loading}>
+            <RefreshCw size={13} className={info.loading ? 'spin' : undefined} /> Refresh
+          </button>
+        </div>
+      </section>
+      {acct && (
+        <div className="nd-stats mb-tiles">
+          <div className="nd-stat">
+            <span className={`nd-stat-ico ${copy.copying ? 'green' : 'amber'}`}><Power size={18} /></span>
+            <div><b className={copy.copying ? 'up' : undefined}>{copy.copying ? 'On' : 'Off'}</b><span>Auto-trade</span></div>
+          </div>
+          <div className="nd-stat">
+            <span className="nd-stat-ico blue"><Layers size={18} /></span>
+            <div><b>{shares}</b><span>Shares a trade</span></div>
+          </div>
+          <div className="nd-stat">
+            <span className="nd-stat-ico violet"><Activity size={18} /></span>
+            <div><b>{copy.open_positions ?? 0} <small>of {set.max_positions ?? 20}</small></b><span>Open positions</span></div>
+          </div>
+          <div className="nd-stat">
+            <span className="nd-stat-ico blue"><TrendingUp size={18} /></span>
+            <div><b className={(copy.realized_today ?? 0) > 0 ? 'up' : (copy.realized_today ?? 0) < 0 ? 'down' : undefined}>
+              {copy.realized_today ?? 0}</b><span>Realised today</span></div>
+          </div>
+        </div>
+      )}
       <PageHead
         title="My Broker"
         subtitle="Connect your own MetaTrader account and choose whether our trades are placed in it."

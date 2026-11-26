@@ -220,3 +220,112 @@
   .mb-band { flex-direction: column; align-items: flex-start; gap: 10px; }
   .mb-actions .mb-btn { flex: 1 1 auto; justify-content: center; }
 }
+
+/* ================================================================== Kit U: the redesigned shell
+ * Everything below applies only inside .app-nu (the new design) and uses only its --nu-* tokens, which are
+ * defined for both themes. The classic design above is untouched; it never shows the hero or the tiles. */
+.mb-hero, .mb-tiles { display: none; }
+
+.app-nu .mb { max-width: none; gap: 0; padding: 0 0 28px; }
+.app-nu .mb > .page-head { display: none; }
+.app-nu .mb-hero { display: flex; min-height: 170px; }
+.app-nu .mb-hero h1 { font-size: 36px; margin: 12px 0 8px; color: var(--nu-on-photo); }
+.app-nu .mb-hero p { max-width: 64ch; margin-bottom: 14px; color: var(--nu-on-photo-dim); }
+.app-nu .mb-hero .nd-eyebrow { display: inline-flex; align-items: center; gap: 7px; }
+.app-nu .mb .mb-btn.mb-hero-refresh {
+  background: rgba(255, 255, 255, .10); border-color: var(--nu-on-photo-line); color: var(--nu-on-photo);
+}
+.app-nu .mb .mb-btn.mb-hero-refresh:hover:not(:disabled) { background: rgba(255, 255, 255, .18); border-color: var(--nu-on-photo-line); }
+
+/* every block under the hero sits on the page with the same gutter the other redesigned pages use */
+.app-nu .mb > *:not(.mb-hero) { margin: 14px 18px 0; }
+
+.app-nu .mb-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; }
+.app-nu .mb-tiles .nd-stat b small { font-size: 13px; font-weight: 500; color: var(--nu-ink-dim); }
+.app-nu .mb-tiles .nd-stat-ico.green { background: color-mix(in srgb, var(--nu-up) 14%, transparent); color: var(--nu-up); }
+.app-nu .mb-tiles .nd-stat-ico.amber { background: color-mix(in srgb, var(--nu-warn) 16%, transparent); color: var(--nu-warn); }
+
+/* cards */
+.app-nu .mb-card, .app-nu .mb-notice, .app-nu .mb-band, .app-nu .mb-msg {
+  background: var(--nu-card); color: var(--nu-ink);
+  border: 0; border-radius: var(--nu-r); box-shadow: var(--nu-shadow);
+}
+.app-nu .mb-card { padding: 18px 20px; }
+.app-nu .mb-card > h3 { font-size: 17px; font-weight: 700; color: var(--nu-ink); margin-bottom: 6px; }
+.app-nu .mb-card h4 { color: var(--nu-ink); }
+.app-nu .mb-card > .mb-hint, .app-nu .mb-empty, .app-nu .mb-now, .app-nu .mb-consent,
+.app-nu .mb-rail .note, .app-nu .mb-notice > div { color: var(--nu-ink-dim); }
+.app-nu .mb-card > .mb-hint { font-size: 13px; }
+.app-nu .mb-now b, .app-nu .mb-notice > summary { color: var(--nu-ink); }
+.app-nu .mb-notice > summary { padding: 14px 20px; font-size: 14px; font-weight: 600; }
+.app-nu .mb-notice > summary svg { color: var(--nu-warn); }
+.app-nu .mb-notice > summary::after { color: var(--nu-ink-dim); }
+.app-nu .mb-notice > div { padding: 0 20px 16px; }
+
+/* the status band: the one fact that matters, with a coloured edge */
+.app-nu .mb-band { padding: 16px 20px; border-left: 5px solid var(--nu-line); }
+.app-nu .mb-band.on { border-left-color: var(--nu-up); }
+.app-nu .mb-band.warn { border-left-color: var(--nu-warn); }
+.app-nu .mb-band-text b { font-size: 15px; color: var(--nu-ink); }
+.app-nu .mb-band-text span { color: var(--nu-ink-dim); }
+.app-nu .mb-badge.on { color: var(--nu-up); background: color-mix(in srgb, var(--nu-up) 14%, transparent); }
+.app-nu .mb-badge.on .dot { background: var(--nu-up); }
+.app-nu .mb-badge.warn { color: var(--nu-warn); background: color-mix(in srgb, var(--nu-warn) 16%, transparent); }
+.app-nu .mb-badge.warn .dot { background: var(--nu-warn); }
+.app-nu .mb-badge.off { color: var(--nu-ink-dim); background: var(--nu-card-2); }
+.app-nu .mb-badge.off .dot { background: var(--nu-ink-dim); }
+
+/* facts */
+.app-nu .mb-fact .k, .app-nu .mb-rail label, .app-nu .mb-field label { color: var(--nu-ink-dim); }
+.app-nu .mb-fact .v { color: var(--nu-ink); font-size: 16px; font-weight: 600; }
+.app-nu .mb-fact { background: var(--nu-card-2); border-radius: var(--nu-r-sm); padding: 12px 14px; }
+
+/* buttons, chips, inputs */
+.app-nu .mb .mb-btn {
+  min-height: 38px; padding: 0 16px; border-radius: 10px;
+  border: 1px solid var(--nu-line); background: var(--nu-card-2); color: var(--nu-ink); font-weight: 600;
+}
+.app-nu .mb .mb-btn:hover:not(:disabled) { border-color: var(--nu-pill-line); background: var(--nu-card-2); }
+.app-nu .mb .mb-btn:focus-visible { outline: 2px solid var(--nu-accent); outline-offset: 2px; }
+.app-nu .mb .mb-btn.primary { background: var(--nu-pill-grad); border-color: var(--nu-pill-line); color: var(--nu-pill-ink); }
+.app-nu .mb .mb-btn.primary:hover:not(:disabled) { background: var(--nu-pill-grad); filter: brightness(1.06); }
+.app-nu .mb .mb-btn.danger { color: var(--nu-down); }
+.app-nu .mb .mb-btn.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--nu-down) 10%, transparent); border-color: var(--nu-down); }
+.app-nu .mb-chip {
+  min-height: 38px; border-radius: 999px; border: 1px solid var(--nu-line);
+  background: var(--nu-card-2); color: var(--nu-ink); font-weight: 600;
+}
+.app-nu .mb-chip:hover:not(:disabled) { background: var(--nu-card-2); border-color: var(--nu-pill-line); }
+.app-nu .mb-chip.on { background: var(--nu-pill-grad); border-color: var(--nu-pill-line); color: var(--nu-pill-ink); }
+.app-nu .mb-custom, .app-nu .mb-rail input, .app-nu .mb-field input {
+  min-height: 38px; border-radius: 10px; border: 1px solid var(--nu-line);
+  background: var(--nu-card-2); color: var(--nu-ink); box-sizing: border-box;
+}
+.app-nu .mb-custom::placeholder, .app-nu .mb-field input::placeholder { color: var(--nu-ink-dim); opacity: .75; }
+.app-nu .mb-custom:focus-visible, .app-nu .mb-rail input:focus-visible, .app-nu .mb-field input:focus-visible {
+  outline: 2px solid var(--nu-accent); outline-offset: 1px;
+}
+.app-nu .mb-form { max-width: 460px; }
+
+/* tables: the navy header the redesigned tables share; rows scroll sideways inside the card, never the page */
+.app-nu .mb-card { overflow-x: auto; }
+.app-nu .mb-table { color: var(--nu-ink); font-size: 13px; }
+.app-nu .mb-table th {
+  background: linear-gradient(180deg, #16294a 0%, #0f1f3d 100%); color: #cfdcf2;
+  font-size: 12px; font-weight: 500; padding: 10px 12px; border-bottom: 0;
+}
+.app-nu .mb-table th:first-child { border-radius: 10px 0 0 10px; }
+.app-nu .mb-table th:last-child { border-radius: 0 10px 10px 0; }
+.app-nu .mb-table td { padding: 10px 12px; border-bottom: 1px solid var(--nu-line); }
+.app-nu .mb-table td.why { color: var(--nu-ink-dim); }
+.app-nu .mb-pos { color: var(--nu-up); }
+.app-nu .mb-neg { color: var(--nu-down); }
+
+.app-nu .mb-msg { padding: 14px 20px; font-size: 14px; border-left: 5px solid var(--nu-up); }
+.app-nu .mb-msg.bad { border-left-color: var(--nu-down); background: var(--nu-card); color: var(--nu-ink); }
+
+@media (max-width: 900px) {
+  .app-nu .mb-hero .nd-hero-img { display: none; }
+  .app-nu .mb-hero h1 { font-size: 27px; }
+  .app-nu .mb > *:not(.mb-hero) { margin: 12px 12px 0; }
+}
