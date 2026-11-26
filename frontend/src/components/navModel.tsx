@@ -2,7 +2,7 @@ import React from 'react';
 import {
   Activity, Brain, Building2, CalendarDays, Compass, Crosshair, FlaskConical, Flame, Gauge, History, Layers, LineChart, Receipt, Users,
   LayoutDashboard, Link2, ListOrdered, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
-  Radar, Scale, ScrollText, Settings, ShieldCheck, Sparkles, Star, TrendingUp, UserCog, Waves, Waypoints, X, Zap,
+  Scale, ScrollText, Settings, ShieldCheck, Sparkles, Star, TrendingUp, UserCog, Waves, Waypoints, X, Zap,
 } from 'lucide-react';
 
 /**
@@ -70,7 +70,9 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/earnings-signals', label: 'Signal History', icon: <History size={S} /> },
     { to: '/forward-scoreboard', label: 'Forward Scoreboard', icon: <ShieldCheck size={S} /> },
     { to: '/historical-backtest', label: 'Historical Backtest', icon: <FlaskConical size={S} /> },
-    { to: '/post-earnings-forward', label: 'Post-Earnings AI', icon: <Radar size={S} /> },
+    // Post-Earnings AI hidden from the menu 2026-11-26 (owner decision): a simulated forward test whose
+    // scheduler last ran 2026-10-22, 5 completed simulated trades. The route /post-earnings-forward and
+    // its data stay; nothing is deleted.
     { to: '/news', label: 'News & Sentiment', icon: <Newspaper size={S} /> },
   ] },
   { heading: 'Markets', items: [
