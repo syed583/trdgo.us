@@ -131,6 +131,27 @@ def main() -> int:
             " ORDER BY at"), {"u": user, "d": first}).mappings().all()]
         first_order = db.execute(text("SELECT MIN(at), COUNT(*) FROM user_mt5_orders WHERE username = :u"),
                                  {"u": user}).first()
+        # --- the position ceiling: what OUR LOG believes is open (this is what MAX_OPEN_POSITIONS counts)
+        fills_all = [dict(r) for r in db.execute(text(
+            "SELECT admin_trade_id, at, symbol, side, ticket FROM user_mt5_orders"
+            " WHERE username = :u AND event = 'FILLED' AND ticket IS NOT NULL ORDER BY at"), {"u": user}).mappings().all()]
+        closed_all = [dict(r) for r in db.execute(text(
+            "SELECT admin_trade_id, at FROM user_mt5_orders WHERE username = :u AND event = 'CLOSED'"),
+            {"u": user}).mappings().all()]
+        fail_reasons = [dict(r) for r in db.execute(text(
+            "SELECT event, SUBSTR(reason, 1, 110) AS why, COUNT(*) AS n, COUNT(DISTINCT admin_trade_id) AS trades,"
+            " MIN(at) AS first_at, MAX(at) AS last_at FROM user_mt5_orders"
+            " WHERE username = :u AND event IN ('CLOSE_FAIL', 'CLOSE_UNCONFIRMED', 'CLOSE_UNCONFIRME', 'ERROR')"
+            " GROUP BY event, SUBSTR(reason, 1, 110) ORDER BY COUNT(*) DESC LIMIT 12"), {"u": user}).mappings().all()]
+        skip_reasons = [dict(r) for r in db.execute(text(
+            "SELECT SUBSTR(reason, 1, 150) AS why, COUNT(*) AS n, MIN(at) AS first_at, MAX(at) AS last_at"
+            " FROM user_mt5_orders WHERE username = :u AND event = 'SKIPPED' AND at >= :d"
+            " AND reason NOT LIKE 'MAX_OPEN_POSITIONS%' AND reason NOT LIKE 'DAILY_LOSS_LIMIT%'"
+            " GROUP BY SUBSTR(reason, 1, 150) ORDER BY COUNT(*) DESC LIMIT 8"), {"u": user, "d": first}).mappings().all()]
+        sw_open_now = db.execute(text("SELECT COUNT(*) FROM demo_trades WHERE status = 'OPEN'")).scalar()
+        sw_status = {str(r[0]): r[1] for r in db.execute(text(
+            "SELECT id, status FROM demo_trades WHERE id IN (SELECT CAST(admin_trade_id AS INTEGER) FROM user_mt5_orders"
+            " WHERE username = :u AND event = 'FILLED' AND admin_trade_id IS NOT NULL)"), {"u": user}).all()}
     finally:
         db.rollback()
         db.close()
@@ -239,6 +260,37 @@ def main() -> int:
 
     orphan = [o for o in orders if str(o.get("admin_trade_id")) not in {str(t["id"]) for t in trades}]
 
+    # ---------------------------------------------------------------- the ceiling, reconstructed from the log
+    closed_at = {}
+    for c in closed_all:
+        k = str(c["admin_trade_id"]); ca = utc(c["at"])
+        if k not in closed_at or (ca and ca < closed_at[k]):
+            closed_at[k] = ca
+    log_open = [f for f in fills_all if str(f["admin_trade_id"]) not in closed_at]
+    print("-" * 100)
+    print("0. THE POSITION CEILING (max_positions=%s). It counts every FILLED row in OUR LOG with no CLOSED row."
+          % acct["max_positions"])
+    print("   our log believes OPEN right now: %d positions   (the software itself has %s open right now)"
+          % (len(log_open), sw_open_now))
+    stale = [f for f in log_open if sw_status.get(str(f["admin_trade_id"])) not in (None, "OPEN")]
+    print("   of those, the software closed its own trade long ago (PHANTOMS in our log): %d" % len(stale))
+    by_day = Counter(str(utc(f["at"]))[:10] for f in log_open)
+    print("   log-open positions by the day they were filled: %s" % dict(sorted(by_day.items())))
+    for d in sorted(days):
+        carried = 0
+        for f in fills_all:
+            fa = utc(f["at"]); ca = closed_at.get(str(f["admin_trade_id"]))
+            if fa is not None and str(fa)[:10] < str(d) and (ca is None or str(ca)[:10] >= str(d)):
+                carried += 1
+        print("   %s  log-open positions carried in from EARLIER days: %d of a ceiling of %s"
+              % (d, carried, acct["max_positions"]))
+    print("   why closes did not complete (all time, grouped): event | rows | distinct trades | first .. last | reason")
+    for r in fail_reasons:
+        print("   %-17s %5d %4d  %s .. %s  %s" % (r["event"], r["n"], r["trades"], str(r["first_at"])[:16],
+                                                 str(r["last_at"])[:16], r["why"]))
+    print("   other reasons entries were skipped in the window: rows | first .. last | reason")
+    for r in skip_reasons:
+        print("   %5d  %s .. %s  %s" % (r["n"], str(r["first_at"])[:16], str(r["last_at"])[:16], r["why"]))
     print("-" * 100)
     print("1. SENT OR NOT")
     print("   signals %d | filled %d | not filled %d" % (cnt["signals"], cnt["filled"], cnt["not_filled"]))
