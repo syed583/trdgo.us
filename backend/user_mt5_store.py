@@ -307,8 +307,8 @@ def enabled_accounts() -> list:
 # ------------------------------------------------------------------ C.2 settings and log
 SETTING_BOUNDS = {
     "shares": (1, 1000),
-    "max_positions": (1, 50),
-    "daily_loss_pct": (0.1, 20.0),
+    "max_positions": (1, 500),          # V: the user picks 20 / 50 / 100 or their own number
+    "daily_loss_pct": (0.0, 20.0),      # V: 0 switches the daily loss limit OFF (the user's own choice)
 }
 
 
@@ -422,22 +422,67 @@ def all_accounts() -> list:
     return out
 
 
+_timing_ready: Optional[bool] = None
+
+
+def _timing_column_ready(db) -> bool:
+    """V: per-step timing (JSON text) on each order row. Added in its own transaction; a database that cannot
+    take the column simply does not get timings - the order log itself must never depend on it."""
+    global _timing_ready
+    if _timing_ready is not None:
+        return _timing_ready
+    try:
+        have = {str(c) for c in db.execute(text("SELECT * FROM %s WHERE 1 = 0" % ORDERS_TABLE)).keys()}
+        if "timing" not in have:
+            db.execute(text("ALTER TABLE %s ADD COLUMN timing TEXT" % ORDERS_TABLE))
+            db.commit()
+        _timing_ready = True
+    except Exception:  # noqa: BLE001
+        db.rollback()
+        _timing_ready = False
+    return _timing_ready
+
+
+def not_copying_accounts() -> list:
+    """V: connected accounts that will NOT be traded right now, each with the one reason why - so a skipped
+    signal can be written to that user's log in words instead of leaving no trace at all."""
+    _ensure_schema()
+    db = SessionLocal()
+    try:
+        rows = db.execute(text(
+            "SELECT username, max_shares AS shares, auto_copy, enabled, admin_paused, consent_at FROM %s"
+            " WHERE NOT (auto_copy = TRUE AND enabled = TRUE AND admin_paused = FALSE AND consent_at IS NOT NULL)"
+            % TABLE)).mappings().all()
+    finally:
+        db.close()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["why"] = ("NO_CONSENT" if not d.get("consent_at") else "AUTO_TRADE_OFF" if not d.get("auto_copy")
+                    else "PAUSED_BY_OPERATOR" if d.get("admin_paused") else "PAUSED_BY_YOU")
+        out.append(d)
+    return out
+
+
 def log_order(username: str, event: str, **cols) -> None:
     """Record one order outcome. Never raises into the trading path: a log failure must not stop a close."""
     allowed = ("symbol", "broker_symbol", "side", "shares", "volume", "price", "admin_price", "slippage",
                "pnl", "ticket", "admin_trade_id", "strategy", "reason")
     data = {k: cols.get(k) for k in allowed}
-    data.update(username=username, event=str(event)[:16])
+    # V: the event column is VARCHAR(16). "CLOSE_UNCONFIRMED" is 17 characters and was stored cut short, which
+    # is why the audit shows CLOSE_UNCONFIRME. Nothing new uses a name that long; the cut stays as a guard.
+    data.update(username=username, event=str(event)[:16], timing=cols.get("timing"))
     try:
         _ensure_schema()
         db = SessionLocal()
         try:
+            extra = (", timing", ", :timing") if _timing_column_ready(db) else ("", "")
             db.execute(text(
                 "INSERT INTO %s (username, event, symbol, broker_symbol, side, shares, volume, price,"
-                " admin_price, slippage, pnl, ticket, admin_trade_id, strategy, reason)"
+                " admin_price, slippage, pnl, ticket, admin_trade_id, strategy, reason%s)"
                 " VALUES (:username, :event, :symbol, :broker_symbol, :side, :shares, :volume, :price,"
-                " :admin_price, :slippage, :pnl, :ticket, :admin_trade_id, :strategy, :reason)" % ORDERS_TABLE),
-                data)
+                " :admin_price, :slippage, :pnl, :ticket, :admin_trade_id, :strategy, :reason%s)"
+                % (ORDERS_TABLE, extra[0], extra[1])), data)
             db.commit()
         finally:
             db.close()
@@ -459,7 +504,7 @@ def orders_of(username: str, limit: int = 100) -> list:
 
 
 OPEN_COLS = ("admin_trade_id", "ticket", "symbol", "broker_symbol", "side", "shares", "volume", "price",
-             "strategy")
+             "strategy", "at")
 
 
 def open_tickets(username: str) -> list:

@@ -72,7 +72,10 @@ class FakeBroker:
 
     def close_position(self, ticket, *, deviation_points, magic, comment, token=None,
                        strict_token=False):
-        self._acct(token, strict_token)
+        a = self._acct(token, strict_token)
+        if int(ticket) in set(a.get("gone", ())):
+            # exactly what the real bridge answers when the ticket is not in the broker's open list
+            return {"ok": True, "already_closed": True, "ticket": int(ticket)}
         self.closes[token].append(int(ticket))
         return {"ok": True, "price": 102.0, "volume": 1.0}
 
@@ -82,6 +85,30 @@ class FakeBroker:
         if path == "AccountSummary":
             return {"ok": True, "data": {"equity": a["equity"], "balance": a["equity"]}}
         return {"ok": False, "reason": "UNEXPECTED_CALL", "detail": path}
+
+    # --- kit V: the read calls the copy path now makes. Each one is keyed by the session token like the rest.
+    def account(self, token=None, base_url=None):
+        a = self._acct(token)
+        return {"ok": True, "account": {"equity": a["equity"], "margin_free": a.get("margin_free", a["equity"])}}
+
+    def required_margin(self, sym, side, volume, *, token=None, strict_token=False):
+        a = self._acct(token, strict_token)
+        return {"ok": True, "margin": a.get("margin_need", 1.0)}
+
+    def positions(self, sym=None, magic=None, token=None, strict_token=False):
+        a = self._acct(token, strict_token)
+        gone = set(a.get("gone", ())) | set(self.closes[token])
+        return {"ok": True, "positions": [{"ticket": o["ticket"], "symbol": o["symbol"]}
+                                          for o in self.orders[token] if o["ticket"] not in gone]}
+
+    def closed_order(self, ticket, since_epoch, *, token=None, strict_token=False):
+        a = self._acct(token, strict_token)
+        h = (a.get("history") or {}).get(int(ticket))
+        return dict(h, ok=True, found=True, ticket=int(ticket)) if h else {"ok": True, "found": False, "ticket": int(ticket)}
+
+    @staticmethod
+    def gateway_status():
+        return {"ok": True, "kind": None}
 
     @staticmethod
     def available():
@@ -324,7 +351,7 @@ def test_max_open_positions_stops_a_new_order(rig):
     CP.dispatch(ENTRY)
     CP.dispatch(dict(ENTRY, trade_id="T2"))
     assert len(broker.orders["tok-ann"]) == 1
-    assert any(r["reason"] == "MAX_OPEN_POSITIONS" for r in st.events("ann", "SKIPPED"))
+    assert any(r["reason"].startswith("MAX_OPEN_POSITIONS") for r in st.events("ann", "SKIPPED"))   # V: the reason now also says how many
 
 
 def test_the_daily_loss_limit_stops_new_orders(rig):

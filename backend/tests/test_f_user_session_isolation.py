@@ -135,8 +135,10 @@ def test_every_user_broker_call_is_strict():
     src = (BACKEND / "user_copy_service.py").read_text(encoding="utf-8")
     # G removed bridge.symbol( from this module: the volume rules now come from the user's stored mapping,
     # verified at map time. The calls that remain must still carry the user's own session.
-    for call in ("bridge.tick(", "bridge.market_order(", "bridge.close_position(",
-                 'bridge._call("AccountSummary"'):
+    # V: the calls are now made through _timed(label, fn, ...) so each one's duration is recorded; the function
+    # is named right after the label. The reads kit V added are held to the same rule.
+    for call in ("bridge.tick, ", "bridge.market_order, ", "bridge.close_position, ", "bridge.positions, ",
+                 "bridge.closed_order, ", "bridge.required_margin, ", 'bridge._call("AccountSummary"'):
         idx = src.find(call)
         assert idx > 0, "%s not found" % call
         window = src[idx:idx + 400]

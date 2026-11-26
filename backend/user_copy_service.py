@@ -27,6 +27,7 @@ across all users are rate-limited to MAX_ORDERS_PER_SECOND so one busy minute ca
 """
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
@@ -61,6 +62,35 @@ _stop = False
 _rate_lock = threading.Lock()
 _last_order_at = 0.0
 
+# ----------------------------------------------------------------------------- V
+LIVE_TTL_S = 5.0                     # how long one read of a user's open positions is reused
+RECONCILE_EVERY_S = 300.0            # a user's log is checked against the broker at least this often while trading
+_live_cache: dict = {}               # username -> (set of open tickets | None, at)
+_last_reconcile: dict = {}           # username -> epoch
+_closing: set = set()                # (username, ticket) with a close in flight - never two at once
+_closing_lock = threading.Lock()
+_user_queues: dict = {}              # username -> {"exits": deque, "entries": deque, "cv": Condition, "thread": Thread}
+_user_queues_lock = threading.Lock()
+_tl = threading.local()              # per-thread step timings for the row being written
+
+
+def _steps() -> Optional[dict]:
+    return getattr(_tl, "steps", None)
+
+
+def _mark(label: str, started: float) -> None:
+    st = _steps()
+    if st is not None:
+        st[label] = st.get(label, 0) + int(round((time.time() - started) * 1000))
+
+
+def _timed(label: str, fn, *args, **kw):
+    t0 = time.time()
+    try:
+        return fn(*args, **kw)
+    finally:
+        _mark(label, t0)
+
 _equity_cache: dict = {}             # username -> (equity, at)
 
 
@@ -72,7 +102,9 @@ def _throttle() -> None:
     a user limiter the admin engine could not see never actually bounded the rate - on 2026-11-16 a GME order
     was rejected outright with "Max 3 orders per second".
     """
+    t0 = time.time()
     broker_rate.acquire("user")
+    _mark("rate_gate_ms", t0)
 
 
 # --------------------------------------------------------------------------- the queue
@@ -85,7 +117,7 @@ def on_paper_event(ev: dict) -> None:
             if len(_queue) >= QUEUE_MAX:
                 _log.error("copy queue full (%d): dropping %s %s", len(_queue), ev.get("type"), ev.get("symbol"))
                 return
-            _queue.append(dict(ev))
+            _queue.append(dict(ev, _queued_at=time.time()))
             _wake.notify()
     except Exception:  # noqa: BLE001 - a hook must never disturb the tracker
         _log.exception("could not queue a copy event")
@@ -144,9 +176,78 @@ def _loop() -> None:
         if ev is None:
             continue
         try:
-            dispatch(ev)
+            fan_out(ev)
         except Exception:  # noqa: BLE001
             _log.exception("copy dispatch failed for %s %s", ev.get("type"), ev.get("symbol"))
+
+
+def fan_out(ev: dict) -> int:
+    """V: hand the event to each copying user's OWN worker and return at once.
+
+    Before this one thread walked every user in turn, so user B's close waited for all of user A's gateway
+    calls (three calls of up to 12 s each). Now a slow or failing account delays only itself. Within one user
+    exits go before entries: getting out is never queued behind getting in.
+    """
+    try:
+        users = store.copying_users()
+    except Exception:  # noqa: BLE001
+        _log.exception("could not read the copying users")
+        return 0
+    _log_not_copying(ev)
+    for u in users:
+        _enqueue_for(u, ev)
+    return len(users)
+
+
+def _log_not_copying(ev: dict) -> None:
+    """V: an entry that a connected account does not take is written to that account's log with the reason.
+    No broker call is made for these accounts."""
+    if ev.get("type") != "ENTRY":
+        return
+    try:
+        for a in store.not_copying_accounts():
+            _safe_log(a["username"], "SKIPPED", symbol=ev.get("symbol"), side=ev.get("side"),
+                      admin_trade_id=ev.get("trade_id"), strategy=ev.get("strategy"),
+                      shares=int(a.get("shares") or store.DEFAULT_SHARES), admin_price=ev.get("entry"),
+                      reason=a["why"])
+    except Exception:  # noqa: BLE001
+        _log.exception("could not record the accounts that are not copying")
+
+
+def _enqueue_for(u: dict, ev: dict) -> None:
+    name = u.get("username")
+    with _user_queues_lock:
+        q = _user_queues.get(name)
+        if q is None or not q["thread"].is_alive():
+            q = {"exits": deque(), "entries": deque(), "cv": threading.Condition()}
+            q["thread"] = threading.Thread(target=_user_loop, args=(name, q), name="user-copy-%s" % str(name)[-4:], daemon=True)
+            _user_queues[name] = q
+            q["thread"].start()
+    with q["cv"]:
+        (q["exits"] if ev.get("type") == "EXIT" else q["entries"]).append((dict(u), dict(ev)))
+        q["cv"].notify()
+
+
+def _user_loop(name: str, q: dict) -> None:
+    while not _stop:
+        with q["cv"]:
+            while not q["exits"] and not q["entries"] and not _stop:
+                q["cv"].wait(5.0)
+            item = q["exits"].popleft() if q["exits"] else (q["entries"].popleft() if q["entries"] else None)
+        if item is None:
+            continue
+        u, ev = item
+        try:
+            _for_user(u, ev)
+        except Exception as exc:  # noqa: BLE001 - layer 2 of the isolation
+            _log.exception("copy failed for %s", name)
+            _safe_log(name, "ERROR", symbol=ev.get("symbol"), admin_trade_id=ev.get("trade_id"),
+                      reason="%s: %s" % (type(exc).__name__, exc))
+
+
+def user_queue_depths() -> dict:
+    with _user_queues_lock:
+        return {str(n)[-4:]: len(q["exits"]) + len(q["entries"]) for n, q in _user_queues.items()}
 
 
 def dispatch(ev: dict) -> list:
@@ -170,13 +271,23 @@ def dispatch(ev: dict) -> list:
 
 
 def _for_user(u: dict, ev: dict) -> dict:
-    if ev.get("type") == "ENTRY":
-        return _open_for(u, ev)
-    return _close_for(u, ev)
+    # V: every row this call writes carries how long each step took, starting with the wait in the queue.
+    _tl.steps = {}
+    if ev.get("_queued_at"):
+        _tl.steps["queue_wait_ms"] = int(round((time.time() - float(ev["_queued_at"])) * 1000))
+    try:
+        if ev.get("type") == "ENTRY":
+            return _open_for(u, ev)
+        return _close_for(u, ev)
+    finally:
+        _tl.steps = None
 
 
 def _safe_log(username: str, event: str, **cols) -> None:
     try:
+        st = _steps()
+        if st and "timing" not in cols:
+            cols["timing"] = json.dumps(st, separators=(",", ":"))
         store.log_order(username, event, **cols)
     except Exception:  # noqa: BLE001
         _log.exception("could not log %s for %s", event, username)
@@ -240,9 +351,10 @@ def _entry_refused(u: dict, ev: dict, token: str) -> Optional[str]:
     capped = dts.stop_cap_reason(ev.get("entry"), ev.get("stop"))
     if capped:
         return capped                                                        # the same 2.5% cap our book uses
-    open_now = store.open_tickets(u["username"])
-    if len(open_now) >= int(u.get("max_positions") or store.DEFAULT_MAX_POSITIONS):
-        return "MAX_OPEN_POSITIONS"
+    cap = int(u.get("max_positions") or store.DEFAULT_MAX_POSITIONS)
+    really_open = open_count(u["username"], token)
+    if really_open >= cap:
+        return "MAX_OPEN_POSITIONS: %d open, your limit is %d" % (really_open, cap)
     pct = float(u.get("daily_loss_pct") or store.DEFAULT_DAILY_LOSS_PCT)
     realized = store.realized_today(u["username"])
     if realized < 0 and pct > 0:
@@ -251,6 +363,165 @@ def _entry_refused(u: dict, ev: dict, token: str) -> Optional[str]:
             return "EQUITY_UNKNOWN"                                          # fail closed: no equity, no new risk
         if abs(realized) >= eq * pct / 100.0:
             return "DAILY_LOSS_LIMIT"
+    return None
+
+
+# --------------------------------------------------------------------------- V: the broker is the truth
+def live_tickets(username: str, token: str, *, fresh: bool = False) -> Optional[set]:
+    """Tickets really open in the user's account right now, or None when the broker could not be read."""
+    hit = _live_cache.get(username)
+    if hit and not fresh and time.time() - hit[1] < LIVE_TTL_S:
+        return hit[0]
+    live = _timed("positions_ms", bridge.positions, token=token, strict_token=True)
+    if not live.get("ok"):
+        _live_cache[username] = (None, time.time())
+        return None
+    out = set()
+    for p in live.get("positions") or []:
+        try:
+            out.add(int(p.get("ticket")))
+        except (TypeError, ValueError):
+            continue
+    _live_cache[username] = (out, time.time())
+    return out
+
+
+def _fill_epoch(row: dict) -> float:
+    at = row.get("at")
+    try:
+        if isinstance(at, str):
+            from datetime import datetime
+            at = datetime.fromisoformat(at.replace("Z", "+00:00"))
+        return at.timestamp() if at is not None else time.time() - 30 * 86400.0
+    except Exception:  # noqa: BLE001
+        return time.time() - 30 * 86400.0
+
+
+def settle_closed_at_broker(name: str, row: dict, token: str, *, software_reason: Optional[str] = None,
+                            admin_price=None) -> dict:
+    """Record a position the BROKER closed (its own stop, target or a manual close) as CLOSED.
+
+    Called only when the broker's own open-position list was read successfully and this ticket is not in it.
+    Until kit V such a row was written CLOSE_UNCONFIRMED and left open for ever; on account ..7036 twenty of
+    them filled the position ceiling and blocked 414 signals in five days.
+
+    The price comes from the broker's order history when it has one. When it does not, the row is still
+    closed - the position does not exist - with the price and P&L left empty and the reason saying so.
+    """
+    common = {"symbol": row.get("symbol"), "broker_symbol": row.get("broker_symbol"), "side": row.get("side"),
+              "shares": row.get("shares"), "volume": row.get("volume"), "admin_trade_id": row.get("admin_trade_id"),
+              "strategy": row.get("strategy"), "ticket": row.get("ticket"), "admin_price": admin_price}
+    hist = _timed("history_ms", bridge.closed_order, int(row["ticket"]), _fill_epoch(row), token=token, strict_token=True)
+    if hist.get("ok") and hist.get("found"):
+        fill = hist.get("price")
+        _safe_log(name, "CLOSED", price=fill, pnl=_pnl(row, fill),
+                  reason="AT_BROKER:%s at %s%s" % (hist.get("how") or "OTHER", hist.get("time") or "?",
+                                                   ("; software exit: %s" % software_reason) if software_reason else ""),
+                  **common)
+        return {"ok": True, "at_broker": True, "price": fill}
+    why = "no closed order with this ticket in the broker's history" if hist.get("ok") \
+        else "the broker's history could not be read (%s)" % (hist.get("reason") or "unknown")
+    _safe_log(name, "CLOSED", price=None, pnl=None,
+              reason="AT_BROKER:PRICE_UNKNOWN - the position is not open at the broker; %s%s"
+              % (why, ("; software exit: %s" % software_reason) if software_reason else ""), **common)
+    return {"ok": True, "at_broker": True, "price": None}
+
+
+def reconcile_user(name: str, token: Optional[str] = None) -> dict:
+    """Make our log agree with the broker: every log-open row whose ticket is not open there is settled.
+
+    READS the broker's position list and order history; sends no order and no close. Safe to call at any time
+    and any number of times: a row settled once is no longer log-open, so it is never settled twice.
+    """
+    if token is None:
+        token, err = usvc.session_for(name)
+        if err:
+            return {"ok": False, "reason": err.get("reason"), "detail": err.get("detail")}
+    rows = store.open_tickets(name)
+    if not rows:
+        _last_reconcile[name] = time.time()
+        return {"ok": True, "log_open": 0, "really_open": 0, "settled": 0}
+    live = live_tickets(name, token, fresh=True)
+    if live is None:
+        return {"ok": False, "reason": "POSITIONS_UNREADABLE", "detail": "the broker's open positions could not be read"}
+    settled = 0
+    for row in rows:
+        try:
+            if int(row["ticket"]) in live:
+                continue
+        except (TypeError, ValueError):
+            continue
+        if not _begin_close(name, row["ticket"]):
+            continue                                       # a close for this ticket is in flight right now
+        try:
+            settle_closed_at_broker(name, row, token)
+            settled += 1
+        finally:
+            _end_close(name, row["ticket"])
+    _last_reconcile[name] = time.time()
+    if settled:
+        _log.warning("reconciled %s: %d position(s) were closed at the broker and are now recorded closed", str(name)[-4:], settled)
+    return {"ok": True, "log_open": len(rows), "really_open": len(rows) - settled, "settled": settled}
+
+
+def open_count(name: str, token: str) -> int:
+    """How many of OUR positions are really open in this user's account - what the position cap counts.
+
+    The log says which positions are ours; the broker says which of them still exist. When the broker cannot
+    be read the log's own count is used, which can only over-count: the cap fails closed, never open.
+    """
+    rows = store.open_tickets(name)
+    if not rows:
+        return 0
+    stale = time.time() - float(_last_reconcile.get(name) or 0) >= RECONCILE_EVERY_S
+    live = live_tickets(name, token)
+    if live is None:
+        return len(rows)
+    missing = [r for r in rows if _ticket_int(r) not in live]
+    if missing or stale:
+        res = reconcile_user(name, token)
+        if res.get("ok"):
+            return int(res["really_open"])
+    return len(rows) - len(missing)
+
+
+def _ticket_int(row: dict) -> Optional[int]:
+    try:
+        return int(row.get("ticket"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _begin_close(name: str, ticket) -> bool:
+    with _closing_lock:
+        key = (name, str(ticket))
+        if key in _closing:
+            return False
+        _closing.add(key)
+        return True
+
+
+def _end_close(name: str, ticket) -> None:
+    with _closing_lock:
+        _closing.discard((name, str(ticket)))
+
+
+def _margin_refusal(name: str, token: str, bsym: str, side: str, volume: float) -> Optional[str]:
+    """V: "Not enough margin", decided from the broker's own figures before the order is sent.
+
+    Free margin from the account summary, the requirement from the broker's RequiredMargin for this exact
+    order. When either cannot be read the order is NOT blocked here: the broker still decides, and its own
+    "not enough money" refusal is recorded under the same plain reason.
+    """
+    if not token:
+        return None                                        # never read an account without the user's own session
+    acct = _timed("account_ms", bridge.account, token=token)
+    free = (acct.get("account") or {}).get("margin_free") if acct.get("ok") else None
+    need = _timed("margin_ms", bridge.required_margin, bsym, side, volume, token=token, strict_token=True)
+    if free is None or not need.get("ok"):
+        return None
+    if float(need["margin"]) > float(free):
+        return "NOT_ENOUGH_MARGIN: this order needs %.2f and %.2f is free" % (float(need["margin"]), float(free))
     return None
 
 
@@ -295,14 +566,24 @@ def _open_for(u: dict, ev: dict) -> dict:
         _safe_log(name, "SKIPPED", broker_symbol=bsym, reason="SKIPPED_SIZE: %s" % z["reason"], **common)
         return {"ok": False, "reason": "SKIPPED_SIZE"}
 
-    t = bridge.tick(bsym, token=token, strict_token=True)
+    short = _margin_refusal(name, token, bsym, side, z["volume"])
+    if short:
+        _safe_log(name, "SKIPPED", broker_symbol=bsym, volume=z["volume"], reason=short, **common)
+        return {"ok": False, "reason": "NOT_ENOUGH_MARGIN"}
+
+    t = _timed("quote_ms", bridge.tick, bsym, token=token, strict_token=True)
     ref = (t.get("ask") if side in ("BUY", "LONG") else t.get("bid")) if t.get("ok") else None
     _throttle()
-    res = bridge.market_order(bsym, side, z["volume"], sl=ev.get("stop"), tp=ev.get("target"),
-                              deviation_points=AT.DEVIATION_POINTS, magic=AT.magic_for(strat),
-                              comment="TRDGO copy #%s" % tid, sym_info=info, token=token, strict_token=True)
+    res = _timed("order_ms", bridge.market_order, bsym, side, z["volume"], sl=ev.get("stop"), tp=ev.get("target"),
+                 deviation_points=AT.DEVIATION_POINTS, magic=AT.magic_for(strat),
+                 comment="TRDGO copy #%s" % tid, sym_info=info, token=token, strict_token=True)
+    _live_cache.pop(name, None)                           # the position list just changed
     if not res.get("ok"):
         why = _refusal_text(res)
+        if any(w in why.lower() for w in ("not enough money", "no money", "margin")):
+            _safe_log(name, "SKIPPED", broker_symbol=bsym, volume=z["volume"],
+                      reason="NOT_ENOUGH_MARGIN: the broker refused the order (%s)" % why[:120], **common)
+            return {"ok": False, "reason": "NOT_ENOUGH_MARGIN"}
         _safe_log(name, "REJECTED", broker_symbol=bsym, volume=z["volume"], reason=why, **common)
         return {"ok": False, "reason": res.get("retcode_text") or res.get("reason") or "REJECTED"}
 
@@ -359,35 +640,50 @@ def close_row(name: str, row: dict, reason: str, *, admin_price=None) -> dict:
     common = {"symbol": row.get("symbol"), "broker_symbol": row.get("broker_symbol"), "side": row.get("side"),
               "shares": row.get("shares"), "volume": row.get("volume"), "admin_trade_id": tid,
               "strategy": row.get("strategy"), "ticket": row.get("ticket"), "admin_price": admin_price}
+    if not _begin_close(name, row.get("ticket")):
+        return {"ok": False, "reason": "CLOSE_IN_PROGRESS"}        # the sweep and an exit event met: one of them closes
+    try:
+        return _close_row_locked(name, row, ev, common, tid)
+    finally:
+        _end_close(name, row.get("ticket"))
+        _live_cache.pop(name, None)
+
+
+def _close_row_locked(name: str, row: dict, ev: dict, common: dict, tid) -> dict:
     token, err = usvc.session_for(name)
     if err:
         _safe_log(name, "CLOSE_FAIL", reason="%s: %s" % (err.get("reason"), err.get("detail") or ""), **common)
         return {"ok": False, "reason": err.get("reason")}
 
-    t = bridge.tick(row.get("broker_symbol"), token=token, strict_token=True)
+    t = _timed("quote_ms", bridge.tick, row.get("broker_symbol"), token=token, strict_token=True)
     ref = (t.get("bid") if row.get("side") in ("BUY", "LONG") else t.get("ask")) if t.get("ok") else None
     last = {}
     for attempt in range(1, AT.MAX_CLOSE_ATTEMPTS + 1):
         _throttle()
-        last = bridge.close_position(int(row["ticket"]), deviation_points=AT.DEVIATION_POINTS * attempt,
-                                     magic=AT.magic_for(row.get("strategy")),
-                                     comment="TRDGO copy %s #%s" % ((ev.get("reason") or "EXIT")[:10], tid),
-                                     token=token, strict_token=True)
+        last = _timed("close_ms", bridge.close_position, int(row["ticket"]), deviation_points=AT.DEVIATION_POINTS * attempt,
+                      magic=AT.magic_for(row.get("strategy")),
+                      comment="TRDGO copy %s #%s" % ((ev.get("reason") or "EXIT")[:10], tid),
+                      token=token, strict_token=True)
         if last.get("ok") and last.get("price") is not None:
             fill = last.get("price")
             _safe_log(name, "CLOSED", price=fill, slippage=_slip(ref, fill, row.get("side"), opening=False),
                       pnl=_pnl(row, fill), reason=ev.get("reason"), **common)
             return {"ok": True, "attempts": attempt}
         if last.get("ok"):
-            # F.1: "ok" with no fill price means the broker could not see the ticket - which is what a close
-            # aimed at the WRONG ACCOUNT looks like. On 2026-11-16 every one of these was written as CLOSED,
-            # so the book read flat while 25 positions stayed open. It is now recorded as unconfirmed, the
-            # row stays open so the sweep retries it, and it is visible on the page.
-            _safe_log(name, "CLOSE_UNCONFIRMED", reason="the broker confirmed no fill for this ticket: %s"
-                      % (last.get("retcode_text") or last.get("reason") or "no price returned"), **common)
-            _log.error("unconfirmed close for %s ticket %s (%s): the position may still be open",
-                       name, row.get("ticket"), row.get("symbol"))
-            return {"ok": False, "reason": "CLOSE_UNCONFIRMED"}
+            # "ok" with no fill price means the broker's own open-position list was read and this ticket is
+            # not in it. F.1 (2026-11-16) recorded that as unconfirmed and left the row open, because closes
+            # were then being aimed at the WRONG account. Since F.1 every call here carries this user's own
+            # verified session (session_for, strict_token), so "not open in this account" is what it says.
+            # V: check once more with a fresh read, then record what the broker did. Never left open again.
+            live = live_tickets(name, token, fresh=True)
+            if live is not None and _ticket_int(row) in live:
+                continue                                   # it IS still open: the first read was stale, try again
+            if live is None:
+                _safe_log(name, "CLOSE_FAIL", reason="the broker's open positions could not be re-read to confirm "
+                          "this close; it will be checked again", **common)
+                return {"ok": False, "reason": "POSITIONS_UNREADABLE"}
+            settle_closed_at_broker(name, row, token, software_reason=ev.get("reason"), admin_price=common.get("admin_price"))
+            return {"ok": True, "at_broker": True, "attempts": attempt}
         if last.get("retcode_text") == "NO_RETRY":
             break
         time.sleep(0.5 * attempt)
@@ -461,7 +757,11 @@ def user_status(username: str) -> dict:
     else:
         blocked = None
     running = bool(_worker and _worker.is_alive())
-    return {"stage": "C.2", "live": True, "copying": copying, "blocked_reason": blocked, "settings": st,
+    gateway = bridge.gateway_status()
+    if blocked is None and not gateway.get("ok"):
+        blocked = gateway.get("message")
+    return {"stage": "C.2", "live": True, "copying": copying and bool(gateway.get("ok")), "blocked_reason": blocked,
+            "gateway": gateway, "settings": st,
             "open_positions": len(open_now), "realized_today": round(realized, 2),
             "worker_running": running, "worker_error": (None if running else worker_error()),
             "note": ("Orders are being placed in your own account." if copying
@@ -507,6 +807,19 @@ def open_rows_all_users() -> list:
 def sweep_now(reason: str = "EOD_SWEEP") -> dict:
     """Close every open user position. Safe to call twice: a row already closed is simply not in the list."""
     closed = failed = 0
+    # V: first make every account's log agree with the broker, so the sweep only tries to close positions
+    # that exist. Before this each phantom row was retried every 30 s for the whole window, every day.
+    try:
+        for acct in store.all_accounts():
+            name = acct.get("username")
+            try:
+                if store.open_tickets(name):
+                    res = reconcile_user(name)
+                    closed += int(res.get("settled") or 0) if res.get("ok") else 0
+            except Exception:  # noqa: BLE001
+                _log.exception("could not reconcile %s before the sweep", str(name)[-4:])
+    except Exception:  # noqa: BLE001
+        _log.exception("could not list the accounts to reconcile before the sweep")
     for name, row in open_rows_all_users():
         try:
             res = close_row(name, row, reason)
