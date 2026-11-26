@@ -691,8 +691,13 @@
 .app-nu .sm .sm-filters {
   min-height: 40px; margin-top: 12px; align-items: center; gap: 13px; flex-wrap: wrap;
 }
-.app-nu .sm .sm-filters .sm-tabs { height: 40px; }
-.app-nu .sm .sm-filters .sm-tab { height: 40px; padding: 0 16px; font-size: 13px; }
+/* The pills were pinned to the frame's 40px in BOTH directions: the row could not wrap and the pill
+   could not grow, so a long label (NOT TRADABLE (3), CALENDAR MISSING UNCONFIRMED) broke onto two or
+   three lines and spilled out of its own outline. The label now stays on one line, the height is a
+   minimum, and the row wraps onto a second line when the pills do not fit. */
+.app-nu .sm .sm-filters .sm-tabs { height: auto; min-height: 40px; flex-wrap: wrap; gap: 8px; border-bottom: 0; }
+.app-nu .sm .sm-filters .sm-tab { height: auto; min-height: 40px; padding: 0 16px; font-size: 13px;
+  white-space: nowrap; margin-bottom: 0; flex: 0 0 auto; }
 
 /* 2:1418 the results table: navy header 40, rows 58 */
 .app-nu .sm .sm-q-table thead th {
