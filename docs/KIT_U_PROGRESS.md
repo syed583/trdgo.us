@@ -27,3 +27,18 @@ UI suite 84/84, tsc (tsconfig.app.json) clean, production build clean.
   `deploy/make_u1.py`; differs from it only in the header, the letter, and the two pins).
 - PreCheck must read `backend files: 2 changed` (tab_b_service.py, tab_settings.py).
 - NOT pushed, NOT installed.
+
+## Installed and checked live (2026-11-26, ~13:45 Dubai)
+- Owner pushed and installed; the install output was not pasted, so PreCheck/PostCheck lines are not on record.
+- GitHub served the pinned runner and manifest (hashes matched) before the install.
+- Live site, read through the owner's logged-in page (read-only):
+  hero cards 0; menu has no Post-Earnings AI / Institutional Intelligence; My Broker shows hero + tiles,
+  4 cards, nothing clipped, band "Real orders are being placed in your account".
+- IV Crush right after the restart: universe 0 for about two minutes (the earnings calendar is read on
+  demand and was cold), then 88.
+- IV Crush refill: 57 stuck rows were queued at once (`refetch` 57). Two minutes later 14 had been
+  recomputed: 10 dropped by the liquidity filter, 1 newly priced (CRWD, expiry 2026-12-04, strike 230),
+  the rest computed EMPTY again with no 10-sessions-ago date (the daily-candles read returned nothing,
+  e.g. CTRN, OOMA, TCOM). So the stuck-row bug is fixed, and a SECOND problem is exposed: for most of
+  these names the provider read returns nothing. Not diagnosed. `/api/uw/budget` shows
+  `denied: YIELD_TO_LIVE_QUEUE 29,624` for the day - a lead, not a finding. US market closed (holiday).

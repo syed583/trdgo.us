@@ -78,6 +78,7 @@ the GitHub archive of the pinned commit, verifies the manifest anchor, backs up,
 | R | `d4b7bab6…` | `8d11a731…` | `57E35FD1…` | **live** 2026-11-23 09:22 VPS |
 | S | `5b8ac6a3ab28fe75011d58e32bc09fcd01e34823` | `859ff0472057ee21e69112bfb03a131e10aa5df8d68edc037128cdc795872bb6` | `3C3264DFCEED5E823CF04E6F068F001BED22B8CB10AD9ED0CCFFADB307C1A339` | **live** 2026-11-23 13:42 VPS |
 | T | `c1601f538c9953ee3f3bb7f4154763c380f39fb8` | `6362f0304ccc6e8b4063a40192e693cb461cb9ab20b5e889bf5ba4790b69da09` | `88CE2CCF0F323A2C9EBA79C54F60A6A93BF286C339F4879269707D575956E912` | **live** 2026-11-25 10:28 VPS (installer `8aaaa5a7`, backup `_backup_t1_20261125_102820`; frontend only: Strategy Trades live event strip) |
+| U | `5a9a16c8e7a429e96801793b3de32d31c491ff2a` | `df9089b1c5717ad8c20c69f05333129984e2e485ba4ce9f96a7e42146514d927` | `3F944A97473B55527F7F96FFE60D5860C701D6114D39D0E4F6F2B9EE67681217` | **live** 2026-11-26 (installer `ac643cee`; owner installed, output not pasted; verified on the live site: hero cards gone, two menu entries hidden, My Broker redesign, IV Crush refill active - most refilled rows still come back empty, see docs/KIT_U_PROGRESS.md) |
 
 Kit S installer commit: **`ef9b90a6`**. Runner URL:
 `https://raw.githubusercontent.com/syed583/trdgo.us/ef9b90a6/deploy/s1_run.ps1`
