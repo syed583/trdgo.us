@@ -149,9 +149,7 @@ def main() -> int:
             " AND reason NOT LIKE 'MAX_OPEN_POSITIONS%' AND reason NOT LIKE 'DAILY_LOSS_LIMIT%'"
             " GROUP BY SUBSTR(reason, 1, 150) ORDER BY COUNT(*) DESC LIMIT 8"), {"u": user, "d": first}).mappings().all()]
         sw_open_now = db.execute(text("SELECT COUNT(*) FROM demo_trades WHERE status = 'OPEN'")).scalar()
-        sw_status = {str(r[0]): r[1] for r in db.execute(text(
-            "SELECT id, status FROM demo_trades WHERE id IN (SELECT CAST(admin_trade_id AS INTEGER) FROM user_mt5_orders"
-            " WHERE username = :u AND event = 'FILLED' AND admin_trade_id IS NOT NULL)"), {"u": user}).all()}
+        sw_status = {str(r[0]): r[1] for r in db.execute(text("SELECT id, status FROM demo_trades")).all()}
     finally:
         db.rollback()
         db.close()
