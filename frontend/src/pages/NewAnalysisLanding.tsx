@@ -227,10 +227,6 @@ export default function NewAnalysisLanding({
             <span className="nd-feat-ico amber"><Layers size={18} /></span>
             <span><b>Options Flow</b><i>Unusual contracts and disparity</i></span>
           </NavLink>
-          <NavLink to="/strategy-trades" className="nd-hero-feat">
-            <span className="nd-feat-ico green"><Target size={18} /></span>
-            <span><b>Strategy Trades</b><i>Tracked entries, stops and exits</i></span>
-          </NavLink>
           <NavLink to="/smart-move/engine20" className="nd-hero-feat">
             <span className="nd-feat-ico blue"><Zap size={18} /></span>
             <span><b>Smart Money Move</b><i>Calls before the window closes</i></span>
