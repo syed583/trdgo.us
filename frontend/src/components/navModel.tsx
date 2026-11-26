@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Activity, Brain, Building2, CalendarDays, Compass, Crosshair, FlaskConical, Flame, Gauge, History, Layers, LineChart, Receipt, Users,
+  Activity, Brain, CalendarDays, Compass, Crosshair, FlaskConical, Flame, Gauge, History, Layers, LineChart, Receipt, Users,
   LayoutDashboard, Link2, ListOrdered, Menu, Newspaper, PanelLeftClose, PanelLeftOpen,
   Scale, ScrollText, Settings, ShieldCheck, Sparkles, Star, TrendingUp, UserCog, Waves, Waypoints, X, Zap,
 } from 'lucide-react';
@@ -84,7 +84,9 @@ const NAV_GROUPS: NavGroup[] = [
     { to: '/volatility', label: 'Volatility', icon: <LineChart size={S} /> },
     { to: '/dark-pool', label: 'Dark Pool', icon: <Waves size={S} /> },
     { to: '/market-insiders', label: 'Market Insiders', icon: <UserCog size={S} /> },
-    { to: '/institutional-intel', label: 'Institutional Intelligence', icon: <Building2 size={S} /> },
+    // Institutional Intelligence hidden from the menu 2026-11-26 (owner decision): the SEC 13F dataset was
+    // never configured on production, so every tab answered "dev dataset is not configured". The route
+    // /institutional-intel and the module stay; nothing is deleted.
   ] },
   { heading: 'Lists', items: [
     { to: '/watchlist', label: 'Watchlist', icon: <Star size={S} /> },
