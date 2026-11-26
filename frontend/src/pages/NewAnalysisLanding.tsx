@@ -215,15 +215,8 @@ export default function NewAnalysisLanding({
           <div className="nal-controls">{controls}</div>
         </div>
 
-        {/* Links to pages that exist. No figure is claimed on this artwork: the four cards the design
-            painted into the image were replaced by real ones on the old landing, and a landing that
-            states a number the server does not measure is the thing we removed, not a thing to add. */}
-        <div className="nd-hero-right nal-feats">
-          <NavLink to="/earnings-calendar" className="nd-hero-feat">
-            <span className="nd-feat-ico violet"><CalendarDays size={18} /></span>
-            <span><b>Earnings</b><i>Dates, estimates and surprises</i></span>
-          </NavLink>
-        </div>
+        {/* The four link cards that sat here were removed at the owner's request (2026-11-26); every one
+            of those pages is still in the side menu. */}
       </section>
 
       {/* ------------------------------------------------------------ index strip */}
