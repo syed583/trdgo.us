@@ -491,6 +491,31 @@ def open_count(name: str, token: str) -> int:
     return len(rows) - len(missing)
 
 
+CLOSE_RETRY_S = 45.0
+_retry_pending: set = set()
+
+
+def _retry_close_later(name: str, row: dict, reason: str, admin_price) -> None:
+    """One delayed second attempt per ticket, on its own timer thread. Never more than one pending."""
+    key = (name, str(row.get("ticket")))
+    with _closing_lock:
+        if key in _retry_pending:
+            return
+        _retry_pending.add(key)
+
+    def _again() -> None:
+        with _closing_lock:
+            _retry_pending.discard(key)
+        try:
+            if store.open_row(name, row.get("admin_trade_id")):
+                close_row(name, row, reason, admin_price=admin_price)
+        except Exception:  # noqa: BLE001
+            _log.exception("delayed close failed for %s ticket %s", str(name)[-4:], row.get("ticket"))
+    tm = threading.Timer(CLOSE_RETRY_S, _again)
+    tm.daemon = True
+    tm.start()
+
+
 def _ticket_int(row: dict) -> Optional[int]:
     try:
         return int(row.get("ticket"))
@@ -688,6 +713,15 @@ def _close_row_locked(name: str, row: dict, ev: dict, common: dict, tid) -> dict
                 _safe_log(name, "CLOSE_FAIL", reason="the broker's open positions could not be re-read to confirm "
                           "this close; it will be checked again", **common)
                 return {"ok": False, "reason": "POSITIONS_UNREADABLE"}
+            if time.time() - _fill_epoch(row) < RECONCILE_MIN_AGE_S:
+                # Filled moments ago and not in the broker's list: far more likely a list that has not caught
+                # up than a position that opened and was stopped out within seconds. Do NOT record it closed.
+                # Try the close again shortly; if it is still absent once it is old enough, reconciliation
+                # settles it, and if it is there, this closes it.
+                _safe_log(name, "CLOSE_FAIL", reason="filled moments ago and not yet in the broker's position list; "
+                          "the close is retried in %d s" % int(CLOSE_RETRY_S), **common)
+                _retry_close_later(name, row, ev.get("reason") or "EXIT", common.get("admin_price"))
+                return {"ok": False, "reason": "TOO_NEW_TO_CONFIRM"}
             settle_closed_at_broker(name, row, token, software_reason=ev.get("reason"), admin_price=common.get("admin_price"))
             return {"ok": True, "at_broker": True, "attempts": attempt}
         if last.get("retcode_text") == "NO_RETRY":

@@ -215,3 +215,17 @@ def test_a_position_filled_moments_ago_is_never_judged_closed(rig):
     CP.dispatch(dict(ENTRY, trade_id="T2"))
     assert len(broker.orders["tok-ann"]) == 1                             # still counted: the cap holds
     assert not st.events("ann", "CLOSED")
+
+
+def test_an_exit_seconds_after_the_fill_does_not_record_a_close_the_broker_never_made(rig, monkeypatch):
+    from datetime import datetime, timezone
+    broker, st, _ = rig; _one(st)
+    CP.dispatch(ENTRY)
+    st.open["ann"][0]["at"] = datetime.now(timezone.utc)
+    broker.accounts["tok-ann"]["gone"] = {_ticket(broker)}                # the list has not caught up with the fill
+    scheduled = []
+    monkeypatch.setattr(CP, "_retry_close_later", lambda *a: scheduled.append(a))
+    CP.dispatch(EXIT)
+    assert not st.events("ann", "CLOSED") and len(st.open_tickets("ann")) == 1   # still ours, still tracked
+    assert st.events("ann", "CLOSE_FAIL")[0]["reason"].startswith("filled moments ago")
+    assert len(scheduled) == 1                                            # and a second attempt is booked
