@@ -233,9 +233,9 @@
 .app-nu .mb-hero p { max-width: 64ch; margin-bottom: 14px; color: var(--nu-on-photo-dim); }
 .app-nu .mb-hero .nd-eyebrow { display: inline-flex; align-items: center; gap: 7px; }
 .app-nu .mb .mb-btn.mb-hero-refresh {
-  background: rgba(255, 255, 255, .10); border-color: var(--nu-on-photo-line); color: var(--nu-on-photo);
+  background: color-mix(in srgb, var(--nu-on-photo) 10%, transparent); border-color: var(--nu-on-photo-line); color: var(--nu-on-photo);
 }
-.app-nu .mb .mb-btn.mb-hero-refresh:hover:not(:disabled) { background: rgba(255, 255, 255, .18); border-color: var(--nu-on-photo-line); }
+.app-nu .mb .mb-btn.mb-hero-refresh:hover:not(:disabled) { background: color-mix(in srgb, var(--nu-on-photo) 18%, transparent); border-color: var(--nu-on-photo-line); }
 
 /* every block under the hero sits on the page with the same gutter the other redesigned pages use */
 .app-nu .mb > *:not(.mb-hero) { margin: 14px 18px 0; }
@@ -311,7 +311,7 @@
 .app-nu .mb-card { overflow-x: auto; }
 .app-nu .mb-table { color: var(--nu-ink); font-size: 13px; }
 .app-nu .mb-table th {
-  background: linear-gradient(180deg, #16294a 0%, #0f1f3d 100%); color: #cfdcf2;
+  background: var(--nu-ink); color: var(--nu-card);
   font-size: 12px; font-weight: 500; padding: 10px 12px; border-bottom: 0;
 }
 .app-nu .mb-table th:first-child { border-radius: 10px 0 0 10px; }

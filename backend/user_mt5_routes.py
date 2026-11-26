@@ -53,6 +53,14 @@ def my_mt5(request: Request) -> dict:
     me = _me(request)
     out = dict(svc.status(me), risk_notice=RISK_NOTICE, copy_notice=COPY_NOTICE)
     out["copy_trading"] = copysvc.user_status(me)
+    # V: the user reads what went wrong in plain words; our supplier's name stays out of the page.
+    import user_mt5_plain as _plain
+    acct = out.get("account")
+    if isinstance(acct, dict) and acct.get("last_error"):
+        acct["last_error"] = _plain.plain(acct["last_error"], "SKIPPED")
+    gw = (out["copy_trading"] or {}).get("gateway")
+    if isinstance(gw, dict):
+        out["copy_trading"]["gateway"] = {k: gw.get(k) for k in ("ok", "kind", "message", "since")}
     return out
 
 
@@ -222,6 +230,8 @@ def my_orders(request: Request, limit: int = 100) -> dict:
             r["strategy"] = _privacy.agent_label(r["strategy"])
         # key="detail": an attribution field, so a vendor OR a model name in our own text is replaced
         r["reason"] = _privacy.scrub_text(r.get("reason"), key="detail")
+        import user_mt5_plain as _plain
+        r["reason"] = _plain.plain(r["reason"], r.get("event")) if r.get("reason") else r.get("reason")
     return {"ok": True, "orders": rows}
 
 

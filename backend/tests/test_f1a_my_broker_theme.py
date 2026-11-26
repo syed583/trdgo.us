@@ -41,9 +41,12 @@ def test_no_colour_fallbacks_in_var():
 def test_only_tokens_that_actually_exist():
     """Every --token used here must be defined in styles.css, or it silently renders as nothing."""
     declared = set(re.findall(r"^\s*(--[\w-]+)\s*:", (SRC / "styles.css").read_text(encoding="utf-8"), re.M))
+    # Kit U gave the page the redesigned shell's look. Those rules live under .app-nu and use the shell's own
+    # tokens (--nu-*), which new-shell.css defines for both themes - the same rule, a second token file.
+    declared |= set(re.findall(r"^\s*(--nu-[\w-]+)\s*:", (SRC / "new-shell.css").read_text(encoding="utf-8"), re.M))
     used = set(re.findall(r"var\(\s*(--[\w-]+)", _declarations()))
     missing = sorted(used - declared)
-    assert missing == [], "these tokens are not defined in styles.css: %s" % missing
+    assert missing == [], "these tokens are not defined in styles.css or new-shell.css: %s" % missing
 
 
 def test_surfaces_and_text_come_from_the_same_system():
@@ -58,7 +61,7 @@ def test_the_light_theme_defines_every_token_we_rely_on():
     light = styles.split(':root[data-theme="light"]')[1].split("}")[0]
     used = set(re.findall(r"var\(\s*(--[\w-]+)", _declarations()))
     # tokens the light block does not restate inherit the dark value - fine for shapes, wrong for colour
-    colour_tokens = {t for t in used if any(k in t for k in
+    colour_tokens = {t for t in used if not t.startswith("--nu-") and any(k in t for k in
                                             ("panel", "text", "border", "green", "red", "amber", "accent", "bg"))}
     missing = sorted(t for t in colour_tokens if t not in light)
     assert missing == [], "light mode never redefines these, so they keep the dark value: %s" % missing
