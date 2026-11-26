@@ -329,3 +329,12 @@
   .app-nu .mb-hero h1 { font-size: 27px; }
   .app-nu .mb > *:not(.mb-hero) { margin: 12px 12px 0; }
 }
+
+/* Kit V: the limits as presets, and the two warnings. Tokens only. */
+.mb-rail .mb-shares { margin-bottom: 2px; }
+.mb-rail .note b { color: var(--text); }
+.mb-warn { color: var(--amber); display: inline-flex; align-items: center; gap: 5px; }
+.mb-gateway b { display: block; margin-bottom: 2px; }
+.app-nu .mb-rail .note b { color: var(--nu-ink); }
+.app-nu .mb-warn { color: var(--nu-warn); font-weight: 600; }
+.app-nu .mb-gateway { border-left-color: var(--nu-down); }

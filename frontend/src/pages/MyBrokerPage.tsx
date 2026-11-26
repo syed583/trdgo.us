@@ -24,6 +24,7 @@ import heroArt from '../assets/analysis-hero.webp';
 import './my-broker.css';
 
 const SHARE_PRESETS = [10, 20, 30, 50, 100];
+const POSITION_PRESETS = [20, 50, 100];
 
 function Badge({ state, children }: { state: 'on' | 'off' | 'warn'; children: React.ReactNode }) {
   return <span className={`mb-badge ${state}`}><i className="dot" />{children}</span>;
@@ -40,6 +41,8 @@ export default function MyBrokerPage() {
   const [preview, setPreview] = useState<any | null>(null);
   const [log, setLog] = useState<any[] | null>(null);
   const [custom, setCustom] = useState('');
+  const [customPos, setCustomPos] = useState('');
+  const [customLoss, setCustomLoss] = useState('');
 
   const d = info.data || {};
   const acct = d.account || null;
@@ -47,6 +50,9 @@ export default function MyBrokerPage() {
   const set = copy.settings || {};
   const storageReady = d.storage_ready !== false;
   const shares = Number(set.shares ?? acct?.max_shares ?? 10);
+  const maxPos = Number(set.max_positions ?? 20);
+  const lossPct = Number(set.daily_loss_pct ?? 1);
+  const gateway = copy.gateway || null;          // V: the trading connection itself, for everyone's banner
 
   const run = useCallback(async (fn: () => Promise<any>, ok: string) => {
     setBusy(true); setMsg(null);
@@ -108,6 +114,13 @@ export default function MyBrokerPage() {
           </button>
         </div>
       </section>
+      {/* V: a failed trading connection is never silent. It is the first thing on the page, above the tiles. */}
+      {gateway && gateway.ok === false && (
+        <div className="mb-msg bad mb-gateway" role="alert">
+          <b>Trading connection problem.</b> {gateway.message}
+          {' '}No orders are being placed or closed in any account until it is restored. Nothing you need to change.
+        </div>
+      )}
       {acct && (
         <div className="nd-stats mb-tiles">
           <div className="nd-stat">
@@ -190,24 +203,48 @@ export default function MyBrokerPage() {
               <span className="mb-now">now <b>{shares}</b> shares a trade</span>
             </div>
 
+            {/* V: the two limits are the user's own choices. Presets, or any number of their own. */}
             <div className="mb-rails">
               <div className="mb-rail">
-                <label htmlFor="mb-maxpos">Most positions at once</label>
-                <input id="mb-maxpos" defaultValue={set.max_positions ?? 20} inputMode="numeric"
-                  onBlur={(e) => {
-                    const n = Number(e.target.value);
-                    if (n && n !== set.max_positions) run(() => api2.myMt5Settings({ max_positions: n }), 'Saved.');
-                  }} />
-                <span className="note">New trades stop above this.</span>
+                <label htmlFor="mb-maxpos">Most positions open at once</label>
+                <div className="mb-shares">
+                  {POSITION_PRESETS.map((n) => (
+                    <button key={n} className={`mb-chip${maxPos === n ? ' on' : ''}`} disabled={busy}
+                      onClick={() => run(() => api2.myMt5Settings({ max_positions: n }), `Up to ${n} positions at once.`)}>{n}</button>
+                  ))}
+                  <input id="mb-maxpos" className="mb-custom" value={customPos} inputMode="numeric" placeholder="custom"
+                    aria-label="custom position limit"
+                    onChange={(e) => setCustomPos(e.target.value.replace(/[^0-9]/g, ''))} />
+                  <button className="mb-btn" disabled={busy || !customPos}
+                    onClick={() => run(() => api2.myMt5Settings({ max_positions: Number(customPos) }), 'Saved.')}>Set</button>
+                </div>
+                <span className="note">Now <b>{maxPos}</b>. Counts only positions really open in your account;
+                  new trades wait while you are at the limit.</span>
               </div>
               <div className="mb-rail">
                 <label htmlFor="mb-loss">Daily loss limit (% of your equity)</label>
-                <input id="mb-loss" defaultValue={set.daily_loss_pct ?? 1} inputMode="decimal"
-                  onBlur={(e) => {
-                    const n = Number(e.target.value);
-                    if (n && n !== set.daily_loss_pct) run(() => api2.myMt5Settings({ daily_loss_pct: n }), 'Saved.');
-                  }} />
-                <span className="note">No new trades once you lose this much in a day.</span>
+                <div className="mb-shares">
+                  {[1, 2, 5].map((n) => (
+                    <button key={n} className={`mb-chip${lossPct === n ? ' on' : ''}`} disabled={busy}
+                      onClick={() => run(() => api2.myMt5Settings({ daily_loss_pct: n }), `Daily loss limit ${n}%.`)}>{n}%</button>
+                  ))}
+                  <input id="mb-loss" className="mb-custom" value={customLoss} inputMode="decimal" placeholder="custom %"
+                    aria-label="custom daily loss limit percent"
+                    onChange={(e) => setCustomLoss(e.target.value.replace(/[^0-9.]/g, ''))} />
+                  <button className="mb-btn" disabled={busy || !customLoss || !(Number(customLoss) > 0)}
+                    onClick={() => run(() => api2.myMt5Settings({ daily_loss_pct: Number(customLoss) }), 'Saved.')}>Set</button>
+                  <button className={`mb-chip${lossPct === 0 ? ' on' : ''}`} disabled={busy}
+                    onClick={() => {
+                      if (lossPct !== 0 && !window.confirm(
+                        'Switch the daily loss limit OFF?\n\nNothing will stop new trades after a losing day. '
+                        + 'Losses in your account are yours. You can switch it back on at any time.')) return;
+                      run(() => api2.myMt5Settings({ daily_loss_pct: 0 }), 'Daily loss limit is OFF.');
+                    }}>Off</button>
+                </div>
+                {lossPct === 0
+                  ? <span className="note mb-warn"><AlertTriangle size={12} /> The daily loss limit is OFF. New trades
+                    continue after any loss.</span>
+                  : <span className="note">Now <b>{lossPct}%</b>. No new trades once you lose this much in a day.</span>}
               </div>
             </div>
 
