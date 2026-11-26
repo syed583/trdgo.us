@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import time
 import urllib.error
@@ -28,6 +29,134 @@ DEFAULT_BASE_URL = "https://mt5.mtapi.io/"
 TIMEOUT_S = 12
 CONTRACT_SIZE_FALLBACK = 100.0        # used only when the broker answers no contract size (owner: AAPL = 100 in the terminal, 2026-11-13)
 _session: dict = {"base_url": DEFAULT_BASE_URL, "token": None, "login": None, "server": None}
+
+# ----------------------------------------------------------------------------- V: the paid gateway
+# The trial host (DEFAULT_BASE_URL) answers "CloudTrial failed: Trial expired" once its trial ends. The paid
+# service is the SAME API on its own host, with one difference: every request carries the licence key in an
+# HTTP header named ApiKey (the host's own API description: securitySchemes.Bearer = apiKey, name ApiKey, in
+# header). Both come from the environment and nowhere else:
+#     MT5_GATEWAY_URL   the paid host, e.g. https://<host>/   - when set it is used for EVERY call, the
+#                       operator's and every user's, and overrides any base URL saved with old credentials
+#     MT5_GATEWAY_KEY   the licence key. Sent ONLY as that header and ONLY to MT5_GATEWAY_URL. It is never put
+#                       in a URL, a result, a log line or the audit.
+GATEWAY_URL_ENV, GATEWAY_KEY_ENV, ALERT_WEBHOOK_ENV = "MT5_GATEWAY_URL", "MT5_GATEWAY_KEY", "MT5_ALERT_WEBHOOK_URL"
+ALERT_REPEAT_S = 30 * 60.0
+
+
+def gateway_base() -> Optional[str]:
+    v = (os.getenv(GATEWAY_URL_ENV) or "").strip()
+    return (v.rstrip("/") + "/") if v else None
+
+
+def _gateway_key() -> Optional[str]:
+    v = (os.getenv(GATEWAY_KEY_ENV) or "").strip()
+    return v or None
+
+
+def _scrub(value: Any) -> Any:
+    """Remove the licence key from anything about to leave this module. It should never be there; this is the
+    second lock on the door, for a provider that echoes a request back inside an error."""
+    key = _gateway_key()
+    if not key:
+        return value
+    if isinstance(value, str):
+        return value.replace(key, "***")
+    if isinstance(value, dict):
+        return {k: _scrub(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_scrub(v) for v in value]
+    return value
+
+
+# What is wrong with the gateway, if anything. One place, so the user's banner, the operator's alert and the
+# skip reason on an order all say the same thing.
+_gw: dict = {"ok": True, "kind": None, "detail": None, "since": None, "last": None, "count": 0, "alerted_at": 0.0,
+             "last_ok": None}
+LICENCE_WORDS = ("trial expired", "cloudtrial", "purchase full version", "license", "licence", "apikey", "api key",
+                 "unauthorized", "forbidden", "invalid key", "subscription")
+
+
+def problem_kind(res: dict) -> Optional[str]:
+    """LICENCE, GATEWAY_DOWN or None. A broker's refusal of one order (invalid volume, market closed, a wrong
+    password) is NOT a gateway problem and must not raise the banner."""
+    if not isinstance(res, dict) or res.get("ok"):
+        return None
+    reason = str(res.get("reason") or "")
+    text = ("%s %s" % (reason, res.get("detail") or "")).lower()
+    if any(w in text for w in LICENCE_WORDS) or reason in ("HTTP_401", "HTTP_403"):
+        return "LICENCE"
+    if reason == "TRANSPORT" or reason.startswith("HTTP_5") or reason in ("HTTP_429",):
+        return "GATEWAY_DOWN"
+    return None
+
+
+def _note(res: dict) -> None:
+    kind = problem_kind(res)
+    now = time.time()
+    fire = None
+    with _lock:
+        if kind is None:
+            if res.get("ok"):
+                if not _gw["ok"]:
+                    _log.warning("MT5 gateway recovered after %s (%d failed calls)", _gw["kind"], _gw["count"])
+                _gw.update(ok=True, kind=None, detail=None, since=None, count=0, last_ok=now)
+            return
+        detail = str(_scrub(res.get("detail") or res.get("reason") or ""))[:240]
+        started = _gw["ok"] or _gw["kind"] != kind
+        _gw.update(ok=False, kind=kind, detail=detail, last=now, count=(1 if started else _gw["count"] + 1),
+                   since=(now if started else _gw["since"]))
+        if started or now - float(_gw["alerted_at"] or 0) >= ALERT_REPEAT_S:
+            _gw["alerted_at"] = now
+            fire = dict(_gw)
+    if fire:
+        _alert(fire)
+
+
+def _alert(state: dict) -> None:
+    """Tell the operator, loudly and once per ALERT_REPEAT_S while it lasts. Never raises into a trading call."""
+    text = ("MT5 GATEWAY ALERT: %s - %s. No orders can be placed or closed for ANY account until this is fixed. "
+            "%d failed call(s) since %s UTC." % (
+                "the licence has expired or the key was refused" if state["kind"] == "LICENCE" else "the gateway is not answering",
+                state["detail"], state["count"], time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(state["since"] or time.time()))))
+    _log.error(text)
+    hook = (os.getenv(ALERT_WEBHOOK_ENV) or "").strip()
+    if not hook:
+        return
+
+    def _post() -> None:
+        try:
+            body = json.dumps({"text": text}).encode("utf-8")
+            req = urllib.request.Request(hook, data=body, headers={"Content-Type": "application/json"}, method="POST")
+            urllib.request.urlopen(req, timeout=8).read()
+        except Exception as exc:  # noqa: BLE001 - an alert that cannot be delivered must not stop anything
+            _log.error("MT5 gateway alert could not be delivered to the webhook: %s", type(exc).__name__)
+    threading.Thread(target=_post, name="mt5-gateway-alert", daemon=True).start()
+
+
+def gateway_status() -> dict:
+    """For the page and the operator: is the gateway usable, and if not, why and since when."""
+    with _lock:
+        g = dict(_gw)
+    out = {"ok": g["ok"], "kind": g["kind"], "detail": g["detail"], "failed_calls": g["count"],
+           "since": (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(g["since"])) if g["since"] else None),
+           "paid_host_configured": gateway_base() is not None, "key_configured": _gateway_key() is not None}
+    if not g["ok"]:
+        out["message"] = ("The trading connection's licence has expired or was refused. No orders can be placed until "
+                          "it is renewed." if g["kind"] == "LICENCE" else
+                          "The trading connection is not answering. Orders cannot be placed until it is back.")
+    return out
+
+
+def gateway_health() -> dict:
+    """READ-ONLY proof that the gateway answers with our key: Ping and Version, which need no trading account."""
+    ping = _call("Ping", with_token=False)
+    ver = _call("Version", with_token=False)
+    return {"ok": bool(ping.get("ok") and ver.get("ok")), "host": (gateway_base() or DEFAULT_BASE_URL),
+            "paid_host_configured": gateway_base() is not None, "key_configured": _gateway_key() is not None,
+            "ping": (ping.get("data") if ping.get("ok") else "%s: %s" % (ping.get("reason"), ping.get("detail"))),
+            "version": (ver.get("data") if ver.get("ok") else "%s: %s" % (ver.get("reason"), ver.get("detail"))),
+            "problem": problem_kind(ping) or problem_kind(ver)}
+
 
 OP_BUY, OP_SELL = 0, 1
 SYMBOL_TRADE_MODE_DISABLED, SYMBOL_TRADE_MODE_LONGONLY, SYMBOL_TRADE_MODE_SHORTONLY, SYMBOL_TRADE_MODE_CLOSEONLY, SYMBOL_TRADE_MODE_FULL = 0, 1, 2, 3, 4
@@ -56,7 +185,11 @@ def _reset_for_tests(getter=None) -> None:
 
 # ----------------------------------------------------------------------------- HTTP
 def _real_http_get(url: str, timeout: float = TIMEOUT_S) -> tuple[int, str]:
-    req = urllib.request.Request(url, headers={"Accept": "application/json", "User-Agent": "TRDGO-US mt5 bridge"})
+    headers = {"Accept": "application/json", "User-Agent": "TRDGO-US mt5 bridge"}
+    base, key = gateway_base(), _gateway_key()
+    if base and key and url.startswith(base):          # the key goes to the paid host and to nowhere else
+        headers["ApiKey"] = key
+    req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return int(r.status), r.read().decode("utf-8", "replace")
@@ -74,7 +207,9 @@ def _call(path: str, params: Optional[dict] = None, *, with_token: bool = True, 
     C.1: `token` names the session explicitly, for a call made on behalf of a USER rather than the operator.
     The module-level _session is the operator's single connection and must not be disturbed by user traffic.
     """
-    base = (base_url or _session["base_url"] or DEFAULT_BASE_URL).rstrip("/") + "/"
+    # V: when the paid host is configured it serves every call. An old base URL saved with credentials, or
+    # passed by a caller, would otherwise keep sending traffic to the expired trial host.
+    base = (gateway_base() or base_url or _session["base_url"] or DEFAULT_BASE_URL).rstrip("/") + "/"
     q = dict(params or {})
     if strict_token and not token:
         # F.1: a USER call with no session must fail here. Falling through to the operator's token is how 25
@@ -89,10 +224,16 @@ def _call(path: str, params: Optional[dict] = None, *, with_token: bool = True, 
         q["id"] = _session["token"]
     url = base + path.lstrip("/") + ("?" + urllib.parse.urlencode({k: v for k, v in q.items() if v is not None}) if q else "")
     safe_path = path + ("?" + urllib.parse.urlencode({k: ("***" if k in ("id", "password") else v) for k, v in q.items() if v is not None}) if q else "")
+    out = _call_once(url, safe_path)
+    _note(out)
+    return out
+
+
+def _call_once(url: str, safe_path: str) -> dict:
     try:
         status, body = _http_get(url)
     except Exception as exc:  # noqa: BLE001
-        return {"ok": False, "reason": "TRANSPORT", "detail": "%s: %s" % (type(exc).__name__, exc), "path": safe_path}
+        return {"ok": False, "reason": "TRANSPORT", "detail": _scrub("%s: %s" % (type(exc).__name__, exc)), "path": safe_path}
     data: Any
     try:
         data = json.loads(body) if body.strip() else None
@@ -101,10 +242,11 @@ def _call(path: str, params: Optional[dict] = None, *, with_token: bool = True, 
     if isinstance(data, dict) and ("errorCode" in data or ("message" in data and any(k in data for k in ("code", "nodeName", "stackTrace", "details")))):
         code = data.get("code", data.get("errorCode"))
         extra = data.get("details") or data.get("nodeName")
-        return {"ok": False, "reason": "API_ERROR", "status": status, "error_code": code, "detail": "%s%s" % (data.get("message"), (" (" + str(extra) + ")") if extra else ""),
-                "raw": {k: v for k, v in data.items() if k != "stackTrace"}, "path": safe_path}
+        return {"ok": False, "reason": "API_ERROR", "status": status, "error_code": code,
+                "detail": _scrub("%s%s" % (data.get("message"), (" (" + str(extra) + ")") if extra else "")),
+                "raw": _scrub({k: v for k, v in data.items() if k != "stackTrace"}), "path": safe_path}
     if status >= 400:
-        return {"ok": False, "reason": "HTTP_%d" % status, "status": status, "detail": (body or "")[:300], "path": safe_path}
+        return {"ok": False, "reason": "HTTP_%d" % status, "status": status, "detail": _scrub((body or "")[:300]), "path": safe_path}
     return {"ok": True, "status": status, "data": data, "path": safe_path}
 
 
@@ -341,6 +483,50 @@ def close_position(ticket: int, *, deviation_points: int, magic: int, comment: s
         return {"ok": False, "stage": "close", "ticket": int(ticket), "retcode": res.get("error_code"), "retcode_text": classify_refusal(res), "comment": res.get("detail"), "raw": res.get("raw")}
     o = _order_fields(res.get("data"))
     return {"ok": True, "stage": "close", "ticket": int(ticket), "retcode": 0, "retcode_text": "DONE", "volume": o.get("volume"), "price": o.get("price") or _f(_g(res.get("data"), "closePrice")), "partial": False}
+
+
+def closed_order(ticket: int, since_epoch: float, *, token: Optional[str] = None, strict_token: bool = False) -> dict:
+    """How the broker closed one position, from its own order history: price, time, profit, commission, swap.
+
+    READ-ONLY (OrderHistory). {"ok": True, "found": False} means the history was read and holds no closed order
+    with this ticket; ok False means the history could not be read at all - the two must never be confused.
+    """
+    start = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(max(0.0, float(since_epoch) - 86400.0)))
+    end = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(time.time() + 86400.0))
+    res = _call("OrderHistory", {"from": start, "to": end}, token=token, strict_token=strict_token)
+    if not res.get("ok"):
+        return {"ok": False, "reason": res.get("reason"), "detail": res.get("detail")}
+    rows = res["data"] if isinstance(res["data"], list) else (_g(res["data"], "orders", "items") or [])
+    for d in rows or []:
+        try:
+            if int(_g(d, "ticket") or 0) != int(ticket):
+                continue
+        except (TypeError, ValueError):
+            continue
+        price = _f(_g(d, "closePrice"))
+        if not price:                                    # still open, or a row without a close
+            continue
+        comment = str(_g(d, "closeComment", "comment") or "")
+        cl = comment.lower()
+        how = "STOP" if "[sl" in cl or "sl " in cl or cl.startswith("sl") else \
+              "TARGET" if "[tp" in cl or "tp " in cl or cl.startswith("tp") else \
+              "STOP_OUT" if cl.startswith("so") or "stop out" in cl else "OTHER"
+        return {"ok": True, "found": True, "ticket": int(ticket), "price": price, "time": _g(d, "closeTime"),
+                "time_utc": _g(d, "closeTimestampUTC"), "profit": _f(_g(d, "profit")), "commission": _f(_g(d, "commission")),
+                "swap": _f(_g(d, "swap")), "fee": _f(_g(d, "fee")), "how": how, "comment": comment[:60]}
+    return {"ok": True, "found": False, "ticket": int(ticket)}
+
+
+def required_margin(sym: str, side: str, volume: float, *, token: Optional[str] = None, strict_token: bool = False) -> dict:
+    """What the broker says one order would need, in the account currency. READ-ONLY (RequiredMargin)."""
+    op = OP_BUY if str(side).upper() in ("BUY", "LONG") else OP_SELL
+    res = _call("RequiredMargin", {"symbol": sym, "lots": volume, "type": op}, token=token, strict_token=strict_token)
+    if not res.get("ok"):
+        return {"ok": False, "reason": res.get("reason"), "detail": res.get("detail")}
+    val = _f(res.get("data") if not isinstance(res.get("data"), dict) else _g(res["data"], "margin", "value", "result"))
+    if val is None:
+        return {"ok": False, "reason": "NO_VALUE", "detail": "the broker answered without a margin figure"}
+    return {"ok": True, "margin": val}
 
 
 def position_exit_deals(ticket: int, since_epoch: float) -> dict:
