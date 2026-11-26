@@ -65,6 +65,10 @@ _last_order_at = 0.0
 # ----------------------------------------------------------------------------- V
 LIVE_TTL_S = 5.0                     # how long one read of a user's open positions is reused
 RECONCILE_EVERY_S = 300.0            # a user's log is checked against the broker at least this often while trading
+# A position filled moments ago may not be in the broker's list yet. Reconciliation must never mistake that
+# for "closed at the broker": it would drop a live position from our log and leave it open with nobody
+# watching it. So a row younger than this is left alone by reconcile_user and still counts toward the cap.
+RECONCILE_MIN_AGE_S = 120.0
 _live_cache: dict = {}               # username -> (set of open tickets | None, at)
 _last_reconcile: dict = {}           # username -> epoch
 _closing: set = set()                # (username, ticket) with a close in flight - never two at once
@@ -451,6 +455,8 @@ def reconcile_user(name: str, token: Optional[str] = None) -> dict:
                 continue
         except (TypeError, ValueError):
             continue
+        if time.time() - _fill_epoch(row) < RECONCILE_MIN_AGE_S:
+            continue                                       # too new to judge: see RECONCILE_MIN_AGE_S
         if not _begin_close(name, row["ticket"]):
             continue                                       # a close for this ticket is in flight right now
         try:
@@ -477,7 +483,7 @@ def open_count(name: str, token: str) -> int:
     live = live_tickets(name, token)
     if live is None:
         return len(rows)
-    missing = [r for r in rows if _ticket_int(r) not in live]
+    missing = [r for r in rows if _ticket_int(r) not in live and time.time() - _fill_epoch(r) >= RECONCILE_MIN_AGE_S]
     if missing or stale:
         res = reconcile_user(name, token)
         if res.get("ok"):

@@ -201,3 +201,17 @@ def test_every_row_carries_how_long_each_step_took(rig):
     CP._for_user(st.users[0], dict(EXIT, _queued_at=time.time()))
     t = json.loads(st.events("ann", "CLOSED")[0]["timing"])
     assert {"queue_wait_ms", "quote_ms", "rate_gate_ms", "close_ms"} <= set(t)
+
+
+def test_a_position_filled_moments_ago_is_never_judged_closed(rig):
+    """The broker's list can lag a fresh fill. Settling it would orphan a live position."""
+    from datetime import datetime, timezone
+    broker, st, _ = rig; _one(st, max_positions=1)
+    CP.dispatch(ENTRY)
+    st.open["ann"][0]["at"] = datetime.now(timezone.utc)                  # filled just now
+    broker.accounts["tok-ann"]["gone"] = {_ticket(broker)}                # ...and not in the broker's list yet
+    CP._live_cache.clear()
+    assert CP.reconcile_user("ann")["settled"] == 0
+    CP.dispatch(dict(ENTRY, trade_id="T2"))
+    assert len(broker.orders["tok-ann"]) == 1                             # still counted: the cap holds
+    assert not st.events("ann", "CLOSED")
