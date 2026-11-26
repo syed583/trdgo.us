@@ -48,3 +48,14 @@ literal colours until kit V is installed. Visual effect: none known.
 - Still to do after install: gateway check (`mt5_gateway_check.py --login 250094`), phantom list against the
   broker, reconcile dry run, then apply only with the owner's approval. Not yet confirmed that the two
   `MT5_GATEWAY_*` lines are in `backend\.env`.
+
+## Kit W - follow-up found by the first real gateway call (2026-11-26)
+- After the kit V install the paid host accepted the key (no key = 401 `No 'ApiKey' provided`; our call got past
+  that) but refused ConnectEx: `Id parameter is required`. Its API description calls `id` optional; the host does not.
+- Fix: `mt5_bridge.connect()` sends a fresh `uuid4` session id when `MT5_GATEWAY_URL` is set. One file. Two new tests.
+- `mt5_phantom_list.py --broker` still names `HistoryDealsByPositionId` in its banner; cosmetic, script not changed.
+- Pins: package `407a1c2497cc7b0b66eb43bcd12f90cba5c36856`, anchor
+  `ee6e85c5208fec84a5e91b7688cefaac82691e45360ea642110b139245614150`, runner `deploy/w1_run.ps1` SHA-256
+  `C80516D112941505EA5685BE0CA47B7DA5C3F1DB0E91AEB50FEDC73C24F1C3A0`, installer commit `79e6b3c5`.
+  PreCheck must read `backend files: 1 changed, 0 new`. NOT pushed, NOT installed.
+- Not proven: that a caller-chosen id is all the paid host wants. First proof is the gateway check after install.
