@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { CalendarDays, Database, Gauge, Layers, Radio, Target, Zap } from 'lucide-react';
+import { CalendarDays, Database, Gauge, Layers, Radio, Target } from 'lucide-react';
 import {
   Area, AreaChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
@@ -222,10 +222,6 @@ export default function NewAnalysisLanding({
           <NavLink to="/earnings-calendar" className="nd-hero-feat">
             <span className="nd-feat-ico violet"><CalendarDays size={18} /></span>
             <span><b>Earnings</b><i>Dates, estimates and surprises</i></span>
-          </NavLink>
-          <NavLink to="/smart-move/engine20" className="nd-hero-feat">
-            <span className="nd-feat-ico blue"><Zap size={18} /></span>
-            <span><b>Smart Money Move</b><i>Calls before the window closes</i></span>
           </NavLink>
         </div>
       </section>
