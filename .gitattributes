@@ -6,3 +6,4 @@ deploy/s1_run.ps1 -text
 deploy/t1_run.ps1 -text
 deploy/u1_run.ps1 -text
 deploy/mt5_user_audit.py -text
+deploy/mt5_phantom_list.py -text
