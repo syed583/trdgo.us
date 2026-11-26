@@ -125,3 +125,28 @@ def test_required_margin_is_a_read(wire):
     answers.append((200, "512.4"))
     assert B.required_margin("AAPL.m", "LONG", 0.1, token="t") == {"ok": True, "margin": 512.4}
     assert "RequiredMargin" in sent[-1]["url"] and "type=0" in sent[-1]["url"]
+
+
+def test_connect_on_the_paid_host_sends_a_fresh_session_id_and_never_logs_it(wire, caplog):
+    """W: the paid host answered 'Id parameter is required' to ConnectEx without one (2026-11-26)."""
+    sent, answers = wire
+    ids = []
+    for _ in range(2):
+        answers.extend([(200, '"returned-token"'), (200, json.dumps({"balance": 1.0, "equity": 1.0}))])
+        sess = {"base_url": None, "token": None, "login": None, "server": None}
+        with caplog.at_level(logging.DEBUG):
+            res = B.connect(250094, "pw", "Some-Server", session=sess)
+        assert res["ok"] and sess["token"] == "returned-token"      # the host's answer is the token we keep
+        url = [s["url"] for s in sent if "ConnectEx" in s["url"]][-1]
+        sid = B.urllib.parse.parse_qs(B.urllib.parse.urlsplit(url).query)["id"][0]
+        assert len(sid) >= 32 and sid not in caplog.text and sid not in json.dumps(res)
+        ids.append(sid)
+    assert ids[0] != ids[1]
+
+
+def test_connect_without_the_paid_host_is_unchanged(wire, monkeypatch):
+    sent, answers = wire
+    monkeypatch.delenv(B.GATEWAY_URL_ENV, raising=False)
+    answers.extend([(200, '"tok"'), (200, json.dumps({"balance": 1.0}))])
+    B.connect(1, "pw", "S", session={"base_url": None, "token": None, "login": None, "server": None})
+    assert "id=" not in [s["url"] for s in sent if "ConnectEx" in s["url"]][0]

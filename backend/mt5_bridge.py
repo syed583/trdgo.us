@@ -20,6 +20,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from typing import Any, Optional
 
 _log = logging.getLogger("mt5")
@@ -295,7 +296,13 @@ def connect(login: int, password: str, server: str, base_url: Optional[str] = No
     with _lock:
         base = (base_url or DEFAULT_BASE_URL).strip() or DEFAULT_BASE_URL
         sess.update(base_url=base, token=None, login=None, server=None)
-        res = _call("ConnectEx", {"user": int(login), "password": password, "server": server}, with_token=False, base_url=base)
+        q = {"user": int(login), "password": password, "server": server}
+        if gateway_base():
+            # W: the paid host refuses ConnectEx without a caller-chosen session id ("Id parameter is required",
+            # 2026-11-26), although its description calls the field optional. A fresh random one per connect;
+            # it is the session token, so it is never logged (_call masks "id").
+            q["id"] = str(uuid.uuid4())
+        res = _call("ConnectEx", q, with_token=False, base_url=base)
         if not res.get("ok"):
             return {"ok": False, "reason": res.get("reason"), "detail": res.get("detail"), "error_code": res.get("error_code"), "path": res.get("path")}
         tok = res.get("data")
