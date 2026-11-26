@@ -1,4 +1,4 @@
-"""READ-ONLY: does the MT5 gateway answer with our licence key, and (optionally) can one account connect?
+r"""READ-ONLY: does the MT5 gateway answer with our licence key, and (optionally) can one account connect?
 
     cd C:\apps\us-stock-reader\backend
     .venv\Scripts\python.exe C:\SmartMoveRun\mt5_gateway_check.py                  Ping + Version, no trading account
